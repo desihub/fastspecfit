@@ -243,7 +243,8 @@ class LineMasker(object):
                        initsigma_broad=None, initsigma_narrow=None,
                        initsigma_balmer_broad=None, initvshift_broad=None,
                        initvshift_narrow=None, initvshift_balmer_broad=None,
-                       niter=2, nsigma_mask=5., debug_plots=False):
+                       init_balmer_broad=None, niter=2, nsigma_mask=5.,
+                       debug_plots=False):
         """Generate a mask which identifies pixels impacted by emission lines.
 
         Parameters
@@ -273,6 +274,9 @@ class LineMasker(object):
             Like `initvshift_broad` but for the forbidden lines.
         initvshift_balmer_broad : :class:`float`
             Like `initvshift_broad` but for the broad Balmer lines.
+        init_balmer_broad : :class:`bool`
+            Boolean flag indicating whether a broad Balmer line was identified
+            during the initial line-masking.
         minsnr_balmer_broad : :class:`float`
             Minimum signal-to-noise ratio for identifying a significant broad
             Balmer line.
@@ -619,6 +623,8 @@ class LineMasker(object):
             initvshift_narrow = 0.
         if initvshift_balmer_broad is None:
             initvshift_balmer_broad = 0.
+        if init_balmer_broad is None:
+            init_balmer_broad = False
 
         camerapix = np.array([[0, len(wave)]]) # one camera
 

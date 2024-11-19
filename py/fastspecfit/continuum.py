@@ -1631,6 +1631,7 @@ def continuum_specfit(data, result, templates, igm, phot,
     result['INIT_VSHIFT_UV'] = data['linevshift_broad']
     result['INIT_VSHIFT_NARROW'] = data['linevshift_narrow']
     result['INIT_VSHIFT_BALMER'] = data['linevshift_balmer_broad']
+    result['INIT_BALMER_BROAD'] = data['balmerbroad']
 
     result['SEED'] = seed
     result['Z'] = redshift
