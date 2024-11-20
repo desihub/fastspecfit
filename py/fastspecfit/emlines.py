@@ -892,6 +892,7 @@ class EMFitTools(object):
                 """ Get all the computed fluxes associated with the current line.  Return the
                 fluxes along with some intermediate quantities if return_extras is True.  (The
                 extras are needed only if we are not using this function in Monte Carlo iteration.)
+
                 """
                 linez = redshift + values[line_vshift] / C_LIGHT
                 linezwave = restwave * (1. + linez)
@@ -937,16 +938,16 @@ class EMFitTools(object):
                                 clipflux = specflux_nolines_s[borderindx]
                             cont = np.mean(clipflux)
 
-                    # needed by all code, including Monte Carlo
-                    res = (boxflux, flux, cont)
+                # needed by all code, including Monte Carlo
+                res = (boxflux, flux, cont)
 
-                    if return_extras:
-                        # needed by non-Monte Carlo code
-                        extras = (linez, linesigma, linesigma_ang,
-                                  patchindx, flux_gauss_ivar, clipflux)
-                        return (res, extras)
-                    else:
-                        return res
+                if return_extras:
+                    # needed by non-Monte Carlo code
+                    extras = (linez, linesigma, linesigma_ang, patchindx,
+                              flux_gauss_ivar, clipflux)
+                    return (res, extras)
+                else:
+                    return res
 
 
             # zero out out-of-range lines
@@ -957,8 +958,10 @@ class EMFitTools(object):
                 values[line_sigma] = 0.
                 continue
 
-            (boxflux, flux, cont), extras = \
-                get_fluxes(values, emlineflux_s, line_profiles, specflux_nolines_s, return_extras=True)
+            (boxflux, flux, cont), extras = get_fluxes(
+                values, emlineflux_s, line_profiles,
+                specflux_nolines_s, return_extras=True)
+
             result[f'{linename}_BOXFLUX'] = boxflux # * u.erg/(u.second*u.cm**2)
             result[f'{linename}_FLUX'] = flux
             result[f'{linename}_CONT'] = cont # * u.erg/(u.second*u.cm**2*u.Angstrom)
@@ -1725,6 +1728,9 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
                 log.info(f'Wrote {pngfile}')
 
     log.debug(f'Emission-line fitting took {time.time()-tall:.2f} seconds.')
-    for name in result.value.dtype.names:
-        print(name, result[name])
+
+    if debug_plots:
+        for name in result.value.dtype.names:
+            print(name, result[name])
+
     return spectra_out
