@@ -279,14 +279,16 @@ class EMFitTools(object):
                         """
                         [O3] (4-->2): airwave: 4958.9097 vacwave: 4960.2937 emissivity: 1.172e-21
                         [O3] (4-->3): airwave: 5006.8417 vacwave: 5008.2383 emissivity: 3.497e-21
+                        https://ui.adsabs.harvard.edu/abs/2007AIPC..895..313D/abstract
                         """
-                        tie_line(tying_info, line_params, 'oiii_5007', amp_factor = 1.0 / 2.9839)
+                        tie_line(tying_info, line_params, 'oiii_5007', amp_factor = 1.0 / 2.993)
                     case 'nii_6548':
                         """
                         [N2] (4-->2): airwave: 6548.0488 vacwave: 6549.8578 emissivity: 2.02198e-21
                         [N2] (4-->3): airwave: 6583.4511 vacwave: 6585.2696 emissivity: 5.94901e-21
+                        https://ui.adsabs.harvard.edu/abs/2023AdSpR..71.1219D/abstract
                         """
-                        tie_line(tying_info, line_params, 'nii_6584', amp_factor = 1.0 / 2.9421)
+                        tie_line(tying_info, line_params, 'nii_6584', amp_factor = 1.0 / 3.049)
                     case 'oii_7330':
                         """
                         [O2] (5-->2): airwave: 7318.9185 vacwave: 7320.9350 emissivity: 8.18137e-24
