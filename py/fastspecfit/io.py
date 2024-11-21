@@ -1535,7 +1535,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
     if not os.path.isdir(outdir):
         os.makedirs(outdir, exist_ok=True)
 
-    nobj = len(out)
+    nobj = len(meta)
     if nobj == 1:
         log.info(f'Writing 1 object to {outfile}')
     else:
@@ -1545,14 +1545,6 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         tmpfile = outfile[:-3]+'.tmp'
     else:
         tmpfile = outfile+'.tmp'
-
-    if fastphot:
-        extname = 'FASTPHOT'
-    else:
-        extname = 'FASTSPEC'
-
-    out.meta['EXTNAME'] = extname
-    meta.meta['EXTNAME'] = 'METADATA'
 
     primhdr = []
     if specprod:
@@ -1582,10 +1574,16 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
     if emlinesfile:
         setdep(primhdr, 'EMLINES_FILE', str(emlinesfile))
 
+    meta.meta['EXTNAME'] = 'METADATA'
+    specphot.meta['EXTNAME'] = 'SPECPHOT'
+
     hdus = fits.HDUList()
     hdus.append(fits.PrimaryHDU(None, primhdr))
-    hdus.append(fits.convenience.table_to_hdu(out))
     hdus.append(fits.convenience.table_to_hdu(meta))
+    hdus.append(fits.convenience.table_to_hdu(specphot))
+    if fastfit is not None:
+        fastfit.meta['EXTNAME'] = 'FASTSPEC'
+        hdus.append(fits.convenience.table_to_hdu(fastfit))
 
     if modelspectra is not None:
         hdu = fits.ImageHDU(name='MODELS')

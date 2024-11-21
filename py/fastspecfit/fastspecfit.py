@@ -254,6 +254,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
     specphot = create_output_table(out[1], meta, specphot_units, fitstack=fitstack)
 
     if fastphot:
+        fastfit = None
         modelspectra = None
     else:
         fastfit = create_output_table(out[2], meta, fastfit_units, fitstack=fitstack)
@@ -265,8 +266,9 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
     log.info(f'Fitting {ntargets} object(s) took {time.time()-t0:.2f} seconds.')
 
     write_fastspecfit(
-        meta, specphot, fastfit, modelspectra=modelspectra, outfile=args.outfile,
-        specprod=Spec.specprod, coadd_type=Spec.coadd_type,
+        meta, specphot, fastfit, modelspectra=modelspectra,
+        outfile=args.outfile, specprod=Spec.specprod,
+        coadd_type=Spec.coadd_type,
         fphotofile=sc_data.photometry.fphotofile,
         template_file=sc_data.templates.file,
         emlinesfile=sc_data.emlines.file, fastphot=fastphot,
