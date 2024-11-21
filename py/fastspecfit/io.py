@@ -2046,8 +2046,10 @@ def create_output_meta(input_meta, phot, fastphot=False, fitstack=False):
     return meta
 
 
-def create_output_table(result_records, meta, units, fitstack=False):
+def create_output_table(records, meta, units, fitstack=False):
+    """Generate the output FASTSPEC/FASTPHOT or SPECPHOT table.
 
+    """
     from astropy.table import hstack
 
     # Initialize the output table from the metadata table.
@@ -2060,11 +2062,13 @@ def create_output_table(result_records, meta, units, fitstack=False):
     initcols = [col for col in initcols if col in metacols]
 
     cdata = [meta[col] for col in initcols]
-    results = Table()
-    results.add_columns(cdata)
+
+    output_table = Table()
+    output_table.add_columns(cdata)
 
     # Now add the measurements. Columns and their dtypes are inferred from the
     # array's dtype.
-    results = hstack((results, Table(np.array(result_records), units=units)))
+    output_table = hstack((output_table, Table(np.array(records), units=units)))
 
-    return results
+    return output_table
+
