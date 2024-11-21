@@ -1759,9 +1759,8 @@ def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None,
         return fastfit[keep], metadata[keep]
 
 
-def get_output_dtype(specprod, phot, linetable, ncoeff,
-                     cameras=['B', 'R', 'Z'], fastphot=False,
-                     fitstack=False):
+def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
+                     specphot=False, fastphot=False, fitstack=False):
     """
     Get type of one fastspecfit output data record, along
     with dictionary of units for any fields that have them.
@@ -1782,172 +1781,174 @@ def get_output_dtype(specprod, phot, linetable, ncoeff,
         if unit is not None:
             out_units[name] = unit
 
-    add_field('Z', dtype='f8') # redshift
-    add_field('SEED', dtype=np.int64)
+    if specphot:
+        #add_field('Z', dtype='f8') # redshift
+        add_field('SEED', dtype=np.int64)
+        add_field('COEFF', shape=(ncoeff,), dtype='f4')
 
-    if not fastphot:
-        add_field('INIT_SIGMA_UV', dtype='f4')
-        add_field('INIT_SIGMA_NARROW', dtype='f4')
-        add_field('INIT_SIGMA_BALMER', dtype='f4')
-        add_field('INIT_VSHIFT_UV', dtype='f4')
-        add_field('INIT_VSHIFT_NARROW', dtype='f4')
-        add_field('INIT_VSHIFT_BALMER', dtype='f4')
-        add_field('INIT_BALMER_BROAD', dtype=bool)
+        if not fastphot:
+            add_field('RCHI2', dtype='f4')      # full-spectrum reduced chi2
+            add_field('RCHI2_CONT', dtype='f4') # rchi2 fitting just to the continuum (spec+phot)
+        add_field('RCHI2_PHOT', dtype='f4') # rchi2 fitting just to the photometry
 
-    add_field('COEFF', shape=(ncoeff,), dtype='f4')
+        add_field('VDISP', dtype='f4', unit=u.kilometer/u.second)
+        if not fastphot:
+            add_field('VDISP_IVAR', dtype='f4', unit=u.second**2/u.kilometer**2)
+        add_field('TAUV', dtype='f4')
+        add_field('TAUV_IVAR', dtype='f4')
+        add_field('AGE', dtype='f4', unit=u.Gyr)
+        add_field('AGE_IVAR', dtype='f4', unit=1/u.Gyr**2)
+        add_field('ZZSUN', dtype='f4')
+        add_field('ZZSUN_IVAR', dtype='f4')
+        add_field('LOGMSTAR', dtype='f4', unit=u.solMass)
+        add_field('LOGMSTAR_IVAR', dtype='f4', unit=1/u.solMass**2)
+        add_field('SFR', dtype='f4', unit=u.solMass/u.year)
+        add_field('SFR_IVAR', dtype='f4', unit=u.year**2/u.solMass**2)
+        #add_field('FAGN', dtype='f4')
 
-    if not fastphot:
-        add_field('RCHI2', dtype='f4')      # full-spectrum reduced chi2
-        add_field('RCHI2_CONT', dtype='f4') # rchi2 fitting just to the continuum (spec+phot)
-    add_field('RCHI2_PHOT', dtype='f4') # rchi2 fitting just to the photometry
+        if not fastphot:
+            add_field('DN4000', dtype='f4')
+            add_field('DN4000_OBS', dtype='f4')
+            add_field('DN4000_IVAR', dtype='f4')
+        add_field('DN4000_MODEL', dtype='f4')
+        add_field('DN4000_MODEL_IVAR', dtype='f4')
 
-    if not fastphot:
-        for cam in cameras:
-            add_field(f'SNR_{cam.upper()}', dtype='f4') # median S/N in each camera
-        for cam in cameras:
-            add_field(f'SMOOTHCORR_{cam.upper()}', dtype='f4')
+        if not fastphot:
+            # observed-frame photometry synthesized from the spectra
+            for band in phot.synth_bands:
+                add_field(f'FLUX_SYNTH_{band.upper()}', dtype='f4', unit='nanomaggies')
+                #add_field(f'FLUX_SYNTH_IVAR_{band.upper()}'), dtype='f4', unit='1/nanomaggies**2')
+            # observed-frame photometry synthesized the best-fitting spectroscopic model
+            for band in phot.synth_bands:
+                add_field(f'FLUX_SYNTH_SPECMODEL_{band.upper()}', dtype='f4', unit='nanomaggies')
+        # observed-frame photometry synthesized the best-fitting continuum model
+        for band in phot.bands:
+            add_field(f'FLUX_SYNTH_PHOTMODEL_{band.upper()}', dtype='f4', unit='nanomaggies')
 
-    add_field('VDISP', dtype='f4', unit=u.kilometer/u.second)
-    if not fastphot:
-        add_field('VDISP_IVAR', dtype='f4', unit=u.second**2/u.kilometer**2)
-    add_field('TAUV', dtype='f4')
-    add_field('TAUV_IVAR', dtype='f4')
-    add_field('AGE', dtype='f4', unit=u.Gyr)
-    add_field('AGE_IVAR', dtype='f4', unit=1/u.Gyr**2)
-    add_field('ZZSUN', dtype='f4')
-    add_field('ZZSUN_IVAR', dtype='f4')
-    add_field('LOGMSTAR', dtype='f4', unit=u.solMass)
-    add_field('LOGMSTAR_IVAR', dtype='f4', unit=1/u.solMass**2)
-    add_field('SFR', dtype='f4', unit=u.solMass/u.year)
-    add_field('SFR_IVAR', dtype='f4', unit=u.year**2/u.solMass**2)
-    #add_field('FAGN', dtype='f4')
+        for band, shift in zip(phot.absmag_bands, phot.band_shift):
+            band = band.upper()
+            shift = int(10*shift)
+            add_field(f'ABSMAG{shift:02d}_{band}', dtype='f4', unit=u.mag) # absolute magnitudes
+            add_field(f'ABSMAG{shift:02d}_IVAR_{band}', dtype='f4', unit=1/u.mag**2)
+            add_field(f'ABSMAG{shift:02d}_SYNTH_{band}', dtype='f4', unit=u.mag) # absolute magnitudes
+            add_field(f'ABSMAG{shift:02d}_SYNTH_IVAR_{band}', dtype='f4', unit=1/u.mag**2)
+        for band, shift in zip(phot.absmag_bands, phot.band_shift):
+            band = band.upper()
+            shift = int(10*shift)
+            add_field(f'KCORR{shift:02d}_{band}', dtype='f4', unit=u.mag)
 
-    if not fastphot:
-        add_field('DN4000', dtype='f4')
-        add_field('DN4000_OBS', dtype='f4')
-        add_field('DN4000_IVAR', dtype='f4')
-    add_field('DN4000_MODEL', dtype='f4')
-    add_field('DN4000_MODEL_IVAR', dtype='f4')
+        for wave in ['1500', '2800']:
+            add_field(f'LOGLNU_{wave}',  dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz)
+            add_field(f'LOGLNU_{wave}_IVAR',  dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz)
+        for wave in ['1450', '1700', '3000', '5100']:
+            add_field(f'LOGL_{wave}', dtype='f4', unit=10**(10)*u.solLum)
+            add_field(f'LOGL_{wave}_IVAR', dtype='f4', unit=10**(10)*u.solLum)
+        for line in ['FLYA_1215', 'FOII_3727', 'FHBETA', 'FOIII_5007', 'FHALPHA']:
+            add_field(f'{line}_CONT', dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
+            add_field(f'{line}_CONT_IVAR', dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
 
-    if not fastphot:
-        # observed-frame photometry synthesized from the spectra
-        for band in phot.synth_bands:
-            add_field(f'FLUX_SYNTH_{band.upper()}', dtype='f4', unit='nanomaggies')
-            #add_field(f'FLUX_SYNTH_IVAR_{band.upper()}'), dtype='f4', unit='1/nanomaggies**2')
-        # observed-frame photometry synthesized the best-fitting spectroscopic model
-        for band in phot.synth_bands:
-            add_field(f'FLUX_SYNTH_SPECMODEL_{band.upper()}', dtype='f4', unit='nanomaggies')
-    # observed-frame photometry synthesized the best-fitting continuum model
-    for band in phot.bands:
-        add_field(f'FLUX_SYNTH_PHOTMODEL_{band.upper()}', dtype='f4', unit='nanomaggies')
+    else:
 
-    for band, shift in zip(phot.absmag_bands, phot.band_shift):
-        band = band.upper()
-        shift = int(10*shift)
-        add_field(f'ABSMAG{shift:02d}_{band}', dtype='f4', unit=u.mag) # absolute magnitudes
-        add_field(f'ABSMAG{shift:02d}_IVAR_{band}', dtype='f4', unit=1/u.mag**2)
-        add_field(f'ABSMAG{shift:02d}_SYNTH_{band}', dtype='f4', unit=u.mag) # absolute magnitudes
-        add_field(f'ABSMAG{shift:02d}_SYNTH_IVAR_{band}', dtype='f4', unit=1/u.mag**2)
-    for band, shift in zip(phot.absmag_bands, phot.band_shift):
-        band = band.upper()
-        shift = int(10*shift)
-        add_field(f'KCORR{shift:02d}_{band}', dtype='f4', unit=u.mag)
+        if not fastphot:
+            for cam in cameras:
+                add_field(f'SNR_{cam.upper()}', dtype='f4') # median S/N in each camera
+            for cam in cameras:
+                add_field(f'SMOOTHCORR_{cam.upper()}', dtype='f4')
 
-    for wave in ['1500', '2800']:
-        add_field(f'LOGLNU_{wave}',  dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz)
-        add_field(f'LOGLNU_{wave}_IVAR',  dtype='f4', unit=10**(-28)*u.erg/u.second/u.Hz)
-    for wave in ['1450', '1700', '3000', '5100']:
-        add_field(f'LOGL_{wave}', dtype='f4', unit=10**(10)*u.solLum)
-        add_field(f'LOGL_{wave}_IVAR', dtype='f4', unit=10**(10)*u.solLum)
-    for line in ['FLYA_1215', 'FOII_3727', 'FHBETA', 'FOIII_5007', 'FHALPHA']:
-        add_field(f'{line}_CONT', dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
-        add_field(f'{line}_CONT_IVAR', dtype='f4', unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
+            # aperture corrections
+            add_field('APERCORR', dtype='f4') # median aperture correction
+            for band in phot.synth_bands:
+                add_field(f'APERCORR_{band.upper()}', dtype='f4')
 
-    if not fastphot:
-        # Add chi2 metrics
-        #add_field('DOF',  dtype='i8') # full-spectrum dof
-        add_field('RCHI2_LINE', dtype='f4') # reduced chi2 with broad line-emission
-        #add_field('NDOF_LINE', dtype='i8') # number of degrees of freedom corresponding to rchi2_line
-        #add_field('DOF_BROAD', dtype='i8')
-        add_field('DELTA_LINECHI2', dtype='f4') # delta-reduced chi2 with and without broad line-emission
-        add_field('DELTA_LINENDOF', dtype=np.int32)
+        if not fastphot:
+            add_field('INIT_SIGMA_UV', dtype='f4')
+            add_field('INIT_SIGMA_NARROW', dtype='f4')
+            add_field('INIT_SIGMA_BALMER', dtype='f4')
+            add_field('INIT_VSHIFT_UV', dtype='f4')
+            add_field('INIT_VSHIFT_NARROW', dtype='f4')
+            add_field('INIT_VSHIFT_BALMER', dtype='f4')
+            add_field('INIT_BALMER_BROAD', dtype=bool)
 
-        # aperture corrections
-        add_field('APERCORR', dtype='f4') # median aperture correction
-        for band in phot.synth_bands:
-            add_field(f'APERCORR_{band.upper()}', dtype='f4')
+        if not fastphot:
+            # Add chi2 metrics
+            #add_field('DOF',  dtype='i8') # full-spectrum dof
+            add_field('RCHI2_LINE', dtype='f4') # reduced chi2 with broad line-emission
+            #add_field('NDOF_LINE', dtype='i8') # number of degrees of freedom corresponding to rchi2_line
+            #add_field('DOF_BROAD', dtype='i8')
+            add_field('DELTA_LINECHI2', dtype='f4') # delta-reduced chi2 with and without broad line-emission
+            add_field('DELTA_LINENDOF', dtype=np.int32)
 
-        add_field('NARROW_Z', dtype='f8')
-        add_field('NARROW_ZRMS', dtype='f8')
-        add_field('BROAD_Z', dtype='f8')
-        add_field('BROAD_ZRMS', dtype='f8')
-        add_field('UV_Z', dtype='f8')
-        add_field('UV_ZRMS', dtype='f8')
+            add_field('NARROW_Z', dtype='f8')
+            add_field('NARROW_ZRMS', dtype='f8')
+            add_field('BROAD_Z', dtype='f8')
+            add_field('BROAD_ZRMS', dtype='f8')
+            add_field('UV_Z', dtype='f8')
+            add_field('UV_ZRMS', dtype='f8')
 
-        add_field('NARROW_SIGMA', dtype='f4', unit=u.kilometer / u.second)
-        add_field('NARROW_SIGMARMS', dtype='f4', unit=u.kilometer / u.second)
-        add_field('BROAD_SIGMA', dtype='f4', unit=u.kilometer / u.second)
-        add_field('BROAD_SIGMARMS', dtype='f4', unit=u.kilometer / u.second)
-        add_field('UV_SIGMA', dtype='f4', unit=u.kilometer / u.second)
-        add_field('UV_SIGMARMS', dtype='f4', unit=u.kilometer / u.second)
+            add_field('NARROW_SIGMA', dtype='f4', unit=u.kilometer / u.second)
+            add_field('NARROW_SIGMARMS', dtype='f4', unit=u.kilometer / u.second)
+            add_field('BROAD_SIGMA', dtype='f4', unit=u.kilometer / u.second)
+            add_field('BROAD_SIGMARMS', dtype='f4', unit=u.kilometer / u.second)
+            add_field('UV_SIGMA', dtype='f4', unit=u.kilometer / u.second)
+            add_field('UV_SIGMARMS', dtype='f4', unit=u.kilometer / u.second)
 
-        # special columns for the fitted doublets
-        add_field('MGII_DOUBLET_RATIO', dtype='f4')
-        add_field('MGII_DOUBLET_RATIO_IVAR', dtype='f4')
-        add_field('OII_DOUBLET_RATIO', dtype='f4')
-        add_field('OII_DOUBLET_RATIO_IVAR', dtype='f4')
-        add_field('SII_DOUBLET_RATIO', dtype='f4')
-        add_field('SII_DOUBLET_RATIO_IVAR', dtype='f4')
+            # special columns for the fitted doublets
+            add_field('MGII_DOUBLET_RATIO', dtype='f4')
+            add_field('MGII_DOUBLET_RATIO_IVAR', dtype='f4')
+            add_field('OII_DOUBLET_RATIO', dtype='f4')
+            add_field('OII_DOUBLET_RATIO_IVAR', dtype='f4')
+            add_field('SII_DOUBLET_RATIO', dtype='f4')
+            add_field('SII_DOUBLET_RATIO_IVAR', dtype='f4')
 
-        for line in linetable['name']:
-            line = line.upper()
-            add_field(f'{line}_MODELAMP', dtype='f4',
-                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
-            #add_field(f'{line}_MODELAMP_IVAR', dtype='f4',
-            #                      unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
-            add_field(f'{line}_AMP', dtype='f4',
-                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
-            add_field(f'{line}_AMP_IVAR', dtype='f4',
-                                  unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
-            add_field(f'{line}_FLUX', dtype='f4',
-                                  unit=10**(-17)*u.erg/(u.second*u.cm**2))
-            #add_field(f'{line}_FLUX_GAUSS_IVAR', dtype='f4',
-            #                      unit=10**34*u.second**2*u.cm**4/u.erg**2)
-            add_field(f'{line}_FLUX_IVAR', dtype='f4',
-                                  unit=10**34*u.second**2*u.cm**4/u.erg**2)
-            add_field(f'{line}_BOXFLUX', dtype='f4',
-                                  unit=10**(-17)*u.erg/(u.second*u.cm**2))
-            add_field(f'{line}_BOXFLUX_IVAR', dtype='f4',
-                                  unit=10**34*u.second**2*u.cm**4/u.erg**2)
+            for line in linetable['name']:
+                line = line.upper()
+                add_field(f'{line}_MODELAMP', dtype='f4',
+                                      unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
+                #add_field(f'{line}_MODELAMP_IVAR', dtype='f4',
+                #                      unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
+                add_field(f'{line}_AMP', dtype='f4',
+                                      unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
+                add_field(f'{line}_AMP_IVAR', dtype='f4',
+                                      unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
+                add_field(f'{line}_FLUX', dtype='f4',
+                                      unit=10**(-17)*u.erg/(u.second*u.cm**2))
+                #add_field(f'{line}_FLUX_GAUSS_IVAR', dtype='f4',
+                #                      unit=10**34*u.second**2*u.cm**4/u.erg**2)
+                add_field(f'{line}_FLUX_IVAR', dtype='f4',
+                                      unit=10**34*u.second**2*u.cm**4/u.erg**2)
+                add_field(f'{line}_BOXFLUX', dtype='f4',
+                                      unit=10**(-17)*u.erg/(u.second*u.cm**2))
+                add_field(f'{line}_BOXFLUX_IVAR', dtype='f4',
+                                      unit=10**34*u.second**2*u.cm**4/u.erg**2)
 
-            add_field(f'{line}_VSHIFT', dtype='f4',
-                                  unit=u.kilometer/u.second)
-            add_field(f'{line}_VSHIFT_IVAR', dtype='f4',
-                                  unit=u.second**2/u.kilometer**2)
-            add_field(f'{line}_SIGMA', dtype='f4',
-                                  unit=u.kilometer / u.second)
-            add_field(f'{line}_SIGMA_IVAR', dtype='f4',
-                                  unit=u.second**2/u.kilometer**2)
+                add_field(f'{line}_VSHIFT', dtype='f4',
+                                      unit=u.kilometer/u.second)
+                add_field(f'{line}_VSHIFT_IVAR', dtype='f4',
+                                      unit=u.second**2/u.kilometer**2)
+                add_field(f'{line}_SIGMA', dtype='f4',
+                                      unit=u.kilometer / u.second)
+                add_field(f'{line}_SIGMA_IVAR', dtype='f4',
+                                      unit=u.second**2/u.kilometer**2)
 
-            add_field(f'{line}_CONT', dtype='f4',
-                                  unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
-            add_field(f'{line}_CONT_IVAR', dtype='f4',
-                                  unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
-            add_field(f'{line}_EW', dtype='f4',
-                                  unit=u.Angstrom)
-            add_field(f'{line}_EW_IVAR', dtype='f4',
-                                  unit=1/u.Angstrom**2)
-            add_field(f'{line}_FLUX_LIMIT', dtype='f4',
-                                  unit=u.erg/(u.second*u.cm**2))
-            #add_field(f'{line}_EW_LIMIT', dtype='f4',
-            #                      unit=u.Angstrom)
-            add_field(f'{line}_CHI2', dtype='f4')
-            add_field(f'{line}_NPIX', dtype=np.int32)
+                add_field(f'{line}_CONT', dtype='f4',
+                                      unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
+                add_field(f'{line}_CONT_IVAR', dtype='f4',
+                                      unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
+                add_field(f'{line}_EW', dtype='f4',
+                                      unit=u.Angstrom)
+                add_field(f'{line}_EW_IVAR', dtype='f4',
+                                      unit=1/u.Angstrom**2)
+                add_field(f'{line}_FLUX_LIMIT', dtype='f4',
+                                      unit=u.erg/(u.second*u.cm**2))
+                #add_field(f'{line}_EW_LIMIT', dtype='f4',
+                #                      unit=u.Angstrom)
+                add_field(f'{line}_CHI2', dtype='f4')
+                add_field(f'{line}_NPIX', dtype=np.int32)
 
-        for line in ['CIV_1549', 'MGII_2800', 'HBETA', 'OIII_5007']:
-            for n in range(1, 4):
-                add_field(f'{line}_MOMENT{n}', dtype='f4', unit=u.Angstrom**n)
-                add_field(f'{line}_MOMENT{n}_IVAR', dtype='f4', unit=1/(u.Angstrom**n)**2)
+            for line in ['CIV_1549', 'MGII_2800', 'HBETA', 'OIII_5007']:
+                for n in range(1, 4):
+                    add_field(f'{line}_MOMENT{n}', dtype='f4', unit=u.Angstrom**n)
+                    add_field(f'{line}_MOMENT{n}_IVAR', dtype='f4', unit=1/(u.Angstrom**n)**2)
 
     return np.dtype(out_dtype, align=True), out_units
 
@@ -2056,9 +2057,9 @@ def create_output_table(records, meta, units, fitstack=False):
     metacols = set(meta.colnames)
 
     if fitstack:
-        initcols = ('STACKID', 'SURVEY', 'PROGRAM')
+        initcols = ('STACKID', 'SURVEY', 'PROGRAM', 'Z')
     else:
-        initcols = ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID')
+        initcols = ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID', 'Z')
     initcols = [col for col in initcols if col in metacols]
 
     cdata = [meta[col] for col in initcols]

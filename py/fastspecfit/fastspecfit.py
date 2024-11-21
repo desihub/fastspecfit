@@ -15,10 +15,10 @@ from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import BoxedScalar, MPPool
 
 
-def fastspec_one(iobj, data, meta, fastfit_dtype, broadlinefit=True, fastphot=False,
-                 fitstack=False, constrain_age=False, no_smooth_continuum=False,
-                 debug_plots=False, uncertainty_floor=0.01, minsnr_balmer_broad=2.5,
-                 nmonte=50, seed=1):
+def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=True,
+                 fastphot=False, fitstack=False, constrain_age=False,
+                 no_smooth_continuum=False, debug_plots=False, uncertainty_floor=0.01,
+                 minsnr_balmer_broad=2.5, nmonte=50, seed=1):
     """Run :func:`fastspec` on a single object.
 
     """
@@ -58,26 +58,28 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, broadlinefit=True, fastphot=Fa
                 for iband, band in enumerate(phot.fiber_bands):
                     meta[f'FIBERTOTFLUX_{band.upper()}'] = fibertotflux[iband]
 
-    # output structure
+    # output structures
     fastfit = BoxedScalar(fastfit_dtype)
+    specphot = BoxedScalar(specphot_dtype)
 
     continuummodel, smooth_continuum, continuummodel_monte, specflux_monte = \
-        continuum_specfit(data, fastfit, templates, igm, phot, constrain_age=constrain_age,
+        continuum_specfit(data, fastfit, specphot, templates, igm, phot, constrain_age=constrain_age,
                           no_smooth_continuum=no_smooth_continuum, fastphot=fastphot,
                           fitstack=fitstack, debug_plots=debug_plots, nmonte=nmonte,
                           seed=seed)
 
+    import pdb ; pdb.set_trace()
     # Optionally fit the emission-line spectrum.
     if fastphot:
         emmodel = None
     else:
-        emmodel = emline_specfit(data, fastfit, continuummodel, smooth_continuum,
+        emmodel = emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                                  phot, emline_table, broadlinefit=broadlinefit,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
                                  debug_plots=debug_plots, specflux_monte=specflux_monte,
                                  continuummodel_monte=continuummodel_monte)
 
-    return fastfit.value, meta, emmodel
+    return fastfit.value, specphot.value, meta, emmodel
 
 
 def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False):
@@ -209,6 +211,12 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         cameras=cameras, fastphot=fastphot,
         fitstack=fitstack)
 
+    specphot_dtype, specphot_units = get_output_dtype(
+        Spec.specprod, phot=sc_data.photometry,
+        linetable=sc_data.emlines.table, ncoeff=ncoeff,
+        cameras=cameras, fastphot=fastphot,
+        fitstack=fitstack, specphot=True)
+
     # If using Monte Carlo, generate the random seed(s).
     if args.nmonte > 0:
         if input_seeds is not None:
@@ -226,6 +234,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         'data':                data[iobj],
         'meta':                meta[iobj],
         'fastfit_dtype':       fastfit_dtype,
+        'specphot_dtype':      specphot_dtype,
         'broadlinefit':        args.broadlinefit,
         'fastphot':            fastphot,
         'fitstack':            fitstack,
@@ -238,13 +247,14 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         'seed':                seeds[iobj],
     } for iobj in range(len(meta))]
 
-    _out = mp_pool.starmap(fastspec_one, fitargs)
-    out = list(zip(*_out))
+    res = mp_pool.starmap(fastspec_one, fitargs)
+    res = list(zip(*res))
 
-    meta = create_output_meta(vstack(out[1]), phot=sc_data.photometry,
+    meta = create_output_meta(vstack(out[2]), phot=sc_data.photometry,
                               fastphot=fastphot, fitstack=fitstack)
 
-    results = create_output_table(out[0], meta, fastfit_units, fitstack=fitstack)
+    fastfit = create_output_table(out[0], meta, fastfit_units, fitstack=fitstack)
+    specphot = create_output_table(out[1], meta, specphot_units, fitstack=fitstack)
 
     if fastphot:
         modelspectra = None
@@ -256,6 +266,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
     log.info(f'Fitting {ntargets} object(s) took {time.time()-t0:.2f} seconds.')
 
+    import pdb ; pdb.set_trace()
     write_fastspecfit(results, meta, modelspectra=modelspectra, outfile=args.outfile,
                       specprod=Spec.specprod, coadd_type=Spec.coadd_type,
                       fphotofile=sc_data.photometry.fphotofile,

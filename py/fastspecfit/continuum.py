@@ -1537,7 +1537,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
             sedmodel_nolines_monte, continuummodel_monte)
 
 
-def continuum_specfit(data, result, templates, igm, phot,
+def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                       nmonte=50, seed=1, constrain_age=False,
                       no_smooth_continuum=False, fitstack=False,
                       fastphot=False, debug_plots=False):
@@ -1616,39 +1616,39 @@ def continuum_specfit(data, result, templates, igm, phot,
 
         # populate the output table
         for icam, cam in enumerate(np.atleast_1d(data['cameras'])):
-            result[f'SNR_{cam.upper()}'] = data['snr'][icam]
+            fastfit[f'SNR_{cam.upper()}'] = data['snr'][icam]
 
         msg = ['Smooth continuum correction:']
         for cam, corr in zip(np.atleast_1d(data['cameras']), smoothstats):
-            result[f'SMOOTHCORR_{cam.upper()}'] = corr * 100. # [%]
+            fastfit[f'SMOOTHCORR_{cam.upper()}'] = corr * 100. # [%]
             msg.append(f'{cam}={100.*corr:.3f}%')
         log.info(' '.join(msg))
 
-    result['SEED'] = seed
-    result['Z'] = redshift
-    result['COEFF'][CTools.agekeep] = coeff
-    result['RCHI2_PHOT'] = rchi2_phot
-    result['VDISP'] = vdisp # * u.kilometer/u.second
-    result['DN4000_MODEL'] = dn4000_model
-    result['DN4000_MODEL_IVAR'] = dn4000_model_ivar
+    #result['Z'] = redshift
+    specphot['SEED'] = seed
+    specphot['COEFF'][CTools.agekeep] = coeff
+    specphot['RCHI2_PHOT'] = rchi2_phot
+    specphot['VDISP'] = vdisp # * u.kilometer/u.second
+    specphot['DN4000_MODEL'] = dn4000_model
+    specphot['DN4000_MODEL_IVAR'] = dn4000_model_ivar
 
     if not fastphot:
         # add the initial line-masking parameters to the output table
-        result['INIT_SIGMA_UV'] = data['linesigma_broad']
-        result['INIT_SIGMA_NARROW'] = data['linesigma_narrow']
-        result['INIT_SIGMA_BALMER'] = data['linesigma_balmer_broad']
-        result['INIT_VSHIFT_UV'] = data['linevshift_broad']
-        result['INIT_VSHIFT_NARROW'] = data['linevshift_narrow']
-        result['INIT_VSHIFT_BALMER'] = data['linevshift_balmer_broad']
-        result['INIT_BALMER_BROAD'] = data['balmerbroad']
+        fastfit['INIT_SIGMA_UV'] = data['linesigma_broad']
+        fastfit['INIT_SIGMA_NARROW'] = data['linesigma_narrow']
+        fastfit['INIT_SIGMA_BALMER'] = data['linesigma_balmer_broad']
+        fastfit['INIT_VSHIFT_UV'] = data['linevshift_broad']
+        fastfit['INIT_VSHIFT_NARROW'] = data['linevshift_narrow']
+        fastfit['INIT_VSHIFT_BALMER'] = data['linevshift_balmer_broad']
+        fastfit['INIT_BALMER_BROAD'] = data['balmerbroad']
 
-        result['RCHI2_CONT'] = rchi2_cont
-        result['APERCORR'] = median_apercorr
+        fastfit['RCHI2_CONT'] = rchi2_cont
+        fastfit['APERCORR'] = median_apercorr
         for iband, band in enumerate(phot.synth_bands):
-            result[f'APERCORR_{band.upper()}'] = apercorrs[iband]
-        result['DN4000_OBS'] = dn4000
-        result['DN4000_IVAR'] = dn4000_ivar
-        result['VDISP_IVAR'] = vdisp_ivar # * (u.second/u.kilometer)**2
+            fastfit[f'APERCORR_{band.upper()}'] = apercorrs[iband]
+        fastfit['DN4000_OBS'] = dn4000
+        fastfit['DN4000_IVAR'] = dn4000_ivar
+        fastfit['VDISP_IVAR'] = vdisp_ivar # * (u.second/u.kilometer)**2
 
     # Compute K-corrections, rest-frame quantities, and physical properties.
     if not np.all(coeff == 0.):
@@ -1678,21 +1678,21 @@ def continuum_specfit(data, result, templates, igm, phot,
         for iband, (band, shift) in enumerate(zip(phot.absmag_bands, phot.band_shift)):
             band = band.upper()
             shift = int(10*shift)
-            result[f'KCORR{shift:02d}_{band}'] = kcorr[iband] # * u.mag
-            result[f'ABSMAG{shift:02d}_{band}'] = absmag[iband] # * u.mag
-            result[f'ABSMAG{shift:02d}_SYNTH_{band}'] = synth_absmag[iband] # * u.mag
-            result[f'ABSMAG{shift:02d}_IVAR_{band}'] = ivarabsmag[iband] # / (u.mag**2)
+            specphot[f'KCORR{shift:02d}_{band}'] = kcorr[iband] # * u.mag
+            specphot[f'ABSMAG{shift:02d}_{band}'] = absmag[iband] # * u.mag
+            specphot[f'ABSMAG{shift:02d}_SYNTH_{band}'] = synth_absmag[iband] # * u.mag
+            specphot[f'ABSMAG{shift:02d}_IVAR_{band}'] = ivarabsmag[iband] # / (u.mag**2)
 
         for iband, band in enumerate(phot.bands):
-            result[f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'] = 1e9 * synth_bestmaggies[iband] # * u.nanomaggy
+            specphot[f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'] = 1e9 * synth_bestmaggies[iband] # * u.nanomaggy
 
         lumskeys, _ = CTools.lums_keys()
         for ikey, key in enumerate(lumskeys):
-            result[key] = lums[ikey]
+            specphot[key] = lums[ikey]
 
         cfluxeskeys, _ = CTools.cfluxes_keys()
         for ikey, key in enumerate(cfluxeskeys):
-            result[key] = cfluxes[ikey]
+            specphot[key] = cfluxes[ikey]
 
         # Get the variance via Monte Carlo.
         if sedmodel_monte is not None:
@@ -1704,17 +1704,17 @@ def continuum_specfit(data, result, templates, igm, phot,
                 if var > TINY:
                     band = band.upper()
                     shift = int(10*shift)
-                    result[f'ABSMAG{shift:02d}_SYNTH_IVAR_{band}'] = 1. / var
+                    specphot[f'ABSMAG{shift:02d}_SYNTH_IVAR_{band}'] = 1. / var
 
             lums_var = np.var(lums_monte, axis=0)
             for lumkey, var in zip(lumskeys, lums_var):
                 if var > TINY:
-                    result[f'{lumkey}_IVAR'] = 1. / var
+                    specphot[f'{lumkey}_IVAR'] = 1. / var
 
             cfluxes_var = np.var(cfluxes_monte, axis=0)
             for cfluxkey, var in zip(cfluxeskeys, cfluxes_var):
                 if var > TINY:
-                    result[f'{cfluxkey}_IVAR'] = 1. / var
+                    specphot[f'{cfluxkey}_IVAR'] = 1. / var
 
         # get the SPS properties
         def _get_sps_properties(coeff):
@@ -1730,12 +1730,12 @@ def continuum_specfit(data, result, templates, igm, phot,
             return age, zzsun, logmstar, sfr
 
         age, zzsun, logmstar, sfr = _get_sps_properties(coeff)
-        result['TAUV'] = tauv
-        result['TAUV_IVAR'] = tauv_ivar
-        result['AGE'] = age
-        result['ZZSUN'] = zzsun
-        result['LOGMSTAR'] = logmstar
-        result['SFR'] = sfr
+        specphot['TAUV'] = tauv
+        specphot['TAUV_IVAR'] = tauv_ivar
+        specphot['AGE'] = age
+        specphot['ZZSUN'] = zzsun
+        specphot['LOGMSTAR'] = logmstar
+        specphot['SFR'] = sfr
 
         if coeff_monte is not None:
             res = [_get_sps_properties(c) for c in coeff_monte]
@@ -1743,7 +1743,7 @@ def continuum_specfit(data, result, templates, igm, phot,
 
             for val_monte, col in zip([age_monte, zzsun_monte, logmstar_monte, sfr_monte],
                                       ['AGE_IVAR', 'ZZSUN_IVAR', 'LOGMSTAR_IVAR', 'SFR_IVAR']):
-                result[col] = var2ivar(np.var(val_monte))
+                specphot[col] = var2ivar(np.var(val_monte))
 
         #rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 5600.))
         #msg = [f'M{phot.absmag_bands[rindx]}={absmag[rindx]:.2f} mag']
@@ -1753,8 +1753,8 @@ def continuum_specfit(data, result, templates, igm, phot,
                                           [vdisp, logmstar, tauv, age, sfr, zzsun],
                                           ['VDISP', 'LOGMSTAR', 'TAUV', 'AGE', 'SFR', 'ZZSUN']):
             ivarcol = f'{col}_IVAR'
-            if ivarcol in result.value.dtype.names:
-                val_ivar = result[ivarcol]
+            if ivarcol in specphot.value.dtype.names:
+                val_ivar = specphot[ivarcol]
                 var_msg = f'+/-{1./np.sqrt(val_ivar):.2f}' if val_ivar > 0. else ''
             else:
                 var_msg = ''

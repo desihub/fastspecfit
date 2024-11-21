@@ -1441,7 +1441,7 @@ def linefit(EMFit, linemodel, initial_guesses, param_bounds,
     return emlineflux_model, nfree, chi2
 
 
-def emline_specfit(data, result, continuummodel, smooth_continuum,
+def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                    phot, emline_table, minsnr_balmer_broad=2.5,
                    minsigma_balmer_broad=250., continuummodel_monte=None,
                    specflux_monte=None, synthphot=True, broadlinefit=True,
