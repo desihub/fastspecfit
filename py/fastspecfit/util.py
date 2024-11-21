@@ -53,7 +53,6 @@ class MPPool(object):
     rather than a list of positional arguments.
 
     """
-
     def __init__(self, nworkers, initializer=None, init_argdict=None):
         """
         create a pool with nworkers workers, using the current
@@ -84,7 +83,6 @@ class MPPool(object):
         as a list of keyword argument dictionaries.
 
         """
-
         # we cannot pickle a local function, so we must pass
         # both func and the argument dictionary to the subprocess
         # worker and have it apply one to the other.
@@ -101,8 +99,8 @@ class MPPool(object):
     def close(self):
         """
         close our multiprocess pool if we created one
-        """
 
+        """
         if self.pool is not None:
             self.pool.close()
 

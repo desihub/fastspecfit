@@ -179,10 +179,11 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         col1 = [colors.to_hex(col) for col in ['violet']]
         col2 = [colors.to_hex(col) for col in ['purple']]
     else:
-        col1 = [colors.to_hex(col) for col in ['dodgerblue', 'darkseagreen', 'orangered']]
-        col2 = [colors.to_hex(col) for col in ['darkblue', 'darkgreen', 'darkred']]
+        # https://xkcd.com/color/rgb/
+        col2 = ["#003f91", "#007f5f", "#9b2226"]
+        col1 = ["#468fcc", "#4caf81", "#e07a75"]
 
-    photcol1 = colors.to_hex('darkorange')
+    photcol1 = colors.to_hex('navy') # darkorange
 
     @ticker.FuncFormatter
     def major_formatter(x, pos):
@@ -649,11 +650,11 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
 
         sz = img.shape
         cutax.add_artist(Circle((sz[1] / 2, sz[0] / 2), radius=1.5/2/pixscale, facecolor='none', # DESI fiber=1.5 arcsec diameter
-                                edgecolor='red', ls='-', alpha=0.8))#, label='3" diameter'))
+                                edgecolor='yellow', ls='-', alpha=0.8))#, label='3" diameter'))
         cutax.add_artist(Circle((sz[1] / 2, sz[0] / 2), radius=10/2/pixscale, facecolor='none',
-                                edgecolor='red', ls='--', alpha=0.8))#, label='15" diameter'))
-        handles = [Line2D([0], [0], color='red', lw=2, ls='-', label='1.5 arcsec'),
-                   Line2D([0], [0], color='red', lw=2, ls='--', label='10 arcsec')]
+                                edgecolor='yellow', ls='--', alpha=0.8))#, label='15" diameter'))
+        handles = [Line2D([0], [0], color='yellow', lw=2, ls='-', label='1.5 arcsec'),
+                   Line2D([0], [0], color='yellow', lw=2, ls='--', label='10 arcsec')]
 
         cutax.legend(handles=handles, loc='lower left', fontsize=fontsize1, facecolor='lightgray')
 
@@ -694,14 +695,15 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
                     spec_ymax = np.max(modelflux) * 1.25
                 #print(spec_ymin, spec_ymax)
 
-            #specax.fill_between(wave, flux-sigma, flux+sigma, color=col1[icam], alpha=0.2)
             if nsmoothspec > 1:
                 from scipy.ndimage import gaussian_filter
-                specax.plot(wave/1e4, gaussian_filter(flux, nsmoothspec), color=col1[icam], alpha=0.8)
-                specax.plot(wave/1e4, gaussian_filter(modelflux, nsmoothspec), color=col2[icam], lw=2, alpha=0.8)
+                specax.plot(wave/1e4, gaussian_filter(flux, nsmoothspec), color=col1[icam], lw=1,
+                            alpha=0.7, drawstyle='steps-mid')
+                specax.plot(wave/1e4, gaussian_filter(modelflux, nsmoothspec), color=col2[icam],
+                            lw=2, alpha=0.9)
             else:
-                specax.plot(wave/1e4, flux, color=col1[icam], alpha=0.8)
-                specax.plot(wave/1e4, modelflux, color=col2[icam], lw=2, alpha=0.8)
+                specax.plot(wave/1e4, flux, color=col1[icam], lw=1, alpha=0.7, drawstyle='steps-mid')
+                specax.plot(wave/1e4, modelflux, color=col2[icam], lw=2, alpha=0.9)
 
         fullmodelspec = np.hstack(desimodelspec)
 
@@ -738,10 +740,11 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         else:
             factor = 10**(0.4 * 48.6) * sedwave**2 / (C_LIGHT * 1e13) / FLUXNORM / CTools.massnorm # [erg/s/cm2/A --> maggies]
             sedmodel_abmag = -2.5*np.log10(sedmodel * factor)
-            sedax.plot(sedwave / 1e4, sedmodel_abmag, color='slategrey', alpha=0.9, zorder=1)
+            sedax.plot(sedwave / 1e4, sedmodel_abmag, color='grey', # ='~tan'
+                       alpha=0.9, zorder=1)
 
-        sedax.scatter(sedphot['lambda_eff']/1e4, sedphot['abmag'], marker='s',
-                      s=400, color='k', facecolor='none', linewidth=2, alpha=1.0, zorder=2)
+        sedax.scatter(sedphot['lambda_eff']/1e4, sedphot['abmag'], marker='D',
+                      s=450, color='k', facecolor='none', linewidth=2, alpha=1.0, zorder=2)
 
         if not fastphot:
             #factor = 10**(0.4 * 48.6) * fullwave**2 / (C_LIGHT * 1e13) / FLUXNORM # [erg/s/cm2/A --> maggies]
@@ -1013,7 +1016,8 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
                     indx = np.where((emlinewave > wmin) * (emlinewave < wmax))[0]
                     if len(indx) > 1:
                         removelabels[iax] = False
-                        xx.plot(emlinewave[indx]/1e4, emlineflux[indx], color=col1[icam], alpha=0.5)
+                        xx.plot(emlinewave[indx]/1e4, emlineflux[indx], color=col1[icam], lw=1,
+                                alpha=0.7, drawstyle='steps-mid')
                         #if nsmoothspec > 1:
                         #    xx.plot(emlinewave[indx]/1e4, gaussian_filter(emlineflux[indx], nsmoothspec), color=col1[icam], alpha=0.5)
                         #else:
@@ -1028,9 +1032,9 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
                                 # Halpha on sv1-bright-22923-39627731570268174),
                                 # the wavelengths are out of order.
                                 srt = np.argsort(fullwave)
-                                xx.plot(fullwave[srt] / 1e4, plotline[srt], lw=1, alpha=0.8, color=col2[icam])
+                                xx.plot(fullwave[srt] / 1e4, plotline[srt], lw=1, alpha=0.9, color=col2[icam])
 
-                        xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[icam], lw=2, alpha=0.8)
+                        xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[icam], lw=2, alpha=0.9)
                         #if nsmoothspec > 1:
                         #    xx.plot(emlinewave[indx]/1e4, emlinemodel[indx], color=col2[icam], lw=2, alpha=0.8)
                         #else:
