@@ -78,7 +78,7 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
                                  debug_plots=debug_plots, specflux_monte=specflux_monte,
                                  continuummodel_monte=continuummodel_monte)
 
-    return fastfit.value, specphot.value, meta, emmodel
+    return meta, specphot.value, fastfit.value, emmodel
 
 
 def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False):
@@ -249,15 +249,14 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
     out = mp_pool.starmap(fastspec_one, fitargs)
     out = list(zip(*out))
 
-    meta = create_output_meta(vstack(out[2]), phot=sc_data.photometry,
+    meta = create_output_meta(vstack(out[0]), phot=sc_data.photometry,
                               fastphot=fastphot, fitstack=fitstack)
-
-    fastfit = create_output_table(out[0], meta, fastfit_units, fitstack=fitstack)
     specphot = create_output_table(out[1], meta, specphot_units, fitstack=fitstack)
 
     if fastphot:
         modelspectra = None
     else:
+        fastfit = create_output_table(out[2], meta, fastfit_units, fitstack=fitstack)
         modelspectra = vstack(out[3], join_type='exact', metadata_conflicts='error')
 
     # if multiprocessing, clean up workers
@@ -265,21 +264,21 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
     log.info(f'Fitting {ntargets} object(s) took {time.time()-t0:.2f} seconds.')
 
-    import pdb ; pdb.set_trace()
-    write_fastspecfit(results, meta, modelspectra=modelspectra, outfile=args.outfile,
-                      specprod=Spec.specprod, coadd_type=Spec.coadd_type,
-                      fphotofile=sc_data.photometry.fphotofile,
-                      template_file=sc_data.templates.file,
-                      emlinesfile=sc_data.emlines.file, fastphot=fastphot,
-                      inputz=input_redshifts is not None,
-                      nmonte=args.nmonte, seed=args.seed,
-                      inputseeds=input_seeds is not None,
-                      uncertainty_floor=args.uncertainty_floor,
-                      minsnr_balmer_broad=args.minsnr_balmer_broad,
-                      ignore_photometry=args.ignore_photometry,
-                      broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
-                      use_quasarnet=args.use_quasarnet,
-                      no_smooth_continuum=args.no_smooth_continuum)
+    write_fastspecfit(
+        meta, specphot, fastfit, modelspectra=modelspectra, outfile=args.outfile,
+        specprod=Spec.specprod, coadd_type=Spec.coadd_type,
+        fphotofile=sc_data.photometry.fphotofile,
+        template_file=sc_data.templates.file,
+        emlinesfile=sc_data.emlines.file, fastphot=fastphot,
+        inputz=input_redshifts is not None,
+        nmonte=args.nmonte, seed=args.seed,
+        inputseeds=input_seeds is not None,
+        uncertainty_floor=args.uncertainty_floor,
+        minsnr_balmer_broad=args.minsnr_balmer_broad,
+        ignore_photometry=args.ignore_photometry,
+        broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
+        use_quasarnet=args.use_quasarnet,
+        no_smooth_continuum=args.no_smooth_continuum)
 
 
 def fastphot(args=None, comm=None):
