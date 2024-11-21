@@ -1633,6 +1633,8 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
     specphot['DN4000_MODEL_IVAR'] = dn4000_model_ivar
 
     if not fastphot:
+        specphot['RCHI2_CONT'] = rchi2_cont
+
         # add the initial line-masking parameters to the output table
         fastfit['INIT_SIGMA_UV'] = data['linesigma_broad']
         fastfit['INIT_SIGMA_NARROW'] = data['linesigma_narrow']
@@ -1642,13 +1644,12 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
         fastfit['INIT_VSHIFT_BALMER'] = data['linevshift_balmer_broad']
         fastfit['INIT_BALMER_BROAD'] = data['balmerbroad']
 
-        fastfit['RCHI2_CONT'] = rchi2_cont
         fastfit['APERCORR'] = median_apercorr
         for iband, band in enumerate(phot.synth_bands):
             fastfit[f'APERCORR_{band.upper()}'] = apercorrs[iband]
-        fastfit['DN4000_OBS'] = dn4000
-        fastfit['DN4000_IVAR'] = dn4000_ivar
-        fastfit['VDISP_IVAR'] = vdisp_ivar # * (u.second/u.kilometer)**2
+        specphot['DN4000_OBS'] = dn4000
+        specphot['DN4000_IVAR'] = dn4000_ivar
+        specphot['VDISP_IVAR'] = vdisp_ivar # * (u.second/u.kilometer)**2
 
     # Compute K-corrections, rest-frame quantities, and physical properties.
     if not np.all(coeff == 0.):

@@ -68,7 +68,6 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
                           fitstack=fitstack, debug_plots=debug_plots, nmonte=nmonte,
                           seed=seed)
 
-    import pdb ; pdb.set_trace()
     # Optionally fit the emission-line spectrum.
     if fastphot:
         emmodel = None
@@ -247,8 +246,8 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         'seed':                seeds[iobj],
     } for iobj in range(len(meta))]
 
-    res = mp_pool.starmap(fastspec_one, fitargs)
-    res = list(zip(*res))
+    out = mp_pool.starmap(fastspec_one, fitargs)
+    out = list(zip(*out))
 
     meta = create_output_meta(vstack(out[2]), phot=sc_data.photometry,
                               fastphot=fastphot, fitstack=fitstack)
@@ -259,7 +258,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
     if fastphot:
         modelspectra = None
     else:
-        modelspectra = vstack(out[2], join_type='exact', metadata_conflicts='error')
+        modelspectra = vstack(out[3], join_type='exact', metadata_conflicts='error')
 
     # if multiprocessing, clean up workers
     mp_pool.close()

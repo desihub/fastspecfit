@@ -716,12 +716,12 @@ class EMFitTools(object):
         return emlineflux_best
 
 
-    def emlinemodel_bestfit(self, result, redshift, emlinewave, resolution_matrix,
+    def emlinemodel_bestfit(self, fastfit, redshift, emlinewave, resolution_matrix,
                             camerapix, snrcut=None):
         """Construct the best-fitting emission-line model
         from a fitted result structure (used below and in QA)"""
 
-        line_parameters = np.array([ result[param] for param in self.param_table['modelname'] ])
+        line_parameters = np.array([fastfit[param] for param in self.param_table['modelname'] ])
 
         # convert doublet ratios to amplitudes
         line_parameters[self.doublet_idx] *= line_parameters[self.doublet_src]
@@ -729,7 +729,7 @@ class EMFitTools(object):
         if snrcut is not None:
             lineamps = line_parameters[:len(self.line_table)] # amplitude parameters
             line_names = self.line_table['name'].value
-            lineamps_ivar = [result[line_name.upper()+'_AMP_IVAR'] for line_name in line_names]
+            lineamps_ivar = [fastfit[line_name.upper()+'_AMP_IVAR'] for line_name in line_names]
             lineamps[lineamps * np.sqrt(lineamps_ivar) < snrcut] = 0.
 
         linewaves = self.line_table['restwave'].value
@@ -740,11 +740,10 @@ class EMFitTools(object):
         return emlineflux_best
 
 
-    def populate_emtable(self, result, linemodel, emlineflux_model,
+    def populate_emtable(self, fastfit, linemodel, emlineflux_model,
                          emlinewave, emlineflux, emlineivar, oemlineivar,
                          specflux_nolines, redshift, resolution_matrices, camerapix,
-                         results_monte=None,
-                         nminpix=7, nsigma=3., moment_nsigma=5.,
+                         results_monte=None, nminpix=7, nsigma=3., moment_nsigma=5.,
                          limitsigma_narrow_default=75., limitsigma_broad_default=1200.):
         """Populate the output table with the emission-line measurements.
 
@@ -962,15 +961,15 @@ class EMFitTools(object):
                 values, emlineflux_s, line_profiles,
                 specflux_nolines_s, return_extras=True)
 
-            result[f'{linename}_BOXFLUX'] = boxflux # * u.erg/(u.second*u.cm**2)
-            result[f'{linename}_FLUX'] = flux
-            result[f'{linename}_CONT'] = cont # * u.erg/(u.second*u.cm**2*u.Angstrom)
+            fastfit[f'{linename}_BOXFLUX'] = boxflux # * u.erg/(u.second*u.cm**2)
+            fastfit[f'{linename}_FLUX'] = flux
+            fastfit[f'{linename}_CONT'] = cont # * u.erg/(u.second*u.cm**2*u.Angstrom)
 
             (linez, linesigma, linesigma_ang,
              patchindx, flux_gauss_ivar, clipflux) = extras
 
             npix = len(patchindx)
-            result[f'{linename}_NPIX'] = npix
+            fastfit[f'{linename}_NPIX'] = npix
 
             # Are the pixels based on the original inverse spectrum fully
             # masked? If so, set everything to zero and move onto the next
@@ -1001,10 +1000,10 @@ class EMFitTools(object):
 
                     # Compute the variance on the line-fitting results.
                     obsamps_ivar = var2ivar(obsamps_var[line_amp]) # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
-                    result[f'{linename}_AMP_IVAR'] = obsamps_ivar
-                    result[f'{linename}_VSHIFT_IVAR'] = var2ivar(values_var[line_vshift])
-                    result[f'{linename}_SIGMA_IVAR'] = var2ivar(values_var[line_sigma])
-                    #result[f'{linename}_MODELAMP_IVAR'] = var2ivar(values_var[line_amp])
+                    fastfit[f'{linename}_AMP_IVAR'] = obsamps_ivar
+                    fastfit[f'{linename}_VSHIFT_IVAR'] = var2ivar(values_var[line_vshift])
+                    fastfit[f'{linename}_SIGMA_IVAR'] = var2ivar(values_var[line_sigma])
+                    #fastfit[f'{linename}_MODELAMP_IVAR'] = var2ivar(values_var[line_amp])
                 else:
                     # formal (statistical) uncertainty
                     boxflux_ivar = 1. / np.sum(dwaves[patchindx]**2 / emlineivar_patch)
@@ -1015,24 +1014,23 @@ class EMFitTools(object):
                     n_lo, n_hi = quantile(specflux_nolines_s[patchindx], (0.25, 0.75))
                     obsamps_sigma = (n_hi - n_lo) / 1.349 # robust sigma
                     obsamps_ivar = var2ivar(obsamps_sigma, sigma=True)
-                    result[f'{linename}_AMP_IVAR'] = obsamps_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
+                    fastfit[f'{linename}_AMP_IVAR'] = obsamps_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
 
-                result[f'{linename}_BOXFLUX_IVAR'] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
+                fastfit[f'{linename}_BOXFLUX_IVAR'] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
 
                 # require amp > 0 (line not dropped) to compute the flux and chi2
                 if obsamps[line_amp] > TINY:
                     emlineflux_model_patch = emlineflux_model_s[patchindx]
                     chi2 = np.sum(emlineivar_patch * (emlineflux_patch - emlineflux_model_patch)**2)
-                    result[f'{linename}_CHI2'] = chi2
+                    fastfit[f'{linename}_CHI2'] = chi2
 
                     if results_monte is not None:
                         flux_ivar = var2ivar(np.var(flux_monte))
                     else:
                         flux_ivar = flux_gauss_ivar
 
-                    result[f'{linename}_FLUX_IVAR'] = flux_ivar # * u.second**2*u.cm**4/u.erg**2
-
-                    #result[f'{linename}_FLUX_GAUSS_IVAR'] = flux_gauss_ivar
+                    fastfit[f'{linename}_FLUX_IVAR'] = flux_ivar # * u.second**2*u.cm**4/u.erg**2
+                    #fastfit[f'{linename}_FLUX_GAUSS_IVAR'] = flux_gauss_ivar
 
                     # keep track of sigma and z but only using XX-sigma lines
                     linesnr = obsamps[line_amp] * np.sqrt(obsamps_ivar)
@@ -1055,20 +1053,20 @@ class EMFitTools(object):
                 if csig > SQTINY:
                     cont_ivar = (np.sqrt(len(borderindx)) / csig)**2
 
-            result[f'{linename}_CONT_IVAR'] = cont_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
+            fastfit[f'{linename}_CONT_IVAR'] = cont_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
 
             if cont != 0. and cont_ivar > 0.:
                 # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
                 fluxlimit = np.sqrt(2. * np.pi) * linesigma_ang / np.sqrt(cont_ivar) # * u.erg/(u.second*u.cm**2)
-                result[f'{linename}_FLUX_LIMIT'] = fluxlimit
+                fastfit[f'{linename}_FLUX_LIMIT'] = fluxlimit
 
                 #ewlimit = fluxlimit * cont / (1.+redshift)
-                #result[f'{linename}_EW_LIMIT'] = ewlimit
+                #fastfit[f'{linename}_EW_LIMIT'] = ewlimit
 
                 if flux > 0. and flux_ivar > 0.:
                     # add the uncertainties in the flux and continuum in quadrature
                     ew = flux / cont / (1. + redshift) # rest frame [A]
-                    result[f'{linename}_EW'] = ew
+                    fastfit[f'{linename}_EW'] = ew
 
                     if results_monte is not None:
                         ew_monte = np.array(flux_monte) / np.array(cont_monte) / (1. + redshift) # rest frame [A]
@@ -1076,7 +1074,7 @@ class EMFitTools(object):
                     else:
                         ew_ivar = (1. + redshift)**2 / (1. / (cont**2 * flux_ivar) + flux**2 / (cont**4 * cont_ivar))
 
-                    result[f'{linename}_EW_IVAR'] = ew_ivar
+                    fastfit[f'{linename}_EW_IVAR'] = ew_ivar
 
 
         # Measure moments for the set of lines in self.moment_lines. We need a
@@ -1124,7 +1122,7 @@ class EMFitTools(object):
             moment1, moment2, moment3 = get_moments(values, emlineflux_s)
 
             for n, mom in enumerate((moment1, moment2, moment3)):
-                result[f'{moment_col}_MOMENT{n+1}'] = mom
+                fastfit[f'{moment_col}_MOMENT{n+1}'] = mom
 
             if results_monte is not None:
                 res = [get_moments(v, ef) for
@@ -1132,7 +1130,7 @@ class EMFitTools(object):
                 moments_monte = tuple(zip(*res))
 
                 for n, mom_monte in enumerate(moments_monte):
-                    result[f'{moment_col}_MOMENT{n+1}_IVAR'] = var2ivar(np.var(mom_monte))
+                    fastfit[f'{moment_col}_MOMENT{n+1}_IVAR'] = var2ivar(np.var(mom_monte))
 
         # get the per-group average emission-line redshifts and velocity widths
         for stats, groupname in zip((narrow_stats, broad_stats, uv_stats),
@@ -1151,13 +1149,13 @@ class EMFitTools(object):
                 log.debug(f'{groupname}_SIGMA: {stat_sigma:.3f}+/-{stat_sigmarms:.3f}')
                 log.debug(f'{groupname}_Z:     {stat_z:.9f}+/-{stat_zrms:.9f}')
 
-                result[f'{groupname}_SIGMA']    = stat_sigma
-                result[f'{groupname}_SIGMARMS'] = stat_sigmarms
+                fastfit[f'{groupname}_SIGMA']    = stat_sigma
+                fastfit[f'{groupname}_SIGMARMS'] = stat_sigmarms
 
-                result[f'{groupname}_Z']        = stat_z
-                result[f'{groupname}_ZRMS']     = stat_zrms
+                fastfit[f'{groupname}_Z']        = stat_z
+                fastfit[f'{groupname}_ZRMS']     = stat_zrms
             else:
-                result[f'{groupname}_Z'] = redshift
+                fastfit[f'{groupname}_Z'] = redshift
 
 
         # write values of final parameters (after any changes above) to result
@@ -1174,49 +1172,49 @@ class EMFitTools(object):
             pmodelname = param_modelnames[iparam]
             val = values[iparam]
 
-            result[pmodelname] = val
+            fastfit[pmodelname] = val
 
             # observed amplitudes
             if param_types[iparam] == ParamType.AMPLITUDE:
                 if line_doublet_src[iparam] == -1:
                     # not a doublet ratio
-                    result[param_names[iparam].upper()] = obsamps[iparam]
+                    fastfit[param_names[iparam].upper()] = obsamps[iparam]
                 else:
                     # line name of doublet target
                     orig_line = self.line_table['name'][param_lines[iparam]].upper()
                     isrc = line_doublet_src[iparam] # valid for amplitude params
 
-                    result[f'{orig_line}_MODELAMP'] = val * values[isrc]
-                    result[f'{orig_line}_AMP'] = val * obsamps[isrc]
+                    fastfit[f'{orig_line}_MODELAMP'] = val * values[isrc]
+                    fastfit[f'{orig_line}_AMP'] = val * obsamps[isrc]
 
                     # uncertainty in the doublet ratio
                     if results_monte is not None:
                         val_var = values_var[iparam]
                         if val_var > TINY:
-                            result[f'{pmodelname}_IVAR'] = 1. / val_var
+                            fastfit[f'{pmodelname}_IVAR'] = 1. / val_var
 
         import logging
         if log.getEffectiveLevel() == logging.DEBUG:
             for ln in self.line_table['name'].value:
                 linename = ln.upper()
                 for col in ('VSHIFT', 'SIGMA', 'MODELAMP', 'AMP', 'AMP_IVAR', 'CHI2', 'NPIX'):
-                    val = result[f'{linename}_{col}']
+                    val = fastfit[f'{linename}_{col}']
                     log.debug(f'{linename} {col}: {val:.4f}')
                 for col in ('FLUX', 'BOXFLUX', 'FLUX_IVAR', 'BOXFLUX_IVAR', 'CONT', 'CONT_IVAR', 'EW', 'EW_IVAR', 'FLUX_LIMIT'):
-                    val = result[f'{linename}_{col}']
+                    val = fastfit[f'{linename}_{col}']
                     log.debug(f'{linename} {col}: {val:.4f}')
                 print()
 
             for lname in ['MGII', 'OII', 'SII']:
                 col = f'{lname}_DOUBLET_RATIO'
-                val = result[col]
-                val_ivar = result[f'{col}_IVAR']
+                val = fastfit[col]
+                val_ivar = fastfit[f'{col}_IVAR']
                 log.debug(f'{col}: {val:.4f}')
                 log.debug(f'{col}_IVAR: {val_ivar:.4f}')
             print()
 
 
-def synthphot_spectrum(phot, data, result, modelwave, modelflux):
+def synthphot_spectrum(phot, data, specphot, modelwave, modelflux):
     """Synthesize photometry from the best-fitting model (continuum+emission lines).
 
     """
@@ -1233,8 +1231,8 @@ def synthphot_spectrum(phot, data, result, modelwave, modelflux):
     model_synthmag = model_synthphot['nanomaggies'].value
     for iband, band in enumerate(phot.synth_bands):
         bname =  band.upper()
-        result[f'FLUX_SYNTH_{bname}'] = synthmag[iband] # * 'nanomaggies'
-        result[f'FLUX_SYNTH_SPECMODEL_{bname}'] = model_synthmag[iband] # * 'nanomaggies'
+        specphot[f'FLUX_SYNTH_{bname}'] = synthmag[iband] # * 'nanomaggies'
+        specphot[f'FLUX_SYNTH_SPECMODEL_{bname}'] = model_synthmag[iband] # * 'nanomaggies'
 
 
 def build_coadded_models(data, emlinewave, emlineflux_model, continuum_flux,
@@ -1606,14 +1604,14 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
         results_monte = None
 
     # Now fill the output table.
-    EMFit.populate_emtable(result, linemodel_pref, emlineflux_model_pref,
+    EMFit.populate_emtable(fastfit, linemodel_pref, emlineflux_model_pref,
                            emlinewave, emlineflux, emlineivar, oemlineivar,
                            specflux_nolines, redshift, resolution_matrix, camerapix,
                            results_monte=results_monte)
 
     msg = []
-    dv = C_LIGHT*(np.array([result['UV_Z'], result['BROAD_Z'], result['NARROW_Z']])-redshift)
-    dverr = C_LIGHT*np.array([result['UV_ZRMS'], result['BROAD_ZRMS'], result['NARROW_ZRMS']])
+    dv = C_LIGHT*(np.array([fastfit['UV_Z'], fastfit['BROAD_Z'], fastfit['NARROW_Z']])-redshift)
+    dverr = C_LIGHT*np.array([fastfit['UV_ZRMS'], fastfit['BROAD_ZRMS'], fastfit['NARROW_ZRMS']])
     for label, units, val, valerr in zip(
             ['delta(v) UV', 'Balmer broad', 'narrow'],
             [' km/s', ' km/s', ' km/s'], dv, dverr):
@@ -1625,27 +1623,25 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
     for label, units, val, valerr in zip(
             ['sigma UV', 'Balmer broad', 'narrow'],
             [' km/s', ' km/s', ' km/s'],
-            [result['UV_SIGMA'], result['BROAD_SIGMA'], result['NARROW_SIGMA']],
-            [result['UV_SIGMARMS'], result['BROAD_SIGMARMS'], result['NARROW_SIGMARMS']]):
+            [fastfit['UV_SIGMA'], fastfit['BROAD_SIGMA'], fastfit['NARROW_SIGMA']],
+            [fastfit['UV_SIGMARMS'], fastfit['BROAD_SIGMARMS'], fastfit['NARROW_SIGMARMS']]):
         err_msg = f'+/-{valerr:.0f}' if valerr > 0. else ''
         msg.append(f'{label}={val:.0f}{err_msg}{units}')
     log.info(' '.join(msg))
 
     # Build the model spectrum from the reported parameter values
     emlineflux_model_best = EMFit.emlinemodel_bestfit(
-        result, redshift, emlinewave, resolution_matrix, camerapix)
+        fastfit, redshift, emlinewave, resolution_matrix, camerapix)
 
-    result['RCHI2_LINE'] = chi2_pref
-    #result['NDOF_LINE'] = ndof_pref
-    result['DELTA_LINECHI2'] = delta_linechi2_balmer  # chi2_nobroad - chi2_broad
-    result['DELTA_LINENDOF'] = delta_linendof_balmer  # ndof_nobroad - ndof_broad
+    specphot['RCHI2_LINE'] = chi2_pref
+    #fastfit['NDOF_LINE'] = ndof_pref
+    fastfit['DELTA_LINECHI2'] = delta_linechi2_balmer  # chi2_nobroad - chi2_broad
+    fastfit['DELTA_LINENDOF'] = delta_linendof_balmer  # ndof_nobroad - ndof_broad
 
     # full-fit reduced chi2
-    rchi2 = np.sum(oemlineivar * \
-                   (specflux - \
-                    (continuummodel + smooth_continuum + emlineflux_model_best))**2)
+    rchi2 = np.sum(oemlineivar * (specflux - (continuummodel + smooth_continuum + emlineflux_model_best))**2)
     rchi2 /= np.sum(oemlineivar > 0)  # dof??
-    result['RCHI2'] = rchi2
+    specphot['RCHI2'] = rchi2
 
     # Build the output model spectra.
     wave_out, continuum_out, emlineflux_out, spectra_out = build_coadded_models(
@@ -1654,20 +1650,20 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
     # Optionally synthesize photometry (excluding the smoothcontinuum!)
     if synthphot:
         specflux_out = continuum_out + emlineflux_out
-        synthphot_spectrum(phot, data, result, wave_out, specflux_out)
+        synthphot_spectrum(phot, data, specphot, wave_out, specflux_out)
 
     # measure DN(4000) without the emission lines
-    if result['DN4000_IVAR'] > 0.:
+    if specphot['DN4000_IVAR'] > 0.:
         flux_out_nolines = data['coadd_flux'] - emlineflux_out
 
         dn4000_nolines, _ = Photometry.get_dn4000(wave_out, flux_out_nolines,
                                                   redshift=redshift, rest=False)
         log.info(f'Dn(4000)={dn4000_nolines:.3f} in the emission-line subtracted spectrum.')
-        result['DN4000'] = dn4000_nolines
+        specphot['DN4000'] = dn4000_nolines
 
         # Simple QA of the Dn(4000) estimate.
         if debug_plots:
-            dn4000_ivar = result['DN4000_IVAR']
+            dn4000_ivar = specphot['DN4000_IVAR']
             if dn4000_ivar == 0.:
                 log.info('Dn(4000) not measured; unable to generate QA figure.')
             else:
@@ -1677,8 +1673,8 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                 pngfile = f'qa-dn4000-{data["uniqueid"]}.png'
                 sns.set(context='talk', style='ticks', font_scale=0.7)
 
-                dn4000, dn4000_obs = result['DN4000'], result['DN4000_OBS']
-                dn4000_model, dn4000_model_ivar = result['DN4000_MODEL'], result['DN4000_MODEL_IVAR']
+                dn4000, dn4000_obs = specphot['DN4000'], specphot['DN4000_OBS']
+                dn4000_model, dn4000_model_ivar = specphot['DN4000_MODEL'], specphot['DN4000_MODEL_IVAR']
 
                 dn4000_sigma = 1. / np.sqrt(dn4000_ivar)
                 if dn4000_model_ivar > TINY:
@@ -1730,7 +1726,10 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
     log.debug(f'Emission-line fitting took {time.time()-tall:.2f} seconds.')
 
     if debug_plots:
-        for name in result.value.dtype.names:
-            print(name, result[name])
+        for name in fastfit.value.dtype.names:
+            print(name, fastfit[name])
+        print()
+        for name in specphot.value.dtype.names:
+            print(name, specphot[name])
 
     return spectra_out

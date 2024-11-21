@@ -1788,6 +1788,7 @@ def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
 
         if not fastphot:
             add_field('RCHI2', dtype='f4')      # full-spectrum reduced chi2
+            add_field('RCHI2_LINE', dtype='f4') # reduced chi2 with broad line-emission
             add_field('RCHI2_CONT', dtype='f4') # rchi2 fitting just to the continuum (spec+phot)
         add_field('RCHI2_PHOT', dtype='f4') # rchi2 fitting just to the photometry
 
@@ -1872,7 +1873,6 @@ def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
         if not fastphot:
             # Add chi2 metrics
             #add_field('DOF',  dtype='i8') # full-spectrum dof
-            add_field('RCHI2_LINE', dtype='f4') # reduced chi2 with broad line-emission
             #add_field('NDOF_LINE', dtype='i8') # number of degrees of freedom corresponding to rchi2_line
             #add_field('DOF_BROAD', dtype='i8')
             add_field('DELTA_LINECHI2', dtype='f4') # delta-reduced chi2 with and without broad line-emission
