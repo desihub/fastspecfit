@@ -2,8 +2,13 @@
 Change Log
 ==========
 
-3.1.0 (not released yet)
+3.1.1 (not released yet)
 ------------------------
+
+*
+
+3.1.0 (2024-11-21)
+------------------
 
 * Update theoretical [NII] 6548,84 and [OIII] 4959,5007 doublet ratios [`PR #195`_].
 * Additional cleanups and speedups to the new Monte Carlo code [`PR #194`_].
