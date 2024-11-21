@@ -5,6 +5,7 @@ Change Log
 3.1.0 (not released yet)
 ------------------------
 
+* Update theoretical [NII] 6548,84 and [OIII] 4959,5007 doublet ratios [`PR #195`_].
 * Additional cleanups and speedups to the new Monte Carlo code [`PR #194`_].
 * Implement a simplified idiom for Monte Carlo iteration [`PR #193`_].
 * Merge two multiprocessing loops into one [`PR #192`_].
@@ -16,6 +17,7 @@ Change Log
 .. _`PR #192`: https://github.com/desihub/fastspecfit/pull/192
 .. _`PR #193`: https://github.com/desihub/fastspecfit/pull/193
 .. _`PR #194`: https://github.com/desihub/fastspecfit/pull/194
+.. _`PR #195`: https://github.com/desihub/fastspecfit/pull/195
 
 3.0.0 (2024-10-30)
 ------------------
