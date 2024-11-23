@@ -385,18 +385,6 @@ Name                         Type         Units                         Descript
            INIT_BALMER_BROAD         bool                               Boolean flag indicating whether a broad Balmer emission line was initially identified in the spectral range.
               DELTA_LINECHI2      float32                               Chi-squared difference between an emission-line model without and with broad lines.
               DELTA_LINENDOF        int32                               Difference in the degrees of freedom between an emission-line model without and with broad lines.
-                    NARROW_Z      float32                               Mean redshift of the well-measured forbidden plus narrow Balmer emission lines (defaults to Z).
-                 NARROW_ZRMS      float32                               Root-mean-square scatter in NARROW_Z.
-                     BROAD_Z      float32                               Like NARROW_Z but for the broad Balmer emission lines.
-                  BROAD_ZRMS      float32                               Root-mean-square scatter in BROAD_Z.
-                        UV_Z      float32                               Like NARROW_Z but for the rest-frame UV emission lines.
-                     UV_ZRMS      float32                               Root-mean-square scatter in UV_Z.
-                NARROW_SIGMA      float32                        km / s Mean line-width of the well-measured forbidden plus narrow Balmer emission lines.
-             NARROW_SIGMARMS      float32                        km / s Root-mean-square scatter in NARROW_SIGMA.
-                 BROAD_SIGMA      float32                        km / s Like NARROW_SIGMA but for the broad Balmer emission lines.
-              BROAD_SIGMARMS      float32                        km / s Root-mean-square scatter in BROAD_SIGMA.
-                    UV_SIGMA      float32                        km / s Like NARROW_SIGMA but for the rest-frame UV emission lines.
-                 UV_SIGMARMS      float32                        km / s Root-mean-square scatter in UV_SIGMA.
           MGII_DOUBLET_RATIO      float32                               MgII 2796 / 2803 doublet line-ratio.
            OII_DOUBLET_RATIO      float32                               [OII] 3726 / 3729 doublet line-ratio.
            SII_DOUBLET_RATIO      float32                               [SII] 6731 / 6716 doublet line-ratio.

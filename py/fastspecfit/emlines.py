@@ -879,8 +879,16 @@ class EMFitTools(object):
             specflux_nolines_monte_s = specflux_nolines_monte[:, Wsrt]
 
 
-        # get continuum fluxes and EWs (along with their ivars) and upper limits
+        # initialize the line-stats table
+        line_stats = Table()
+        for stat in ['Z', 'SIGMA']:
+            for groupname in ['NARROW', 'BROAD', 'UV']:
+                line_stats[f'{groupname}_{stat}'] = np.zeros(1, 'f4')
+                line_stats[f'{groupname}_{stat}RMS'] = np.zeros(1, 'f4')
         narrow_stats, broad_stats, uv_stats = [], [], []
+
+        # Get continuum fluxes and EWs (along with their ivars) and upper
+        # limits.
         for iline, (name, restwave, isbroad, isbalmer) in \
             enumerate(self.line_table.iterrows('name', 'restwave', 'isbroad', 'isbalmer')):
 
@@ -1140,22 +1148,12 @@ class EMFitTools(object):
                 sigmas = stats[:, 0]
                 redshifts = stats[:, 1]
 
-                stat_sigma = np.mean(sigmas)  # * u.kilometer / u.second
-                stat_sigmarms = np.std(sigmas)
-
-                stat_z = np.mean(redshifts)
-                stat_zrms = np.std(redshifts)
-
-                log.debug(f'{groupname}_SIGMA: {stat_sigma:.3f}+/-{stat_sigmarms:.3f}')
-                log.debug(f'{groupname}_Z:     {stat_z:.9f}+/-{stat_zrms:.9f}')
-
-                fastfit[f'{groupname}_SIGMA']    = stat_sigma
-                fastfit[f'{groupname}_SIGMARMS'] = stat_sigmarms
-
-                fastfit[f'{groupname}_Z']        = stat_z
-                fastfit[f'{groupname}_ZRMS']     = stat_zrms
+                line_stats[f'{groupname}_SIGMA'] = np.mean(sigmas)
+                line_stats[f'{groupname}_SIGMARMS'] = np.std(sigmas)
+                line_stats[f'{groupname}_Z'] = np.mean(redshifts)
+                line_stats[f'{groupname}_ZRMS'] = np.std(redshifts)
             else:
-                fastfit[f'{groupname}_Z'] = redshift
+                line_stats[f'{groupname}_Z'] = redshift
 
 
         # write values of final parameters (after any changes above) to result
@@ -1212,6 +1210,8 @@ class EMFitTools(object):
                 log.debug(f'{col}: {val:.4f}')
                 log.debug(f'{col}_IVAR: {val_ivar:.4f}')
             print()
+
+        return line_stats
 
 
 def synthphot_spectrum(phot, data, specphot, modelwave, modelflux):
@@ -1604,17 +1604,18 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
         results_monte = None
 
     # Now fill the output table.
-    EMFit.populate_emtable(fastfit, linemodel_pref, emlineflux_model_pref,
-                           emlinewave, emlineflux, emlineivar, oemlineivar,
-                           specflux_nolines, redshift, resolution_matrix, camerapix,
-                           results_monte=results_monte)
+    line_stats = EMFit.populate_emtable(
+        fastfit, linemodel_pref, emlineflux_model_pref, emlinewave,
+        emlineflux, emlineivar, oemlineivar, specflux_nolines,
+        redshift, resolution_matrix, camerapix, results_monte=results_monte)
 
     msg = []
-    dv = C_LIGHT*(np.array([fastfit['UV_Z'], fastfit['BROAD_Z'], fastfit['NARROW_Z']])-redshift)
-    dverr = C_LIGHT*np.array([fastfit['UV_ZRMS'], fastfit['BROAD_ZRMS'], fastfit['NARROW_ZRMS']])
+    dv = C_LIGHT*(np.array([line_stats['UV_Z'][0], line_stats['BROAD_Z'][0], line_stats['NARROW_Z'][0]])-redshift)
+    dverr = C_LIGHT*np.array([line_stats['UV_ZRMS'][0], line_stats['BROAD_ZRMS'][0], line_stats['NARROW_ZRMS'][0]])
     for label, units, val, valerr in zip(
             ['delta(v) UV', 'Balmer broad', 'narrow'],
             [' km/s', ' km/s', ' km/s'], dv, dverr):
+        print(label, units, val, valerr)
         err_msg = f'+/-{valerr:.1f}' if valerr > 0. else ''
         msg.append(f'{label}={val:.1f}{err_msg}{units}')
     log.info(' '.join(msg))
@@ -1623,8 +1624,8 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
     for label, units, val, valerr in zip(
             ['sigma UV', 'Balmer broad', 'narrow'],
             [' km/s', ' km/s', ' km/s'],
-            [fastfit['UV_SIGMA'], fastfit['BROAD_SIGMA'], fastfit['NARROW_SIGMA']],
-            [fastfit['UV_SIGMARMS'], fastfit['BROAD_SIGMARMS'], fastfit['NARROW_SIGMARMS']]):
+            [line_stats['UV_SIGMA'][0], line_stats['BROAD_SIGMA'][0], line_stats['NARROW_SIGMA'][0]],
+            [line_stats['UV_SIGMARMS'][0], line_stats['BROAD_SIGMARMS'][0], line_stats['NARROW_SIGMARMS'][0]]):
         err_msg = f'+/-{valerr:.0f}' if valerr > 0. else ''
         msg.append(f'{label}={val:.0f}{err_msg}{units}')
     log.info(' '.join(msg))

@@ -1876,20 +1876,6 @@ def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
             add_field('DELTA_LINECHI2', dtype='f4') # delta-reduced chi2 with and without broad line-emission
             add_field('DELTA_LINENDOF', dtype=np.int32)
 
-            add_field('NARROW_Z', dtype='f8')
-            add_field('NARROW_ZRMS', dtype='f8')
-            add_field('BROAD_Z', dtype='f8')
-            add_field('BROAD_ZRMS', dtype='f8')
-            add_field('UV_Z', dtype='f8')
-            add_field('UV_ZRMS', dtype='f8')
-
-            add_field('NARROW_SIGMA', dtype='f4', unit=u.kilometer / u.second)
-            add_field('NARROW_SIGMARMS', dtype='f4', unit=u.kilometer / u.second)
-            add_field('BROAD_SIGMA', dtype='f4', unit=u.kilometer / u.second)
-            add_field('BROAD_SIGMARMS', dtype='f4', unit=u.kilometer / u.second)
-            add_field('UV_SIGMA', dtype='f4', unit=u.kilometer / u.second)
-            add_field('UV_SIGMARMS', dtype='f4', unit=u.kilometer / u.second)
-
             # special columns for the fitted doublets
             add_field('MGII_DOUBLET_RATIO', dtype='f4')
             add_field('MGII_DOUBLET_RATIO_IVAR', dtype='f4')
