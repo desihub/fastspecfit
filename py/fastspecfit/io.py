@@ -2055,9 +2055,9 @@ def create_output_table(records, meta, units, fitstack=False):
     metacols = set(meta.colnames)
 
     if fitstack:
-        initcols = ('STACKID', 'SURVEY', 'PROGRAM', 'Z')
+        initcols = ('STACKID', 'SURVEY', 'PROGRAM')
     else:
-        initcols = ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID', 'Z')
+        initcols = ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID')
     initcols = [col for col in initcols if col in metacols]
 
     cdata = [meta[col] for col in initcols]

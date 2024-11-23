@@ -173,7 +173,7 @@ class Photometry(object):
            Synthesized rest-frame photometry.
 
         """
-        if redshift <= 0.0:
+        if redshift <= 0.:
             log.warning('Input redshift not defined, zero, or negative!')
             nabs = len(self.absmag_filters)
             synth_absmag = np.zeros(nabs, dtype='f8')
@@ -240,7 +240,7 @@ class Photometry(object):
 
         """
         nabs = len(self.absmag_filters)
-        if redshift <= 0.0:
+        if redshift <= 0.:
             log.warning('Input redshift not defined, zero, or negative!')
             kcorr = np.zeros(nabs, dtype='f8')
             absmag = np.zeros(nabs, dtype='f8')

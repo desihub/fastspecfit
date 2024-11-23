@@ -267,8 +267,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
     write_fastspecfit(
         meta, specphot, fastfit, modelspectra=modelspectra,
-        outfile=args.outfile, specprod=Spec.specprod,
-        coadd_type=Spec.coadd_type,
+        outfile=args.outfile, specprod=Spec.specprod, coadd_type=Spec.coadd_type,
         fphotofile=sc_data.photometry.fphotofile,
         template_file=sc_data.templates.file,
         emlinesfile=sc_data.emlines.file, fastphot=fastphot,

@@ -4,7 +4,7 @@
 Fastspec Data Model
 ===================
 
-:Summary: Spectroscopic fitting results.
+:Summary: Spectrophotometric fitting results.
 :Naming Convention:
     ``fastspec-SURVEY-PROGRAM-HEALPIX.fits.gz``, where
     ``SURVEY`` is the survey name (e.g., *main* or *sv3*), ``PROGRAM`` is the
@@ -19,9 +19,10 @@ Contents
 Number EXTNAME      Type     Contents
 ====== ============ ======== ======================
 HDU00_ PRIMARY      IMAGE    Keywords only.
-HDU01_ FASTSPEC     BINTABLE Table with spectral fitting results.
-HDU02_ METADATA     BINTABLE Table with sample metadata.
-HDU03_ MODELS       IMAGE    Model spectra.
+HDU01_ METADATA     BINTABLE Table with sample metadata.
+HDU02_ SPECPHOT     BINTABLE Table with spectrophotometric quantities.
+HDU03_ FASTSPEC     BINTABLE Table with spectral fitting results.
+HDU04_ MODELS       IMAGE    Model continuum, smooth continuum, and emission-line spectra.
 ====== ============ ======== ======================
 
 FITS Header Units
@@ -40,23 +41,137 @@ Required Header Keywords
 
     .. rst-class:: keywords
 
-    ======== ================ ==== ==============================================
-    KEY      Example Value    Type Comment
-    ======== ================ ==== ==============================================
-    SPECPROD iron             str  Spectroscopic production name
-    COADDTYP healpix          str  Type of spectral coadd (healpix,cumulative,pernight,perexp)
-    CHECKSUM ZHWHZHVFZHVFZHVF str  HDU checksum updated 2022-08-02T19:06:22
-    DATASUM  0                str  data unit checksum updated 2022-08-02T19:06:22
-    ======== ================ ==== ==============================================
+    ======== ================ ===== ==============================================
+    KEY      Example Value    Type  Comment
+    ======== ================ ===== ==============================================
+    SPECPROD iron             str   Spectroscopic production name.
+    COADDTYP healpix          str   Type of spectral coadd (healpix|cumulative|pernight|perexp).
+    INPUTZ   F                bool  Input redshifts provided.
+    INPUTS   F                bool  Input seeds provided.
+    NOSCORR  F                bool  No smooth continuum correction derived.
+    NOPHOTO  F                bool  No fitting to photometry carried out.
+    BRDLFIT  T                bool  Broad Balmer emission-line modeling attempted.
+    CONSAGE  F                bool  Stellar population synthesis ages constrained by redshift.
+    USEQNET  T                bool  QuasarNet redshifts used where applicable.
+    NMONTE   50               int   Number of Monte Carlo realizations.
+    SEED     1                int   Random seed used for Monte Carlo realizations.
+    UFLOOR   0.01             float Spectroscopic fractional uncertainty floor.
+    SNRBBALM 2.5              float Minimum broad Balmer signal-to-noise ratio.
+    CHECKSUM ZHWHZHVFZHVFZHVF str   HDU checksum updated 2022-08-02T19:06:22
+    DATASUM  0                str   data unit checksum updated 2022-08-02T19:06:22
+    ======== ================ ===== ==============================================
 
 Empty HDU.
 
 HDU01
 -----
 
-EXTNAME = FASTSPEC
+EXTNAME = METADATA
 
-Spectroscopic fitting results.
+Metadata associated with each objected fitted.
+
+Required Header Keywords
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. collapse:: Required Header Keywords Table
+    :open:
+
+    .. rst-class:: keywords
+
+    ======== ================ ==== ==============================================
+    KEY      Example Value    Type Comment
+    ======== ================ ==== ==============================================
+    NAXIS1   339              int  length of dimension 1
+    NAXIS2   338              int  length of dimension 2
+    CHECKSUM hFY6jCV3hCV3hCV3 str  HDU checksum updated 2022-08-03T14:25:08
+    DATASUM  1759692941       str  data unit checksum updated 2022-08-03T14:25:08
+    ======== ================ ==== ==============================================
+
+Required Data Table Columns
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. rst-class:: columns
+
+====================== =========== ========== ==========================================
+Name                   Type        Units      Description
+====================== =========== ========== ==========================================
+              TARGETID   int64                Unique target ID.
+           SURVEY [1]_  bytes3                Survey name.
+          PROGRAM [1]_  bytes6                Program name.
+          HEALPIX [1]_   int32                Healpixel number.
+           TILEID [2]_   int32                Tile ID number.
+            FIBER [2]_   int32                Fiber number.
+            NIGHT [2]_   int32                Night of observation.
+            EXPID [3]_   int32                Exposure ID number.
+           TILEID_LIST    str?                List of tile IDs that went into healpix coadd.
+                    RA float64            deg Right ascension from target catalog.
+                   DEC float64            deg Declination from target catalog.
+     COADD_FIBERSTATUS   int64                Fiber status bit.
+       CMX_TARGET [5]_   int64                Commissioning (CMX) targeting bit.
+           DESI_TARGET   int64                DESI targeting bit.
+            BGS_TARGET   int64                BGS targeting bit.
+            MWS_TARGET   int64                MWS targeting bit.
+           SCND_TARGET   int64                Secondary target targeting bit.
+  SV1_DESI_TARGET [5]_   int64                SV1 DESI targeting bit.
+   SV1_BGS_TARGET [5]_   int64                SV1 BGS targeting bit.
+   SV1_MWS_TARGET [5]_   int64                SV1 MWS targeting bit.
+  SV2_DESI_TARGET [5]_   int64                SV2 DESI targeting bit.
+   SV2_BGS_TARGET [5]_   int64                SV2 BGS targeting bit.
+   SV2_MWS_TARGET [5]_   int64                SV2 MWS targeting bit.
+  SV3_DESI_TARGET [5]_   int64                SV3 DESI targeting bit.
+   SV3_BGS_TARGET [5]_   int64                SV3 BGS targeting bit.
+   SV3_MWS_TARGET [5]_   int64                SV3 MWS targeting bit.
+  SV1_SCND_TARGET [5]_   int64                SV1 secondary targeting bit.
+  SV2_SCND_TARGET [5]_   int64                SV2 secondary targeting bit.
+  SV3_SCND_TARGET [5]_   int64                SV3 secondary targeting bit.
+                     Z float64                Redshift based on Redrock or QuasarNet (for QSO targets only).
+                 ZWARN    int8                Redrock zwarning bit.
+             DELTACHI2 float64                Redrock delta-chi-squared.
+              SPECTYPE    str6                Redrock spectral classification.
+                  Z_RR float64                Redrock redshift.
+             TSNR2_BGS float32                Template signal-to-noise ratio squared for BGS targets.
+             TSNR2_LRG float32                Template signal-to-noise ratio squared for LRG targets.
+             TSNR2_ELG float32                Template signal-to-noise ratio squared for ELG targets.
+             TSNR2_QSO float32                Template signal-to-noise ratio squared for QSO targets.
+             TSNR2_LYA float32                Template signal-to-noise ratio squared for LYA targets.
+               PHOTSYS    str1                Photometric system (*N* or *S*).
+                 LS_ID   int64                Unique Legacy Surveys identification number.
+           FIBERFLUX_G float32           nmgy Fiber g-band flux corrected for Galactic extinction.
+           FIBERFLUX_R float32           nmgy Fiber r-band flux corrected for Galactic extinction.
+           FIBERFLUX_Z float32           nmgy Fiber z-band flux corrected for Galactic extinction.
+        FIBERTOTFLUX_G float32           nmgy Fibertot g-band flux corrected for Galactic extinction.
+        FIBERTOTFLUX_R float32           nmgy Fibertot r-band flux corrected for Galactic extinction.
+        FIBERTOTFLUX_Z float32           nmgy Fibertot z-band flux corrected for Galactic extinction.
+                FLUX_G float32           nmgy Total g-band flux corrected for Galactic extinction.
+                FLUX_R float32           nmgy Total r-band flux corrected for Galactic extinction.
+                FLUX_Z float32           nmgy Total z-band flux corrected for Galactic extinction.
+               FLUX_W1 float32           nmgy Total W1-band flux corrected for Galactic extinction.
+               FLUX_W2 float32           nmgy Total W2-band flux corrected for Galactic extinction.
+               FLUX_W3 float32           nmgy Total W3-band flux corrected for Galactic extinction.
+               FLUX_W4 float32           nmgy Total W4-band flux corrected for Galactic extinction.
+           FLUX_IVAR_G float32      1 / nmgy2 Inverse variance of FLUX_G corrected for Galactic extinction.
+           FLUX_IVAR_R float32      1 / nmgy2 Inverse variance of FLUX_R corrected for Galactic extinction.
+           FLUX_IVAR_Z float32      1 / nmgy2 Inverse variance of FLUX_Z corrected for Galactic extinction.
+          FLUX_IVAR_W1 float32      1 / nmgy2 Inverse variance of FLUX_W1 corrected for Galactic extinction.
+          FLUX_IVAR_W2 float32      1 / nmgy2 Inverse variance of FLUX_W2 corrected for Galactic extinction.
+          FLUX_IVAR_W3 float32      1 / nmgy2 Inverse variance of FLUX_W3 corrected for Galactic extinction.
+          FLUX_IVAR_W4 float32      1 / nmgy2 Inverse variance of FLUX_W4 corrected for Galactic extinction.
+                   EBV float32            mag Milky Way foreground dust reddening.
+     MW_TRANSMISSION_G float32                Milky Way foreground dust transmission factor [0-1] in the g-band.
+     MW_TRANSMISSION_R float32                Milky Way foreground dust transmission factor [0-1] in the r-band.
+     MW_TRANSMISSION_Z float32                Milky Way foreground dust transmission factor [0-1] in the z-band.
+    MW_TRANSMISSION_W1 float32                Milky Way foreground dust transmission factor [0-1] in the W1-band.
+    MW_TRANSMISSION_W2 float32                Milky Way foreground dust transmission factor [0-1] in the W2-band.
+    MW_TRANSMISSION_W3 float32                Milky Way foreground dust transmission factor [0-1] in the W3-band.
+    MW_TRANSMISSION_W4 float32                Milky Way foreground dust transmission factor [0-1] in the W4-band.
+====================== =========== ========== ==========================================
+
+HDU02
+-----
+
+EXTNAME = SPECPHOT
+
+Table with spectrophotometric quantities.
 
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -91,28 +206,29 @@ Name                         Type         Units                         Descript
                   NIGHT [2]_        int32                               Night of observation.
                   FIBER [2]_        int32                               Fiber number.
                   EXPID [3]_        int32                               Exposure ID number.
-                           Z      float64                               Stellar continuum redshift.
-                       COEFF   float32[5]                               Continuum coefficients.
+                        SEED        int64                               Random seed used for Monte Carlo realizations.
+                       COEFF   float32[5]  1e+17 erg / (Angstrom cm2 s) Stellar continuum coefficients.
                        RCHI2      float32                               Reduced chi-squared of the full-spectrum fit.
+                  RCHI2_LINE      float32                               Reduced chi-squared of the emission-line model fit.
                   RCHI2_CONT      float32                               Reduced chi-squared of the fit to the stellar continuum.
                   RCHI2_PHOT      float32                               Reduced chi-squared of the fit to the broadband photometry.
-                       SNR_B      float32                               Median signal-to-noise ratio per pixel in *b* camera.
-                       SNR_R      float32                               Median signal-to-noise ratio per pixel in *r* camera.
-                       SNR_Z      float32                               Median signal-to-noise ratio per pixel in *z* camera.
-                SMOOTHCORR_B      float32                       percent Mean value of the smooth continuum correction relative to the data in the *b* camera.
-                SMOOTHCORR_R      float32                       percent Mean value of the smooth continuum correction relative to the data in the *r* camera.
-                SMOOTHCORR_Z      float32                       percent Mean value of the smooth continuum correction relative to the data in the *z* camera.
                        VDISP      float32                        km / s Stellar velocity dispersion.
                   VDISP_IVAR      float32                      s2 / km2 Inverse variance of VDISP.
-                          AV      float32                           mag Attenuation of the integrated stellar population.
+                        TAUV      float32                               V-band dust optical depth of the integrated stellar population.
+                   TAUV_IVAR      float32                               Inverse variance of TAUV.
                          AGE      float32                           Gyr Light-weighted age.
+                    AGE_IVAR      float32                      1 / Gyr2 Inverse variance of AGE.
                        ZZSUN      float32                               Logarithmic stellar metallicity relative to solar.
+                  ZZSUN_IVAR      float32                               Inverse variance of ZZSUN.
                     LOGMSTAR      float32                          Msun Logarithmic stellar mass (h=1.0, Chabrier+2003 initial mass function).
+               LOGMSTAR_IVAR      float32                     1 / Msun2 Inverse variance of LOGMSTAR.
                          SFR      float32                     Msun / yr Instantaneous star formation rate (h=1.0, Chabrier+2003 initial mass function).
+                    SFR_IVAR      float32                   yr2 / Msun2 Inverse variance of SFR.
                       DN4000      float32                               Narrow 4000-A break index (from Balogh et al. 1999) measured from the emission-line subtracted data.
                   DN4000_OBS      float32                               Narrow 4000-A break index measured from the observed spectroscopic data.
                  DN4000_IVAR      float32                               Inverse variance of DN4000_OBS or DN4000.
                 DN4000_MODEL      float32                               Narrow 4000-A break index measured from the best-fitting continuum model.
+           DN4000_MODEL_IVAR      float32                               Inverse variance of DN4000_MODEL.
                 FLUX_SYNTH_G      float32                          nmgy g-band flux synthesized from the data.
                 FLUX_SYNTH_R      float32                          nmgy r-band flux synthesized from the data.
                 FLUX_SYNTH_Z      float32                          nmgy z-band flux synthesized from the data.
@@ -128,58 +244,140 @@ Name                         Type         Units                         Descript
      FLUX_SYNTH_PHOTMODEL_W4      float32                          nmgy W4-band flux synthesized from the best-fitting photometric continuum model.
        ABSMAG10_DECAM_G [4]_      float32                           mag Absolute magnitude in DECam g-band band-shifted to z=1.0 assuming h=1.0.
        ABSMAG10_IVAR_DECAM_G      float32                      1 / mag2 Inverse variance corresponding to ABSMAG10_DECAM_G.
-             KCORR10_DECAM_G      float32                           mag K-correction used to derive ABSMAG10_DECAM_G band-shifted to z=1.0.
-       ABSMAG10_DECAM_R [4]_      float32                           mag Absolute magnitude in DECam r-band band-shifted to z=1.0 assuming h=1.0.
-       ABSMAG10_IVAR_DECAM_R      float32                      1 / mag2 Inverse variance corresponding to ABSMAG10_DECAM_R.
-             KCORR10_DECAM_R      float32                           mag K-correction used to derive ABSMAG10_DECAM_R band-shifted to z=1.0.
-       ABSMAG10_DECAM_Z [4]_      float32                           mag Absolute magnitude in DECam z-band band-shifted to z=1.0 assuming h=1.0.
-       ABSMAG10_IVAR_DECAM_Z      float32                      1 / mag2 Inverse variance corresponding to ABSMAG10_DECAM_Z.
-             KCORR10_DECAM_Z      float32                           mag K-correction used to derive ABSMAG10_DECAM_Z band-shifted to z=1.0.
+ ABSMAG10_SYNTH_DECAM_G [4]_      float32                           mag Synthesized absolute magnitude in DECam g-band band-shifted to z=1.0 assuming h=1.0.
+ ABSMAG10_SYNTH_IVAR_DECAM_G      float32                      1 / mag2 Inverse variance corresponding to ABSMAG10_SYNTH_DECAM_G.
+       ABSMAG10_DECAM_R [4]_      float32                           mag Like ABSMAG10_DECAM_G but for DECam r-band.
+       ABSMAG10_IVAR_DECAM_R      float32                      1 / mag2 Like ABSMAG10_IVAR_DECAM_G but for DECam r-band.
+ ABSMAG10_SYNTH_DECAM_R [4]_      float32                           mag Like ABSMAG10_SYNTH_DECAM_G but for DECam r-band.
+ ABSMAG10_SYNTH_IVAR_DECAM_R      float32                      1 / mag2 Like ABSMAG10_SYNTH_IVAR_DECAM_G but for DECam r-band.
+       ABSMAG10_DECAM_Z [4]_      float32                           mag Like ABSMAG10_DECAM_G but for DECam z-band.
+       ABSMAG10_IVAR_DECAM_Z      float32                      1 / mag2 Like ABSMAG10_IVAR_DECAM_G but for DECam z-band.
+ ABSMAG10_SYNTH_DECAM_Z [4]_      float32                           mag Like ABSMAG10_SYNTH_DECAM_G but for DECam z-band.
+ ABSMAG10_SYNTH_IVAR_DECAM_Z      float32                      1 / mag2 Like ABSMAG10_SYNTH_IVAR_DECAM_G but for DECam z-band.
              ABSMAG00_U [4]_      float32                           mag Absolute magnitude in Johnson/Cousins U-band band-shifted to z=0.0 assuming h=1.0.
-             ABSMAG00_IVAR_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG_U.
-                   KCORR00_U      float32                           mag K-correction used to derive ABSMAG_U band-shifted to z=0.0.
-             ABSMAG00_B [4]_      float32                           mag Like ABSMAG_U but for Johnson/Cousins B-band.
-             ABSMAG00_IVAR_B      float32                      1 / mag2 Like ABSMAG_IVAR_U but for Johnson/Cousins B-band.
-                   KCORR00_B      float32                           mag Like KCORR_U but for Johnson/Cousins B-band.
-             ABSMAG00_V [4]_      float32                           mag Like ABSMAG_U but for Johnson/Cousins V-band.
-             ABSMAG00_IVAR_V      float32                      1 / mag2 Like ABSMAG_IVAR_U but for Johnson/Cousins V-band.
-                   KCORR00_V      float32                           mag Like KCORR_U but for Johnson/Cousins V-band.
+             ABSMAG00_IVAR_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG00_U.
+       ABSMAG00_SYNTH_U [4]_      float32                           mag Synthesized absolute magnitude in Johnson/Cousins U-band band-shifted to z=0.0 assuming h=1.0.
+       ABSMAG00_SYNTH_IVAR_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG00_SYNTH_U.
+             ABSMAG00_B [4]_      float32                           mag Like ABSMAG00_U but for Johnson/Cousins B-band.
+             ABSMAG00_IVAR_B      float32                      1 / mag2 Like ABSMAG00_IVAR_U but for Johnson/Cousins B-band.
+       ABSMAG00_SYNTH_B [4]_      float32                           mag Like ABSMAG00_SYNTH_U but for Johnson/Cousins B-band.
+       ABSMAG00_SYNTH_IVAR_B      float32                      1 / mag2 Like ABSMAG00_SYNTH_IVAR_U but for Johnson/Cousins B-band.
+             ABSMAG00_V [4]_      float32                           mag Like ABSMAG00_U but for Johnson/Cousins V-band.
+             ABSMAG00_IVAR_V      float32                      1 / mag2 Like ABSMAG00_IVAR_U but for Johnson/Cousins V-band.
+       ABSMAG00_SYNTH_V [4]_      float32                           mag Like ABSMAG00_SYNTH_U but for Johnson/Cousins V-band.
+       ABSMAG00_SYNTH_IVAR_V      float32                      1 / mag2 Like ABSMAG00_SYNTH_IVAR_U but for Johnson/Cousins V-band.
         ABSMAG01_SDSS_U [4]_      float32                           mag Absolute magnitude in SDSS u-band band-shifted to z=0.1 assuming h=1.0.
-        ABSMAG01_IVAR_SDSS_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG_SDSS_U.
-              KCORR01_SDSS_U      float32                           mag K-correction used to derive ABSMAG_SDSS_U band-shifted to z=0.1.
-        ABSMAG01_SDSS_G [4]_      float32                           mag Like ABSMAG_SDSS_U but for SDSS g-band.
-        ABSMAG01_IVAR_SDSS_G      float32                      1 / mag2 Like ABSMAG_IVAR_SDSS_U but for SDSS g-band.
-              KCORR01_SDSS_G      float32                           mag Like KCORR_SDSS_U but for SDSS g-band.
-        ABSMAG01_SDSS_R [4]_      float32                           mag Like ABSMAG_SDSS_U but for SDSS r-band.
-        ABSMAG01_IVAR_SDSS_R      float32                      1 / mag2 Like ABSMAG_IVAR_SDSS_U but for SDSS r-band.
-              KCORR01_SDSS_R      float32                           mag Like KCORR_SDSS_U but for SDSS r-band.
-        ABSMAG01_SDSS_I [4]_      float32                           mag Like ABSMAG_SDSS_U but for SDSS i-band.
-        ABSMAG01_IVAR_SDSS_I      float32                      1 / mag2 Like ABSMAG_IVAR_SDSS_U but for SDSS i-band.
-              KCORR01_SDSS_I      float32                           mag Like KCORR_SDSS_U but for SDSS i-band.
-        ABSMAG01_SDSS_Z [4]_      float32                           mag Like ABSMAG_SDSS_U but for SDSS z-band.
-        ABSMAG01_IVAR_SDSS_Z      float32                      1 / mag2 Like ABSMAG_IVAR_SDSS_U but for SDSS z-band.
-              KCORR01_SDSS_Z      float32                           mag Like KCORR_SDSS_U but for SDSS z-band.
-            ABSMAG01_W1 [4]_      float32                           mag Absolute magnitude in WISE W1-band band-shifted to z=0.0 assuming h=1.0.
-            ABSMAG01_IVAR_W1      float32                      1 / mag2 Inverse variance corresponding to ABSMAG_W1.
-                  KCORR01_W1      float32                           mag K-correction used to derive ABSMAG_W1 band-shifted to z=0.0.
-                 LOGLNU_1500      float32            1e+28 erg / (s Hz) Monochromatic luminosity at 1500 A in the rest-frame.
-                 LOGLNU_2800      float32            1e+28 erg / (s Hz) Monochromatic luminosity at 2800 A in the rest-frame.
+        ABSMAG01_IVAR_SDSS_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_SDSS_U.
+  ABSMAG01_SYNTH_SDSS_U [4]_      float32                           mag Synthesized absolute magnitude in SDSS u-band band-shifted to z=0.1 assuming h=1.0.
+  ABSMAG01_SYNTH_IVAR_SDSS_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_SYNTH_SDSS_U.
+        ABSMAG01_SDSS_G [4]_      float32                           mag Like ABSMAG01_SDSS_U but for SDSS g-band.
+        ABSMAG01_IVAR_SDSS_G      float32                      1 / mag2 Like ABSMAG01_IVAR_SDSS_U but for SDSS g-band.
+  ABSMAG01_SYNTH_SDSS_G [4]_      float32                           mag Like ABSMAG01_SYNTH_SDSS_U but for SDSS g-band.
+  ABSMAG01_SYNTH_IVAR_SDSS_G      float32                      1 / mag2 Like ABSMAG01_SYNTH_IVAR_SDSS_U but for SDSS g-band.
+        ABSMAG01_SDSS_R [4]_      float32                           mag Like ABSMAG01_SDSS_U but for SDSS r-band.
+        ABSMAG01_IVAR_SDSS_R      float32                      1 / mag2 Like ABSMAG01_IVAR_SDSS_U but for SDSS r-band.
+  ABSMAG01_SYNTH_SDSS_R [4]_      float32                           mag Like ABSMAG01_SYNTH_SDSS_U but for SDSS r-band.
+  ABSMAG01_SYNTH_IVAR_SDSS_R      float32                      1 / mag2 Like ABSMAG01_SYNTH_IVAR_SDSS_U but for SDSS r-band.
+        ABSMAG01_SDSS_I [4]_      float32                           mag Like ABSMAG01_SDSS_U but for SDSS i-band.
+        ABSMAG01_IVAR_SDSS_I      float32                      1 / mag2 Like ABSMAG01_IVAR_SDSS_U but for SDSS i-band.
+  ABSMAG01_SYNTH_SDSS_I [4]_      float32                           mag Like ABSMAG01_SYNTH_SDSS_U but for SDSS i-band.
+  ABSMAG01_SYNTH_IVAR_SDSS_I      float32                      1 / mag2 Like ABSMAG01_SYNTH_IVAR_SDSS_U but for SDSS i-band.
+        ABSMAG01_SDSS_Z [4]_      float32                           mag Like ABSMAG01_SDSS_U but for SDSS z-band.
+        ABSMAG01_IVAR_SDSS_Z      float32                      1 / mag2 Like ABSMAG01_IVAR_SDSS_U but for SDSS z-band.
+  ABSMAG01_SYNTH_SDSS_Z [4]_      float32                           mag Like ABSMAG01_SYNTH_SDSS_U but for SDSS z-band.
+  ABSMAG01_SYNTH_IVAR_SDSS_Z      float32                      1 / mag2 Like ABSMAG01_SYNTH_IVAR_SDSS_U but for SDSS z-band.
+            ABSMAG01_W1 [4]_      float32                           mag Absolute magnitude in WISE W1-band band-shifted to z=0.1 assuming h=1.0.
+            ABSMAG01_IVAR_W1      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_W1.
+      ABSMAG01_SYNTH_W1 [4]_      float32                           mag Synthesized absolute magnitude in WISE W1-band band-shifted to z=0.1 assuming h=1.0.
+      ABSMAG01_SYNTH_IVAR_W1      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_SYNTH_W1.
+             KCORR10_DECAM_G      float32                           mag K-correction used to derive ABSMAG10_DECAM_G band-shifted to z=1.0.
+             KCORR10_DECAM_R      float32                           mag Like KCORR10_DECAM_G but for DECam r-band.
+             KCORR10_DECAM_Z      float32                           mag Like KCORR10_DECAM_G but for DECam z-band.
+                   KCORR00_U      float32                           mag K-correction used to derive ABSMAG00_U band-shifted to z=0.0.
+                   KCORR00_B      float32                           mag Like KCORR00_U but for Johnson/Cousins B-band.
+                   KCORR00_V      float32                           mag Like KCORR00_U but for Johnson/Cousins V-band.
+              KCORR01_SDSS_U      float32                           mag K-correction used to derive ABSMAG01_SDSS_U band-shifted to z=0.1.
+              KCORR01_SDSS_G      float32                           mag Like KCORR01_SDSS_U but for SDSS g-band.
+              KCORR01_SDSS_R      float32                           mag Like KCORR01_SDSS_U but for SDSS r-band.
+              KCORR01_SDSS_I      float32                           mag Like KCORR01_SDSS_U but for SDSS i-band.
+              KCORR01_SDSS_Z      float32                           mag Like KCORR01_SDSS_U but for SDSS z-band.
+                  KCORR01_W1      float32                           mag K-correction used to derive ABSMAG01_W1 band-shifted to z=0.0.
+                 LOGLNU_1500      float32            1e+28 erg / (Hz s) Monochromatic luminosity at 1500 A in the rest-frame.
+            LOGLNU_1500_IVAR      float32           1e-56 Hz2 s2 / erg2 Inverse variance in LOGLNU_1500.
+                 LOGLNU_2800      float32            1e+28 erg / (Hz s) Monochromatic luminosity at 2800 A in the rest-frame.
+            LOGLNU_2800_IVAR      float32           1e-56 Hz2 s2 / erg2 Inverse variance in LOGLNU_2800.
                    LOGL_1450      float32                    1e+10 Lsun Integrated luminosity at 1450 A in the rest-frame.
+              LOGL_1450_IVAR      float32                 1e-20 / Lsun2 Inverse variance in LOGL_1450.
                    LOGL_1700      float32                    1e+10 Lsun Integrated luminosity at 1700 A in the rest-frame.
+              LOGL_1700_IVAR      float32                 1e-20 / Lsun2 Inverse variance in LOGL_1700.
                    LOGL_3000      float32                    1e+10 Lsun Integrated luminosity at 3000 A in the rest-frame.
+              LOGL_3000_IVAR      float32                 1e-20 / Lsun2 Inverse variance in LOGL_3000.
                    LOGL_5100      float32                    1e+10 Lsun Integrated luminosity at 5100 A in the rest-frame.
-              FLYA_1215_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 1215.67 A in the rest-frame.
-              FOII_3727_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 3728.483 A in the rest-frame.
-                 FHBETA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 4862.683 A in the rest-frame.
-             FOIII_5007_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 5008.239 A in the rest-frame.
-                FHALPHA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 6564.613 A in the rest-frame.
-                  RCHI2_LINE      float32                               Reduced chi-squared of the emission-line model fit.
-              DELTA_LINECHI2      float32                               Chi-squared difference between an emission-line model without and with broad lines.
-              DELTA_LINENDOF        int32                               Difference in the degrees of freedom between an emission-line model without and with broad lines.
+              LOGL_5100_IVAR      float32                 1e-20 / Lsun2 Inverse variance in LOGL_5100.
+              FLYA_1215_CONT      float32  1e+17 erg / (Angstrom cm2 s) Continuum flux at 1215.67 A in the rest-frame.
+         FLYA_1215_CONT_IVAR      float32 1e-34 cm4 Angstrom2 s2 / erg2 Inverse variance in FLYA_1215_CONT.
+              FOII_3727_CONT      float32  1e+17 erg / (Angstrom cm2 s) Continuum flux at 3728.483 A in the rest-frame.
+         FOII_3727_CONT_IVAR      float32 1e-34 cm4 Angstrom2 s2 / erg2 Inverse variance in FOII_3727_CONT.
+                 FHBETA_CONT      float32  1e+17 erg / (Angstrom cm2 s) Continuum flux at 4862.683 A in the rest-frame.
+            FHBETA_CONT_IVAR      float32 1e-34 cm4 Angstrom2 s2 / erg2 Inverse variance in FHBETA_CONT.
+             FOIII_5007_CONT      float32  1e+17 erg / (Angstrom cm2 s) Continuum flux at 5008.239 A in the rest-frame.
+        FOIII_5007_CONT_IVAR      float32 1e-34 cm4 Angstrom2 s2 / erg2 Inverse variance in FOIII_5007_CONT.
+                FHALPHA_CONT      float32  1e+17 erg / (Angstrom cm2 s) Continuum flux at 6564.613 A in the rest-frame.
+           FHALPHA_CONT_IVAR      float32 1e-34 cm4 Angstrom2 s2 / erg2 Inverse variance in FHALPHA_CONT.
+============================ ============ ============================= ============================================
+
+HDU03
+-----
+
+EXTNAME = FASTSPEC
+
+Table with spectral fitting results.
+
+Required Header Keywords
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. collapse:: Required Header Keywords Table
+    :open:
+
+    .. rst-class:: keywords
+
+    ======== ================ ==== ==============================================
+    KEY      Example Value    Type Comment
+    ======== ================ ==== ==============================================
+    NAXIS1   3115             int  length of dimension 1
+    NAXIS2   338              int  length of dimension 2
+    CHECKSUM WLDnaKDlWKDlaKDl str  HDU checksum updated 2022-08-03T14:25:08
+    DATASUM  756558178        str  data unit checksum updated 2022-08-03T14:25:08
+    ======== ================ ==== ==============================================
+
+Required Data Table Columns
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. rst-class:: columns
+
+============================ ============ ============================= ============================================
+Name                         Type         Units                         Description
+============================ ============ ============================= ============================================
+                    TARGETID        int64                               Unique target ID.
+                 SURVEY [1]_       bytes3                               Survey name.
+                PROGRAM [1]_       bytes6                               Program name.
+                HEALPIX [1]_        int32                               Healpixel number.
+                 TILEID [2]_        int32                               Tile ID number.
+                  NIGHT [2]_        int32                               Night of observation.
+                  FIBER [2]_        int32                               Fiber number.
+                  EXPID [3]_        int32                               Exposure ID number.
+                       SNR_B      float32                               Median signal-to-noise ratio per pixel in *b* camera.
+                       SNR_R      float32                               Median signal-to-noise ratio per pixel in *r* camera.
+                       SNR_Z      float32                               Median signal-to-noise ratio per pixel in *z* camera.
+                SMOOTHCORR_B      float32                       percent Mean value of the smooth continuum correction relative to the data in the *b* camera.
+                SMOOTHCORR_R      float32                       percent Mean value of the smooth continuum correction relative to the data in the *r* camera.
+                SMOOTHCORR_Z      float32                       percent Mean value of the smooth continuum correction relative to the data in the *z* camera.
                     APERCORR      float32                               Median aperture correction factor.
                   APERCORR_G      float32                               Aperture correction factor measured in the g-band.
                   APERCORR_R      float32                               Aperture correction factor measured in the r-band.
                   APERCORR_Z      float32                               Aperture correction factor measured in the z-band.
+              DELTA_LINECHI2      float32                               Chi-squared difference between an emission-line model without and with broad lines.
+              DELTA_LINENDOF        int32                               Difference in the degrees of freedom between an emission-line model without and with broad lines.
                     NARROW_Z      float32                               Mean redshift of well-measured narrow rest-frame optical emission lines (defaults to Z).
                  NARROW_ZRMS      float32                               Root-mean-square scatter in NARROW_Z.
                      BROAD_Z      float32                               Mean redshift of well-measured broad rest-frame optical emission lines (defaults to Z).
@@ -962,110 +1160,7 @@ Name                         Type         Units                         Descript
               SIII_9532_NPIX        int32                               Number of pixels attributed to the emission line.
 ============================ ============ ============================= ============================================
 
-HDU02
------
-
-EXTNAME = METADATA
-
-Metadata associated with each objected fitted.
-
-Required Header Keywords
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. collapse:: Required Header Keywords Table
-    :open:
-
-    .. rst-class:: keywords
-
-    ======== ================ ==== ==============================================
-    KEY      Example Value    Type Comment
-    ======== ================ ==== ==============================================
-    NAXIS1   339              int  length of dimension 1
-    NAXIS2   338              int  length of dimension 2
-    CHECKSUM hFY6jCV3hCV3hCV3 str  HDU checksum updated 2022-08-03T14:25:08
-    DATASUM  1759692941       str  data unit checksum updated 2022-08-03T14:25:08
-    ======== ================ ==== ==============================================
-
-Required Data Table Columns
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. rst-class:: columns
-
-====================== =========== ========== ==========================================
-Name                   Type        Units      Description
-====================== =========== ========== ==========================================
-              TARGETID   int64                Unique target ID.
-           SURVEY [1]_  bytes3                Survey name.
-          PROGRAM [1]_  bytes6                Program name.
-          HEALPIX [1]_   int32                Healpixel number.
-           TILEID [2]_   int32                Tile ID number.
-            FIBER [2]_   int32                Fiber number.
-            NIGHT [2]_   int32                Night of observation.
-            EXPID [3]_   int32                Exposure ID number.
-           TILEID_LIST    str?                List of tile IDs that went into healpix coadd.
-                    RA float64            deg Right ascension from target catalog.
-                   DEC float64            deg Declination from target catalog.
-     COADD_FIBERSTATUS   int64                Fiber status bit.
-       CMX_TARGET [5]_   int64                Commissioning (CMX) targeting bit.
-           DESI_TARGET   int64                DESI targeting bit.
-            BGS_TARGET   int64                BGS targeting bit.
-            MWS_TARGET   int64                MWS targeting bit.
-           SCND_TARGET   int64                Secondary target targeting bit.
-  SV1_DESI_TARGET [5]_   int64                SV1 DESI targeting bit.
-   SV1_BGS_TARGET [5]_   int64                SV1 BGS targeting bit.
-   SV1_MWS_TARGET [5]_   int64                SV1 MWS targeting bit.
-  SV2_DESI_TARGET [5]_   int64                SV2 DESI targeting bit.
-   SV2_BGS_TARGET [5]_   int64                SV2 BGS targeting bit.
-   SV2_MWS_TARGET [5]_   int64                SV2 MWS targeting bit.
-  SV3_DESI_TARGET [5]_   int64                SV3 DESI targeting bit.
-   SV3_BGS_TARGET [5]_   int64                SV3 BGS targeting bit.
-   SV3_MWS_TARGET [5]_   int64                SV3 MWS targeting bit.
-  SV1_SCND_TARGET [5]_   int64                SV1 secondary targeting bit.
-  SV2_SCND_TARGET [5]_   int64                SV2 secondary targeting bit.
-  SV3_SCND_TARGET [5]_   int64                SV3 secondary targeting bit.
-                     Z float64                Redshift based on Redrock or QuasarNet (for QSO targets only).
-                 ZWARN    int8                Redrock zwarning bit.
-             DELTACHI2 float64                Redrock delta-chi-squared.
-              SPECTYPE    str6                Redrock spectral classification.
-                  Z_RR float64                Redrock redshift.
-             TSNR2_BGS float32                Template signal-to-noise ratio squared for BGS targets.
-             TSNR2_LRG float32                Template signal-to-noise ratio squared for LRG targets.
-             TSNR2_ELG float32                Template signal-to-noise ratio squared for ELG targets.
-             TSNR2_QSO float32                Template signal-to-noise ratio squared for QSO targets.
-             TSNR2_LYA float32                Template signal-to-noise ratio squared for LYA targets.
-               PHOTSYS    str1                Photometric system (*N* or *S*).
-                 LS_ID   int64                Unique Legacy Surveys identification number.
-           FIBERFLUX_G float32           nmgy Fiber g-band flux corrected for Galactic extinction.
-           FIBERFLUX_R float32           nmgy Fiber r-band flux corrected for Galactic extinction.
-           FIBERFLUX_Z float32           nmgy Fiber z-band flux corrected for Galactic extinction.
-        FIBERTOTFLUX_G float32           nmgy Fibertot g-band flux corrected for Galactic extinction.
-        FIBERTOTFLUX_R float32           nmgy Fibertot r-band flux corrected for Galactic extinction.
-        FIBERTOTFLUX_Z float32           nmgy Fibertot z-band flux corrected for Galactic extinction.
-                FLUX_G float32           nmgy Total g-band flux corrected for Galactic extinction.
-                FLUX_R float32           nmgy Total r-band flux corrected for Galactic extinction.
-                FLUX_Z float32           nmgy Total z-band flux corrected for Galactic extinction.
-               FLUX_W1 float32           nmgy Total W1-band flux corrected for Galactic extinction.
-               FLUX_W2 float32           nmgy Total W2-band flux corrected for Galactic extinction.
-               FLUX_W3 float32           nmgy Total W3-band flux corrected for Galactic extinction.
-               FLUX_W4 float32           nmgy Total W4-band flux corrected for Galactic extinction.
-           FLUX_IVAR_G float32      1 / nmgy2 Inverse variance of FLUX_G corrected for Galactic extinction.
-           FLUX_IVAR_R float32      1 / nmgy2 Inverse variance of FLUX_R corrected for Galactic extinction.
-           FLUX_IVAR_Z float32      1 / nmgy2 Inverse variance of FLUX_Z corrected for Galactic extinction.
-          FLUX_IVAR_W1 float32      1 / nmgy2 Inverse variance of FLUX_W1 corrected for Galactic extinction.
-          FLUX_IVAR_W2 float32      1 / nmgy2 Inverse variance of FLUX_W2 corrected for Galactic extinction.
-          FLUX_IVAR_W3 float32      1 / nmgy2 Inverse variance of FLUX_W3 corrected for Galactic extinction.
-          FLUX_IVAR_W4 float32      1 / nmgy2 Inverse variance of FLUX_W4 corrected for Galactic extinction.
-                   EBV float32            mag Milky Way foreground dust reddening.
-     MW_TRANSMISSION_G float32                Milky Way foreground dust transmission factor [0-1] in the g-band.
-     MW_TRANSMISSION_R float32                Milky Way foreground dust transmission factor [0-1] in the r-band.
-     MW_TRANSMISSION_Z float32                Milky Way foreground dust transmission factor [0-1] in the z-band.
-    MW_TRANSMISSION_W1 float32                Milky Way foreground dust transmission factor [0-1] in the W1-band.
-    MW_TRANSMISSION_W2 float32                Milky Way foreground dust transmission factor [0-1] in the W2-band.
-    MW_TRANSMISSION_W3 float32                Milky Way foreground dust transmission factor [0-1] in the W3-band.
-    MW_TRANSMISSION_W4 float32                Milky Way foreground dust transmission factor [0-1] in the W4-band.
-====================== =========== ========== ==========================================
-
-HDU03
+HDU04
 -----
 
 EXTNAME = MODELS
