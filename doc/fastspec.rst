@@ -226,22 +226,22 @@ Name                         Type         Units                         Descript
                     SFR_IVAR      float32                   yr2 / Msun2 Inverse variance of SFR.
                       DN4000      float32                               Narrow 4000-A break index (from Balogh et al. 1999) measured from the emission-line subtracted data.
                   DN4000_OBS      float32                               Narrow 4000-A break index measured from the observed spectroscopic data.
-                 DN4000_IVAR      float32                               Inverse variance of DN4000_OBS or DN4000.
+                 DN4000_IVAR      float32                               Inverse variance of DN4000_OBS and of DN4000.
                 DN4000_MODEL      float32                               Narrow 4000-A break index measured from the best-fitting continuum model.
            DN4000_MODEL_IVAR      float32                               Inverse variance of DN4000_MODEL.
-                FLUX_SYNTH_G      float32                          nmgy g-band flux synthesized from the data.
-                FLUX_SYNTH_R      float32                          nmgy r-band flux synthesized from the data.
-                FLUX_SYNTH_Z      float32                          nmgy z-band flux synthesized from the data.
-      FLUX_SYNTH_SPECMODEL_G      float32                          nmgy g-band flux synthesized from the best-fitting spectroscopic model.
-      FLUX_SYNTH_SPECMODEL_R      float32                          nmgy r-band flux synthesized from the best-fitting spectroscopic model.
-      FLUX_SYNTH_SPECMODEL_Z      float32                          nmgy z-band flux synthesized from the best-fitting spectroscopic model.
-      FLUX_SYNTH_PHOTMODEL_G      float32                          nmgy g-band flux synthesized from the best-fitting photometric continuum model.
-      FLUX_SYNTH_PHOTMODEL_R      float32                          nmgy r-band flux synthesized from the best-fitting photometric continuum model.
-      FLUX_SYNTH_PHOTMODEL_Z      float32                          nmgy z-band flux synthesized from the best-fitting photometric continuum model.
-     FLUX_SYNTH_PHOTMODEL_W1      float32                          nmgy W1-band flux synthesized from the best-fitting photometric continuum model.
-     FLUX_SYNTH_PHOTMODEL_W2      float32                          nmgy W2-band flux synthesized from the best-fitting photometric continuum model.
-     FLUX_SYNTH_PHOTMODEL_W3      float32                          nmgy W3-band flux synthesized from the best-fitting photometric continuum model.
-     FLUX_SYNTH_PHOTMODEL_W4      float32                          nmgy W4-band flux synthesized from the best-fitting photometric continuum model.
+                FLUX_SYNTH_G      float32                          nmgy g-band flux (in the PHOTSYS photometric system) synthesized from the data.
+                FLUX_SYNTH_R      float32                          nmgy Like FLUX_SYNTH_G but for the r-band.
+                FLUX_SYNTH_Z      float32                          nmgy Like FLUX_SYNTH_G but for the z-band.
+      FLUX_SYNTH_SPECMODEL_G      float32                          nmgy g-band flux (in the PHOTSYS photometric system) synthesized from the best-fitting spectroscopic model.
+      FLUX_SYNTH_SPECMODEL_R      float32                          nmgy Like FLUX_SYNTH_SPECMODEL_G but in the r-band.
+      FLUX_SYNTH_SPECMODEL_Z      float32                          nmgy Like FLUX_SYNTH_SPECMODEL_G but in the z-band.
+      FLUX_SYNTH_PHOTMODEL_G      float32                          nmgy g-band flux (in the PHOTSYS photometric system) synthesized from the best-fitting photometric continuum model.
+      FLUX_SYNTH_PHOTMODEL_R      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the r-band.
+      FLUX_SYNTH_PHOTMODEL_Z      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the z-band.
+     FLUX_SYNTH_PHOTMODEL_W1      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the W1-band.
+     FLUX_SYNTH_PHOTMODEL_W2      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the W2-band.
+     FLUX_SYNTH_PHOTMODEL_W3      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the W3-band.
+     FLUX_SYNTH_PHOTMODEL_W4      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the W4-band.
        ABSMAG10_DECAM_G [4]_      float32                           mag Absolute magnitude in DECam g-band band-shifted to z=1.0 assuming h=1.0.
        ABSMAG10_IVAR_DECAM_G      float32                      1 / mag2 Inverse variance corresponding to ABSMAG10_DECAM_G.
  ABSMAG10_SYNTH_DECAM_G [4]_      float32                           mag Synthesized absolute magnitude in DECam g-band band-shifted to z=1.0 assuming h=1.0.
@@ -374,21 +374,28 @@ Name                         Type         Units                         Descript
                 SMOOTHCORR_Z      float32                       percent Mean value of the smooth continuum correction relative to the data in the *z* camera.
                     APERCORR      float32                               Median aperture correction factor.
                   APERCORR_G      float32                               Aperture correction factor measured in the g-band.
-                  APERCORR_R      float32                               Aperture correction factor measured in the r-band.
-                  APERCORR_Z      float32                               Aperture correction factor measured in the z-band.
+                  APERCORR_R      float32                               Like APERCORR_G but measured in the r-band.
+                  APERCORR_Z      float32                               Like APERCORR_G but measured in the z-band.
+               INIT_SIGMA_UV      float32                        km / s Initial line width for the rest-frame UV emission lines.
+           INIT_SIGMA_NARROW      float32                        km / s Like INIT_SIGMA_UV but for the forbidden plus narrow Balmer emission lines.
+           INIT_SIGMA_BALMER      float32                        km / s Like INIT_SIGMA_UV but for broad Balmer emission lines.
+              INIT_VSHIFT_UV      float32                        km / s Initial velocity shift for the UV emission lines.
+          INIT_VSHIFT_NARROW      float32                        km / s Like INIT_VSHIFT_UV but for narrow (forbidden and narrow Balmer) emission lines.
+          INIT_VSHIFT_BALMER      float32                        km / s Like INIT_VSHIFT_UV but for broad Balmer emission lines.
+           INIT_BALMER_BROAD         bool                               Boolean flag indicating whether a broad Balmer emission line was initially identified in the spectral range.
               DELTA_LINECHI2      float32                               Chi-squared difference between an emission-line model without and with broad lines.
               DELTA_LINENDOF        int32                               Difference in the degrees of freedom between an emission-line model without and with broad lines.
-                    NARROW_Z      float32                               Mean redshift of well-measured narrow rest-frame optical emission lines (defaults to Z).
+                    NARROW_Z      float32                               Mean redshift of the well-measured forbidden plus narrow Balmer emission lines (defaults to Z).
                  NARROW_ZRMS      float32                               Root-mean-square scatter in NARROW_Z.
-                     BROAD_Z      float32                               Mean redshift of well-measured broad rest-frame optical emission lines (defaults to Z).
+                     BROAD_Z      float32                               Like NARROW_Z but for the broad Balmer emission lines.
                   BROAD_ZRMS      float32                               Root-mean-square scatter in BROAD_Z.
-                        UV_Z      float32                               Mean redshift of well-measured rest-frame UV emission lines (defaults to Z).
+                        UV_Z      float32                               Like NARROW_Z but for the rest-frame UV emission lines.
                      UV_ZRMS      float32                               Root-mean-square scatter in UV_Z.
-                NARROW_SIGMA      float32                        km / s Mean line-width of well-measured narrow rest-frame optical emission lines.
+                NARROW_SIGMA      float32                        km / s Mean line-width of the well-measured forbidden plus narrow Balmer emission lines.
              NARROW_SIGMARMS      float32                        km / s Root-mean-square scatter in NARROW_SIGMA.
-                 BROAD_SIGMA      float32                        km / s Mean line-width of well-measured broad rest-frame optical emission lines.
+                 BROAD_SIGMA      float32                        km / s Like NARROW_SIGMA but for the broad Balmer emission lines.
               BROAD_SIGMARMS      float32                        km / s Root-mean-square scatter in BROAD_SIGMA.
-                    UV_SIGMA      float32                        km / s Mean line-width of well-measured rest-frame UV emission lines.
+                    UV_SIGMA      float32                        km / s Like NARROW_SIGMA but for the rest-frame UV emission lines.
                  UV_SIGMARMS      float32                        km / s Root-mean-square scatter in UV_SIGMA.
           MGII_DOUBLET_RATIO      float32                               MgII 2796 / 2803 doublet line-ratio.
            OII_DOUBLET_RATIO      float32                               [OII] 3726 / 3729 doublet line-ratio.
