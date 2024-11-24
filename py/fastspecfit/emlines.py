@@ -1615,7 +1615,6 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
     for label, units, val, valerr in zip(
             ['delta(v) UV', 'Balmer broad', 'narrow'],
             [' km/s', ' km/s', ' km/s'], dv, dverr):
-        print(label, units, val, valerr)
         err_msg = f'+/-{valerr:.1f}' if valerr > 0. else ''
         msg.append(f'{label}={val:.1f}{err_msg}{units}')
     log.info(' '.join(msg))

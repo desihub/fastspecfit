@@ -105,10 +105,10 @@ def format_niceline(line):
             return line
 
 
-def desiqa_one(data, metadata, specphot, fastfit, coadd_type, minspecwave=3500.,
-               maxspecwave=9900., minphotwave=0.1, maxphotwave=35.,
-               emline_snrmin=0.0, nsmoothspec=1, init_sigma_uv=None,
-               init_sigma_narrow=None, init_sigma_balmer=None,
+def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
+               minspecwave=3500., maxspecwave=9900., minphotwave=0.1,
+               maxphotwave=35., emline_snrmin=0.0, nsmoothspec=1,
+               init_sigma_uv=None, init_sigma_narrow=None, init_sigma_balmer=None,
                init_vshift_uv=None, init_vshift_narrow=None,
                init_vshift_balmer=None, fastphot=False, fitstack=False,
                inputz=False, no_smooth_continuum=False, outdir=None, outprefix=None):
@@ -128,8 +128,8 @@ def desiqa_one(data, metadata, specphot, fastfit, coadd_type, minspecwave=3500.,
                      init_vshift_narrow=init_vshift_narrow,
                      init_vshift_balmer=init_vshift_balmer)
 
-    qa_fastspec(data, sc_data.templates, fastfit, metadata,
-                coadd_type=coadd_type,
+    qa_fastspec(data, sc_data.templates, metadata, specphot,
+                fastfit, coadd_type=coadd_type,
                 spec_wavelims=(minspecwave, maxspecwave),
                 phot_wavelims=(minphotwave, maxphotwave),
                 no_smooth_continuum=no_smooth_continuum,
@@ -138,10 +138,10 @@ def desiqa_one(data, metadata, specphot, fastfit, coadd_type, minspecwave=3500.,
                 outprefix=outprefix, outdir=outdir, inputz=inputz)
 
 
-def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
-                spec_wavelims=(3550, 9900), phot_wavelims=(0.1, 35),
-                fastphot=False, fitstack=False, outprefix=None,
-                no_smooth_continuum=False, emline_snrmin=0.0,
+def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
+                coadd_type='healpix', spec_wavelims=(3550, 9900),
+                phot_wavelims=(0.1, 35), fastphot=False, fitstack=False,
+                outprefix=None, no_smooth_continuum=False, emline_snrmin=0.0,
                 nsmoothspec=1, outdir=None, inputz=None):
     """QA plot the emission-line spectrum and best-fitting model.
 
@@ -160,6 +160,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
     import astropy.units as u
     from astropy.io import fits
     from astropy.wcs import WCS
+    from astropy.table import Table
     import seaborn as sns
     from PIL import Image, ImageDraw
 
@@ -266,8 +267,8 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
 
     leg = {
         'z': '$z={:.7f}$'.format(redshift),
-        'rchi2_phot': r'$\chi^{2}_{\nu,\mathrm{phot}}=$'+r'${:.2f}$'.format(fastspec['RCHI2_PHOT']),
-        'dn4000_model': r'$D_{n}(4000)_{\mathrm{model}}=$'+r'${:.3f}$'.format(fastspec['DN4000_MODEL']),
+        'rchi2_phot': r'$\chi^{2}_{\nu,\mathrm{phot}}=$'+r'${:.2f}$'.format(specphot['RCHI2_PHOT']),
+        'dn4000_model': r'$D_{n}(4000)_{\mathrm{model}}=$'+r'${:.3f}$'.format(specphot['DN4000_MODEL']),
         }
 
     for key, label, col, fmt, units in zip(
@@ -276,8 +277,8 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             ['AGE', 'TAUV', 'LOGMSTAR', 'SFR', 'ZZSUN'],
             ['{:.2f}', '{:.2f}', '{:.2f}', '{:.1f}', '{:.1f}'],
             [' Gyr', '', '', r' $M_{\odot}/\mathrm{yr}$', '']):
-        val = fastspec[col]
-        val_ivar = fastspec[f'{col}_IVAR']
+        val = specphot[col]
+        val_ivar = specphot[f'{col}_IVAR']
         if val_ivar > 0.:
             val_sig = 1. / np.sqrt(val_ivar)
             strval = '$' + fmt.format(val) + r'\pm' + fmt.format(val_sig) + '$' + units
@@ -298,15 +299,15 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
 
     leg.update({'absmag_r': '$M_{{{}}}={:.2f}$'.format(
         absmag_rband.lower().replace('decam_', '').replace('sdss_', ''),
-        fastspec['ABSMAG{:02d}_{}'.format(int(10*shift_gband), absmag_rband.upper())])})
+        specphot['ABSMAG{:02d}_{}'.format(int(10*shift_gband), absmag_rband.upper())])})
     if gindx != rindx:
-        gr = (fastspec['ABSMAG{:02d}_{}'.format(int(10*shift_gband), absmag_gband.upper())] -
-              fastspec['ABSMAG{:02d}_{}'.format(int(10*shift_rband), absmag_rband.upper())])
+        gr = (specphot['ABSMAG{:02d}_{}'.format(int(10*shift_gband), absmag_gband.upper())] -
+              specphot['ABSMAG{:02d}_{}'.format(int(10*shift_rband), absmag_rband.upper())])
         leg.update({'absmag_gr': '$M_{{{}}}-M_{{{}}}={:.3f}$'.format(
             absmag_gband.lower(), absmag_rband.lower(), gr).replace('decam_', '').replace('sdss_', '')})
     if zindx != rindx:
-        rz = (fastspec['ABSMAG{:02d}_{}'.format(int(10*shift_rband), absmag_rband.upper())] -
-              fastspec['ABSMAG{:02d}_{}'.format(int(10*shift_zband), absmag_zband.upper())])
+        rz = (specphot['ABSMAG{:02d}_{}'.format(int(10*shift_rband), absmag_rband.upper())] -
+              specphot['ABSMAG{:02d}_{}'.format(int(10*shift_zband), absmag_zband.upper())])
         leg.update({'absmag_rz': '$M_{{{}}}-M_{{{}}}={:.3f}$'.format(
             absmag_rband.lower(), absmag_zband.lower(), rz).replace('decam_', '').replace('sdss_', '')})
 
@@ -314,16 +315,16 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
     #leg['zwarn'] = '$z_{{\\rm warn}}={}$'.format(metadata['ZWARN'])
 
     if fastphot:
-        leg['vdisp'] = r'$\sigma_{star}=$'+'{:.0f}'.format(fastspec['VDISP'])+' km/s'
+        leg['vdisp'] = r'$\sigma_{star}=$'+'{:.0f}'.format(specphot['VDISP'])+' km/s'
     else:
-        if fastspec['VDISP_IVAR'] > 0:
-            leg['vdisp'] = r'$\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(fastspec['VDISP'], 1./np.sqrt(fastspec['VDISP_IVAR']))
+        if specphot['VDISP_IVAR'] > 0:
+            leg['vdisp'] = r'$\sigma_{{star}}={:.0f}\pm{:.0f}$ km/s'.format(
+                specphot['VDISP'], 1./np.sqrt(specphot['VDISP_IVAR']))
         else:
-            leg['vdisp'] = r'$\sigma_{{star}}={:g}$ km/s'.format(fastspec['VDISP'])
-        #leg['vdisp'] = r'$\sigma_{{star}}={:.0f}$ km/s'.format(fastspec['VDISP'])
+            leg['vdisp'] = r'$\sigma_{{star}}={:g}$ km/s'.format(specphot['VDISP'])
 
-        leg['rchi2'] = r'$\chi^{2}_{\nu,\mathrm{specphot}}$='+'{:.2f}'.format(fastspec['RCHI2'])
-        leg['rchi2_cont'] = r'$\chi^{2}_{\nu,\mathrm{cont}}$='+'{:.2f}'.format(fastspec['RCHI2_CONT'])
+        leg['rchi2'] = r'$\chi^{2}_{\nu,\mathrm{specphot}}$='+'{:.2f}'.format(specphot['RCHI2'])
+        leg['rchi2_cont'] = r'$\chi^{2}_{\nu,\mathrm{cont}}$='+'{:.2f}'.format(specphot['RCHI2_CONT'])
 
     if not fitstack:
         if redshift != metadata['Z_RR']:
@@ -342,55 +343,12 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
 
         apercorr = fastspec['APERCORR']
 
-        if fastspec['DN4000_IVAR'] > 0:
-            leg['dn4000_spec'] = r'$D_{n}(4000)_{\mathrm{data}}=$'+r'${:.3f}$'.format(fastspec['DN4000'])
-
-        # kinematics
-        if fastspec['NARROW_Z'] != redshift:
-            if fastspec['NARROW_ZRMS'] > 0:
-                leg['dv_narrow'] = r'$\Delta v_{\mathrm{narrow}}=$'+r'${:.0f}\pm{:.0f}$ km/s'.format(
-                    C_LIGHT*(fastspec['NARROW_Z']-redshift), C_LIGHT*fastspec['NARROW_ZRMS'])
-            else:
-                leg['dv_narrow'] = r'$\Delta v_{\mathrm{narrow}}=$'+r'${:.0f}$ km/s'.format(
-                    C_LIGHT*(fastspec['NARROW_Z']-redshift))
-        if fastspec['NARROW_SIGMA'] != 0.0:
-            if fastspec['NARROW_SIGMARMS'] > 0:
-                leg['sigma_narrow'] = r'$\sigma_{\mathrm{narrow}}=$'+r'${:.0f}\pm{:.0f}$ km/s'.format(
-                    fastspec['NARROW_SIGMA'], fastspec['NARROW_SIGMARMS'])
-            else:
-                leg['sigma_narrow'] = r'$\sigma_{\mathrm{narrow}}=$'+r'${:.0f}$ km/s'.format(fastspec['NARROW_SIGMA'])
-
-        snrcut = 1.5
-        leg_broad, leg_narrow, leg_uv = {}, {}, {}
-
-        if fastspec['UV_Z'] != redshift:
-            if fastspec['UV_ZRMS'] > 0:
-                leg_uv['dv_uv'] = r'$\Delta v_{\mathrm{UV}}=$'+r'${:.0f}\pm{:.0f}$ km/s'.format(
-                    C_LIGHT*(fastspec['UV_Z']-redshift), C_LIGHT*fastspec['UV_ZRMS'])
-            else:
-                leg_uv['dv_uv'] = r'$\Delta v_{\mathrm{UV}}=$'+r'${:.0f}$ km/s'.format(
-                    C_LIGHT*(fastspec['UV_Z']-redshift))
-        if fastspec['UV_SIGMA'] != 0.0:
-            if fastspec['UV_SIGMARMS'] > 0:
-                leg_uv['sigma_uv'] = r'$\sigma_{\mathrm{UV}}$'+r'$={:.0f}\pm{:.0f}$ km/s'.format(
-                    fastspec['UV_SIGMA'], fastspec['UV_SIGMARMS'])
-            else:
-                leg_uv['sigma_uv'] = r'$\sigma_{\mathrm{UV}}=$'+r'${:.0f}$ km/s'.format(fastspec['UV_SIGMA'])
-        if fastspec['BROAD_Z'] != redshift:
-            if fastspec['BROAD_ZRMS'] > 0:
-                leg_broad['dv_broad'] = r'$\Delta v_{\mathrm{broad}}=$'+r'${:.0f}\pm{:.0f}$ km/s'.format(
-                    C_LIGHT*(fastspec['BROAD_Z']-redshift), C_LIGHT*fastspec['BROAD_ZRMS'])
-            else:
-                leg_broad['dv_broad'] = r'$\Delta v_{\mathrm{broad}}=$'+r'${:.0f}$ km/s'.format(
-                    C_LIGHT*(fastspec['BROAD_Z']-redshift))
-        if fastspec['BROAD_SIGMA'] != 0.0:
-            if fastspec['BROAD_SIGMARMS'] > 0:
-                leg_broad['sigma_broad'] = r'$\sigma_{\mathrm{broad}}=$'+r'${:.0f}\pm{:.0f}$ km/s'.format(
-                    fastspec['BROAD_SIGMA'], fastspec['BROAD_SIGMARMS'])
-            else:
-                leg_broad['sigma_broad'] = r'$\sigma_{\mathrm{broad}}=$'+r'${:.0f}$ km/s'.format(fastspec['BROAD_SIGMA'])
+        if specphot['DN4000_IVAR'] > 0:
+            leg['dn4000_spec'] = r'$D_{n}(4000)_{\mathrm{data}}=$'+r'${:.3f}$'.format(specphot['DN4000'])
 
         # emission lines
+        snrcut = 1.5
+        leg_broad, leg_narrow, leg_uv = {}, {}, {}
 
         # UV
         if fastspec['LYALPHA_AMP']*np.sqrt(fastspec['LYALPHA_AMP_IVAR']) > snrcut:
@@ -404,7 +362,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             leg_uv['ewmgii'] = r'EW(MgII)'+r'$={:.1f}$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2803_EW'])+r' $\AA$'
             leg_uv['mgii_doublet'] = r'MgII $\lambda2796/\lambda2803={:.3f}$'.format(fastspec['MGII_DOUBLET_RATIO'])
 
-        leg_broad['linerchi2'] = r'$\chi^{2}_{\nu,\mathrm{line}}=$'+r'${:.2f}$'.format(fastspec['RCHI2_LINE'])
+        leg_broad['linerchi2'] = r'$\chi^{2}_{\nu,\mathrm{line}}=$'+r'${:.2f}$'.format(specphot['RCHI2_LINE'])
         leg_broad['deltachi2'] = r'$\Delta\chi^{2}_{\mathrm{nobroad}}=$'+r'${:.0f}$'.format(fastspec['DELTA_LINECHI2'])
         leg_broad['deltandof'] = r'$\Delta\nu_{\mathrm{nobroad}}=$'+r'${:.0f}$'.format(fastspec['DELTA_LINENDOF'])
 
@@ -461,8 +419,8 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
     if not fitstack:
         sedmodel = CTools.build_stellar_continuum(
             templates.flux_nomvdisp,
-            fastspec['COEFF'] * CTools.massnorm,
-            tauv=fastspec['TAUV'], vdisp=None)
+            specphot['COEFF'] * CTools.massnorm,
+            tauv=specphot['TAUV'], vdisp=None)
 
         sedphot = CTools.continuum_to_photometry(sedmodel,
                                                  phottable=True,
@@ -490,10 +448,83 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
         # "per-camera" and prefix "full" has the cameras h-stacked.
         fullwave = np.hstack(data['wave'])
 
+        EMFit.compute_inrange_lines(redshift, wavelims=(np.min(fullwave), np.max(fullwave)))
+        linetable = EMFit.line_table[EMFit.line_in_range]
+
+        # kinematics
+        narrow_stats, broad_stats, uv_stats = [], [], []
+        for name, isbroad, isbalmer in linetable.iterrows('name', 'isbroad', 'isbalmer'):
+            linesnr = fastspec[f'{name.upper()}_AMP'] * np.sqrt(fastspec[f'{name.upper()}_AMP_IVAR'])
+            linez = redshift + fastspec[f'{name.upper()}_VSHIFT'] / C_LIGHT
+            linesigma = fastspec[f'{name.upper()}_SIGMA']
+            if linesnr > snrcut:
+                if isbroad: # includes UV and broad Balmer lines
+                    if isbalmer:
+                        stats = broad_stats
+                    else:
+                        stats = uv_stats
+                else:
+                    stats = narrow_stats
+                stats.append((linesigma, linez))
+
+        line_stats = Table()
+        for groupname in ['NARROW', 'BROAD', 'UV']:
+            if len(stats) > 0:
+                stats = np.array(stats)
+                sigmas = stats[:, 0]
+                redshifts = stats[:, 1]
+                line_stats[f'{groupname}_SIGMA'] = [np.mean(sigmas)]
+                line_stats[f'{groupname}_SIGMARMS'] = [np.std(sigmas)]
+                line_stats[f'{groupname}_Z'] = [np.mean(redshifts)]
+                line_stats[f'{groupname}_ZRMS'] = [np.std(redshifts)]
+            else:
+                line_stats[f'{groupname}_Z'] = [redshift]
+
+        if line_stats['NARROW_Z'] != redshift:
+            if line_stats['NARROW_ZRMS'] > 0:
+                leg['dv_narrow'] = r'$\Delta v_{\mathrm{narrow}}=$'+r'${:.0f}\pm{:.0f}$ km/s'.format(
+                    C_LIGHT*(line_stats['NARROW_Z'][0]-redshift), C_LIGHT*line_stats['NARROW_ZRMS'][0])
+            else:
+                leg['dv_narrow'] = r'$\Delta v_{\mathrm{narrow}}=$'+r'${:.0f}$ km/s'.format(
+                    C_LIGHT*(line_stats['NARROW_Z'][0]-redshift))
+        if line_stats['NARROW_SIGMA'][0] != 0.0:
+            if line_stats['NARROW_SIGMARMS'][0] > 0:
+                leg['sigma_narrow'] = r'$\sigma_{\mathrm{narrow}}=$'+r'${:.0f}\pm{:.0f}$ km/s'.format(
+                    line_stats['NARROW_SIGMA'][0], line_stats['NARROW_SIGMARMS'][0])
+            else:
+                leg['sigma_narrow'] = r'$\sigma_{\mathrm{narrow}}=$'+r'${:.0f}$ km/s'.format(line_stats['NARROW_SIGMA'][0])
+
+        if line_stats['UV_Z'][0] != redshift:
+            if line_stats['UV_ZRMS'][0] > 0:
+                leg_uv['dv_uv'] = r'$\Delta v_{\mathrm{UV}}=$'+r'${:.0f}\pm{:.0f}$ km/s'.format(
+                    C_LIGHT*(line_stats['UV_Z'][0]-redshift), C_LIGHT*line_stats['UV_ZRMS'][0])
+            else:
+                leg_uv['dv_uv'] = r'$\Delta v_{\mathrm{UV}}=$'+r'${:.0f}$ km/s'.format(
+                    C_LIGHT*(line_stats['UV_Z'][0]-redshift))
+        if line_stats['UV_SIGMA'][0] != 0.0:
+            if line_stats['UV_SIGMARMS'][0] > 0:
+                leg_uv['sigma_uv'] = r'$\sigma_{\mathrm{UV}}$'+r'$={:.0f}\pm{:.0f}$ km/s'.format(
+                    line_stats['UV_SIGMA'][0], line_stats['UV_SIGMARMS'][0])
+            else:
+                leg_uv['sigma_uv'] = r'$\sigma_{\mathrm{UV}}=$'+r'${:.0f}$ km/s'.format(line_stats['UV_SIGMA'][0])
+        if line_stats['BROAD_Z'][0] != redshift:
+            if line_stats['BROAD_ZRMS'][0] > 0:
+                leg_broad['dv_broad'] = r'$\Delta v_{\mathrm{broad}}=$'+r'${:.0f}\pm{:.0f}$ km/s'.format(
+                    C_LIGHT*(line_stats['BROAD_Z'][0]-redshift), C_LIGHT*line_stats['BROAD_ZRMS'][0])
+            else:
+                leg_broad['dv_broad'] = r'$\Delta v_{\mathrm{broad}}=$'+r'${:.0f}$ km/s'.format(
+                    C_LIGHT*(line_stats['BROAD_Z'][0]-redshift))
+        if line_stats['BROAD_SIGMA'][0] != 0.0:
+            if line_stats['BROAD_SIGMARMS'][0] > 0:
+                leg_broad['sigma_broad'] = r'$\sigma_{\mathrm{broad}}=$'+r'${:.0f}\pm{:.0f}$ km/s'.format(
+                    line_stats['BROAD_SIGMA'][0], line_stats['BROAD_SIGMARMS'][0])
+            else:
+                leg_broad['sigma_broad'] = r'$\sigma_{\mathrm{broad}}=$'+r'${:.0f}$ km/s'.format(line_stats['BROAD_SIGMA'][0])
+
         contmodel = CTools.build_stellar_continuum(
-            templates.flux_nolines, fastspec['COEFF'],
-            vdisp=fastspec['VDISP'], conv_pre=templates.conv_pre_nolines,
-            tauv=fastspec['TAUV'])
+            templates.flux_nolines, specphot['COEFF'],
+            vdisp=specphot['VDISP'], conv_pre=templates.conv_pre_nolines,
+            tauv=specphot['TAUV'])
 
         _desicontinuum = CTools.continuum_to_spectroscopy(contmodel, interp=True)
 
@@ -510,7 +541,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
             resid[I] = 0.
             desiresiduals.append(resid)
 
-        if np.all(fastspec['COEFF'] == 0.) or no_smooth_continuum:
+        if np.all(specphot['COEFF'] == 0.) or no_smooth_continuum:
             fullsmoothcontinuum = np.zeros_like(fullwave)
         else:
             fullsmoothcontinuum = CTools.smooth_continuum(
@@ -523,7 +554,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
 
         # full model spectrum
         _desiemlines = EMFit.emlinemodel_bestfit(
-            fastspec, fastspec['Z'], np.hstack(data['wave']), data['res'],
+            fastspec, metadata['Z'], np.hstack(data['wave']), data['res'],
             data['camerapix'], snrcut=emline_snrmin)
         desiemlines = []
         for icam in range(len(data['cameras'])):
@@ -894,9 +925,6 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
 
     # zoom in on individual emission lines - use linetable!
     if not fastphot:
-        EMFit.compute_inrange_lines(redshift, wavelims=(np.min(fullwave), np.max(fullwave)))
-        linetable = EMFit.line_table[EMFit.line_in_range]
-
         nline = len(set(linetable['plotgroup']))
 
         plotsig_default = 200. # [km/s]

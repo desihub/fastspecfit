@@ -1762,9 +1762,8 @@ def select(metadata, specphot, fastfit=None, coadd_type='healpix',
         return np.where(keep)[0]
     else:
         if fastfit is not None:
-            return metadata[keep], specphot[keep], fastfit[keep]
-        else:
-            return metadata[keep], specphot[keep]
+            fastfit = fastfit[keep]
+        return metadata[keep], specphot[keep], fastfit
 
 
 def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
