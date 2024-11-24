@@ -293,22 +293,19 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
     shift_rband = phot.band_shift[rindx]
     shift_zband = phot.band_shift[zindx]
 
-    leg.update({'absmag_r': '$M_{{{}}}={:.2f}$'.format(
-        absmag_rband.lower().replace('decam_', '').replace('sdss_', ''),
-        specphot['ABSMAG{:02d}_{}'.format(int(10*shift_gband), absmag_rband.upper())])})
+    leg.update({'absmag_r': '$M_{{{}{}}}={:.2f}$'.format(
+        str(shift_rband), absmag_rband.lower().replace('decam_', '').replace('sdss_', ''),
+        specphot['ABSMAG{:02d}_{}'.format(int(10*shift_rband), absmag_rband.upper())])})
     if gindx != rindx:
         gr = (specphot['ABSMAG{:02d}_{}'.format(int(10*shift_gband), absmag_gband.upper())] -
               specphot['ABSMAG{:02d}_{}'.format(int(10*shift_rband), absmag_rband.upper())])
-        leg.update({'absmag_gr': '$M_{{{}}}-M_{{{}}}={:.3f}$'.format(
-            absmag_gband.lower(), absmag_rband.lower(), gr).replace('decam_', '').replace('sdss_', '')})
+        leg.update({'absmag_gr': '$M_{{{}{}}}-M_{{{}{}}}={:.3f}$'.format(
+            str(shift_gband), absmag_gband.lower(), str(shift_rband), absmag_rband.lower(), gr).replace('decam_', '').replace('sdss_', '')})
     if zindx != rindx:
         rz = (specphot['ABSMAG{:02d}_{}'.format(int(10*shift_rband), absmag_rband.upper())] -
               specphot['ABSMAG{:02d}_{}'.format(int(10*shift_zband), absmag_zband.upper())])
-        leg.update({'absmag_rz': '$M_{{{}}}-M_{{{}}}={:.3f}$'.format(
-            absmag_rband.lower(), absmag_zband.lower(), rz).replace('decam_', '').replace('sdss_', '')})
-
-    #leg['radec'] = '$(\\alpha,\\delta)=({:.7f},{:.6f})$'.format(metadata['RA'], metadata['DEC'])
-    #leg['zwarn'] = '$z_{{\\rm warn}}={}$'.format(metadata['ZWARN'])
+        leg.update({'absmag_rz': '$M_{{{}{}}}-M_{{{}{}}}={:.3f}$'.format(
+            str(shift_rband), absmag_rband.lower(), str(shift_zband), absmag_zband.lower(), rz).replace('decam_', '').replace('sdss_', '')})
 
     if fastphot:
         leg['vdisp'] = r'$\sigma_{star}=$'+'{:.0f}'.format(specphot['VDISP'])+' km/s'

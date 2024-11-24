@@ -87,6 +87,32 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
         nanomaggies=True, lambda_eff=filters.effective_wavelengths.value,
         min_uncertainty=phot.min_uncertainty)
 
+    # Optionally add the fiber photometry; note that the transmission
+    # factors were computed in DESISpectra.read.
+    if hasattr(phot, 'fiber_filters'):
+        fiber_filters = phot.fiber_filters[specdata['photsys']]
+
+        mw_transmission_fiberflux = specdata['mw_transmission_fiberflux']
+
+        fibermaggies = np.zeros(len(phot.fiber_bands))
+        fibertotmaggies = np.zeros(len(phot.fiber_bands))
+        #ivarfibermaggies = np.zeros(len(phot.fiber_bands))
+
+        for iband, band in enumerate(phot.fiber_bands):
+            band = band.upper()
+            fibermaggies[iband] = meta[f'FIBERFLUX_{band}'] / mw_transmission_fiberflux[iband]
+            fibertotmaggies[iband] = meta[f'FIBERTOTFLUX_{band}'] / mw_transmission_fiberflux[iband]
+
+        lambda_eff=fiber_filters.effective_wavelengths.value
+        specdata['fiberphot'] = Photometry.parse_photometry(phot.fiber_bands,
+                                                            maggies=fibermaggies,
+                                                            nanomaggies=True,
+                                                            lambda_eff=lambda_eff)
+        specdata['fibertotphot'] = Photometry.parse_photometry(phot.fiber_bands,
+                                                               maggies=fibertotmaggies,
+                                                               nanomaggies=True,
+                                                               lambda_eff=lambda_eff)
+
     if not fastphot:
         from desiutil.dust import dust_transmission
         from fastspecfit.util import median, ivar2var
@@ -216,32 +242,6 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
 
         specdata.update(pix)
         del pix
-
-        # Optionally add the fiber photometry; note that the transmission
-        # factors were computed in DESISpectra.read.
-        if hasattr(phot, 'fiber_filters'):
-            fiber_filters = phot.fiber_filters[specdata['photsys']]
-
-            mw_transmission_fiberflux = specdata['mw_transmission_fiberflux']
-
-            fibermaggies = np.zeros(len(phot.fiber_bands))
-            fibertotmaggies = np.zeros(len(phot.fiber_bands))
-            #ivarfibermaggies = np.zeros(len(phot.fiber_bands))
-
-            for iband, band in enumerate(phot.fiber_bands):
-                band = band.upper()
-                fibermaggies[iband] = meta[f'FIBERFLUX_{band}'] / mw_transmission_fiberflux[iband]
-                fibertotmaggies[iband] = meta[f'FIBERTOTFLUX_{band}'] / mw_transmission_fiberflux[iband]
-
-            lambda_eff=fiber_filters.effective_wavelengths.value
-            specdata['fiberphot'] = Photometry.parse_photometry(phot.fiber_bands,
-                                                                maggies=fibermaggies,
-                                                                nanomaggies=True,
-                                                                lambda_eff=lambda_eff)
-            specdata['fibertotphot'] = Photometry.parse_photometry(phot.fiber_bands,
-                                                                   maggies=fibertotmaggies,
-                                                                   nanomaggies=True,
-                                                                   lambda_eff=lambda_eff)
 
         # Optionally synthesize photometry from the coadded spectrum.
         if synthphot:
@@ -1066,6 +1066,8 @@ class DESISpectra(object):
                         'dmodulus': dmod[iobj],
                         'tuniv': tuniv[iobj],
                         }
+                    if mw_transmission_fiberflux is not None:
+                        specdata.update({'mw_transmission_fiberflux': mw_transmission_fiberflux[iobj, :]})
                     alldata.append(specdata)
             else:
                 # Don't use .select since meta and spec can be sorted

@@ -45,18 +45,17 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
                      synthphot=True, debug_plots=debug_plots)
 
     # Copy parsed photometry from the 'data' dictionary to the 'meta' table.
-    if not fastphot:
-        if not fitstack:
-            flux = data['photometry']['nanomaggies']
-            fluxivar = data['photometry']['nanomaggies_ivar']
-            for iband, band in enumerate(phot.bands):
-                meta[f'FLUX_{band.upper()}'] = flux[iband]
-                meta[f'FLUX_IVAR_{band.upper()}'] = fluxivar[iband]
+    if not fitstack:
+        flux = data['photometry']['nanomaggies']
+        fluxivar = data['photometry']['nanomaggies_ivar']
+        for iband, band in enumerate(phot.bands):
+            meta[f'FLUX_{band.upper()}'] = flux[iband]
+            meta[f'FLUX_IVAR_{band.upper()}'] = fluxivar[iband]
 
-            if hasattr(phot, 'fiber_bands'):
-                fibertotflux = data['fiberphot']['nanomaggies']
-                for iband, band in enumerate(phot.fiber_bands):
-                    meta[f'FIBERTOTFLUX_{band.upper()}'] = fibertotflux[iband]
+        if hasattr(phot, 'fiber_bands'):
+            fibertotflux = data['fiberphot']['nanomaggies']
+            for iband, band in enumerate(phot.fiber_bands):
+                meta[f'FIBERTOTFLUX_{band.upper()}'] = fibertotflux[iband]
 
     # output structures
     fastfit = BoxedScalar(fastfit_dtype)
