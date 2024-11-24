@@ -1466,31 +1466,35 @@ class DESISpectra(object):
         return metas
 
 
-def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
+def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_columns=None,
+                     fastspec_columns=None, read_models=False):
     """Read the fitting results.
 
     """
     if os.path.isfile(fastfitfile):
-        if 'FASTSPEC' in fitsio.FITS(fastfitfile):
+        F = fitsio.FITS(fastfitfile)
+        meta = Table(F['METADATA'].read(rows=rows, columns=metadata_columns))
+        specphot = Table(F['SPECPHOT'].read(rows=rows, columns=specphot_columns))
+
+        if 'FASTSPEC' in F:
             fastphot = False
-            ext = 'FASTSPEC'
+            fastfit = Table(F['FASTSPEC'].read(rows=rows, columns=fastspec_columns))
+            if read_models:
+                models = F['MODELS'].read()
+                if rows is not None:
+                    models = models[rows, :, :]
+            else:
+                models = None
         else:
             fastphot = True
-            ext = 'FASTPHOT'
-
-        fastfit = Table(fitsio.read(fastfitfile, ext=ext, rows=rows, columns=columns))
-        meta = Table(fitsio.read(fastfitfile, ext='METADATA', rows=rows, columns=columns))
-        if read_models and ext == 'FASTSPEC':
-            models = fitsio.read(fastfitfile, ext='MODELS')
-            if rows is not None:
-                models = models[rows, :, :]
-        else:
+            fastfit = None
             models = None
-        log.info(f'Read {len(fastfit):,d} object(s) from {fastfitfile}')
+
+        log.info(f'Read {len(specphot):,d} object(s) from {fastfitfile}')
 
         # Add specprod to the metadata table so that we can stack across
         # productions (e.g., Fuji+Guadalupe).
-        hdr = fitsio.read_header(fastfitfile, ext=0)#, ext='PRIMARY')
+        hdr = F[0].read_header()
 
         if 'SPECPROD' in hdr:
             specprod = hdr['SPECPROD']
@@ -1502,16 +1506,16 @@ def read_fastspecfit(fastfitfile, rows=None, columns=None, read_models=False):
             coadd_type = None
 
         if read_models:
-            return fastfit, meta, coadd_type, fastphot, models
+            return meta, specphot, fastfit, coadd_type, fastphot, models
         else:
-            return fastfit, meta, coadd_type, fastphot
+            return meta, specphot, fastfit, coadd_type, fastphot
 
     else:
         log.warning(f'File {fastfitfile} not found.')
         if read_models:
-            return [None]*5
+            return [None]*6
         else:
-            return [None]*4
+            return [None]*5
 
 
 def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
@@ -1726,35 +1730,41 @@ def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
     fastqa(args=cmdargs.split())
 
 
-def select(fastfit, metadata, coadd_type, healpixels=None, tiles=None,
-           nights=None, return_index=False):
+def select(metadata, specphot, fastfit=None, coadd_type='healpix',
+           healpixels=None, tiles=None, nights=None, return_index=False):
     """Optionally trim to a particular healpix or tile and/or night."""
-    keep = np.ones(len(fastfit), bool)
+    nobj = len(metadata)
     if coadd_type == 'healpix':
-        if healpixels:
-            pixelkeep = np.zeros(len(fastfit), bool)
-            for healpixel in healpixels:
-                pixelkeep = np.logical_or(pixelkeep, metadata['HEALPIX'].astype(str) == healpixel)
-            keep = np.logical_and(keep, pixelkeep)
-            log.info('Keeping {:,d} objects from healpixels(s) {}'.format(len(fastfit), ','.join(healpixels)))
+        if healpixels is not None:
+            strpixels = ','.join(healpixels)
+            keep = np.isin(metadata['HEALPIX'].astype(str), healpixels)
+            log.info(f'Keeping {np.sum(keep):,d}/{nobj:,d} objects from healpixels(s) {strpixels}')
+        else:
+            keep = np.ones(nobj, bool)
     else:
-        if tiles:
-            tilekeep = np.zeros(len(fastfit), bool)
-            for tile in tiles:
-                tilekeep = np.logical_or(tilekeep, metadata['TILEID'].astype(str) == tile)
-            keep = np.logical_and(keep, tilekeep)
-            log.info('Keeping {:,d} objects from tile(s) {}'.format(len(fastfit), ','.join(tiles)))
-        if nights and 'NIGHT' in metadata:
-            nightkeep = np.zeros(len(fastfit), bool)
-            for night in nights:
-                nightkeep = np.logical_or(nightkeep, metadata['NIGHT'].astype(str) == night)
-            keep = np.logical_and(keep, nightkeep)
-            log.info('Keeping {:,d} objects from night(s) {}'.format(len(fastfit), ','.join(nights)))
+        if tiles is not None and nights is not None:
+            strtiles = ','.join(tiles)
+            strnights = ','.join(nights)
+            keep = np.isin(metadata['TILEID'].astype(str), tiles) * np.isin(metadata['NIGHT'].astype(str), nights)
+            log.info(f'Keeping {np.sum(keep):,d}/{nobj:,d} objects from tile(s) {strtiles} and night(s) {strnights}')
+        elif tiles is not None and nights is None:
+            strtiles = ','.join(tiles)
+            keep = np.isin(metadata['TILEID'].astype(str), tiles)
+            log.info(f'Keeping {np.sum(keep):,d}/{nobj:,d} objects from tile(s) {strtiles}')
+        elif tiles is None and nights is not None:
+            strnights = ','.join(nights)
+            keep = np.isin(metadata['NIGHT'].astype(str), nights)
+            log.info(f'Keeping {np.sum(keep):,d}/{nobj:,d} objects from night(s) {strnights}')
+        else:
+            keep = np.ones(nobj, bool) # keep everything
 
     if return_index:
         return np.where(keep)[0]
     else:
-        return fastfit[keep], metadata[keep]
+        if fastfit is not None:
+            return metadata[keep], specphot[keep], fastfit[keep]
+        else:
+            return metadata[keep], specphot[keep]
 
 
 def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],

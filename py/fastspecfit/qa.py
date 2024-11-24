@@ -105,14 +105,13 @@ def format_niceline(line):
             return line
 
 
-def desiqa_one(data, fastfit, metadata, coadd_type, minspecwave=3500.,
+def desiqa_one(data, metadata, specphot, fastfit, coadd_type, minspecwave=3500.,
                maxspecwave=9900., minphotwave=0.1, maxphotwave=35.,
                emline_snrmin=0.0, nsmoothspec=1, init_sigma_uv=None,
                init_sigma_narrow=None, init_sigma_balmer=None,
                init_vshift_uv=None, init_vshift_narrow=None,
                init_vshift_balmer=None, fastphot=False, fitstack=False,
-               inputz=False, no_smooth_continuum=False,
-               outdir=None, outprefix=None):
+               inputz=False, no_smooth_continuum=False, outdir=None, outprefix=None):
     """Multiprocessing wrapper to generate QA for a single object.
 
     """
@@ -218,7 +217,7 @@ def qa_fastspec(data, templates, fastspec, metadata, coadd_type='healpix',
 
     filters = phot.synth_filters[metadata['PHOTSYS']]
     allfilters = phot.filters[metadata['PHOTSYS']]
-    redshift = fastspec['Z']
+    redshift = metadata['Z']
 
     if inputz is not None:
         dlum = cosmo.luminosity_distance(redshift)
@@ -1365,7 +1364,7 @@ def fastqa(args=None, comm=None):
 
     # NB: read_fastspecfit does not use any of the single-copy structures
     # allocated below.
-    fastfit, metadata, coadd_type, fastphot = \
+    metadata, specphot, fastfit, coadd_type, fastphot = \
         read_fastspecfit(args.fastfitfile[0])
 
     if coadd_type == 'custom' and args.redrockfiles is None:
@@ -1376,22 +1375,27 @@ def fastqa(args=None, comm=None):
     # parse the targetids optional input
     if args.targetids:
         targetids = [int(x) for x in args.targetids.split(',')]
-        keep = np.isin(fastfit['TARGETID'], targetids)
+        keep = np.isin(specphot['TARGETID'], targetids)
         if not np.any(keep):
             log.warning('No matching targetids found!')
             return
-        fastfit = fastfit[keep]
+        specphot = specphot[keep]
         metadata = metadata[keep]
+        if not fastphot:
+            fastfit = fastfit[keep]
 
     if args.ntargets is not None:
         keep = np.arange(args.firsttarget,
                          args.firsttarget + args.ntargets)
         log.info(f'Keeping {args.ntargets} targets.')
-        fastfit = fastfit[keep]
+        specphot = specphot[keep]
         metadata = metadata[keep]
+        if not fastphot:
+            fastfit = fastfit[keep]
 
-    fastfit, metadata = select(fastfit, metadata, coadd_type, healpixels=args.healpix,
-                               tiles=args.tile, nights=args.night)
+    metadata, specphot, fastfit = select(
+        metadata, specphot, fastfit=fastfit, coadd_type=coadd_type,
+        healpixels=args.healpix, tiles=args.tile, nights=args.night)
 
     pngfile = get_qa_filename(metadata, coadd_type, outprefix=args.outprefix,
                               outdir=args.outdir, fastphot=fastphot)
@@ -1406,8 +1410,10 @@ def fastqa(args=None, comm=None):
         J = ~I
         if np.sum(J) > 0:
             log.info(f'Skipping {np.sum(J)} existing QA files.')
-            fastfit = fastfit[I]
             metadata = metadata[I]
+            specphot = specphot[I]
+            if not fastphot:
+                fastfit = fastfit[I]
 
         if len(metadata) == 0:
             log.info('Done making all QA files!')
@@ -1466,18 +1472,18 @@ def fastqa(args=None, comm=None):
 
     def _wrap_qa(redrockfile, indx=None, fitstack=False):
         if indx is None:
-            indx = np.arange(len(fastfit))
+            indx = np.arange(len(metadata))
 
         if fitstack:
-            stackids = fastfit['STACKID'][indx]
+            stackids = metadata['STACKID'][indx]
             data, meta = Spec.read_stacked([redrockfile, ], stackids=stackids)
 
             minspecwave = np.min(data[0]['coadd_wave']) - 20.
             maxspecwave = np.max(data[0]['coadd_wave']) + 20.
         else:
-            targetids = fastfit['TARGETID'][indx]
+            targetids = metadata['TARGETID'][indx]
             if inputz:
-                input_redshifts = fastfit['Z'][indx]
+                input_redshifts = metadata['Z'][indx]
             else:
                 input_redshifts = None
 
@@ -1491,14 +1497,7 @@ def fastqa(args=None, comm=None):
             minspecwave = args.minspecwave
             maxspecwave = args.maxspecwave
 
-            if 'INIT_SIGMA_UV' in fastfit.columns:
-                init_sigma_uv = fastfit['INIT_SIGMA_UV'][indx].value
-                init_sigma_narrow = fastfit['INIT_SIGMA_NARROW'][indx].value
-                init_sigma_balmer = fastfit['INIT_SIGMA_BALMER'][indx].value
-                init_vshift_uv = fastfit['INIT_VSHIFT_UV'][indx].value
-                init_vshift_narrow = fastfit['INIT_VSHIFT_NARROW'][indx].value
-                init_vshift_balmer = fastfit['INIT_VSHIFT_BALMER'][indx].value
-            else:
+            if fastphot:
                 nindx = len(indx)
                 init_sigma_uv = [None] * nindx
                 init_sigma_narrow = [None] * nindx
@@ -1507,30 +1506,38 @@ def fastqa(args=None, comm=None):
                 init_vshift_narrow = [None] * nindx
                 init_vshift_balmer = [None] * nindx
 
-        qaargs = [{
-            'data':                data[igal],
-            'fastfit':             fastfit[indx[igal]],
-            'metadata':            metadata[indx[igal]],
-            'coadd_type':          coadd_type,
-            'minspecwave':         minspecwave,
-            'maxspecwave':         maxspecwave,
-            'minphotwave':         args.minphotwave,
-            'maxphotwave':         args.maxphotwave,
-            'emline_snrmin':       args.emline_snrmin,
-            'nsmoothspec':         args.nsmoothspec,
-            'init_sigma_uv':       init_sigma_uv[igal],
-            'init_sigma_narrow':   init_sigma_narrow[igal],
-            'init_sigma_balmer':   init_sigma_balmer[igal],
-            'init_vshift_uv':      init_vshift_uv[igal],
-            'init_vshift_narrow':  init_vshift_narrow[igal],
-            'init_vshift_balmer':  init_vshift_balmer[igal],
-            'fastphot':            fastphot,
-            'fitstack':            fitstack,
-            'inputz':              inputz,
-            'no_smooth_continuum': no_smooth_continuum,
-            'outdir':              args.outdir,
-            'outprefix':           args.outprefix
-        } for igal in range(len(indx)) ]
+        qaargs = []
+        for igal in range(len(indx)):
+            qaargs1 = {
+                'data':                data[igal],
+                'metadata':            metadata[indx[igal]],
+                'specphot':            specphot[indx[igal]],
+                'coadd_type':          coadd_type,
+                'minspecwave':         minspecwave,
+                'maxspecwave':         maxspecwave,
+                'minphotwave':         args.minphotwave,
+                'maxphotwave':         args.maxphotwave,
+                'emline_snrmin':       args.emline_snrmin,
+                'nsmoothspec':         args.nsmoothspec,
+                'fastphot':            fastphot,
+                'fitstack':            fitstack,
+                'inputz':              inputz,
+                'no_smooth_continuum': no_smooth_continuum,
+                'outdir':              args.outdir,
+                'outprefix':           args.outprefix,
+            }
+            if not fastphot:
+                qaargs1.update({'fastfit': fastfit[indx[igal]]})
+                if 'INIT_SIGMA_UV' in fastfit.columns:
+                    qaargs1.update({
+                        'init_sigma_uv':      fastfit['INIT_SIGMA_UV'][indx[igal]],
+                        'init_sigma_narrow':  fastfit['INIT_SIGMA_NARROW'][indx[igal]],
+                        'init_sigma_balmer':  fastfit['INIT_SIGMA_BALMER'][indx[igal]],
+                        'init_vshift_uv':     fastfit['INIT_VSHIFT_UV'][indx[igal]],
+                        'init_vshift_narrow': fastfit['INIT_VSHIFT_NARROW'][indx[igal]],
+                        'init_vshift_balmer': fastfit['INIT_VSHIFT_BALMER'][indx[igal]],
+                        })
+            qaargs.append(qaargs1)
 
         # desiqa_one has no return value, but we need
         # to step through its output iterator so that
