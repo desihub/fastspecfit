@@ -146,7 +146,7 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
     """QA plot the emission-line spectrum and best-fitting model.
 
     """
-    import subprocess
+    from urllib.request import urlretrieve
     from scipy.ndimage import median_filter
 
     import matplotlib.pyplot as plt
@@ -157,12 +157,9 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
     import matplotlib.gridspec as gridspec
     import matplotlib.image as mpimg
 
-    import astropy.units as u
     from astropy.io import fits
     from astropy.wcs import WCS
     from astropy.table import Table
-    import seaborn as sns
-    from PIL import Image, ImageDraw
 
     from fastspecfit.util import ivar2var, C_LIGHT, FLUXNORM, median
     from fastspecfit.io import get_qa_filename
@@ -171,8 +168,7 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
     from fastspecfit.emlines import EMFitTools
     from fastspecfit.emline_fit import EMLine_MultiLines
 
-    Image.MAX_IMAGE_PIXELS = None
-
+    import seaborn as sns
     sns.set(context='talk', style='ticks', font_scale=1.3)#, rc=rc)
 
     if fitstack:
@@ -183,7 +179,7 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
         col2 = ["#003f91", "#007f5f", "#9b2226"]
         col1 = ["#468fcc", "#4caf81", "#e07a75"]
 
-    photcol1 = colors.to_hex('navy') # darkorange
+    photcol1 = colors.to_hex('darkorange') # navy
 
     @ticker.FuncFormatter
     def major_formatter(x, pos):
@@ -460,15 +456,16 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
             if linesnr > snrcut:
                 if isbroad: # includes UV and broad Balmer lines
                     if isbalmer:
-                        stats = broad_stats
+                        broad_stats.append((linesigma, linez))
                     else:
-                        stats = uv_stats
+                        uv_stats.append((linesigma, linez))
                 else:
-                    stats = narrow_stats
-                stats.append((linesigma, linez))
+                    narrow_stats.append((linesigma, linez))
+                print(name, linesigma, linez)
 
         line_stats = Table()
-        for groupname in ['NARROW', 'BROAD', 'UV']:
+        for groupname, stats in zip(['NARROW', 'BROAD', 'UV'],
+                                    [narrow_stats, broad_stats, uv_stats]):
             if len(stats) > 0:
                 stats = np.array(stats)
                 sigmas = stats[:, 0]
@@ -478,7 +475,10 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
                 line_stats[f'{groupname}_Z'] = [np.mean(redshifts)]
                 line_stats[f'{groupname}_ZRMS'] = [np.std(redshifts)]
             else:
+                line_stats[f'{groupname}_SIGMA'] = [0.]
+                line_stats[f'{groupname}_SIGMARMS'] = [0.]
                 line_stats[f'{groupname}_Z'] = [redshift]
+                line_stats[f'{groupname}_ZRMS'] = [0.]
 
         if line_stats['NARROW_Z'] != redshift:
             if line_stats['NARROW_ZRMS'] > 0:
@@ -583,19 +583,22 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
 
         cutoutjpeg = os.path.join(outdir, 'tmp.'+os.path.basename(pngfile.replace('.png', '.jpeg')))
         if not os.path.isfile(cutoutjpeg):
-            wait = 5 # seconds
-            cmd = 'wget -q -O {outfile} https://www.legacysurvey.org/viewer/jpeg-cutout?ra={ra}&dec={dec}&width={width}&height={height}&layer={layer}'
-            cmd = cmd.format(outfile=cutoutjpeg, ra=metadata['RA'], dec=metadata['DEC'],
-                             width=width, height=height, layer=layer)
-            log.info(cmd)
+
+            import socket
+            wait = 5 # wait 5 seconds
+            socket.setdefaulttimeout(wait)
+
+            url = 'https://www.legacysurvey.org/viewer/jpeg-cutout?ra=' + \
+                f'{metadata["RA"]}&dec={metadata["DEC"]}&width={width}&height={height}&layer={layer}'
+            log.info(url)
             try:
-                subprocess.check_output(cmd.split(), stderr=subprocess.DEVNULL, timeout=wait)
+                urlretrieve(url, cutoutjpeg)
             except:
-                log.warning('No cutout from viewer after {} seconds; stopping wget'.format(wait))
+                log.warning(f'No viewer cutout retrieved after {wait} seconds.')
         try:
             img = mpimg.imread(cutoutjpeg)
         except:
-            log.warning('Problem reading cutout for targetid {}.'.format(metadata['TARGETID']))
+            log.warning(f'Problem reading cutout for targetid {metadata["TARGETID"]}.')
             img = np.zeros((height, width, 3))
 
         if os.path.isfile(cutoutjpeg):
