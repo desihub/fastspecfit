@@ -1100,13 +1100,13 @@ class EMFitTools(object):
             isbroad, isbalmer = mline['isbroad'], mline['isbalmer']
 
             def get_moments(values, emlineflux_s):
-                """ Get first three moments of patch flux distribution
+                """Get first three (non-parametric) moments of the flux
+                distribution in a given patch centered on a given line.
+
                 """
                 linezwave = restwave * (1. + redshift + values[line_vshift] / C_LIGHT)
                 linesigma = values[line_sigma] # [km/s]
 
-                # FIXME: should we use the value of linesigma returned from this
-                # fcn here (it replaces a zero sigma with a default value)?
                 linesigma, _, linesigma_ang_window, _ = preprocess_linesigma(
                     linesigma, linezwave, isbroad, isbalmer)
 
