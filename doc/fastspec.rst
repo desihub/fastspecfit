@@ -196,136 +196,140 @@ Required Data Table Columns
 
 .. rst-class:: columns
 
-============================ ============ ============================= ============================================
-Name                         Type         Units                         Description
-============================ ============ ============================= ============================================
-                    TARGETID        int64                               Unique target ID.
-                 SURVEY [1]_       bytes3                               Survey name.
-                PROGRAM [1]_       bytes6                               Program name.
-                HEALPIX [1]_        int32                               Healpixel number.
-                 TILEID [2]_        int32                               Tile ID number.
-                  NIGHT [2]_        int32                               Night of observation.
-                  FIBER [2]_        int32                               Fiber number.
-                  EXPID [3]_        int32                               Exposure ID number.
-                        SEED        int64                               Random seed used for Monte Carlo realizations.
-                       COEFF   float32[5]  1e-17 erg / (Angstrom cm2 s) Stellar continuum coefficients.
-                       RCHI2      float32                               Reduced chi-squared of the full-spectrophotometric fit.
-                  RCHI2_LINE      float32                               Reduced chi-squared of the emission-line model fit.
-                  RCHI2_CONT      float32                               Reduced chi-squared of the fit to the stellar continuum.
-                  RCHI2_PHOT      float32                               Reduced chi-squared of the fit to the broadband photometry.
-                       VDISP      float32                        km / s Stellar velocity dispersion.
-                  VDISP_IVAR      float32                      s2 / km2 Inverse variance of VDISP.
-                        TAUV      float32                               *V*-band dust optical depth of the integrated stellar population.
-                   TAUV_IVAR      float32                               Inverse variance of TAUV.
-                         AGE      float32                           Gyr Light-weighted age.
-                    AGE_IVAR      float32                      1 / Gyr2 Inverse variance of AGE.
-                       ZZSUN      float32                               Logarithmic stellar metallicity relative to solar.
-                  ZZSUN_IVAR      float32                               Inverse variance of ZZSUN.
-                    LOGMSTAR      float32                          Msun Logarithmic stellar mass (h=1.0, Chabrier+2003 initial mass function).
-               LOGMSTAR_IVAR      float32                     1 / Msun2 Inverse variance of LOGMSTAR.
-                         SFR      float32                     Msun / yr Instantaneous star formation rate (h=1.0, Chabrier+2003 initial mass function).
-                    SFR_IVAR      float32                   yr2 / Msun2 Inverse variance of SFR.
-                      DN4000      float32                               Narrow 4000-A break index (from Balogh et al. 1999) measured from the emission-line subtracted spectrum.
-                  DN4000_OBS      float32                               Narrow 4000-A break index measured from the observed spectrum.
-                 DN4000_IVAR      float32                               Inverse variance of DN4000_OBS and of DN4000.
-                DN4000_MODEL      float32                               Narrow 4000-A break index measured from the best-fitting continuum model.
-           DN4000_MODEL_IVAR      float32                               Inverse variance of DN4000_MODEL.
-                FLUX_SYNTH_G      float32                          nmgy *g*-band flux (in the PHOTSYS photometric system) synthesized from the observed spectrum.
-                FLUX_SYNTH_R      float32                          nmgy Like FLUX_SYNTH_G but for the *r*-band.
-                FLUX_SYNTH_Z      float32                          nmgy Like FLUX_SYNTH_G but for the *z*-band.
-      FLUX_SYNTH_SPECMODEL_G      float32                          nmgy *g*-band flux (in the PHOTSYS photometric system) synthesized from the best-fitting spectroscopic model.
-      FLUX_SYNTH_SPECMODEL_R      float32                          nmgy Like FLUX_SYNTH_SPECMODEL_G but in the *r*-band.
-      FLUX_SYNTH_SPECMODEL_Z      float32                          nmgy Like FLUX_SYNTH_SPECMODEL_G but in the *z*-band.
-      FLUX_SYNTH_PHOTMODEL_G      float32                          nmgy *g*-band flux (in the PHOTSYS photometric system) synthesized from the best-fitting photometric continuum model.
-      FLUX_SYNTH_PHOTMODEL_R      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the *r*-band.
-      FLUX_SYNTH_PHOTMODEL_Z      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the *z*-band.
-     FLUX_SYNTH_PHOTMODEL_W1      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the *W1*-band.
-     FLUX_SYNTH_PHOTMODEL_W2      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the *W2*-band.
-     FLUX_SYNTH_PHOTMODEL_W3      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the *W3*-band.
-     FLUX_SYNTH_PHOTMODEL_W4      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the *W4*-band.
-       ABSMAG10_DECAM_G [4]_      float32                           mag Absolute magnitude in DECam *g*-band band-shifted to z=1.0 assuming h=1.0.
-       ABSMAG10_IVAR_DECAM_G      float32                      1 / mag2 Inverse variance corresponding to ABSMAG10_DECAM_G.
-      ABSMAG10_SYNTH_DECAM_G      float32                           mag Synthesized absolute magnitude in DECam *g*-band band-shifted to z=1.0 assuming h=1.0.
- ABSMAG10_SYNTH_IVAR_DECAM_G      float32                      1 / mag2 Inverse variance corresponding to ABSMAG10_SYNTH_DECAM_G.
-       ABSMAG10_DECAM_R [4]_      float32                           mag Like ABSMAG10_DECAM_G but for DECam *r*-band.
-       ABSMAG10_IVAR_DECAM_R      float32                      1 / mag2 Like ABSMAG10_IVAR_DECAM_G but for DECam *r*-band.
-      ABSMAG10_SYNTH_DECAM_R      float32                           mag Like ABSMAG10_SYNTH_DECAM_G but for DECam *r*-band.
- ABSMAG10_SYNTH_IVAR_DECAM_R      float32                      1 / mag2 Like ABSMAG10_SYNTH_IVAR_DECAM_G but for DECam *r*-band.
-       ABSMAG10_DECAM_Z [4]_      float32                           mag Like ABSMAG10_DECAM_G but for DECam *z*-band.
-       ABSMAG10_IVAR_DECAM_Z      float32                      1 / mag2 Like ABSMAG10_IVAR_DECAM_G but for DECam *z*-band.
-      ABSMAG10_SYNTH_DECAM_Z      float32                           mag Like ABSMAG10_SYNTH_DECAM_G but for DECam *z*-band.
- ABSMAG10_SYNTH_IVAR_DECAM_Z      float32                      1 / mag2 Like ABSMAG10_SYNTH_IVAR_DECAM_G but for DECam *z*-band.
-             ABSMAG00_U [4]_      float32                           mag Absolute magnitude in Johnson/Cousins *U*-band band-shifted to z=0.0 assuming h=1.0.
-             ABSMAG00_IVAR_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG00_U.
-            ABSMAG00_SYNTH_U      float32                           mag Synthesized absolute magnitude in Johnson/Cousins *U*-band band-shifted to z=0.0 assuming h=1.0.
-       ABSMAG00_SYNTH_IVAR_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG00_SYNTH_U.
-             ABSMAG00_B [4]_      float32                           mag Like ABSMAG00_U but for Johnson/Cousins *B*-band.
-             ABSMAG00_IVAR_B      float32                      1 / mag2 Like ABSMAG00_IVAR_U but for Johnson/Cousins *B*-band.
-            ABSMAG00_SYNTH_B      float32                           mag Like ABSMAG00_SYNTH_U but for Johnson/Cousins *B*-band.
-       ABSMAG00_SYNTH_IVAR_B      float32                      1 / mag2 Like ABSMAG00_SYNTH_IVAR_U but for Johnson/Cousins *B*-band.
-             ABSMAG00_V [4]_      float32                           mag Like ABSMAG00_U but for Johnson/Cousins *V*-band.
-             ABSMAG00_IVAR_V      float32                      1 / mag2 Like ABSMAG00_IVAR_U but for Johnson/Cousins *V*-band.
-            ABSMAG00_SYNTH_V      float32                           mag Like ABSMAG00_SYNTH_U but for Johnson/Cousins *V*-band.
-       ABSMAG00_SYNTH_IVAR_V      float32                      1 / mag2 Like ABSMAG00_SYNTH_IVAR_U but for Johnson/Cousins *V*-band.
-        ABSMAG01_SDSS_U [4]_      float32                           mag Absolute magnitude in SDSS *u*-band band-shifted to z=0.1 assuming h=1.0.
-        ABSMAG01_IVAR_SDSS_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_SDSS_U.
-       ABSMAG01_SYNTH_SDSS_U      float32                           mag Synthesized absolute magnitude in SDSS *u*-band band-shifted to z=0.1 assuming h=1.0.
-  ABSMAG01_SYNTH_IVAR_SDSS_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_SYNTH_SDSS_U.
-        ABSMAG01_SDSS_G [4]_      float32                           mag Like ABSMAG01_SDSS_U but for SDSS *g*-band.
-        ABSMAG01_IVAR_SDSS_G      float32                      1 / mag2 Like ABSMAG01_IVAR_SDSS_U but for SDSS *g*-band.
-       ABSMAG01_SYNTH_SDSS_G      float32                           mag Like ABSMAG01_SYNTH_SDSS_U but for SDSS *g*-band.
-  ABSMAG01_SYNTH_IVAR_SDSS_G      float32                      1 / mag2 Like ABSMAG01_SYNTH_IVAR_SDSS_U but for SDSS *g*-band.
-        ABSMAG01_SDSS_R [4]_      float32                           mag Like ABSMAG01_SDSS_U but for SDSS *r*-band.
-        ABSMAG01_IVAR_SDSS_R      float32                      1 / mag2 Like ABSMAG01_IVAR_SDSS_U but for SDSS *r*-band.
-       ABSMAG01_SYNTH_SDSS_R      float32                           mag Like ABSMAG01_SYNTH_SDSS_U but for SDSS *r*-band.
-  ABSMAG01_SYNTH_IVAR_SDSS_R      float32                      1 / mag2 Like ABSMAG01_SYNTH_IVAR_SDSS_U but for SDSS *r*-band.
-        ABSMAG01_SDSS_I [4]_      float32                           mag Like ABSMAG01_SDSS_U but for SDSS *i*-band.
-        ABSMAG01_IVAR_SDSS_I      float32                      1 / mag2 Like ABSMAG01_IVAR_SDSS_U but for SDSS *i*-band.
-       ABSMAG01_SYNTH_SDSS_I      float32                           mag Like ABSMAG01_SYNTH_SDSS_U but for SDSS *i*-band.
-  ABSMAG01_SYNTH_IVAR_SDSS_I      float32                      1 / mag2 Like ABSMAG01_SYNTH_IVAR_SDSS_U but for SDSS *i*-band.
-        ABSMAG01_SDSS_Z [4]_      float32                           mag Like ABSMAG01_SDSS_U but for SDSS *z*-band.
-        ABSMAG01_IVAR_SDSS_Z      float32                      1 / mag2 Like ABSMAG01_IVAR_SDSS_U but for SDSS *z*-band.
-       ABSMAG01_SYNTH_SDSS_Z      float32                           mag Like ABSMAG01_SYNTH_SDSS_U but for SDSS *z*-band.
-  ABSMAG01_SYNTH_IVAR_SDSS_Z      float32                      1 / mag2 Like ABSMAG01_SYNTH_IVAR_SDSS_U but for SDSS *z*-band.
-            ABSMAG01_W1 [4]_      float32                           mag Absolute magnitude in WISE *W1*-band band-shifted to z=0.1 assuming h=1.0.
-            ABSMAG01_IVAR_W1      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_W1.
-           ABSMAG01_SYNTH_W1      float32                           mag Synthesized absolute magnitude in WISE *W1*-band band-shifted to z=0.1 assuming h=1.0.
-      ABSMAG01_SYNTH_IVAR_W1      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_SYNTH_W1.
-             KCORR10_DECAM_G      float32                           mag K-correction used to derive ABSMAG10_DECAM_G band-shifted to z=1.0.
-             KCORR10_DECAM_R      float32                           mag Like KCORR10_DECAM_G but for DECam *r*-band.
-             KCORR10_DECAM_Z      float32                           mag Like KCORR10_DECAM_G but for DECam *z*-band.
-                   KCORR00_U      float32                           mag K-correction used to derive ABSMAG00_U band-shifted to z=0.0.
-                   KCORR00_B      float32                           mag Like KCORR00_U but for Johnson/Cousins *B*-band.
-                   KCORR00_V      float32                           mag Like KCORR00_U but for Johnson/Cousins *V*-band.
-              KCORR01_SDSS_U      float32                           mag K-correction used to derive ABSMAG01_SDSS_U band-shifted to z=0.1.
-              KCORR01_SDSS_G      float32                           mag Like KCORR01_SDSS_U but for SDSS *g*-band.
-              KCORR01_SDSS_R      float32                           mag Like KCORR01_SDSS_U but for SDSS *r*-band.
-              KCORR01_SDSS_I      float32                           mag Like KCORR01_SDSS_U but for SDSS *i*-band.
-              KCORR01_SDSS_Z      float32                           mag Like KCORR01_SDSS_U but for SDSS *z*-band.
-                  KCORR01_W1      float32                           mag K-correction used to derive ABSMAG01_W1 band-shifted to z=0.0.
-                 LOGLNU_1500      float32            1e-28 erg / (Hz s) Monochromatic luminosity at 1500 A in the rest-frame.
-            LOGLNU_1500_IVAR      float32           1e+56 Hz2 s2 / erg2 Inverse variance in LOGLNU_1500.
-                 LOGLNU_2800      float32            1e-28 erg / (Hz s) Monochromatic luminosity at 2800 A in the rest-frame.
-            LOGLNU_2800_IVAR      float32           1e+56 Hz2 s2 / erg2 Inverse variance in LOGLNU_2800.
-                   LOGL_1450      float32                    1e-10 Lsun Integrated luminosity at 1450 A in the rest-frame.
-              LOGL_1450_IVAR      float32                 1e+20 / Lsun2 Inverse variance in LOGL_1450.
-                   LOGL_1700      float32                    1e-10 Lsun Integrated luminosity at 1700 A in the rest-frame.
-              LOGL_1700_IVAR      float32                 1e+20 / Lsun2 Inverse variance in LOGL_1700.
-                   LOGL_3000      float32                    1e-10 Lsun Integrated luminosity at 3000 A in the rest-frame.
-              LOGL_3000_IVAR      float32                 1e+20 / Lsun2 Inverse variance in LOGL_3000.
-                   LOGL_5100      float32                    1e-10 Lsun Integrated luminosity at 5100 A in the rest-frame.
-              LOGL_5100_IVAR      float32                 1e+20 / Lsun2 Inverse variance in LOGL_5100.
-              FLYA_1215_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 1215.67 A in the rest-frame.
-         FLYA_1215_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FLYA_1215_CONT.
-              FOII_3727_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 3728.483 A in the rest-frame.
-         FOII_3727_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FOII_3727_CONT.
-                 FHBETA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 4862.683 A in the rest-frame.
-            FHBETA_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FHBETA_CONT.
-             FOIII_5007_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 5008.239 A in the rest-frame.
-        FOIII_5007_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FOIII_5007_CONT.
-                FHALPHA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 6564.613 A in the rest-frame.
-           FHALPHA_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FHALPHA_CONT.
-============================ ============ ============================= ============================================
+============================= ============ ============================= ============================================
+Name                          Type         Units                         Description
+============================= ============ ============================= ============================================
+                     TARGETID        int64                               Unique target ID.
+                  SURVEY [1]_       bytes3                               Survey name.
+                 PROGRAM [1]_       bytes6                               Program name.
+                 HEALPIX [1]_        int32                               Healpixel number.
+                  TILEID [2]_        int32                               Tile ID number.
+                   NIGHT [2]_        int32                               Night of observation.
+                   FIBER [2]_        int32                               Fiber number.
+                   EXPID [3]_        int32                               Exposure ID number.
+                         SEED        int64                               Random seed used for Monte Carlo realizations.
+                        COEFF   float32[5]  1e-17 erg / (Angstrom cm2 s) Stellar continuum coefficients.
+                        RCHI2      float32                               Reduced chi-squared of the full-spectrophotometric fit.
+                   RCHI2_LINE      float32                               Reduced chi-squared of the emission-line model fit.
+                   RCHI2_CONT      float32                               Reduced chi-squared of the fit to the stellar continuum.
+                   RCHI2_PHOT      float32                               Reduced chi-squared of the fit to the broadband photometry.
+                        VDISP      float32                        km / s Stellar velocity dispersion.
+                   VDISP_IVAR      float32                      s2 / km2 Inverse variance of VDISP.
+                         TAUV      float32                               *V*-band dust optical depth of the integrated stellar population.
+                    TAUV_IVAR      float32                               Inverse variance of TAUV.
+                          AGE      float32                           Gyr Light-weighted age.
+                     AGE_IVAR      float32                      1 / Gyr2 Inverse variance of AGE.
+                        ZZSUN      float32                               Logarithmic stellar metallicity relative to solar.
+                   ZZSUN_IVAR      float32                               Inverse variance of ZZSUN.
+                     LOGMSTAR      float32                          Msun Logarithmic stellar mass (h=1.0, Chabrier+2003 initial mass function).
+                LOGMSTAR_IVAR      float32                     1 / Msun2 Inverse variance of LOGMSTAR.
+                          SFR      float32                     Msun / yr Instantaneous star formation rate (h=1.0, Chabrier+2003 initial mass function).
+                     SFR_IVAR      float32                   yr2 / Msun2 Inverse variance of SFR.
+                       DN4000      float32                               Narrow 4000-A break index (from Balogh et al. 1999) measured from the emission-line subtracted spectrum.
+                   DN4000_OBS      float32                               Narrow 4000-A break index measured from the observed spectrum.
+                  DN4000_IVAR      float32                               Inverse variance of DN4000_OBS and of DN4000.
+                 DN4000_MODEL      float32                               Narrow 4000-A break index measured from the best-fitting continuum model.
+            DN4000_MODEL_IVAR      float32                               Inverse variance of DN4000_MODEL.
+                 FLUX_SYNTH_G      float32                          nmgy *g*-band flux (in the PHOTSYS photometric system) synthesized from the observed spectrum.
+                 FLUX_SYNTH_R      float32                          nmgy Like FLUX_SYNTH_G but for the *r*-band.
+                 FLUX_SYNTH_Z      float32                          nmgy Like FLUX_SYNTH_G but for the *z*-band.
+       FLUX_SYNTH_SPECMODEL_G      float32                          nmgy *g*-band flux (in the PHOTSYS photometric system) synthesized from the best-fitting spectroscopic model.
+       FLUX_SYNTH_SPECMODEL_R      float32                          nmgy Like FLUX_SYNTH_SPECMODEL_G but in the *r*-band.
+       FLUX_SYNTH_SPECMODEL_Z      float32                          nmgy Like FLUX_SYNTH_SPECMODEL_G but in the *z*-band.
+       FLUX_SYNTH_PHOTMODEL_G      float32                          nmgy *g*-band flux (in the PHOTSYS photometric system) synthesized from the best-fitting photometric continuum model.
+       FLUX_SYNTH_PHOTMODEL_R      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the *r*-band.
+       FLUX_SYNTH_PHOTMODEL_Z      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the *z*-band.
+      FLUX_SYNTH_PHOTMODEL_W1      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the *W1*-band.
+      FLUX_SYNTH_PHOTMODEL_W2      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the *W2*-band.
+      FLUX_SYNTH_PHOTMODEL_W3      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the *W3*-band.
+      FLUX_SYNTH_PHOTMODEL_W4      float32                          nmgy Like FLUX_SYNTH_PHOTMODEL_G but in the *W4*-band.
+        ABSMAG10_DECAM_G [4]_      float32                           mag Absolute magnitude in DECam *g*-band band-shifted to z=1.0 assuming h=1.0.
+        ABSMAG10_IVAR_DECAM_G      float32                      1 / mag2 Inverse variance corresponding to ABSMAG10_DECAM_G.
+       ABSMAG10_SYNTH_DECAM_G      float32                           mag Synthesized absolute magnitude in DECam *g*-band band-shifted to z=1.0 assuming h=1.0.
+  ABSMAG10_SYNTH_IVAR_DECAM_G      float32                      1 / mag2 Inverse variance corresponding to ABSMAG10_SYNTH_DECAM_G.
+        ABSMAG10_DECAM_R [4]_      float32                           mag Like ABSMAG10_DECAM_G but for DECam *r*-band.
+        ABSMAG10_IVAR_DECAM_R      float32                      1 / mag2 Like ABSMAG10_IVAR_DECAM_G but for DECam *r*-band.
+       ABSMAG10_SYNTH_DECAM_R      float32                           mag Like ABSMAG10_SYNTH_DECAM_G but for DECam *r*-band.
+  ABSMAG10_SYNTH_IVAR_DECAM_R      float32                      1 / mag2 Like ABSMAG10_SYNTH_IVAR_DECAM_G but for DECam *r*-band.
+        ABSMAG10_DECAM_Z [4]_      float32                           mag Like ABSMAG10_DECAM_G but for DECam *z*-band.
+        ABSMAG10_IVAR_DECAM_Z      float32                      1 / mag2 Like ABSMAG10_IVAR_DECAM_G but for DECam *z*-band.
+       ABSMAG10_SYNTH_DECAM_Z      float32                           mag Like ABSMAG10_SYNTH_DECAM_G but for DECam *z*-band.
+  ABSMAG10_SYNTH_IVAR_DECAM_Z      float32                      1 / mag2 Like ABSMAG10_SYNTH_IVAR_DECAM_G but for DECam *z*-band.
+              ABSMAG00_U [4]_      float32                           mag Absolute magnitude in Johnson/Cousins *U*-band band-shifted to z=0.0 assuming h=1.0.
+              ABSMAG00_IVAR_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG00_U.
+             ABSMAG00_SYNTH_U      float32                           mag Synthesized absolute magnitude in Johnson/Cousins *U*-band band-shifted to z=0.0 assuming h=1.0.
+        ABSMAG00_SYNTH_IVAR_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG00_SYNTH_U.
+              ABSMAG00_B [4]_      float32                           mag Like ABSMAG00_U but for Johnson/Cousins *B*-band.
+              ABSMAG00_IVAR_B      float32                      1 / mag2 Like ABSMAG00_IVAR_U but for Johnson/Cousins *B*-band.
+             ABSMAG00_SYNTH_B      float32                           mag Like ABSMAG00_SYNTH_U but for Johnson/Cousins *B*-band.
+        ABSMAG00_SYNTH_IVAR_B      float32                      1 / mag2 Like ABSMAG00_SYNTH_IVAR_U but for Johnson/Cousins *B*-band.
+              ABSMAG00_V [4]_      float32                           mag Like ABSMAG00_U but for Johnson/Cousins *V*-band.
+              ABSMAG00_IVAR_V      float32                      1 / mag2 Like ABSMAG00_IVAR_U but for Johnson/Cousins *V*-band.
+             ABSMAG00_SYNTH_V      float32                           mag Like ABSMAG00_SYNTH_U but for Johnson/Cousins *V*-band.
+        ABSMAG00_SYNTH_IVAR_V      float32                      1 / mag2 Like ABSMAG00_SYNTH_IVAR_U but for Johnson/Cousins *V*-band.
+      ABSMAG00_TWOMASS_J [4]_      float32                           mag Absolute magnitude in 2MASS *J*-band band-shifted to z=0.0 assuming h=1.0.
+      ABSMAG00_IVAR_TWOMASS_J      float32                      1 / mag2 Inverse variance corresponding to ABSMAG00_TWOMASS_J.
+     ABSMAG00_SYNTH_TWOMASS_J      float32                           mag Synthesized absolute magnitude in 2MASS *J*-band band-shifted to z=0.0 assuming h=1.0.
+ABSMAG00_SYNTH_IVAR_TWOMASS_J      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_SYNTH_TWOMASS_J.
+         ABSMAG01_SDSS_U [4]_      float32                           mag Absolute magnitude in SDSS *u*-band band-shifted to z=0.1 assuming h=1.0.
+         ABSMAG01_IVAR_SDSS_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_SDSS_U.
+        ABSMAG01_SYNTH_SDSS_U      float32                           mag Synthesized absolute magnitude in SDSS *u*-band band-shifted to z=0.1 assuming h=1.0.
+   ABSMAG01_SYNTH_IVAR_SDSS_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_SYNTH_SDSS_U.
+         ABSMAG01_SDSS_G [4]_      float32                           mag Like ABSMAG01_SDSS_U but for SDSS *g*-band.
+         ABSMAG01_IVAR_SDSS_G      float32                      1 / mag2 Like ABSMAG01_IVAR_SDSS_U but for SDSS *g*-band.
+        ABSMAG01_SYNTH_SDSS_G      float32                           mag Like ABSMAG01_SYNTH_SDSS_U but for SDSS *g*-band.
+   ABSMAG01_SYNTH_IVAR_SDSS_G      float32                      1 / mag2 Like ABSMAG01_SYNTH_IVAR_SDSS_U but for SDSS *g*-band.
+         ABSMAG01_SDSS_R [4]_      float32                           mag Like ABSMAG01_SDSS_U but for SDSS *r*-band.
+         ABSMAG01_IVAR_SDSS_R      float32                      1 / mag2 Like ABSMAG01_IVAR_SDSS_U but for SDSS *r*-band.
+        ABSMAG01_SYNTH_SDSS_R      float32                           mag Like ABSMAG01_SYNTH_SDSS_U but for SDSS *r*-band.
+   ABSMAG01_SYNTH_IVAR_SDSS_R      float32                      1 / mag2 Like ABSMAG01_SYNTH_IVAR_SDSS_U but for SDSS *r*-band.
+         ABSMAG01_SDSS_I [4]_      float32                           mag Like ABSMAG01_SDSS_U but for SDSS *i*-band.
+         ABSMAG01_IVAR_SDSS_I      float32                      1 / mag2 Like ABSMAG01_IVAR_SDSS_U but for SDSS *i*-band.
+        ABSMAG01_SYNTH_SDSS_I      float32                           mag Like ABSMAG01_SYNTH_SDSS_U but for SDSS *i*-band.
+   ABSMAG01_SYNTH_IVAR_SDSS_I      float32                      1 / mag2 Like ABSMAG01_SYNTH_IVAR_SDSS_U but for SDSS *i*-band.
+         ABSMAG01_SDSS_Z [4]_      float32                           mag Like ABSMAG01_SDSS_U but for SDSS *z*-band.
+         ABSMAG01_IVAR_SDSS_Z      float32                      1 / mag2 Like ABSMAG01_IVAR_SDSS_U but for SDSS *z*-band.
+        ABSMAG01_SYNTH_SDSS_Z      float32                           mag Like ABSMAG01_SYNTH_SDSS_U but for SDSS *z*-band.
+   ABSMAG01_SYNTH_IVAR_SDSS_Z      float32                      1 / mag2 Like ABSMAG01_SYNTH_IVAR_SDSS_U but for SDSS *z*-band.
+             ABSMAG01_W1 [4]_      float32                           mag Absolute magnitude in WISE *W1*-band band-shifted to z=0.1 assuming h=1.0.
+             ABSMAG01_IVAR_W1      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_W1.
+            ABSMAG01_SYNTH_W1      float32                           mag Synthesized absolute magnitude in WISE *W1*-band band-shifted to z=0.1 assuming h=1.0.
+       ABSMAG01_SYNTH_IVAR_W1      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_SYNTH_W1.
+              KCORR10_DECAM_G      float32                           mag K-correction used to derive ABSMAG10_DECAM_G band-shifted to z=1.0.
+              KCORR10_DECAM_R      float32                           mag Like KCORR10_DECAM_G but for DECam *r*-band.
+              KCORR10_DECAM_Z      float32                           mag Like KCORR10_DECAM_G but for DECam *z*-band.
+                    KCORR00_U      float32                           mag K-correction used to derive ABSMAG00_U band-shifted to z=0.0.
+                    KCORR00_B      float32                           mag Like KCORR00_U but for Johnson/Cousins *B*-band.
+                    KCORR00_V      float32                           mag Like KCORR00_U but for Johnson/Cousins *V*-band.
+               KCORR01_SDSS_U      float32                           mag K-correction used to derive ABSMAG01_SDSS_U band-shifted to z=0.1.
+               KCORR01_SDSS_G      float32                           mag Like KCORR01_SDSS_U but for SDSS *g*-band.
+               KCORR01_SDSS_R      float32                           mag Like KCORR01_SDSS_U but for SDSS *r*-band.
+               KCORR01_SDSS_I      float32                           mag Like KCORR01_SDSS_U but for SDSS *i*-band.
+               KCORR01_SDSS_Z      float32                           mag Like KCORR01_SDSS_U but for SDSS *z*-band.
+                   KCORR01_W1      float32                           mag K-correction used to derive ABSMAG01_W1 band-shifted to z=0.0.
+                  LOGLNU_1500      float32            1e-28 erg / (Hz s) Monochromatic luminosity at 1500 A in the rest-frame.
+             LOGLNU_1500_IVAR      float32           1e+56 Hz2 s2 / erg2 Inverse variance in LOGLNU_1500.
+                  LOGLNU_2800      float32            1e-28 erg / (Hz s) Monochromatic luminosity at 2800 A in the rest-frame.
+             LOGLNU_2800_IVAR      float32           1e+56 Hz2 s2 / erg2 Inverse variance in LOGLNU_2800.
+                    LOGL_1450      float32                    1e-10 Lsun Integrated luminosity at 1450 A in the rest-frame.
+               LOGL_1450_IVAR      float32                 1e+20 / Lsun2 Inverse variance in LOGL_1450.
+                    LOGL_1700      float32                    1e-10 Lsun Integrated luminosity at 1700 A in the rest-frame.
+               LOGL_1700_IVAR      float32                 1e+20 / Lsun2 Inverse variance in LOGL_1700.
+                    LOGL_3000      float32                    1e-10 Lsun Integrated luminosity at 3000 A in the rest-frame.
+               LOGL_3000_IVAR      float32                 1e+20 / Lsun2 Inverse variance in LOGL_3000.
+                    LOGL_5100      float32                    1e-10 Lsun Integrated luminosity at 5100 A in the rest-frame.
+               LOGL_5100_IVAR      float32                 1e+20 / Lsun2 Inverse variance in LOGL_5100.
+               FLYA_1215_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 1215.67 A in the rest-frame.
+          FLYA_1215_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FLYA_1215_CONT.
+               FOII_3727_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 3728.483 A in the rest-frame.
+          FOII_3727_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FOII_3727_CONT.
+                  FHBETA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 4862.683 A in the rest-frame.
+             FHBETA_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FHBETA_CONT.
+              FOIII_5007_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 5008.239 A in the rest-frame.
+         FOIII_5007_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FOIII_5007_CONT.
+                 FHALPHA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 6564.613 A in the rest-frame.
+            FHALPHA_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FHALPHA_CONT.
+============================= ============ ============================= ============================================
 
 HDU03
 -----
