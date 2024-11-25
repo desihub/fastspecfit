@@ -861,7 +861,7 @@ class EMFitTools(object):
             line_wavelengths = self.line_table['restwave'].value
             return EMLine_MultiLines(
                 parameters, emlinewave, redshift, line_wavelengths,
-                resolution_matrices, camerapix)
+                resolution_matrices=None, camerapix=camerapix) # omit per-camera resolution matrix transformations
 
         values = linemodel['value'].value
         obsamps = linemodel.meta['obsamps']
