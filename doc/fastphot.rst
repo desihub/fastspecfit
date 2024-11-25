@@ -121,6 +121,7 @@ Name                   Type        Units      Description
                  ZWARN    int8                Redrock zwarning bit.
              DELTACHI2 float64                Redrock delta-chi-squared.
               SPECTYPE    str6                Redrock spectral classification type.
+               SUBTYPE   str20                Redrock spectral subtype.
                   Z_RR float64                Redrock redshift.
              TSNR2_BGS float32                Template signal-to-noise ratio squared for BGS targets.
              TSNR2_LRG float32                Like TSNR2_BGS but for LRG targets.

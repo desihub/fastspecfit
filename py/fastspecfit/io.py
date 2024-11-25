@@ -45,7 +45,7 @@ EXPFMCOLS = {
     }
 
 # redshift columns to read
-REDSHIFTCOLS = ('TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'DELTACHI2')
+REDSHIFTCOLS = ('TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'SUBTYPE', 'DELTACHI2')
 
 # tsnr columns to read
 TSNR2COLS = ('TSNR2_BGS', 'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA')
@@ -1990,8 +1990,8 @@ def create_output_meta(input_meta, phot, fastphot=False, fitstack=False):
     if fitstack:
         redrockcols = ('Z')
     else:
-        redrockcols = ('Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE', 'Z_RR', 'TSNR2_BGS',
-                       'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA')
+        redrockcols = ('Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE', 'SUBTYPE', 'Z_RR',
+                       'TSNR2_BGS', 'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA')
 
     meta = Table()
     metacols = set(input_meta.colnames)
