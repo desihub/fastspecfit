@@ -63,8 +63,8 @@ class TestFastspec(unittest.TestCase):
         import fitsio
         from fastspecfit.fastspecfit import fastphot, parse
 
-        cmd = 'fastphot {} -o {} --mapdir {} --fphotodir {} --specproddir {} --templates {}'.format(
-            self.redrockfile, self.fastphot_outfile, self.mapdir, self.fphotodir, self.specproddir, self.templates)
+        cmd = f'fastphot {self.redrockfile} -o {self.fastphot_outfile} --mapdir {self.mapdir} ' + \
+            f'--fphotodir {self.fphotodir} --specproddir {self.specproddir} --templates {self.templates}'
         args = parse(options=cmd.split()[1:])
         fastphot(args=args)
 
@@ -73,7 +73,7 @@ class TestFastspec(unittest.TestCase):
         fits = fitsio.FITS(self.fastphot_outfile)
         for hdu in fits:
             if hdu.has_data(): # skip zeroth extension
-                self.assertTrue(hdu.get_extname() in ['METADATA', 'FASTPHOT'])
+                self.assertTrue(hdu.get_extname() in ['METADATA', 'SPECPHOT'])
 
 
     def test_fastspec(self):
@@ -81,8 +81,8 @@ class TestFastspec(unittest.TestCase):
         import fitsio
         from fastspecfit.fastspecfit import fastspec, parse
 
-        cmd = 'fastspec {} -o {} --mapdir {} --fphotodir {} --specproddir {} --templates {}'.format(
-            self.redrockfile, self.fastspec_outfile, self.mapdir, self.fphotodir, self.specproddir, self.templates)
+        cmd = f'fastspec {self.redrockfile} -o {self.fastspec_outfile} --mapdir {self.mapdir} ' + \
+            f'--fphotodir {self.fphotodir} --specproddir {self.specproddir} --templates {self.templates}'
         args = parse(options=cmd.split()[1:])
         fastspec(args=args)
 
@@ -91,4 +91,4 @@ class TestFastspec(unittest.TestCase):
         fits = fitsio.FITS(self.fastspec_outfile)
         for hdu in fits:
             if hdu.has_data(): # skip zeroth extension
-                self.assertTrue(hdu.get_extname() in ['METADATA', 'FASTSPEC', 'MODELS'])
+                self.assertTrue(hdu.get_extname() in ['METADATA', 'SPECPHOT', 'FASTSPEC', 'MODELS'])
