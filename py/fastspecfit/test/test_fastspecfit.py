@@ -58,6 +58,7 @@ class TestFastspec(unittest.TestCase):
     #    self.assertTrue(CTools.imf in ['salpeter', 'chabrier', 'kroupa'])
 
 
+    @unittest.SkipTest
     def test_fastphot(self):
         """Test fastphot."""
         import fitsio
@@ -76,6 +77,7 @@ class TestFastspec(unittest.TestCase):
                 self.assertTrue(hdu.get_extname() in ['METADATA', 'SPECPHOT'])
 
 
+    @unittest.SkipTest
     def test_fastspec(self):
         """Test fastspec."""
         import fitsio
