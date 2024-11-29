@@ -30,13 +30,14 @@ class TestFastspec(unittest.TestCase):
         cls.fphotodir = resources.files('fastspecfit').joinpath('test/data')
         cls.redrockfile = resources.files('fastspecfit').joinpath('test/data/redrock-4-80613-thru20210324.fits')
 
+        cls.templates = '/Users/ioannis/work/desi/users/ioannis/fastspecfit/templates/2.0.0/ftemplates-chabrier-2.0.0.fits'
         cls.outdir = tempfile.mkdtemp()
-        cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-2.0.0.fits')
-        if os.path.isfile(cls.templates):
-            os.remove(cls.templates)
-        #url = "https://portal.nersc.gov/project/cosmo/temp/ioannis/tmp/ftemplates-chabrier-2.0.0.fits"
-        url = "https://data.desi.lbl.gov/public/external/templates/fastspecfit/2.0.0/ftemplates-chabrier-2.0.0.fits"
-        urlretrieve(url, cls.templates)
+        #cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-2.0.0.fits')
+        #if os.path.isfile(cls.templates):
+        #    os.remove(cls.templates)
+        ##url = "https://portal.nersc.gov/project/cosmo/temp/ioannis/tmp/ftemplates-chabrier-2.0.0.fits"
+        #url = "https://data.desi.lbl.gov/public/external/templates/fastspecfit/2.0.0/ftemplates-chabrier-2.0.0.fits"
+        #urlretrieve(url, cls.templates)
 
         cls.fastspec_outfile = os.path.join(cls.outdir, 'fastspec.fits')
         cls.fastphot_outfile = os.path.join(cls.outdir, 'fastphot.fits')
@@ -58,7 +59,7 @@ class TestFastspec(unittest.TestCase):
     #    self.assertTrue(CTools.imf in ['salpeter', 'chabrier', 'kroupa'])
 
 
-    @unittest.SkipTest
+    #@unittest.SkipTest
     def test_fastphot(self):
         """Test fastphot."""
         import fitsio
@@ -77,7 +78,7 @@ class TestFastspec(unittest.TestCase):
                 self.assertTrue(hdu.get_extname() in ['METADATA', 'SPECPHOT'])
 
 
-    @unittest.SkipTest
+    #@unittest.SkipTest
     def test_fastspec(self):
         """Test fastspec."""
         import fitsio
