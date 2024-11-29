@@ -866,18 +866,19 @@ class EMFitTools(object):
         values = linemodel['value'].value
         obsamps = linemodel.meta['obsamps']
 
-        line_profiles = get_line_profiles(values)
-
         if results_monte is not None:
             values_monte, obsamps_monte, emlineflux_monte, specflux_nolines_monte = results_monte
 
-            line_profiles_monte = [ get_line_profiles(v) for v in values_monte ]
+            line_profiles = None
+            #line_profiles_monte = [get_line_profiles(v) for v in values_monte]
 
             values_var = np.var(values_monte, axis=0)
             obsamps_var = np.var(obsamps_monte, axis=0)
 
             emlineflux_monte_s = emlineflux_monte[:, Wsrt]
             specflux_nolines_monte_s = specflux_nolines_monte[:, Wsrt]
+        else:
+            line_profiles = get_line_profiles(values)
 
 
         # get continuum fluxes and EWs (along with their ivars) and upper limits
@@ -888,7 +889,8 @@ class EMFitTools(object):
             linename = name.upper()
             line_amp, line_vshift, line_sigma = self.line_table['params'][iline]
 
-            def get_fluxes(values, emlineflux_s, line_profiles, specflux_nolines_s, return_extras=False):
+            def get_fluxes(values, emlineflux_s, specflux_nolines_s, line_profiles=None,
+                           return_extras=False, compute_flux_ivar=False):
                 """ Get all the computed fluxes associated with the current line.  Return the
                 fluxes along with some intermediate quantities if return_extras is True.  (The
                 extras are needed only if we are not using this function in Monte Carlo iteration.)
@@ -896,9 +898,10 @@ class EMFitTools(object):
                 """
                 linez = redshift + values[line_vshift] / C_LIGHT
                 linezwave = restwave * (1. + linez)
-                linesigma = values[line_sigma] # [km/s]
+                linesigma0 = values[line_sigma] # original value [km/s]
+
                 linesigma, linesigma_ang, linesigma_ang_window, use_gausscorr = \
-                    preprocess_linesigma(linesigma, linezwave, isbroad, isbalmer)
+                    preprocess_linesigma(linesigma0, linezwave, isbroad, isbalmer)
 
                 line_s, line_e = get_boundaries(emlinewave_s,
                                                 linezwave - nsigma * linesigma_ang_window,
@@ -909,7 +912,8 @@ class EMFitTools(object):
                 # default values to return if not computed below
                 emlineflux_patch = []
                 boxflux = 0.
-                flux, flux_gauss_ivar = 0., 0.
+                flux = 0.
+                flux_gauss_ivar = 0.
                 cont, clipflux = 0., []
 
                 # Are the pixels based on the original inverse spectrum fully masked?
@@ -924,11 +928,15 @@ class EMFitTools(object):
 
                         # require amp > 0 (line not dropped) to compute the flux
                         if obsamps[line_amp] > TINY:
-                            (s, e), flux_perpixel = line_profiles.getLine(iline)
-                            # can be zero if the amplitude is very tiny
-                            if np.all(flux_perpixel >= 0.) and not np.all(flux_perpixel == 0.):
-                                flux, flux_gauss_ivar = gaussian_lineflux(
-                                    flux_perpixel, s, e, patchindx, gausscorr=use_gausscorr)
+                            if compute_flux_ivar:
+                                (s, e), flux_perpixel = line_profiles.getLine(iline)
+                                # can be zero if the amplitude is very tiny
+                                if np.all(flux_perpixel >= 0.) and not np.all(flux_perpixel == 0.):
+                                    flux, flux_gauss_ivar = gaussian_lineflux(
+                                        flux_perpixel, s, e, patchindx, gausscorr=use_gausscorr)
+                            else:
+                                # analytically integrated flux
+                                flux = np.sqrt(2. * np.pi) * values[line_amp] * linezwave * linesigma0 / C_LIGHT
 
                         # next, get the continuum level
                         borderindx = get_continuum_pixels(emlinewave_s, linezwave, linesigma_ang_window)
@@ -959,8 +967,9 @@ class EMFitTools(object):
                 continue
 
             (boxflux, flux, cont), extras = get_fluxes(
-                values, emlineflux_s, line_profiles,
-                specflux_nolines_s, return_extras=True)
+                values, emlineflux_s, specflux_nolines_s,
+                line_profiles, return_extras=True,
+                compute_flux_ivar=results_monte is None)
 
             result[f'{linename}_BOXFLUX'] = boxflux # * u.erg/(u.second*u.cm**2)
             result[f'{linename}_FLUX'] = flux
@@ -993,8 +1002,8 @@ class EMFitTools(object):
                     raise ValueError(errmsg)
 
                 if results_monte is not None:
-                    res = [ get_fluxes(v, lf, emlf, sfnl) for  v, lf, emlf, sfnl in
-                            zip(values_monte, emlineflux_monte_s, line_profiles_monte, specflux_nolines_monte_s) ]
+                    res = [get_fluxes(v, lf, sfnl) for  v, lf, sfnl in
+                           zip(values_monte, emlineflux_monte_s, specflux_nolines_monte_s)]
                     boxflux_monte, flux_monte, cont_monte = tuple(zip(*res))
 
                     boxflux_ivar = var2ivar(np.var(boxflux_monte))
@@ -1030,8 +1039,7 @@ class EMFitTools(object):
                     else:
                         flux_ivar = flux_gauss_ivar
 
-                    result[f'{linename}_FLUX_IVAR'] = flux_ivar # * u.second**2*u.cm**4/u.erg**2
-
+                    result[f'{linename}_FLUX_IVAR'] = flux_ivar
                     #result[f'{linename}_FLUX_GAUSS_IVAR'] = flux_gauss_ivar
 
                     # keep track of sigma and z but only using XX-sigma lines
