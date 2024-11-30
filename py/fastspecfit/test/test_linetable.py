@@ -4,26 +4,14 @@ fastspecfit.test.test_linetable
 
 """
 import os
-import numpy as np
-import unittest
+import pytest
 
-class TestUtil(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        pass
+def test_linetable():
+    import astropy
+    from fastspecfit.linetable import LineTable
+    emline_table = LineTable(emlines_file=None)
+    assert(os.path.isfile(emline_table.file))
+    assert(type(emline_table.table) == astropy.table.Table)
 
-
-    @classmethod
-    def tearDownClass(cls):
-        pass
-
-
-    def test_linetable(self):
-        import astropy
-        from fastspecfit.linetable import LineTable
-        emline_table = LineTable(emlines_file=None)
-        self.assertTrue(os.path.isfile(emline_table.file))
-        self.assertTrue(type(emline_table.table) == astropy.table.Table)
-
-        with self.assertRaises(IOError):
-            LineTable(emlines_file='doesnotexist.ecsv')
+    with pytest.raises(IOError):
+        LineTable(emlines_file='doesnotexist.ecsv')
