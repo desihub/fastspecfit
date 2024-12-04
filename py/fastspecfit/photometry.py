@@ -299,7 +299,7 @@ class Photometry(object):
         pre = []
         for ifilt, filt in enumerate(filters):
             if wave[0] > filt.wavelength[0] or filt.wavelength[-1] > wave[-1]:
-                print(filt.name, wave[0], wave[-1], filt.wavelength[0], filt.wavelength[-1])
+                #print(filt.name, wave[0], wave[-1], filt.wavelength[0], filt.wavelength[-1])
                 raise RuntimeError('Filter boundaries exceed wavelength array')
 
             # NB: if we assume that no padding is needed, wave extends

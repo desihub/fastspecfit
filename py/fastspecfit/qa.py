@@ -458,7 +458,7 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
                         uv_stats.append((linesigma, linez))
                 else:
                     narrow_stats.append((linesigma, linez))
-                print(name, linesigma, linez)
+                #print(name, linesigma, linez)
 
         line_stats = Table()
         for groupname, stats in zip(['NARROW', 'BROAD', 'UV'],

@@ -21,9 +21,16 @@ def outdir(tmp_path_factory):
 
 
 @pytest.fixture(scope='session')
-def templates(outdir, template_version):
+def templatedir(outdir, template_version):
+    templatedir = outdir / template_version
+    templatedir.mkdir()
+    yield templatedir
+
+
+@pytest.fixture(scope='session')
+def templates(templatedir, template_version):
     templates_file = f'ftemplates-chabrier-{template_version}.fits'
-    templates = os.path.join(outdir, template_version, templates_file)
+    templates = os.path.join(templatedir, templates_file)
 
     url = f"https://data.desi.lbl.gov/public/external/templates/fastspecfit/2.0.0/{templates_file}"
     if not os.path.isfile(templates):
