@@ -5,7 +5,9 @@ Change Log
 3.1.1 (not released yet)
 ------------------------
 
-*
+* Fix <1% bias in fluxes and EWs of tied and free doublet ratios [`PR #198`_].
+
+.. _`PR #198`: https://github.com/desihub/fastspecfit/pull/198
 
 3.1.0 (2024-11-21)
 ------------------
