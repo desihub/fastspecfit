@@ -757,16 +757,15 @@ class EMFitTools(object):
         dpixwave = median(np.diff(emlinewave)) # median pixel size [Angstrom]
 
         # Convenience variables for the fitted parameters.
-        param_names = self.param_table['name'].value
+        #param_names = self.param_table['name'].value
+        #param_lines = self.param_table['line'].value
         param_modelnames = self.param_table['modelname'].value
         param_types = self.param_table['type'].value
-        param_lines = self.param_table['line'].value
 
         iamp = param_types == ParamType.AMPLITUDE
-        tied_doublet_src = linemodel['tiedtoparam'][iamp].value
-        tied_doublet_factor = linemodel['tiedfactor'][iamp].value
         free_doublet_src = self.line_table['doublet_src'].value
-        flux_monte_dict = {} # needed below
+        tied_doublet_src = linemodel['tiedtoparam'][iamp].value
+        #tied_doublet_factor = linemodel['tiedfactor'][iamp].value
 
         def get_boundaries(A, v_lo, v_hi):
             """Find range (lo, hi) such that all pixels of A in range [v_lo,
@@ -976,7 +975,6 @@ class EMFitTools(object):
                            zip(values_monte, obsamps_monte, emlineflux_monte_s,
                                specflux_nolines_monte_s)]
                     boxflux_monte, flux_monte, cont_monte = tuple(zip(*res))
-                    flux_monte_dict[linename] = flux_monte
 
                     # Compute the variance on the line-fitting results.
                     obsamps_ivar = var2ivar(obsamps_var[line_amp])
@@ -1030,100 +1028,19 @@ class EMFitTools(object):
                         result[f'{linename}_EW_IVAR'] = var2ivar(np.var(ew_monte))
 
 
-        # Correct for tied and free doublet ratios.
-        for iline, (name, restwave, isbroad, isbalmer) in \
-            enumerate(self.line_table.iterrows('name', 'restwave', 'isbroad', 'isbalmer')):
+        # For tied and free doublet ratios, we need to correct for a <1% bias
+        # in FLUX and EW (0.3% for MgII, 0.07% for [OII] 3726,29, 0.2% for
+        # [SII], 1% for [OIII], 0.5% for [NII], and 0.1% for [OII] 7320,30).
+        for doublet_src in [tied_doublet_src, free_doublet_src]:
+            Iline = np.where(doublet_src != -1)[0]
+            for iline in Iline:
+                src_line = doublet_src[iline]
+                bias = self.line_table[src_line]['restwave'] / self.line_table[iline]['restwave']
 
-            if tied_doublet_src[iline] == -1 and free_doublet_src[iline] == -1:
-                continue
-
-            linename = name.upper()
-            line_amp, line_vshift, line_sigma = self.line_table['params'][iline]
-
-            def get_doublet_results(doublet_src, tied=None):
-                src_line_amp, src_line_vshift, src_line_sigma = \
-                    self.line_table['params'][doublet_src]
-
-                src_amp = result[param_modelnames[src_line_amp]]
-                # keep going if the primary line was not fitted or dropped
-                if src_amp > 0.:
-                    doublet_ratio = values[line_amp]
-
-                    src_linename = self.line_table['name'][doublet_src].upper()
-                    src_vshift = result[param_modelnames[src_line_vshift]]
-                    src_sigma = result[param_modelnames[src_line_sigma]]
-                    src_flux = result[f'{src_linename}_FLUX']
-
-                    flux = src_flux * doublet_ratio
-                    modelamp = src_amp * doublet_ratio
-                    #values[line_amp] = modelamp # update not necessary??
-                    if linename == 'OIII_4959':
-                        for col in ['MODELAMP', 'AMP', 'AMP_IVAR', 'FLUX', 'FLUX_IVAR',
-                                    'BOXFLUX', 'BOXFLUX_IVAR', 'VSHIFT', 'VSHIFT_IVAR',
-                                    'SIGMA', 'SIGMA_IVAR', 'CONT', 'CONT_IVAR',
-                                    'EW', 'EW_IVAR', 'FLUX_LIMIT', 'CHI2', 'NPIX']:
-                            print(f'{linename} {col}', result[f'{linename}_{col}'])
-
-                        import pdb ; pdb.set_trace()
-
-                    (boxflux, _, cont), (_, _, linesigma_ang, patchindx, _) = get_fluxes(
-                        values, obsamps, emlineflux_s, specflux_nolines_s,
-                        return_extras=True)
-
-                    result[f'{linename}_MODELAMP'] = modelamp
-                    result[f'{linename}_AMP'] = obsamps[line_amp]
-                    result[f'{linename}_VSHIFT'] = src_vshift
-                    result[f'{linename}_SIGMA'] = src_sigma
-                    result[f'{linename}_FLUX'] = flux
-                    result[f'{linename}_BOXFLUX'] = boxflux
-                    result[f'{linename}_CONT'] = cont
-
-                    emlineflux_model_patch = emlineflux_model_s[patchindx]
-                    chi2 = np.sum(emlineivar_patch * (emlineflux_patch - emlineflux_model_patch)**2)
-                    result[f'{linename}_CHI2'] = chi2
-
-                    if results_monte is not None:
-                        doublet_ratio_monte = values_monte[:, line_amp]
-                        modelamp_monte = values_monte[:, src_line_amp] * doublet_ratio_monte
-                        #values_monte[:, line_amp] = modelamp_monte # update not necessary??
-
-                        result[f'{linename}_AMP_IVAR'] = var2ivar(obsamps_var[line_amp])
-                        result[f'{linename}_VSHIFT_IVAR'] = var2ivar(values_var[line_vshift])
-                        result[f'{linename}_SIGMA_IVAR'] = var2ivar(values_var[line_sigma])
-
-                        flux_monte = flux_monte_dict[src_linename] * doublet_ratio_monte
-                        flux_ivar = var2ivar(np.var(flux_monte))
-                        result[f'{linename}_FLUX_IVAR'] = flux_ivar
-
-                        res = [get_fluxes(vv, oo, lf, sfnl) for  vv, oo, lf, sfnl in
-                               zip(values_monte, obsamps_monte, emlineflux_monte_s,
-                                   specflux_nolines_monte_s)]
-                        boxflux_monte, _, cont_monte = tuple(zip(*res))
-
-                        result[f'{linename}_BOXFLUX_IVAR'] = var2ivar(np.var(boxflux_monte))
-
-                        cont_ivar = var2ivar(np.var(cont_monte))
-                        result[f'{linename}_CONT_IVAR'] = cont_ivar
-
-                        if cont != 0. and cont_ivar > 0.:
-                            # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
-                            fluxlimit = np.sqrt(2. * np.pi) * linesigma_ang / np.sqrt(cont_ivar)
-                            result[f'{linename}_FLUX_LIMIT'] = fluxlimit
-
-                            if flux > 0. and flux_ivar > 0.:
-                                ew = flux / cont / (1. + redshift) # rest frame [A]
-                                result[f'{linename}_EW'] = ew
-
-                                if results_monte is not None:
-                                    ew_monte = np.array(flux_monte) / np.array(cont_monte) / (1. + redshift) # rest frame [A]
-                                    result[f'{linename}_EW_IVAR'] = var2ivar(np.var(ew_monte))
-
-            if tied_doublet_src[iline] != -1:
-                get_doublet_results(tied_doublet_src[iline], tied=tied_doublet_factor[iline])
-
-            if free_doublet_src[iline] != -1:
-                get_doublet_results(free_doublet_src[iline])#, restwave, isbroad, isbalmer)
-
+                linename = self.line_table[iline]['name'].upper()
+                for col in ['FLUX', 'EW']:
+                    result[f'{linename}_{col}'] = result[f'{linename}_{col}'] * bias
+                    result[f'{linename}_{col}_IVAR'] = result[f'{linename}_{col}_IVAR'] / bias**2
 
         # Measure moments for the set of lines in self.moment_lines. We need a
         # separate loop because for one "line" (MgII) we actually want the full
@@ -1739,7 +1656,7 @@ def emline_specfit(data, result, continuummodel, smooth_continuum,
 
     log.debug(f'Emission-line fitting took {time.time()-tall:.2f} seconds.')
 
-    if True:#debug_plots:
+    if debug_plots:
         for name in result.value.dtype.names:
             print(name, result[name])
 
