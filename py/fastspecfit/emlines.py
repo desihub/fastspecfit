@@ -755,7 +755,6 @@ class EMFitTools(object):
         nline = len(self.line_table)
         nwave = len(emlinewave)
         dpixwave = median(np.diff(emlinewave)) # median pixel size [Angstrom]
-        gausscorr = erf(nsigma / np.sqrt(2.))  # correct for the flux outside of +/-nsigma
 
         # Convenience variables for the fitted parameters.
         param_names = self.param_table['name'].value
@@ -767,7 +766,7 @@ class EMFitTools(object):
         tied_doublet_src = linemodel['tiedtoparam'][iamp].value
         tied_doublet_factor = linemodel['tiedfactor'][iamp].value
         free_doublet_src = self.line_table['doublet_src'].value
-
+        flux_monte_dict = {} # needed below
 
         def get_boundaries(A, v_lo, v_hi):
             """Find range (lo, hi) such that all pixels of A in range [v_lo,
@@ -797,12 +796,10 @@ class EMFitTools(object):
             # require at least 2 pixels
             if linesigma_ang < 2. * dpixwave:
                 linesigma_ang_window = 2. * dpixwave
-                use_gausscorr = 1.
             else:
                 linesigma_ang_window = linesigma_ang
-                use_gausscorr = gausscorr
 
-            return linesigma, linesigma_ang, linesigma_ang_window, use_gausscorr
+            return linesigma, linesigma_ang, linesigma_ang_window
 
 
         def get_continuum_pixels(emlinewave_s, linezwave, linesigma_ang_window):
@@ -820,38 +817,6 @@ class EMFitTools(object):
             return borderindx
 
 
-        def gaussian_lineflux(flux_perpixel, s, e, patchindx, gausscorr=1.):
-            """Compute the matched-filter (maximum-likelihood) integrated
-            Gaussian flux and uncertainty.
-
-            """
-            # We could do this sparsely, but it's slower than allocating and
-            # permuting a big, mostly empty array.
-            lineprofile = np.zeros(nwave)
-            lineprofile[s:e] = flux_perpixel
-            lineprofile_patch = lineprofile[Wsrt][patchindx]
-
-            patch_sum = np.sum(lineprofile_patch)
-            if patch_sum == 0. or np.any(lineprofile_patch < 0.):
-                errmsg = 'Line-profile should never be zero or negative!'
-                log.critical(errmsg)
-                raise ValueError(errmsg)
-
-            pro_j = lineprofile_patch / patch_sum
-            I = pro_j > 0. # very narrow lines can have a profile that goes to zero
-
-            r = pro_j[I] / dwaves[patchindx][I]
-            weight_j = r * emlineivar_s[patchindx][I]
-            flux_ivar = np.sum(r * weight_j)
-            flux = np.sum(weight_j * lineprofile_patch[I]) / flux_ivar
-
-            # correct for missing flux
-            flux /= gausscorr
-            flux_ivar *= gausscorr**2
-
-            return flux, flux_ivar
-
-
         # Where the cameras overlap, we have to account for the
         # variable pixel size by sorting in wavelength.
         Wsrt = np.argsort(emlinewave)
@@ -865,28 +830,11 @@ class EMFitTools(object):
 
         dwaves = np.diff(centers2edges(emlinewave_s))
 
-        def get_line_profiles(values):
-            # Retrieve the parameter values and then convert doublet ratios to amplitudes
-            parameters = values.copy()
-            parameters[self.doublet_idx] *= parameters[self.doublet_src]
-
-            line_wavelengths = self.line_table['restwave'].value
-            return EMLine_MultiLines(
-                parameters, emlinewave, redshift, line_wavelengths,
-                resolution_matrices=None, camerapix=camerapix) # omit per-camera resolution matrix transformations
-
-
         values = linemodel['value'].value
         obsamps = linemodel.meta['obsamps']
 
         if results_monte is not None:
             values_monte, obsamps_monte, emlineflux_monte, specflux_nolines_monte = results_monte
-
-            # Getting the variance via line-profile integration is not used
-            # when Monte Carlo arrays are available.
-            compute_flux_ivar = False
-            line_profiles = None
-            #line_profiles_monte = [get_line_profiles(v) for v in values_monte]
 
             values_var = np.var(values_monte, axis=0)
             obsamps_var = np.var(obsamps_monte, axis=0)
@@ -894,12 +842,12 @@ class EMFitTools(object):
             emlineflux_monte_s = emlineflux_monte[:, Wsrt]
             specflux_nolines_monte_s = specflux_nolines_monte[:, Wsrt]
         else:
-            compute_flux_ivar = True
             line_profiles = get_line_profiles(values)
 
 
         # iterate on each line
         narrow_stats, broad_stats, uv_stats = [], [], []
+
         for iline, (name, restwave, isbroad, isbalmer) in \
             enumerate(self.line_table.iterrows('name', 'restwave', 'isbroad', 'isbalmer')):
 
@@ -907,7 +855,7 @@ class EMFitTools(object):
             line_amp, line_vshift, line_sigma = self.line_table['params'][iline]
 
             def get_fluxes(values, obsamps, emlineflux_s, specflux_nolines_s,
-                           line_profiles=None, return_extras=False):
+                           return_extras=False):
                 """ Get all the computed fluxes associated with the current line.  Return the
                 fluxes along with some intermediate quantities if return_extras is True.  (The
                 extras are needed only if we are not using this function in Monte Carlo iteration.)
@@ -917,7 +865,7 @@ class EMFitTools(object):
                 linezwave = restwave * (1. + linez)
                 linesigma0 = values[line_sigma] # original value [km/s]
 
-                linesigma, linesigma_ang, linesigma_ang_window, use_gausscorr = \
+                linesigma, linesigma_ang, linesigma_ang_window = \
                     preprocess_linesigma(linesigma0, linezwave, isbroad, isbalmer)
 
                 line_s, line_e = get_boundaries(emlinewave_s,
@@ -930,7 +878,6 @@ class EMFitTools(object):
                 emlineflux_patch = []
                 boxflux = 0.
                 flux = 0.
-                flux_gauss_ivar = 0.
                 cont, clipflux = 0., []
 
                 # Are the pixels based on the original inverse spectrum fully masked?
@@ -945,15 +892,8 @@ class EMFitTools(object):
 
                         # require amp > 0 (line not dropped) to compute the flux
                         if obsamps[line_amp] > TINY:
-                            if compute_flux_ivar:
-                                (s, e), flux_perpixel = line_profiles.getLine(iline)
-                                # can be zero if the amplitude is very tiny
-                                if np.all(flux_perpixel >= 0.) and not np.all(flux_perpixel == 0.):
-                                    flux, flux_gauss_ivar = gaussian_lineflux(
-                                        flux_perpixel, s, e, patchindx, gausscorr=use_gausscorr)
-                            else:
-                                # analytically integrated flux
-                                flux = np.sqrt(2. * np.pi) * values[line_amp] * linezwave * linesigma0 / C_LIGHT
+                            # analytically integrated flux
+                            flux = np.sqrt(2. * np.pi) * values[line_amp] * linezwave * linesigma0 / C_LIGHT
 
                         # next, get the continuum level
                         borderindx = get_continuum_pixels(emlinewave_s, linezwave, linesigma_ang_window)
@@ -968,8 +908,7 @@ class EMFitTools(object):
 
                 if return_extras:
                     # needed by non-Monte Carlo code
-                    extras = (linez, linesigma, linesigma_ang, patchindx,
-                              flux_gauss_ivar, clipflux)
+                    extras = (linez, linesigma, linesigma_ang, patchindx, clipflux)
                     return (res, extras)
                 else:
                     return res
@@ -993,15 +932,14 @@ class EMFitTools(object):
             # Handle fixed and free doublet ratios after we have run through
             # all the other lines.
             if free_doublet_src[iline] != -1 or tied_doublet_src[iline] != -1:
-                print(f'Skipping {linename}')
+                #print(f'Skipping {linename}')
                 continue
 
             (boxflux, flux, cont), extras = get_fluxes(
                 values, obsamps, emlineflux_s, specflux_nolines_s,
-                line_profiles, return_extras=True)
+                return_extras=True)
 
-            (linez, linesigma, linesigma_ang,
-             patchindx, flux_gauss_ivar, clipflux) = extras
+            (linez, linesigma, linesigma_ang, patchindx, clipflux) = extras
 
             npix = len(patchindx)
             result[f'{linename}_NPIX'] = npix
@@ -1039,28 +977,15 @@ class EMFitTools(object):
                     res = [get_fluxes(vv, oo, lf, sfnl) for  vv, oo, lf, sfnl in
                            zip(values_monte, obsamps_monte, emlineflux_monte_s, specflux_nolines_monte_s)]
                     boxflux_monte, flux_monte, cont_monte = tuple(zip(*res))
-
-                    boxflux_ivar = var2ivar(np.var(boxflux_monte))
+                    flux_monte_dict[linename] = flux_monte
 
                     # Compute the variance on the line-fitting results.
                     obsamps_ivar = var2ivar(obsamps_var[line_amp])
                     result[f'{linename}_AMP_IVAR'] = obsamps_ivar
                     result[f'{linename}_VSHIFT_IVAR'] = var2ivar(values_var[line_vshift])
                     result[f'{linename}_SIGMA_IVAR'] = var2ivar(values_var[line_sigma])
+                    result[f'{linename}_BOXFLUX_IVAR'] = var2ivar(np.var(boxflux_monte))
                     #result[f'{linename}_MODELAMP_IVAR'] = var2ivar(values_var[line_amp])
-                else:
-                    # formal (statistical) uncertainty
-                    boxflux_ivar = 1. / np.sum(dwaves[patchindx]**2 / emlineivar_patch)
-
-                    # Legacy algorithm: get the uncertainty in the
-                    # line-amplitude based on the scatter in the pixel values
-                    # from the emission-line subtracted spectrum.
-                    n_lo, n_hi = quantile(specflux_nolines_s[patchindx], (0.25, 0.75))
-                    obsamps_sigma = (n_hi - n_lo) / 1.349 # robust sigma
-                    obsamps_ivar = var2ivar(obsamps_sigma, sigma=True)
-                    result[f'{linename}_AMP_IVAR'] = obsamps_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
-
-                result[f'{linename}_BOXFLUX_IVAR'] = boxflux_ivar # * u.second**2*u.cm**4/u.erg**2
 
                 # require amp > 0 (line not dropped) to compute the flux and chi2
                 if obsamps[line_amp] > TINY:
@@ -1070,11 +995,7 @@ class EMFitTools(object):
 
                     if results_monte is not None:
                         flux_ivar = var2ivar(np.var(flux_monte))
-                    else:
-                        flux_ivar = flux_gauss_ivar
-
-                    result[f'{linename}_FLUX_IVAR'] = flux_ivar
-                    #result[f'{linename}_FLUX_GAUSS_IVAR'] = flux_gauss_ivar
+                        result[f'{linename}_FLUX_IVAR'] = flux_ivar
 
                     # keep track of sigma and z but only using XX-sigma lines
                     linesnr = obsamps[line_amp] * np.sqrt(obsamps_ivar)
@@ -1090,14 +1011,7 @@ class EMFitTools(object):
 
             if results_monte is not None:
                 cont_ivar = var2ivar(np.var(cont_monte))
-            else:
-                # legacy algorithm for estimating cont_ivar
-                clo, chi = quantile(clipflux, (0.25, 0.75))
-                csig = (chi - clo) / 1.349  # robust sigma
-                if csig > SQTINY:
-                    cont_ivar = (np.sqrt(len(borderindx)) / csig)**2
-
-            result[f'{linename}_CONT_IVAR'] = cont_ivar # * u.second**2*u.cm**4*u.Angstrom**2/u.erg**2
+                result[f'{linename}_CONT_IVAR'] = cont_ivar
 
             if cont != 0. and cont_ivar > 0.:
                 # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
@@ -1167,21 +1081,17 @@ class EMFitTools(object):
                         modelamp_monte = values_monte[:, src_line_amp] * doublet_ratio_monte
                         values_monte[:, line_amp] = modelamp_monte # update
 
-
                         result[f'{linename}_AMP_IVAR'] = var2ivar(obsamps_var[line_amp])
                         result[f'{linename}_VSHIFT_IVAR'] = var2ivar(values_var[line_vshift])
                         result[f'{linename}_SIGMA_IVAR'] = var2ivar(values_var[line_sigma])
 
-                        result[f'{linename}_FLUX_IVAR'] = 
-
-
+                        import pdb ; pdb.set_trace()
+                        #result[f'{linename}_FLUX_IVAR'] = 
 
                     for col in ['AMP', 'MODELAMP', 'VSHIFT', 'SIGMA', 'FLUX', 'BOXFLUX', 'CONT']:
                         print(f'{linename}_{col}', result[f'{linename}_{col}'], result[f'{src_linename}_{col}'],
                               result[f'{linename}_{col}']/result[f'{src_linename}_{col}'])
 
-
-                    import pdb ; pdb.set_trace()
 
             if tied_doublet_src[iline] != -1:
                 res = get_doublet_results(tied_doublet_src[iline], restwave, isbroad, isbalmer)
