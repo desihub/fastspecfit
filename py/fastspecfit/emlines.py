@@ -280,23 +280,38 @@ class EMFitTools(object):
                         [O3] (4-->2): airwave: 4958.9097 vacwave: 4960.2937 emissivity: 1.172e-21
                         [O3] (4-->3): airwave: 5006.8417 vacwave: 5008.2383 emissivity: 3.497e-21
                         https://ui.adsabs.harvard.edu/abs/2007AIPC..895..313D/abstract
+
+                        Note: The theoretical [OIII] 4959,5007 doublet *flux*
+                        ratio is 2.993, so since we fit in velocity space the
+                        constrained amplitude ratio has to be
+                        2.993*4960.295/5008.240=2.9643.
                         """
-                        tie_line(tying_info, line_params, 'oiii_5007', amp_factor = 1.0 / 2.993)
+                        tie_line(tying_info, line_params, 'oiii_5007', amp_factor=1./2.9643)
                     case 'nii_6548':
                         """
                         [N2] (4-->2): airwave: 6548.0488 vacwave: 6549.8578 emissivity: 2.02198e-21
                         [N2] (4-->3): airwave: 6583.4511 vacwave: 6585.2696 emissivity: 5.94901e-21
                         https://ui.adsabs.harvard.edu/abs/2023AdSpR..71.1219D/abstract
+
+                        Note: The theoretical [NII] 6548,84 doublet *flux*
+                        ratio is 3.049, so since we fit in velocity space the
+                        constrained amplitude ratio has to be
+                        3.049*6549.861/6585.273=3.0326
                         """
-                        tie_line(tying_info, line_params, 'nii_6584', amp_factor = 1.0 / 3.049)
+                        tie_line(tying_info, line_params, 'nii_6584', amp_factor = 1./3.0326)
                     case 'oii_7330':
                         """
                         [O2] (5-->2): airwave: 7318.9185 vacwave: 7320.9350 emissivity: 8.18137e-24
                         [O2] (4-->2): airwave: 7319.9849 vacwave: 7322.0018 emissivity: 2.40519e-23
                         [O2] (5-->3): airwave: 7329.6613 vacwave: 7331.6807 emissivity: 1.35614e-23
                         [O2] (4-->3): airwave: 7330.7308 vacwave: 7332.7506 emissivity: 1.27488e-23
+
+                        This quadruplet ratio is sufficently poorly determined
+                        that we are not going to apply the wavelength
+                        correction used for [OIII] and [NII].
+
                         """
-                        tie_line(tying_info, line_params, 'oii_7320', amp_factor = 1.0 / 1.2251)
+                        tie_line(tying_info, line_params, 'oii_7320', amp_factor = 1./1.225)
                     case 'siii_9069':
                         tie_line(tying_info, line_params, 'siii_9532')
                     case 'siliii_1892':
@@ -756,13 +771,7 @@ class EMFitTools(object):
         nwave = len(emlinewave)
         dpixwave = median(np.diff(emlinewave)) # median pixel size [Angstrom]
 
-        # Convenience variables for the fitted parameters.
         param_modelnames = self.param_table['modelname'].value
-        param_types = self.param_table['type'].value
-
-        iamp = param_types == ParamType.AMPLITUDE
-        free_doublet_src = self.line_table['doublet_src'].value
-        tied_doublet_src = linemodel['tiedtoparam'][iamp].value
 
         def get_boundaries(A, v_lo, v_hi):
             """Find range (lo, hi) such that all pixels of A in range [v_lo,
@@ -1032,20 +1041,6 @@ class EMFitTools(object):
                         ew_monte = np.array(flux_monte) / np.array(cont_monte) / (1. + redshift) # rest frame [A]
                         result[f'{linename}_EW_IVAR'] = var2ivar(np.var(ew_monte))
 
-
-        # For tied and free doublet ratios, we need to correct for a <1% bias
-        # in FLUX and EW (0.3% for MgII, 0.07% for [OII] 3726,29, 0.2% for
-        # [SII], 1% for [OIII], 0.5% for [NII], and 0.1% for [OII] 7320,30).
-        for doublet_src in [tied_doublet_src, free_doublet_src]:
-            Iline = np.where(doublet_src != -1)[0]
-            for iline in Iline:
-                src_line = doublet_src[iline]
-                bias = self.line_table[src_line]['restwave'] / self.line_table[iline]['restwave']
-
-                linename = self.line_table[iline]['name'].upper()
-                for col in ['FLUX', 'EW']:
-                    result[f'{linename}_{col}'] = result[f'{linename}_{col}'] * bias
-                    result[f'{linename}_{col}_IVAR'] = result[f'{linename}_{col}_IVAR'] / bias**2
 
         # Measure moments for the set of lines in self.moment_lines. We need a
         # separate loop because for one "line" (MgII) we actually want the full
