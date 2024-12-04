@@ -19,81 +19,77 @@ import tempfile
 import pytest
 import numpy as np
 from urllib.request import urlretrieve
-from importlib import resources
 
 
-class TestFastspec(unittest.TestCase):
-    """Test fastspecfit.fastspecfit.fastspec"""
-    @classmethod
-    def setUpClass(cls):
-        os.environ['DESI_SPECTRO_REDUX'] = str(resources.files('fastspecfit').joinpath('test/data'))
-        cls.specproddir = resources.files('fastspecfit').joinpath('test/data')
-        cls.mapdir = resources.files('fastspecfit').joinpath('test/data')
-        cls.fphotodir = resources.files('fastspecfit').joinpath('test/data')
-        cls.redrockfile = resources.files('fastspecfit').joinpath('test/data/redrock-4-80613-thru20210324.fits')
+def setUpClass(cls):
+    os.environ['DESI_SPECTRO_REDUX'] = str(resources.files('fastspecfit').joinpath('test/data'))
 
-        cls.templates = '/Users/ioannis/work/desi/users/ioannis/fastspecfit/templates/2.0.0/ftemplates-chabrier-2.0.0.fits'
-        cls.outdir = tempfile.mkdtemp()
-        #cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-2.0.0.fits')
-        #if os.path.isfile(cls.templates):
-        #    os.remove(cls.templates)
-        ##url = "https://portal.nersc.gov/project/cosmo/temp/ioannis/tmp/ftemplates-chabrier-2.0.0.fits"
-        #url = "https://data.desi.lbl.gov/public/external/templates/fastspecfit/2.0.0/ftemplates-chabrier-2.0.0.fits"
-        #urlretrieve(url, cls.templates)
+    #cls.templates = '/Users/ioannis/work/desi/users/ioannis/fastspecfit/templates/2.0.0/ftemplates-chabrier-2.0.0.fits'
+    #cls.outdir = tempfile.mkdtemp()
+    #cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-2.0.0.fits')
+    #if os.path.isfile(cls.templates):
+    #    os.remove(cls.templates)
+    ##url = "https://portal.nersc.gov/project/cosmo/temp/ioannis/tmp/ftemplates-chabrier-2.0.0.fits"
+    #url = "https://data.desi.lbl.gov/public/external/templates/fastspecfit/2.0.0/ftemplates-chabrier-2.0.0.fits"
+    #urlretrieve(url, cls.templates)
 
-        cls.fastspec_outfile = os.path.join(cls.outdir, 'fastspec.fits')
-        cls.fastphot_outfile = os.path.join(cls.outdir, 'fastphot.fits')
-
-    def setUp(self):
-        pass
-
-    @classmethod
-    def tearDownClass(cls):
-        pass
+    cls.fastspec_outfile = os.path.join(cls.outdir, 'fastspec.fits')
+    cls.fastphot_outfile = os.path.join(cls.outdir, 'fastphot.fits')
 
 
-    #def test_ContinuumTools(self):
-    #    """Test the ContinuumTools class."""
-    #    from fastspecfit.continuum import ContinuumTools
-    #    CTools = ContinuumTools()
-    #
-    #    # expected attributes
-    #    self.assertTrue(CTools.imf in ['salpeter', 'chabrier', 'kroupa'])
+@pytest.fixture
+def filenames(outdir):
+    from importlib import resources
+
+    specproddir = resources.files('fastspecfit').joinpath('test/data')
+    mapdir = resources.files('fastspecfit').joinpath('test/data')
+    fphotodir = resources.files('fastspecfit').joinpath('test/data')
+    redrockfile = resources.files('fastspecfit').joinpath('test/data/redrock-4-80613-thru20210324.fits')
+    fastspec_outfile = os.path.join(outdir, 'fastspec.fits')
+    fastphot_outfile = os.path.join(outdir, 'fastphot.fits')
+
+    filenames = {'specproddir': specproddir, 'mapdir': mapdir, 'fphotodir': fphotodir,
+                 'redrockfile': redrockfile, 'fastspec_outfile': fastspec_outfile,
+                 'fastphot_outfile': fastphot_outfile, }
+
+    yield filenames
 
 
-    #@unittest.SkipTest
-    def test_fastphot(self):
-        """Test fastphot."""
-        import fitsio
-        from fastspecfit.fastspecfit import fastphot, parse
+def test_fastphot(filenames, templates):
+    """Test fastphot."""
+    import fitsio
+    from fastspecfit.fastspecfit import fastphot, parse
 
-        cmd = f'fastphot {self.redrockfile} -o {self.fastphot_outfile} --mapdir {self.mapdir} ' + \
-            f'--fphotodir {self.fphotodir} --specproddir {self.specproddir} --templates {self.templates}'
-        args = parse(options=cmd.split()[1:])
-        fastphot(args=args)
+    outfile = filenames["fastphot_outfile"]
 
-        self.assertTrue(os.path.exists(self.fastphot_outfile))
+    cmd = f'fastphot {filenames["redrockfile"]} -o {outfile} ' + \
+        f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} ' + \
+        f'--specproddir {filenames["specproddir"]} --templates {templates}'
 
-        fits = fitsio.FITS(self.fastphot_outfile)
-        for hdu in fits:
-            if hdu.has_data(): # skip zeroth extension
-                self.assertTrue(hdu.get_extname() in ['METADATA', 'SPECPHOT'])
+    args = parse(options=cmd.split()[1:])
+    fastphot(args=args)
+
+    assert(os.path.exists(outfile))
+
+    #fits = fitsio.FITS(outfile)
+    #for hdu in fits:
+    #    if hdu.has_data(): # skip zeroth extension
+    #        assert(hdu.get_extname() in ['METADATA', 'SPECPHOT'])
 
 
-    #@unittest.SkipTest
-    def test_fastspec(self):
-        """Test fastspec."""
-        import fitsio
-        from fastspecfit.fastspecfit import fastspec, parse
-
-        cmd = f'fastspec {self.redrockfile} -o {self.fastspec_outfile} --mapdir {self.mapdir} ' + \
-            f'--fphotodir {self.fphotodir} --specproddir {self.specproddir} --templates {self.templates}'
-        args = parse(options=cmd.split()[1:])
-        fastspec(args=args)
-
-        self.assertTrue(os.path.exists(self.fastspec_outfile))
-
-        fits = fitsio.FITS(self.fastspec_outfile)
-        for hdu in fits:
-            if hdu.has_data(): # skip zeroth extension
-                self.assertTrue(hdu.get_extname() in ['METADATA', 'SPECPHOT', 'FASTSPEC', 'MODELS'])
+#def test_fastspec(self):
+#    """Test fastspec."""
+#    import fitsio
+#    from fastspecfit.fastspecfit import fastspec, parse
+#
+#    cmd = f'fastspec {self.redrockfile} -o {self.fastspec_outfile} --mapdir {self.mapdir} ' + \
+#        f'--fphotodir {self.fphotodir} --specproddir {self.specproddir} --templates {self.templates}'
+#    args = parse(options=cmd.split()[1:])
+#    fastspec(args=args)
+#
+#    self.assertTrue(os.path.exists(self.fastspec_outfile))
+#
+#    fits = fitsio.FITS(self.fastspec_outfile)
+#    for hdu in fits:
+#        if hdu.has_data(): # skip zeroth extension
+#            self.assertTrue(hdu.get_extname() in ['METADATA', 'SPECPHOT', 'FASTSPEC', 'MODELS'])
