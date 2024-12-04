@@ -3,6 +3,8 @@ from math import erf, erfc
 
 from numba import jit
 
+from fastspecfit.resolution import Resolution
+
 from .params_mapping import ParamsMapping
 from .sparse_rep import EMLineJacobian
 
@@ -330,6 +332,11 @@ class MultiLines(object):
                 for j in range(e-s):
                     M[i,j] = np.maximum(M[i,j], 0.)
 
+        if resolution_matrices is None:
+            # create trivial diagonal resolution matrices
+            rm = [ Resolution(np.ones((1, e - s))) for (s, e) in camerapix ]
+            resolution_matrices = tuple(rm)
+
         self.line_models = []
         _build_multimodel_core(line_parameters,
                                obs_bin_centers,
@@ -343,7 +350,6 @@ class MultiLines(object):
 
         for endpts, M in self.line_models:
             _suppress_negative_fluxes(endpts, M)
-
 
 
     def getLine(self, line):
