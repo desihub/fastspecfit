@@ -757,15 +757,12 @@ class EMFitTools(object):
         dpixwave = median(np.diff(emlinewave)) # median pixel size [Angstrom]
 
         # Convenience variables for the fitted parameters.
-        #param_names = self.param_table['name'].value
-        #param_lines = self.param_table['line'].value
         param_modelnames = self.param_table['modelname'].value
         param_types = self.param_table['type'].value
 
         iamp = param_types == ParamType.AMPLITUDE
         free_doublet_src = self.line_table['doublet_src'].value
         tied_doublet_src = linemodel['tiedtoparam'][iamp].value
-        #tied_doublet_factor = linemodel['tiedfactor'][iamp].value
 
         def get_boundaries(A, v_lo, v_hi):
             """Find range (lo, hi) such that all pixels of A in range [v_lo,
@@ -832,11 +829,17 @@ class EMFitTools(object):
         values = linemodel['value'].value
         obsamps = linemodel.meta['obsamps']
 
+        parameters = values.copy()
+        parameters[self.doublet_idx] *= parameters[self.doublet_src]
+
         if results_monte is not None:
             values_monte, obsamps_monte, emlineflux_monte, specflux_nolines_monte = results_monte
 
             values_var = np.var(values_monte, axis=0)
             obsamps_var = np.var(obsamps_monte, axis=0)
+
+            parameters_monte = values_monte.copy()
+            parameters_monte[:, self.doublet_idx] *= parameters_monte[:, self.doublet_src]
 
             emlineflux_monte_s = emlineflux_monte[:, Wsrt]
             specflux_nolines_monte_s = specflux_nolines_monte[:, Wsrt]
@@ -890,7 +893,7 @@ class EMFitTools(object):
                         # require amp > 0 (line not dropped) to compute the flux
                         if obsamps[line_amp] > TINY:
                             # analytically integrated flux
-                            flux = np.sqrt(2. * np.pi) * values[line_amp] * linezwave * linesigma0 / C_LIGHT
+                            flux = np.sqrt(2. * np.pi) * parameters[line_amp] * linezwave * linesigma0 / C_LIGHT
 
                         # next, get the continuum level
                         borderindx = get_continuum_pixels(emlinewave_s, linezwave, linesigma_ang_window)
@@ -914,6 +917,7 @@ class EMFitTools(object):
             # zero out out-of-range lines
             if not self.line_in_range[iline]:
                 obsamps[line_amp] = 0.
+                parameters[line_amp] = 0.
                 values[line_amp] = 0.
                 values[line_vshift] = 0.
                 values[line_sigma] = 0.
@@ -946,6 +950,7 @@ class EMFitTools(object):
             # line.
             if npix == 0:
                 obsamps[line_amp] = 0.
+                parameters[line_amp] = 0.
                 values[line_amp] = 0.
                 values[line_vshift] = 0.
                 values[line_sigma] = 0.
@@ -957,7 +962,7 @@ class EMFitTools(object):
                 result[f'{linename}_AMP'] = obsamps[line_amp]
                 result[f'{linename}_VSHIFT'] = values[line_vshift]
                 result[f'{linename}_SIGMA'] = values[line_sigma]
-                result[f'{linename}_MODELAMP'] = values[line_amp]
+                result[f'{linename}_MODELAMP'] = parameters[line_amp]
 
                 result[f'{linename}_BOXFLUX'] = boxflux
                 result[f'{linename}_FLUX'] = flux
