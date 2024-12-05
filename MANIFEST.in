@@ -1,6 +1,9 @@
 include LICENSE.rst
 include README.rst
+include AUTHORS.rst
+include pyproject.toml
 include requirements.txt
+include fastspecfit/data/*
 
 graft bin
 graft etc

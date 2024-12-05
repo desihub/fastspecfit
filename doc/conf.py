@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-#
 # fastspecfit documentation build configuration file, created by
 # sphinx-quickstart on Tue Dec  9 10:43:33 2014.
 #
