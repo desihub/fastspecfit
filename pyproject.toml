@@ -1,5 +1,6 @@
 [project]
 name = "fastspecfit"
+version = "3.1.1"
 authors = [
     {name="John Moustakas", email="jmoustakas@siena.edu"},
 ]
@@ -33,16 +34,6 @@ dependencies = [
 ]
 requires-python = ">=3.9"
 
-[tool.setuptools]
-package-dir = {"" = "py"}
-include-package-data = true
-
-[build-system]
-requires = ["setuptools",
-            "wheel"
-            ]
-build-backend = 'setuptools.build_meta'
-
 [project.optional-dependencies]
 test = [
     "pytest"
@@ -59,21 +50,31 @@ doc = [
     "sphinxcontrib-napolean",
 ]
 
+[build-system]
+requires = ["setuptools",
+            "wheel"
+            ]
+build-backend = 'setuptools.build_meta'
+
+[tool.setuptools]
+package-dir = {"" = "py"}
+include-package-data = true
+
 [tool.setuptools.package-data]
 fastspecfit = [
     "data/*",
     "test/data/*",
 ]
 
+[tool.setuptools.packages.find]
+where = ["py"]
+exclude = [".github/*"]
+
 [tool.pytest.ini_options]
 # capture the nanomaggies units warning from astropy
 filterwarnings = [
     "ignore::astropy.units.UnitsWarning"
 ]
-
-[tool.setuptools.packages.find]
-where = ["py"]
-exclude = [".github/*"]
 
 [tool.flake8]
 ignore = [

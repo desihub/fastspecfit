@@ -1323,7 +1323,7 @@ def parse(options=None):
     parser.add_argument('--tile', default=None, type=str, nargs='*', help='Generate QA for all objects on this tile.')
     parser.add_argument('--night', default=None, type=str, nargs='*', help="""Generate QA for all objects observed on this
         night (only defined for coadd-type 'pernight' and 'perexp').""")
-    parser.add_argument('--redux_dir', default=None, type=str, help='Top-level path to the reduced spectra.')
+    parser.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
     parser.add_argument('--redrockfiles', nargs='*', help='Optional full path to redrock file(s).')
     parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
     parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
@@ -1379,11 +1379,13 @@ def fastqa(args=None, comm=None):
         args = parse(args)
 
     if args.redux_dir is None:
-        args.redux_dir = os.path.expandvars(os.environ.get('DESI_SPECTRO_REDUX'))
-        if not os.path.isdir(args.redux_dir):
-            errmsg = f'Data reduction directory {args.redux_dir} not found.'
+        if not 'DESI_SPECTRO_REDUX' in os.environ:
+            errmsg = "'DESI_SPECTRO_REDUX' environment variable or redux_dir must be set"
             log.critical(errmsg)
-            raise IOError(errmsg)
+            raise KeyError(errmsg)
+        args.redux_dir = os.path.expandvars(os.environ.get('DESI_SPECTRO_REDUX'))
+    else:
+        args.redux_dir = os.path.expandvars(args.redux_dir)
 
     # Read the fitting results.
     if not os.path.isfile(args.fastfitfile[0]):

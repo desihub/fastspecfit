@@ -105,7 +105,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
     # check for mandatory environment variables
     envlist = []
-    if args.specproddir is None:
+    if args.redux_dir is None:
         envlist += ['DESI_SPECTRO_REDUX']
     if args.mapdir is None:
         envlist += ['DUST_DIR']
@@ -178,7 +178,8 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
     # Read the data.
     Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
-                       fphotodir=args.fphotodir, mapdir=args.mapdir)
+                       fphotodir=args.fphotodir, mapdir=args.mapdir,
+                       redux_dir=args.redux_dir)
 
     if fitstack:
         data, meta = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
@@ -350,6 +351,7 @@ def parse(options=None):
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
     parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
     parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
+    parser.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
     parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
     parser.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum.')
     parser.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
@@ -364,5 +366,3 @@ def parse(options=None):
     log.info(f'fastspec {" ".join(options)}')
 
     return args
-
-

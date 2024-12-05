@@ -401,9 +401,8 @@ class DESISpectra(object):
             if not 'DESI_SPECTRO_REDUX' in os.environ:
                 errmsg = "'DESI_SPECTRO_REDUX' environment variable or redux_dir must be set"
                 log.critical(errmsg)
-                raise ValueError(errmsg)
-            redux_dir = os.environ.get('DESI_SPECTRO_REDUX')
-            self.redux_dir = os.path.expandvars(redux_dir)
+                raise KeyError(errmsg)
+            self.redux_dir = os.path.expandvars(os.environ.get('DESI_SPECTRO_REDUX'))
         else:
             self.redux_dir = os.path.expandvars(redux_dir)
 
