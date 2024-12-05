@@ -19,7 +19,7 @@
 #         * All the Balmer & Lyman lines
 #         * All the HeI lines
 #         * MgII 2796,2803
-#         * [NeV] 3346,3426; [NeIII] 3869; [OII] 3726,29; [SII] 6716,31; and [OII] 7320,30
+#         * [NeV] 3346,3426; [NeIII] 3869; [OII] 3726,29; [SII] 6716,31; [ArIII] 7135; and [OII] 7320,30
 #         * (Ritz) - [OI] 6300; [SIII] 6312; and [SIII] 9069,9532
 #       * vanden Berk et al. 2001 - https://iopscience.iop.org/article/10.1086/321167/pdf, Table 2
 #         * [NV] 1240; OI 1304; Si IV 1396; CIV 1549; AlIII 1857; Si III] 1892; CIII] 1908; HeII 1640; and HeII 4686
@@ -70,6 +70,7 @@ name restwave patch isbalmer ishelium isbroad isstrong nicename plotgroup
        nii_6584   6585.273     t   False  False False  True  H$\alpha$+[NII]-$\lambda\lambda$6548,84                      halpha_nii_6548_48
        sii_6716   6718.294     u   False  False False  True  [SII]-$\lambda\lambda$6716,31                                sii_6716_31
        sii_6731   6732.674     u   False  False False  True  [SII]-$\lambda\lambda$6716,31                                sii_6716_31
+     ariii_7135   7137.77      v   False  False False  False [ArIII]-$\lambda$7135                                        oii_7320_30
        oii_7320   7321.94      v   False  False False  False [OII]-$\lambda\lambda$7320,30                                oii_7320_30
        oii_7330   7332.21      v   False  False False  False [OII]-$\lambda\lambda$7320,30                                oii_7320_30
       siii_9069   9071.1       w   False  False False  False [SIII]-$\lambda$9069                                         siii_9069
