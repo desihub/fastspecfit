@@ -398,9 +398,14 @@ class DESISpectra(object):
 
         """
         if redux_dir is None:
-            self.redux_dir = os.path.expandvars(os.environ.get('DESI_SPECTRO_REDUX'))
+            if not 'DESI_SPECTRO_REDUX' in os.environ:
+                errmsg = "'DESI_SPECTRO_REDUX' environment variable or redux_dir must be set"
+                log.critical(errmsg)
+                raise ValueError(errmsg)
+            redux_dir = os.environ.get('DESI_SPECTRO_REDUX')
+            self.redux_dir = os.path.expandvars(redux_dir)
         else:
-            self.redux_dir = redux_dir
+            self.redux_dir = os.path.expandvars(redux_dir)
 
         if fphotodir is None:
             self.fphotoext = None

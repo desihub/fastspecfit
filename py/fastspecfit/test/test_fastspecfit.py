@@ -21,22 +21,6 @@ import numpy as np
 from urllib.request import urlretrieve
 
 
-def setUpClass(cls):
-    os.environ['DESI_SPECTRO_REDUX'] = str(resources.files('fastspecfit').joinpath('test/data'))
-
-    #cls.templates = '/Users/ioannis/work/desi/users/ioannis/fastspecfit/templates/2.0.0/ftemplates-chabrier-2.0.0.fits'
-    #cls.outdir = tempfile.mkdtemp()
-    #cls.templates = os.path.join(cls.outdir, 'ftemplates-chabrier-2.0.0.fits')
-    #if os.path.isfile(cls.templates):
-    #    os.remove(cls.templates)
-    ##url = "https://portal.nersc.gov/project/cosmo/temp/ioannis/tmp/ftemplates-chabrier-2.0.0.fits"
-    #url = "https://data.desi.lbl.gov/public/external/templates/fastspecfit/2.0.0/ftemplates-chabrier-2.0.0.fits"
-    #urlretrieve(url, cls.templates)
-
-    cls.fastspec_outfile = os.path.join(cls.outdir, 'fastspec.fits')
-    cls.fastphot_outfile = os.path.join(cls.outdir, 'fastphot.fits')
-
-
 @pytest.fixture
 def filenames(outdir):
     from importlib import resources
@@ -71,25 +55,29 @@ def test_fastphot(filenames, templates):
 
     assert(os.path.exists(outfile))
 
-    #fits = fitsio.FITS(outfile)
-    #for hdu in fits:
-    #    if hdu.has_data(): # skip zeroth extension
-    #        assert(hdu.get_extname() in ['METADATA', 'SPECPHOT'])
+    fits = fitsio.FITS(outfile)
+    for hdu in fits:
+        if hdu.has_data(): # skip zeroth extension
+            assert(hdu.get_extname() in ['METADATA', 'SPECPHOT'])
 
 
-#def test_fastspec(self):
-#    """Test fastspec."""
-#    import fitsio
-#    from fastspecfit.fastspecfit import fastspec, parse
-#
-#    cmd = f'fastspec {self.redrockfile} -o {self.fastspec_outfile} --mapdir {self.mapdir} ' + \
-#        f'--fphotodir {self.fphotodir} --specproddir {self.specproddir} --templates {self.templates}'
-#    args = parse(options=cmd.split()[1:])
-#    fastspec(args=args)
-#
-#    self.assertTrue(os.path.exists(self.fastspec_outfile))
-#
-#    fits = fitsio.FITS(self.fastspec_outfile)
-#    for hdu in fits:
-#        if hdu.has_data(): # skip zeroth extension
-#            self.assertTrue(hdu.get_extname() in ['METADATA', 'SPECPHOT', 'FASTSPEC', 'MODELS'])
+def test_fastspec(filenames, templates):
+    """Test fastspec."""
+    import fitsio
+    from fastspecfit.fastspecfit import fastspec, parse
+
+    outfile = filenames["fastspec_outfile"]
+
+    cmd = f'fastspec {filenames["redrockfile"]} -o {outfile} ' + \
+        f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} ' + \
+        f'--specproddir {filenames["specproddir"]} --templates {templates}'
+
+    args = parse(options=cmd.split()[1:])
+    fastspec(args=args)
+
+    assert(os.path.exists(outfile))
+
+    fits = fitsio.FITS(outfile)
+    for hdu in fits:
+        if hdu.has_data(): # skip zeroth extension
+            assert(hdu.get_extname() in ['METADATA', 'SPECPHOT', 'FASTSPEC', 'MODELS'])
