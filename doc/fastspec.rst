@@ -394,8 +394,14 @@ Name                        Type         Units                         Descripti
     MGII_DOUBLET_RATIO_IVAR      float32                               Inverse variance in MGII_DOUBLET_RATIO.
           OII_DOUBLET_RATIO      float32                               [OII] 3726 / 3729 doublet line-ratio.
      OII_DOUBLET_RATIO_IVAR      float32                               Inverse variance in OII_DOUBLET_RATIO.
+         OIII_DOUBLET_RATIO      float32                               [OIII] 5007 / 4959 doublet line-ratio.
+    OIII_DOUBLET_RATIO_IVAR      float32                               Inverse variance in OIII_DOUBLET_RATIO.
           SII_DOUBLET_RATIO      float32                               [SII] 6731 / 6716 doublet line-ratio.
      SII_DOUBLET_RATIO_IVAR      float32                               Inverse variance in SII_DOUBLET_RATIO.
+          NII_DOUBLET_RATIO      float32                               [NII] 6584 / 6548 doublet line-ratio.
+     NII_DOUBLET_RATIO_IVAR      float32                               Inverse variance in NII_DOUBLET_RATIO.
+       OIIRED_DOUBLET_RATIO      float32                               [OII] 7320 / 7330 doublet (actually a quadruplet) line-ratio.
+  OIIRED_DOUBLET_RATIO_IVAR      float32                               Inverse variance in OIIRED_DOUBLET_RATIO.
      LINENAME_MODELAMP [6]_      float32  1e-17 erg / (Angstrom cm2 s) Model emission-line amplitude (before convolution with the resolution matrix).
           LINENAME_AMP [6]_      float32  1e-17 erg / (Angstrom cm2 s) Emission line amplitude.
      LINENAME_AMP_IVAR [6]_      float32 1e+34 Angstrom2 cm4 s2 / erg2 Inverse variance in LINENAME_AMP.

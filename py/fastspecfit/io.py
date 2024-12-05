@@ -1897,8 +1897,14 @@ def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
             add_field('MGII_DOUBLET_RATIO_IVAR', dtype='f4')
             add_field('OII_DOUBLET_RATIO', dtype='f4')
             add_field('OII_DOUBLET_RATIO_IVAR', dtype='f4')
+            add_field('OIII_DOUBLET_RATIO', dtype='f4')
+            add_field('OIII_DOUBLET_RATIO_IVAR', dtype='f4')
+            add_field('NII_DOUBLET_RATIO', dtype='f4')
+            add_field('NII_DOUBLET_RATIO_IVAR', dtype='f4')
             add_field('SII_DOUBLET_RATIO', dtype='f4')
             add_field('SII_DOUBLET_RATIO_IVAR', dtype='f4')
+            add_field('OIIRED_DOUBLET_RATIO', dtype='f4')
+            add_field('OIIRED_DOUBLET_RATIO_IVAR', dtype='f4')
 
             for line in linetable['name']:
                 line = line.upper()

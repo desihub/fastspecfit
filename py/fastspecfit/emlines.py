@@ -773,6 +773,7 @@ class EMFitTools(object):
 
         param_modelnames = self.param_table['modelname'].value
 
+
         def get_boundaries(A, v_lo, v_hi):
             """Find range (lo, hi) such that all pixels of A in range [v_lo,
             v_hi] lie in half-open interval [lo, hi).
@@ -944,6 +945,24 @@ class EMFitTools(object):
                 fastfit[param_modelnames[line_amp]] = values[line_amp]
                 if results_monte is not None:
                     fastfit[f'{param_modelnames[line_amp]}_IVAR'] = var2ivar(values_var[line_amp])
+
+            # Also store the 'tied' doublet ratios (fragile...).
+            if linemodel['tiedtoparam'][line_amp] != -1:
+                ratio = linemodel['tiedfactor'][line_amp]
+                match linename:
+                    case 'OIII_4959':
+                        col = 'OIII_DOUBLET_RATIO'
+                    case 'NII_6548':
+                        col = 'NII_DOUBLET_RATIO'
+                    case 'OII_7330':
+                        col = 'OIIRED_DOUBLET_RATIO'
+                    case _:
+                        errmsg = 'Unrecognized tied doublet {linename}'
+                        log.critical(errmsg)
+                        raise ValueError(errmsg)
+                fastfit[col] = 1. / ratio
+                fastfit[f'{col}_IVAR'] = 0. # not optimized
+
 
             (boxflux, flux, cont), extras = get_fluxes(
                 values, obsamps, emlineflux_s, specflux_nolines_s,
