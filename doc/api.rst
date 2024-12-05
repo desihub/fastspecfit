@@ -19,9 +19,6 @@ API
 .. automodule:: fastspecfit.fastspecfit
    :members:
 
-.. automodule:: fastspecfit.html
-   :members:
-
 .. automodule:: fastspecfit.igm
    :members:
 

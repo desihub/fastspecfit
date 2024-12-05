@@ -1,4 +1,82 @@
+[project]
+name = "fastspecfit"
+version = "3.1.1"
+authors = [
+    {name="John Moustakas", email="jmoustakas@siena.edu"},
+]
+description = "Fast spectrophotometric modeling of DESI data."
+readme = {file="README.rst", content-type="text/x-rst"}
+license = {text="BSD 3-Clause"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: System :: Software Distribution",
+]
+dependencies = [
+    "numpy<2.0",
+    "astropy>=5.0",
+    "scipy",
+    "healpy",
+    "numba",
+    "seaborn",
+    "matplotlib",
+    "fitsio",
+    "speclite>=0.20",
+    "desimodel @ git+https://github.com/desihub/desimodel.git@0.19.2",
+    "desitarget @ git+https://github.com/desihub/desitarget.git@2.8.0",
+    "desispec @ git+https://github.com/desihub/desispec.git@0.67.0"
+]
+requires-python = ">=3.9"
+
+[project.optional-dependencies]
+test = [
+    "pytest"
+]
+coverage = [
+    "pytest-cov",
+    "coveralls",
+    "coverage",
+]
+doc = [
+    "Sphinx",
+    "sphinx-toolbox",
+    "sphinx-rtd-theme",
+    "sphinxcontrib-napolean",
+]
+
 [build-system]
 requires = ["setuptools",
-            "wheel"]
+            "wheel"
+            ]
 build-backend = 'setuptools.build_meta'
+
+[tool.setuptools]
+package-dir = {"" = "py"}
+include-package-data = true
+
+[tool.setuptools.package-data]
+fastspecfit = [
+    "data/*",
+    "test/data/*",
+]
+
+[tool.setuptools.packages.find]
+where = ["py"]
+exclude = [".github/*"]
+
+[tool.pytest.ini_options]
+# capture the nanomaggies units warning from astropy
+filterwarnings = [
+    "ignore::astropy.units.UnitsWarning"
+]
+
+[tool.flake8]
+ignore = [
+    "E121", "E123", "E126", "E133", "E226", "E241", "E242",
+    "E501", "E704", "E731", "E741", "W503", "W504"
+]

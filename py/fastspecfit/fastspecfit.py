@@ -15,10 +15,10 @@ from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import BoxedScalar, MPPool
 
 
-def fastspec_one(iobj, data, meta, out_dtype, broadlinefit=True, fastphot=False,
-                 fitstack=False, constrain_age=False, no_smooth_continuum=False,
-                 debug_plots=False, uncertainty_floor=0.01, minsnr_balmer_broad=2.5,
-                 nmonte=50, seed=1):
+def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=True,
+                 fastphot=False, fitstack=False, constrain_age=False,
+                 no_smooth_continuum=False, debug_plots=False, uncertainty_floor=0.01,
+                 minsnr_balmer_broad=2.5, nmonte=50, seed=1):
     """Run :func:`fastspec` on a single object.
 
     """
@@ -45,24 +45,24 @@ def fastspec_one(iobj, data, meta, out_dtype, broadlinefit=True, fastphot=False,
                      synthphot=True, debug_plots=debug_plots)
 
     # Copy parsed photometry from the 'data' dictionary to the 'meta' table.
-    if not fastphot:
-        if not fitstack:
-            flux = data['photometry']['nanomaggies']
-            fluxivar = data['photometry']['nanomaggies_ivar']
-            for iband, band in enumerate(phot.bands):
-                meta[f'FLUX_{band.upper()}'] = flux[iband]
-                meta[f'FLUX_IVAR_{band.upper()}'] = fluxivar[iband]
+    if not fitstack:
+        flux = data['photometry']['nanomaggies']
+        fluxivar = data['photometry']['nanomaggies_ivar']
+        for iband, band in enumerate(phot.bands):
+            meta[f'FLUX_{band.upper()}'] = flux[iband]
+            meta[f'FLUX_IVAR_{band.upper()}'] = fluxivar[iband]
 
-            if hasattr(phot, 'fiber_bands'):
-                fibertotflux = data['fiberphot']['nanomaggies']
-                for iband, band in enumerate(phot.fiber_bands):
-                    meta[f'FIBERTOTFLUX_{band.upper()}'] = fibertotflux[iband]
+        if hasattr(phot, 'fiber_bands'):
+            fibertotflux = data['fiberphot']['nanomaggies']
+            for iband, band in enumerate(phot.fiber_bands):
+                meta[f'FIBERTOTFLUX_{band.upper()}'] = fibertotflux[iband]
 
-    # output structure
-    out = BoxedScalar(out_dtype)
+    # output structures
+    fastfit = BoxedScalar(fastfit_dtype)
+    specphot = BoxedScalar(specphot_dtype)
 
     continuummodel, smooth_continuum, continuummodel_monte, specflux_monte = \
-        continuum_specfit(data, out, templates, igm, phot, constrain_age=constrain_age,
+        continuum_specfit(data, fastfit, specphot, templates, igm, phot, constrain_age=constrain_age,
                           no_smooth_continuum=no_smooth_continuum, fastphot=fastphot,
                           fitstack=fitstack, debug_plots=debug_plots, nmonte=nmonte,
                           seed=seed)
@@ -71,13 +71,13 @@ def fastspec_one(iobj, data, meta, out_dtype, broadlinefit=True, fastphot=False,
     if fastphot:
         emmodel = None
     else:
-        emmodel = emline_specfit(data, out, continuummodel, smooth_continuum,
+        emmodel = emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                                  phot, emline_table, broadlinefit=broadlinefit,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
                                  debug_plots=debug_plots, specflux_monte=specflux_monte,
                                  continuummodel_monte=continuummodel_monte)
 
-    return out.value, meta, emmodel
+    return meta, specphot.value, fastfit.value, emmodel
 
 
 def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False):
@@ -105,7 +105,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
     # check for mandatory environment variables
     envlist = []
-    if args.specproddir is None:
+    if args.redux_dir is None:
         envlist += ['DESI_SPECTRO_REDUX']
     if args.mapdir is None:
         envlist += ['DUST_DIR']
@@ -166,8 +166,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         multiprocessing.set_start_method('fork')
 
     t0 = time.time()
-    mp_pool = MPPool(args.mp,
-                     initializer=sc_data.initialize,
+    mp_pool = MPPool(args.mp, initializer=sc_data.initialize,
                      init_argdict=init_sc_args)
     log.debug(f'Caching took {time.time()-t0:.5f} seconds.')
 
@@ -179,7 +178,8 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
     # Read the data.
     Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
-                       fphotodir=args.fphotodir, mapdir=args.mapdir)
+                       fphotodir=args.fphotodir, mapdir=args.mapdir,
+                       redux_dir=args.redux_dir)
 
     if fitstack:
         data, meta = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
@@ -204,11 +204,17 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
     else:
         cameras = data[0]['cameras']
 
-    out_dtype, out_units = get_output_dtype(
+    fastfit_dtype, fastfit_units = get_output_dtype(
         Spec.specprod, phot=sc_data.photometry,
         linetable=sc_data.emlines.table, ncoeff=ncoeff,
         cameras=cameras, fastphot=fastphot,
         fitstack=fitstack)
+
+    specphot_dtype, specphot_units = get_output_dtype(
+        Spec.specprod, phot=sc_data.photometry,
+        linetable=sc_data.emlines.table, ncoeff=ncoeff,
+        cameras=cameras, fastphot=fastphot,
+        fitstack=fitstack, specphot=True)
 
     # If using Monte Carlo, generate the random seed(s).
     if args.nmonte > 0:
@@ -226,7 +232,8 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         'iobj':                iobj,
         'data':                data[iobj],
         'meta':                meta[iobj],
-        'out_dtype':           out_dtype,
+        'fastfit_dtype':       fastfit_dtype,
+        'specphot_dtype':      specphot_dtype,
         'broadlinefit':        args.broadlinefit,
         'fastphot':            fastphot,
         'fitstack':            fitstack,
@@ -239,39 +246,40 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         'seed':                seeds[iobj],
     } for iobj in range(len(meta))]
 
-    _out = mp_pool.starmap(fastspec_one, fitargs)
-    out = list(zip(*_out))
+    out = mp_pool.starmap(fastspec_one, fitargs)
+    out = list(zip(*out))
 
-    meta = create_output_meta(vstack(out[1]), phot=sc_data.photometry,
+    meta = create_output_meta(vstack(out[0]), phot=sc_data.photometry,
                               fastphot=fastphot, fitstack=fitstack)
-
-    results = create_output_table(out[0], meta, out_units,
-                                  fitstack=fitstack)
+    specphot = create_output_table(out[1], meta, specphot_units, fitstack=fitstack)
 
     if fastphot:
+        fastfit = None
         modelspectra = None
     else:
-        modelspectra = vstack(out[2], join_type='exact', metadata_conflicts='error')
+        fastfit = create_output_table(out[2], meta, fastfit_units, fitstack=fitstack)
+        modelspectra = vstack(out[3], join_type='exact', metadata_conflicts='error')
 
     # if multiprocessing, clean up workers
     mp_pool.close()
 
     log.info(f'Fitting {ntargets} object(s) took {time.time()-t0:.2f} seconds.')
 
-    write_fastspecfit(results, meta, modelspectra=modelspectra, outfile=args.outfile,
-                      specprod=Spec.specprod, coadd_type=Spec.coadd_type,
-                      fphotofile=sc_data.photometry.fphotofile,
-                      template_file=sc_data.templates.file,
-                      emlinesfile=sc_data.emlines.file, fastphot=fastphot,
-                      inputz=input_redshifts is not None,
-                      nmonte=args.nmonte, seed=args.seed,
-                      inputseeds=input_seeds is not None,
-                      uncertainty_floor=args.uncertainty_floor,
-                      minsnr_balmer_broad=args.minsnr_balmer_broad,
-                      ignore_photometry=args.ignore_photometry,
-                      broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
-                      use_quasarnet=args.use_quasarnet,
-                      no_smooth_continuum=args.no_smooth_continuum)
+    write_fastspecfit(
+        meta, specphot, fastfit, modelspectra=modelspectra,
+        outfile=args.outfile, specprod=Spec.specprod, coadd_type=Spec.coadd_type,
+        fphotofile=sc_data.photometry.fphotofile,
+        template_file=sc_data.templates.file,
+        emlinesfile=sc_data.emlines.file, fastphot=fastphot,
+        inputz=input_redshifts is not None,
+        nmonte=args.nmonte, seed=args.seed,
+        inputseeds=input_seeds is not None,
+        uncertainty_floor=args.uncertainty_floor,
+        minsnr_balmer_broad=args.minsnr_balmer_broad,
+        ignore_photometry=args.ignore_photometry,
+        broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
+        use_quasarnet=args.use_quasarnet,
+        no_smooth_continuum=args.no_smooth_continuum)
 
 
 def fastphot(args=None, comm=None):
@@ -343,6 +351,7 @@ def parse(options=None):
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
     parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
     parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
+    parser.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
     parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
     parser.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum.')
     parser.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
@@ -357,5 +366,3 @@ def parse(options=None):
     log.info(f'fastspec {" ".join(options)}')
 
     return args
-
-

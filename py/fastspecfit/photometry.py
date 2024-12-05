@@ -45,7 +45,7 @@ class Photometry(object):
         except:
             errmsg = f'Unable to read parameter file {fphotofile}'
             log.critical(errmsg)
-            raise ValueError(errmsg)
+            raise IOError(errmsg)
 
         self.uniqueid_col = fphoto['uniqueid']
         self.photounits = fphoto['photounits']
@@ -173,7 +173,7 @@ class Photometry(object):
            Synthesized rest-frame photometry.
 
         """
-        if redshift <= 0.0:
+        if redshift <= 0.:
             log.warning('Input redshift not defined, zero, or negative!')
             nabs = len(self.absmag_filters)
             synth_absmag = np.zeros(nabs, dtype='f8')
@@ -240,7 +240,7 @@ class Photometry(object):
 
         """
         nabs = len(self.absmag_filters)
-        if redshift <= 0.0:
+        if redshift <= 0.:
             log.warning('Input redshift not defined, zero, or negative!')
             kcorr = np.zeros(nabs, dtype='f8')
             absmag = np.zeros(nabs, dtype='f8')
@@ -299,6 +299,7 @@ class Photometry(object):
         pre = []
         for ifilt, filt in enumerate(filters):
             if wave[0] > filt.wavelength[0] or filt.wavelength[-1] > wave[-1]:
+                #print(filt.name, wave[0], wave[-1], filt.wavelength[0], filt.wavelength[-1])
                 raise RuntimeError('Filter boundaries exceed wavelength array')
 
             # NB: if we assume that no padding is needed, wave extends

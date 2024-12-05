@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-#
 # fastspecfit documentation build configuration file, created by
 # sphinx-quickstart on Tue Dec  9 10:43:33 2014.
 #
@@ -152,7 +150,6 @@ for missing in ('numpy', 'scipy', 'fitsio', 'astropy', 'speclite', 'seaborn',
 try:
     import sphinx_rtd_theme # pip install sphinx-rtd-theme
     html_theme = 'sphinx_rtd_theme'
-    html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 except ImportError:
     pass
 

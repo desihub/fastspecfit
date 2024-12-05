@@ -25,7 +25,7 @@ class LineTable(object):
         if not os.path.isfile(emlines_file):
             errmsg = f'Emission lines parameter file {emlines_file} does not exist.'
             log.critical(errmsg)
-            raise ValueError(errmsg)
+            raise FileNotFoundError(errmsg)
 
         self.file = emlines_file
 
@@ -34,7 +34,7 @@ class LineTable(object):
         except:
             errmsg = f'Problem reading emission lines parameter file {emlines_file}.'
             log.critical(errmsg)
-            raise ValueError(errmsg)
+            raise IOError(errmsg)
 
         linetable.sort('restwave')
 
