@@ -218,9 +218,10 @@ class ContinuumTools(object):
 
                 # We supply estimates local inverse stddev in each window
                 # (i.e., how noisy the data is there) so that variation is
-                # down-weighted in noisier regions.
+                # down-weighted in noisier regions. Note: ext=3 means constant
+                # extrapolation.
                 if len(swave) > 3:
-                    spl_flux = UnivariateSpline(swave, sflux, w=sisig, ext=3, k=3)
+                    spl_flux = UnivariateSpline(swave, sflux, w=sisig, ext=3, k=2)
                     smoothflux = spl_flux(camwave)
                 else:
                     smoothflux = np.zeros_like(camflux)
