@@ -17,7 +17,6 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: System :: Software Distribution",
 ]
-homepage = "https://github.com/desihub/fastspecfit"
 dependencies = [
     "numpy<2.0",
     "astropy>=5.0",
