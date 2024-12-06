@@ -150,6 +150,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         'fphotofile':        args.fphotofile,
         'fastphot':          fastphot,
         'fitstack':          fitstack,
+        'agn_continuum':     args.agn_continuum,
         'ignore_photometry': args.ignore_photometry,
         'template_file':     args.templates,
         'template_version':  args.templateversion,
@@ -335,6 +336,7 @@ def parse(options=None):
     parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
     parser.add_argument('--nmonte', type=int, default=50, help='Number of Monte Carlo realizations.')
     parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
+    parser.add_argument('--agn-continuum', default=False, action='store_true', help='Fit AGN, not stellar continuum templates.')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not model broad Balmer and helium line-emission.')
     parser.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')

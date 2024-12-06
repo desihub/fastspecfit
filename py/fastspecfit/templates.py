@@ -32,7 +32,7 @@ class Templates(object):
 
     def __init__(self, template_file=None, template_version=None, imf=None,
                  mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=250.,
-                 fastphot=False, read_linefluxes=False):
+                 agn_continuum=False, fastphot=False, read_linefluxes=False):
         """"
         Read the templates into a dictionary.
 
@@ -123,27 +123,30 @@ class Templates(object):
             #self.gamma    = dusthdr['GAMMA']
 
             # construct the AGN wavelength vector
-            iragnflux = T['AGNFLUX'].read()
-            iragnwave = T['AGNWAVE'].read()
-            #iragnflux  /= trapz(iragnflux, x=iragnwave) # should already be 1.0
+            if agn_continuum:
+                iragnflux = T['AGNFLUX'].read()
+                iragnwave = T['AGNWAVE'].read()
+                #iragnflux  /= trapz(iragnflux, x=iragnwave) # should already be 1.0
 
-            trim = np.searchsorted(iragnwave, 1e4, 'left') # hack...
-            iragnflux = iragnflux[trim:]
-            iragnwave = iragnwave[trim:]
+                trim = np.searchsorted(iragnwave, 1e4, 'left') # hack...
+                iragnflux = iragnflux[trim:]
+                iragnwave = iragnwave[trim:]
 
-            feflux = T['FEFLUX'].read()
-            fewave = T['FEWAVE'].read()
+                feflux = T['FEFLUX'].read()
+                fewave = T['FEWAVE'].read()
+                self.fewave = feflux
+                self.feflux = fewave
 
-            febounds = np.searchsorted(templatewave, Templates.AGN_PIXKMS_BOUNDS, 'left')
-            irbounds = np.searchsorted(templatewave, iragnwave[0], 'left')
+                febounds = np.searchsorted(templatewave, Templates.AGN_PIXKMS_BOUNDS, 'left')
+                irbounds = np.searchsorted(templatewave, iragnwave[0], 'left')
 
-            agnwave = np.hstack((templatewave[:febounds[0]], fewave,
-                                 templatewave[febounds[1]:irbounds],
-                                 iragnwave))
-            #self.agnwave = agnwave
+                agnwave = np.hstack((templatewave[:febounds[0]], fewave,
+                                     templatewave[febounds[1]:irbounds],
+                                     iragnwave))
+                self.agnwave = agnwave
 
-            #agnhdr = T['AGNFLUX'].read_header()
-            #self.agntau   = agnhdr['AGNTAU']
+                #agnhdr = T['AGNFLUX'].read_header()
+                #self.agntau   = agnhdr['AGNTAU']
         else:
             errmsg = f'Templates file {template_file} missing mandatory extensions DUSTFLUX and AGNFLUX.'
             log.critical(errmsg)

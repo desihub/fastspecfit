@@ -22,6 +22,7 @@ class Singletons(object):
                    fphotofile=None,
                    fastphot=False,
                    fitstack=False,
+                   agn_continuum=False,
                    ignore_photometry=False,
                    template_file=None,
                    template_version=None,
@@ -39,8 +40,9 @@ class Singletons(object):
                                    imf=template_imf,
                                    mintemplatewave=None,
                                    maxtemplatewave=40e4,
+                                   agn_continuum=agn_continuum,
                                    fastphot=fastphot)
-        log.debug(f'Cached stellar templates {self.templates.file}')
+        log.debug(f'Cached templates {self.templates.file}')
 
         # emission line table
         self.emlines = LineTable(emlines_file)
