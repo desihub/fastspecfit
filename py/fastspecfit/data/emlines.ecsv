@@ -70,8 +70,8 @@ name restwave patch isbalmer ishelium isbroad isstrong nicename plotgroup
        nii_6584   6585.273     t   False  False False  True  H$\alpha$+[NII]-$\lambda\lambda$6548,84                      halpha_nii_6548_48
        sii_6716   6718.294     u   False  False False  True  [SII]-$\lambda\lambda$6716,31                                sii_6716_31
        sii_6731   6732.674     u   False  False False  True  [SII]-$\lambda\lambda$6716,31                                sii_6716_31
-     ariii_7135   7137.77      v   False  False False  False [ArIII]-$\lambda$7135                                        oii_7320_30
-       oii_7320   7321.94      v   False  False False  False [OII]-$\lambda\lambda$7320,30                                oii_7320_30
-       oii_7330   7332.21      v   False  False False  False [OII]-$\lambda\lambda$7320,30                                oii_7320_30
+     ariii_7135   7137.77      v   False  False False  False [ArIII]-$\lambda$7135+[OII]-$\lambda\lambda$7320,30          ariii_7135_oii_7320_30
+       oii_7320   7321.94      v   False  False False  False [ArIII]-$\lambda$7135+[OII]-$\lambda\lambda$7320,30          ariii_7135_oii_7320_30
+       oii_7330   7332.21      v   False  False False  False [ArIII]-$\lambda$7135+[OII]-$\lambda\lambda$7320,30          ariii_7135_oii_7320_30
       siii_9069   9071.1       w   False  False False  False [SIII]-$\lambda$9069                                         siii_9069
       siii_9532   9533.2       w   False  False False  False [SIII]-$\lambda$9532                                         siii_9532
