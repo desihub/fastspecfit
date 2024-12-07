@@ -6,13 +6,11 @@ MPI wrapper for fastphot and fastspec.
 import os, time
 import numpy as np
 
-from fastspecfit.logger import log
-
 
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
                     makeqa=False, samplefile=None, input_redshifts=False,
                     outdir_data='.', templates=None, templateversion=None,
-                    fphotodir=None, fphotofile=None):
+                    fphotodir=None, fphotofile=None, log=None):
 
     import sys
     from desispec.parallel import stdouterr_redirected
@@ -41,7 +39,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
                     errmsg = f'Sample file {args.samplefile} with --input-redshifts set missing required columns {SURVEY,PROGRAM,HEALPIX,TARGETID,Z}'
                 else:
                     errmsg = f'Sample file {args.samplefile} missing required columns {SURVEY,PROGRAM,HEALPIX,TARGETID}'
-                self.log.critical(errmsg)
+                log.critical(errmsg)
                 raise ValueError(errmsg)
 
             _, zbestfiles, outfiles, groups, ntargets = plan(
@@ -144,7 +142,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
 
         if logfile == outfiles[ii]:
             errmsg = f'Log file {logfile} cannot be the same as outfile!'
-            self.log.critical(errmsg)
+            log.critical(errmsg)
             raise ValueError(errmsg)
 
         if args.makeqa and args.plan:
@@ -200,11 +198,14 @@ def main():
     import argparse
     from fastspecfit.mpi import plan
 
+    from fastspecfit.logger import getFastspecLogger
+    log = getFastspecLogger()
+
+
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
                         help='Specify which type of spectra/zbest files to process.')
-    parser.add_argument('--specprod', type=str, default='iron', #choices=['fuji', 'guadalupe', 'iron'],
-                        help='Spectroscopic production to process.')
+    parser.add_argument('--specprod', type=str, default='loa', help='Spectroscopic production to process.')
 
     parser.add_argument('--healpix', type=str, default=None, help='Comma-separated list of healpixels to process.')
     parser.add_argument('--survey', type=str, default='main,special,cmx,sv1,sv2,sv3', help='Survey to process.')
@@ -235,7 +236,6 @@ def main():
     parser.add_argument('--mergeall-sv', action='store_true', help='Merge all the SV catalogs.')
     parser.add_argument('--mergeall-special', action='store_true', help='Merge all the special catalogs.')
     parser.add_argument('--makeqa', action='store_true', help='Build QA in parallel.')
-    parser.add_argument('--ntest', type=int, default=None, help='Select ntest healpixels as a test sample drawn randomly from the full specprod (only for coadd-type==healpix).')
 
     parser.add_argument('--ignore-quasarnet', default=False, action='store_true', help='Do not use QuasarNet to improve QSO redshifts.')
     parser.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
@@ -249,20 +249,16 @@ def main():
 
     parser.add_argument('--outdir-data', default='$PSCRATCH/fastspecfit/data', type=str, help='Base output data directory.')
 
-    specprod_dir = None
-
     args = parser.parse_args()
 
+    specprod_dir = None
     outdir_data = os.path.expandvars(args.outdir_data)
 
-    if args.merge or args.mergeall or args.nompi:
+    try:
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+    except ImportError:
         comm = None
-    else:
-        try:
-            from mpi4py import MPI
-            comm = MPI.COMM_WORLD
-        except ImportError:
-            comm = None
 
     if comm is None:
         rank = 0
@@ -274,47 +270,27 @@ def main():
     #    import multiprocessing
     #    multiprocessing.set_start_method('spawn')
 
-    # check the input samplefile
-    if rank == 0 and args.samplefile is not None:
-        import fitsio
-        from astropy.table import Table
-        if not os.path.isfile(args.samplefile):
-            log.warning(f'{args.samplefile} does not exist.')
-            return
-        try:
-            sample = Table(fitsio.read(args.samplefile, columns=['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID']))
-        except:
-            errmsg = f'Sample file {args.samplefile} missing required columns {SURVEY,PROGRAM,HEALPIX,TARGETID}'
-            self.log.critical(errmsg)
-            raise ValueError(errmsg)
-
-    if args.samplefile is None and args.coadd_type == 'healpix':
-        args.survey = args.survey.split(',')
-        args.program = args.program.split(',')
-        if args.healpix is not None:
-            args.healpix = args.healpix.split(',')
-
-        # For a test sample, use a range of tiles 
-        if args.ntest:
+    # Main rank is responsible for merging, etc.
+    if rank == 0:
+        # check the input samplefile
+        if args.samplefile is not None:
+            import fitsio
             from astropy.table import Table
-            rand = np.random.RandomState(seed=1)
-            tilepix = Table.read(f'$DESI_SPECTRO_REDUX/{args.specprod}/healpix/tilepix.fits')
-
-            # trim to survey/program
-            tilepix = tilepix[np.unique(np.hstack([np.where(tilepix['SURVEY'] == survey)[0] for survey in args.survey]))]
-            if len(tilepix) == 0:
-                log.warning('No matching surveys; nothing to do.')
+            if not os.path.isfile(args.samplefile):
+                log.warning(f'{args.samplefile} does not exist.')
                 return
-            tilepix = tilepix[np.unique(np.hstack([np.where(tilepix['PROGRAM'] == program)[0] for program in args.program]))]
-            if len(tilepix) == 0:
-                log.warning('No matching programs; nothing to do.')
-                return
+            try:
+                sample = Table(fitsio.read(args.samplefile, columns=['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID']))
+            except:
+                errmsg = f'Sample file {args.samplefile} missing required columns {SURVEY,PROGRAM,HEALPIX,TARGETID}'
+                log.critical(errmsg)
+                raise ValueError(errmsg)
 
-            survprog = np.array([ss+pp for ss, pp in zip(tilepix['SURVEY'], tilepix['PROGRAM'])])
-            I = rand.choice(len(tilepix), args.ntest, replace=False)
-            args.healpix = ','.join(tilepix['HEALPIX'][I].astype(str))
-            log.info(f'Selecting {len(I)} test healpixels: {args.healpix}')
-            print(tilepix[I])
+        if args.samplefile is None and args.coadd_type == 'healpix':
+            args.survey = args.survey.split(',')
+            args.program = args.program.split(',')
+            if args.healpix is not None:
+                args.healpix = args.healpix.split(',')
 
     if args.mergeall_main or args.mergeall_sv or args.mergeall_special:
         args.mergeall = True
@@ -384,7 +360,7 @@ def main():
                      outdir_data=outdir_data, overwrite=args.overwrite)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                        makeqa=args.makeqa, outdir_data=outdir_data,
+                        makeqa=args.makeqa, outdir_data=outdir_data, log=log,
                         samplefile=args.samplefile, input_redshifts=args.input_redshifts,
                         templates=args.templates, templateversion=args.templateversion,
                         fphotodir=args.fphotodir, fphotofile=args.fphotofile)
