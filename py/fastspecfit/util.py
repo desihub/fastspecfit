@@ -53,7 +53,7 @@ class MPPool(object):
     rather than a list of positional arguments.
 
     """
-    def __init__(self, nworkers, initializer=None, init_argdict=None):
+    def __init__(self, nworkers, initializer=None, init_argdict=None, comm=None):
         """
         create a pool with nworkers workers, using the current
         process if nworkers is 1.  If initiializer is not None,
@@ -65,11 +65,10 @@ class MPPool(object):
         initfunc = None if initializer is None else self.apply_to_dict
 
         if nworkers > 1:
-            #try:
-            #    from mpi4py.futures import MPIPoolExecutor as Pool
-            #except:
-            #    from multiprocessing import Pool
-            from multiprocessing import Pool
+            if comm is not None:
+                from mpi4py.futures import MPIPoolExecutor as Pool
+            else:
+                from multiprocessing import Pool
             self.pool = Pool(nworkers,
                              initializer=initfunc,
                              initargs=(initializer, init_argdict,))

@@ -47,7 +47,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             _, zbestfiles, outfiles, groups, ntargets = plan(
                 size=size, specprod=args.specprod, specprod_dir=specprod_dir,
                 sample=sample, coadd_type='healpix', makeqa=args.makeqa,
-                mp=args.mp, fastphot=args.fastphot, 
+                mp=args.mp, fastphot=args.fastphot,
                 outdir_data=outdir_data, overwrite=args.overwrite)
         else:
             sample = None
@@ -117,6 +117,9 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             if args.fphotofile:
                 cmdargs += f' --fphotofile={args.fphotofile}'
 
+        if args.verbose:
+            cmdargs += ' --verbose'
+
         if args.ntargets is not None:
             cmdargs += f' --ntargets={args.ntargets}'
 
@@ -162,12 +165,18 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             outdir = os.path.dirname(logfile)
             if not os.path.isdir(outdir):
                 os.makedirs(outdir, exist_ok=True)
+
+            ## pure-MPI
+            #if comm is not None:
+            #    subcomm = comm.Split(color=rank)
+            #else:
+            #    subcomm = None
+
             if args.nolog:
-                fast(args=cmdargs.split())
+                fast(args=cmdargs.split())#, comm=subcomm)
             else:
-                cmdargs += ' --verbose'
                 with stdouterr_redirected(to=logfile, overwrite=args.overwrite):
-                    fast(args=cmdargs.split())
+                    fast(args=cmdargs.split())#, comm=subcomm)
 
             dt1 = time.time() - t1
             log.info(f'  rank {rank} done in {dt1:.2f} sec')
@@ -360,13 +369,11 @@ def main():
                      mp=args.mp, fastphot=args.fastphot,
                      outdir_data=outdir_data, overwrite=args.overwrite)
             else:
-                print(f'I am rank {rank}')
                 plan(size=size, specprod=args.specprod, specprod_dir=specprod_dir,
                      coadd_type=args.coadd_type, survey=args.survey, program=args.program,
                      healpix=args.healpix, tile=args.tile, night=args.night,
                      makeqa=args.makeqa, mp=args.mp, fastphot=args.fastphot,
                      outdir_data=outdir_data, overwrite=args.overwrite)
-                print(f'I am rank {rank}')
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
                         makeqa=args.makeqa, outdir_data=outdir_data,
