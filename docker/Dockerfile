@@ -28,7 +28,7 @@ RUN DEBIAN_FRONTEND=noninteractive \
 # python = python3
 RUN ln -s "$(which python3)" /usr/bin/python
 
-ARG mpich=4.0.2
+ARG mpich=4.1.1
 ARG mpich_prefix=mpich-$mpich
 
 ENV FFLAGS="-fallow-argument-mismatch" \
