@@ -66,7 +66,7 @@ class MPPool(object):
 
         if nworkers > 1:
             if comm is not None:
-                from mpi4py.futures import MPIPoolExecutor as Pool
+                from mpi4py.futures import MPICommExecutor as Pool
             else:
                 from multiprocessing import Pool
             self.pool = Pool(nworkers,

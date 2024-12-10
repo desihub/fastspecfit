@@ -1008,6 +1008,8 @@ class EMFitTools(object):
                            zip(values_monte, obsamps_monte, emlineflux_monte_s,
                                specflux_nolines_monte_s)]
                     boxflux_monte, flux_monte, cont_monte = tuple(zip(*res))
+                    flux_monte = np.array(flux_monte)
+                    cont_monte = np.array(cont_monte)
 
                     # Compute the variance on the line-fitting results.
 
@@ -1058,8 +1060,10 @@ class EMFitTools(object):
                     fastfit[f'{linename}_EW'] = ew
 
                     if results_monte is not None:
-                        ew_monte = np.array(flux_monte) / np.array(cont_monte) / (1. + redshift) # rest frame [A]
-                        fastfit[f'{linename}_EW_IVAR'] = var2ivar(np.var(ew_monte))
+                        I = cont_monte != 0.
+                        if np.sum(I) > 2:
+                            ew_monte = flux_monte[I] / cont_monte[I] / (1. + redshift) # rest frame [A]
+                            fastfit[f'{linename}_EW_IVAR'] = var2ivar(np.var(ew_monte))
 
 
         # Measure moments for the set of lines in self.moment_lines. We need a
