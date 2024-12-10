@@ -67,6 +67,9 @@ RUN for x in \
     && rm -Rf /root/.cache/pip \
     && echo 1
 
+RUN python -m pip install --index-url https://software.repos.intel.com/python/pypi \
+    --extra-index-url https://pypi.org/simple mkl_fft
+
 ENV DESIUTIL_VERSION 3.4.3
 ENV DESIMODEL_VERSION 0.19.2
 ENV DESITARGET_VERSION 2.8.0
@@ -86,6 +89,9 @@ ENV PATH /src/fastspecfit/bin:/opt/conda/bin:/usr/local/bin:/usr/sbin:/usr/bin:/
 
 RUN mkdir /homedir && chmod 777 /homedir
 ENV HOME /homedir
+
+ENV NUMBA_CACHE_DIR=/homedir/numba_cache
+RUN chmod 777 /homedir/numba_cache
 
 # set prompt and default shell
 SHELL ["/bin/bash", "-c"]

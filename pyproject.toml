@@ -18,20 +18,16 @@ classifiers = [
     "Topic :: System :: Software Distribution",
 ]
 dependencies = [
-    "numpy<2.0",
-    "astropy>=5.0",
+    "numpy",
+    "astropy",
     "scipy",
     "healpy",
     "numba",
     "seaborn",
     "matplotlib",
     "fitsio",
-    "speclite>=0.20",
-    "desimodel @ git+https://github.com/desihub/desimodel.git@0.19.2",
-    "desitarget @ git+https://github.com/desihub/desitarget.git@2.8.0",
-    "desispec @ git+https://github.com/desihub/desispec.git@0.67.0"
+    "speclite",
 ]
-requires-python = ">=3.9"
 
 [project.optional-dependencies]
 test = [
