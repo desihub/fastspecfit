@@ -1627,10 +1627,10 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                 else:
                     dn4000_model_sigma = 0.
 
-                restwave = modelwave / (1. + redshift) # [Angstrom]
+                restwave = wave_out / (1. + redshift) # [Angstrom]
                 flam2fnu = (1 + redshift) * restwave**2 / (C_LIGHT * 1e5) * 1e-3 * 1e23 / FLUXNORM # [erg/s/cm2/A-->mJy, rest]
                 fnu_obs = data['coadd_flux'] * flam2fnu # [mJy]
-                fnu = fluxnolines * flam2fnu # [mJy]
+                fnu = flux_out_nolines * flam2fnu # [mJy]
 
                 fnu_model = continuum_out * flam2fnu
                 #fnu_fullmodel = modelflux * flam2fnu
