@@ -77,10 +77,10 @@ def test_stats():
     xgood, mask = sigmaclip(xx)
     assert(np.all(mask))
 
-    q1, q2 = quantile(xx, [0.1, 0.9])
+    q1, q2 = quantile(xx, np.asarray([0.1, 0.9]))
     assert(np.isclose(q1, 3.4) & np.isclose(q2, 30.6))
 
     with pytest.raises(ValueError):
-        quantile(xx, [10., 90.])
+        quantile(xx, np.asarray([10., 90.]))
 
     assert(np.isclose(median(xx), 17.))

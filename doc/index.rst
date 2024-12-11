@@ -8,13 +8,16 @@ Welcome to the Documentation for FastSpecFit
 Overview
 --------
 
-``FastSpecFit`` is a stellar continuum and emission-line modeling code for `DESI
-<https://desi.lbl.gov>`_ which is optimized for speed and simplicity; it uses
-physically motivated stellar population synthesis and emission-line templates to
-jointly model the three-camera optical spectrophotometry from DESI and the
-ultraviolet through infrared broadband photometry (``fastspec``). Alternatively,
-it can be used to model just the broadband photometry (``fastphot``), although
-in either case DESI redshifts are required.
+``FastSpecFit`` is a stellar continuum and emission-line modeling code which is
+optimized for speed and simplicity; it uses physically motivated stellar
+population synthesis and emission-line templates to jointly model UV/optical
+spectrophotometry and ultraviolet through infrared broadband photometry
+(``fastspec``). Alternatively, it can be used to model just the broadband
+photometry (``fastphot``).
+
+``FastSpecFit`` currently only supports `DESI <https://desi.lbl.gov>`_
+spectrophotometric data, although contributions to develop the software for
+other instruments and surveys are more than welcome.
 
 Contents
 --------
