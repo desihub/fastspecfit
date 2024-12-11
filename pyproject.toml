@@ -28,6 +28,7 @@ dependencies = [
     "fitsio",
     "speclite",
 ]
+requires-python = "<3.13"
 
 [project.optional-dependencies]
 test = [
@@ -52,8 +53,10 @@ requires = ["setuptools",
 build-backend = 'setuptools.build_meta'
 
 [tool.setuptools]
+scripts-dir = "bin"
 package-dir = {"" = "py"}
 include-package-data = true
+zip-safe = true
 
 [tool.setuptools.package-data]
 fastspecfit = [
