@@ -1,6 +1,30 @@
 Build a Docker container for fastspecfit.
 =========================================
 
+Using podman-hpc at NERSC
+-------------------------
+
+podman-hpc pull ubuntu:22.04
+
+First, build the container:
+```
+podman-hpc build -t desihub/fastspecfit:latest .
+```
+
+podman-hpc migrate desihub/fastspecfit:latest
+
+
+podman-hpc login docker.io
+podman-hpc push docker.io/desihub/fastspecfit:latest
+podman-hpc pull docker.io/desihub/fastspecfit:latest
+
+podman-hpc run --rm -it localhost/desihub/fastspecfit:latest /bin/bash
+
+
+
+Legacy Instructions
+-------------------
+
 Build a cross-platform docker container as documented [here](https://www.docker.com/blog/faster-multi-platform-builds-dockerfile-cross-compilation-guide), [here](https://blog.jaimyn.dev/how-to-build-multi-architecture-docker-images-on-an-m1-mac/), and [here](https://docs.nersc.gov/development/shifter/how-to-use/).
 
 The very first time, create a builder instance with
