@@ -10,5 +10,6 @@ graft etc
 graft doc
 
 prune build
+prune dist
+prune htmlcov
 prune doc/_build
-prune boneyard
