@@ -18,7 +18,7 @@ classifiers = [
     "Topic :: System :: Software Distribution",
 ]
 dependencies = [
-    "numpy",
+    "numpy<2", # desiutil pinned at <2
     "astropy",
     "scipy",
     "healpy",
@@ -52,11 +52,21 @@ requires = ["setuptools",
             ]
 build-backend = 'setuptools.build_meta'
 
+[project.scripts]
+fastspec = "fastspecfit.fastspecfit:fastspec"
+fastphot = "fastspecfit.fastspecfit:fastphot"
+stackfit = "fastspecfit.fastspecfit:stackfit"
+fastqa = "fastspecfit.qa:fastqa"
+
 [tool.setuptools]
-scripts-dir = "bin"
-package-dir = {"" = "py"}
 include-package-data = true
 zip-safe = true
+package-dir = {"" = "py"}
+script-files = [
+    "bin/build-templates",
+    "bin/get-cutouts",
+    "bin/mpi-fastspecfit"
+]
 
 [tool.setuptools.package-data]
 fastspecfit = [

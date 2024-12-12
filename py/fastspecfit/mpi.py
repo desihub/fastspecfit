@@ -12,8 +12,8 @@ import multiprocessing
 import fitsio
 from astropy.table import Table
 
-from fastspecfit.logger import log
 from fastspecfit.io import get_qa_filename
+from fastspecfit.logger import log
 
 
 def _get_ntargets_one(args):
@@ -43,9 +43,9 @@ def get_ntargets_one(specfile, htmldir_root, outdir_root, coadd_type='healpix',
     return ntargets
 
 
-def _findfiles(filedir, prefix='redrock', coadd_type=None, survey=None,
-               program=None, healpix=None, tile=None, night=None,
-               gzip=False, sample=None):
+def findfiles(filedir, prefix='redrock', coadd_type=None, survey=None,
+              program=None, healpix=None, tile=None, night=None,
+              gzip=False, sample=None):
     if gzip:
         fitssuffix = 'fits.gz'
     else:
@@ -132,21 +132,16 @@ def _findfiles(filedir, prefix='redrock', coadd_type=None, survey=None,
     return thesefiles
 
 
-def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
+def plan(size=1, specprod=None, specprod_dir=None, coadd_type='healpix',
          survey=None, program=None, healpix=None, tile=None, night=None,
-         sample=None, outdir_data='.', mp=1, merge=False, makeqa=False,
-         fastphot=False, overwrite=False):
+         sample=None, outdir_data='.', mp=1, merge=False,
+         makeqa=False, fastphot=False, overwrite=False):
 
     import fitsio
     from astropy.table import Table, vstack
     from desispec.parallel import weighted_partition
 
     t0 = time.time()
-    if comm is None:
-        rank, size = 0, 1
-    else:
-        rank, size = comm.rank, comm.size
-
     if fastphot:
         outprefix = 'fastphot'
         gzip = False
@@ -187,26 +182,26 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
     if merge:
         redrockfiles = None
         if sample is not None: # special case of an input catalog
-            outfiles, _ = _findfiles(outdir, prefix=outprefix, sample=sample)
+            outfiles, _ = findfiles(outdir, prefix=outprefix, sample=sample)
         else:
-            outfiles = _findfiles(outdir, prefix=outprefix, coadd_type=coadd_type,
-                                  survey=survey, program=program, healpix=healpix,
-                                  tile=tile, night=night, gzip=gzip)
+            outfiles = findfiles(outdir, prefix=outprefix, coadd_type=coadd_type,
+                                 survey=survey, program=program, healpix=healpix,
+                                 tile=tile, night=night, gzip=gzip)
         log.info(f'Found {len(outfiles)} {outprefix} files to be merged.')
     elif makeqa:
         redrockfiles = None
-        outfiles = _findfiles(outdir, prefix=outprefix, coadd_type=coadd_type,
-                              survey=survey, program=program, healpix=healpix,
-                              tile=tile, night=night, gzip=gzip)
+        outfiles = findfiles(outdir, prefix=outprefix, coadd_type=coadd_type,
+                             survey=survey, program=program, healpix=healpix,
+                             tile=tile, night=night, gzip=gzip)
         log.info(f'Found {len(outfiles)} {outprefix} files for QA.')
         ntargs = [(outfile, htmldir, outdir, coadd_type, True, overwrite, fastphot) for outfile in outfiles]
     else:
         if sample is not None: # special case of an input catalog
-            redrockfiles, ntargets = _findfiles(specprod_dir, prefix='redrock', sample=sample)
+            redrockfiles, ntargets = findfiles(specprod_dir, prefix='redrock', sample=sample)
         else:
-            redrockfiles = _findfiles(specprod_dir, prefix='redrock', coadd_type=coadd_type,
-                                      survey=survey, program=program,
-                                      healpix=healpix, tile=tile, night=night)
+            redrockfiles = findfiles(specprod_dir, prefix='redrock', coadd_type=coadd_type,
+                                     survey=survey, program=program,
+                                     healpix=healpix, tile=tile, night=night)
         nfile = len(redrockfiles)
         outfiles = []
         for redrockfile in redrockfiles:

@@ -159,15 +159,16 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
     sc_data.initialize(**init_sc_args)
 
-    # If multiprocessing, create a pool of worker processes and initialize
-    # single-copy objects in each worker.
-    if args.mp > 1 and not 'NERSC_HOST' in os.environ:
-        import multiprocessing
-        multiprocessing.set_start_method('fork')
+    ## If multiprocessing, create a pool of worker processes and initialize
+    ## single-copy objects in each worker.
+    #if args.mp > 1 and not 'NERSC_HOST' in os.environ:
+    #    import multiprocessing
+    #    multiprocessing.set_start_method('fork')
 
     t0 = time.time()
     mp_pool = MPPool(args.mp, initializer=sc_data.initialize,
-                     init_argdict=init_sc_args)
+                     init_argdict=init_sc_args, comm=comm)
+
     log.debug(f'Caching took {time.time()-t0:.5f} seconds.')
 
     log.info(f'Cached stellar templates {sc_data.templates.file}')

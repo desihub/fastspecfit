@@ -14,6 +14,7 @@ This needs to be in its own file to prevent circular imports with other code.
 
 """
 from logging import DEBUG
+from desiutil.log import get_logger
 
 def getFastspecLogger():
     """
@@ -34,19 +35,22 @@ def getFastspecLogger():
     import logging
 
     root_name = 'fastspec'
-
-    ch = logging.StreamHandler(sys.stdout)
-    fmtfields = ['%(levelname)s', '%(filename)s', '%(lineno)s', '%(funcName)s']
-    fmtfields.append(' %(message)s')
-    formatter = logging.Formatter(':'.join(fmtfields),
-                                  datefmt='%Y-%m-%dT%H:%M:%S')
-    ch.setFormatter(formatter)
-
     log = logging.getLogger(root_name)
-    log.addHandler(ch)
+
+    if not log.handlers:
+        ch = logging.StreamHandler(sys.stdout)
+        fmtfields = ['%(levelname)s', '%(filename)s', '%(lineno)s', '%(funcName)s']
+        fmtfields.append(' %(message)s')
+        formatter = logging.Formatter(':'.join(fmtfields),
+                                      datefmt='%Y-%m-%dT%H:%M:%S')
+        ch.setFormatter(formatter)
+        log.addHandler(ch)
+
     log.setLevel(logging.INFO)
 
     return log
 
 
-log = getFastspecLogger()
+#log = getFastspecLogger()
+log = get_logger()
+

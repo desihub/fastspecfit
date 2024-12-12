@@ -218,9 +218,10 @@ class ContinuumTools(object):
 
                 # We supply estimates local inverse stddev in each window
                 # (i.e., how noisy the data is there) so that variation is
-                # down-weighted in noisier regions.
+                # down-weighted in noisier regions. Note: ext=3 means constant
+                # extrapolation.
                 if len(swave) > 3:
-                    spl_flux = UnivariateSpline(swave, sflux, w=sisig, ext=3, k=3)
+                    spl_flux = UnivariateSpline(swave, sflux, w=sisig, ext=3, k=2)
                     smoothflux = spl_flux(camwave)
                 else:
                     smoothflux = np.zeros_like(camflux)
@@ -1023,6 +1024,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
         dn4000_model = 0.
 
         coeff_monte = None
+        tauv_monte = None
         sedmodel_monte = None
         sedmodel_nolines_monte = None
 
@@ -1095,9 +1097,9 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
             msg.append(f'vdisp={vdisp:.0f} km/s')
             log.info(' '.join(msg))
 
-    return (coeff, coeff_monte, rchi2_phot, tauv, tauv_ivar, vdisp, dn4000_model,
-            dn4000_model_ivar, sedmodel, sedmodel_monte, sedmodel_nolines,
-            sedmodel_nolines_monte)
+    return (coeff, coeff_monte, rchi2_phot, tauv, tauv_monte, tauv_ivar, vdisp,
+            dn4000_model, dn4000_model_ivar, sedmodel, sedmodel_monte,
+            sedmodel_nolines, sedmodel_nolines_monte)
 
 
 def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
@@ -1161,7 +1163,7 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
             import seaborn as sns
             sns.set(context='talk', style='ticks', font_scale=0.8)
 
-            pngfile = f'qa-vdisp-{uniqueid}.png'
+            pngfile = f'qa-vdisp-chi2scan-{uniqueid}.png'
 
             fig, ax = plt.subplots(figsize=(8, 6))
             ax.scatter(CTools.vdisp_grid, chi2grid-chi2min, marker='s', s=50, color='gray', edgecolor='k')
@@ -1344,13 +1346,14 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
                     import corner as cn
                     import seaborn as sns
 
-                    pngfile = f'qa-vdisp-corner-{uniqueid}.png'
+                    pngfile = f'qa-vdisp-{uniqueid}.png'
 
                     sns.set(context='talk', style='ticks', font_scale=0.6)
                     colors = sns.color_palette()
 
                     dkw = {'color': colors[1], 'ms': 10, 'alpha': 0.75, 'mec': 'k'}
-                    hkw = {'fill': True, 'alpha': 0.75, 'color': 'gray'}
+                    hkw = {'fill': True, 'alpha': 0.75, 'color': 'gray',
+                           'align': 'left', 'edgecolor': 'k'}
                     ndim = 3
 
                     tauv_sigma = np.std(tauv_monte)
@@ -1492,6 +1495,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
         dn4000_model_ivar = var2ivar(np.var(dn4000_model_monte))
     else:
         coeff_monte = None
+        tauv_monte = None
         sedmodel_monte = None
         sedmodel_nolines_monte = None
         desimodel_nolines_monte = None
@@ -1531,10 +1535,10 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
     log.debug(f'Deriving the smooth continuum took {time.time()-t0:.2f} seconds.')
 
     return (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
-            tauv, tauv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar, dn4000_model,
-            dn4000_model_ivar, sedmodel, sedmodel_nolines, desimodel_nolines,
-            smoothcontinuum, smoothstats, specflux_monte, sedmodel_monte,
-            sedmodel_nolines_monte, continuummodel_monte)
+            tauv, tauv_monte, tauv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar,
+            dn4000_model, dn4000_model_ivar, sedmodel, sedmodel_nolines,
+            desimodel_nolines, smoothcontinuum, smoothstats, specflux_monte,
+            sedmodel_monte, sedmodel_nolines_monte, continuummodel_monte)
 
 
 def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
@@ -1597,15 +1601,15 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
 
     if fastphot:
         # Photometry-only fitting.
-        (coeff, coeff_monte, rchi2_phot, tauv, tauv_ivar, vdisp, dn4000_model, dn4000_model_ivar,
-         sedmodel, sedmodel_monte, sedmodel_nolines, sedmodel_nolines_monte) = \
+        (coeff, coeff_monte, rchi2_phot, tauv, tauv_monte, tauv_ivar, vdisp, dn4000_model,
+         dn4000_model_ivar, sedmodel, sedmodel_monte, sedmodel_nolines, sedmodel_nolines_monte) = \
             continuum_fastphot(redshift, objflam, objflamivar, CTools,
                                uniqueid=data['uniqueid'], debug_plots=debug_plots,
                                nmonte=nmonte, rng=rng)
     else:
         (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
-         tauv, tauv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar, dn4000_model,
-         dn4000_model_ivar, sedmodel, sedmodel_nolines, continuummodel,
+         tauv, tauv_monte, tauv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar,
+         dn4000_model, dn4000_model_ivar, sedmodel, sedmodel_nolines, continuummodel,
          smoothcontinuum, smoothstats, specflux_monte, sedmodel_monte,
          sedmodel_nolines_monte, continuummodel_monte) = \
              continuum_fastspec(redshift, objflam, objflamivar, CTools,
@@ -1746,8 +1750,73 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                                       ['AGE_IVAR', 'ZZSUN_IVAR', 'LOGMSTAR_IVAR', 'SFR_IVAR']):
                 specphot[col] = var2ivar(np.var(val_monte))
 
-        #rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 5600.))
-        #msg = [f'M{phot.absmag_bands[rindx]}={absmag[rindx]:.2f} mag']
+            # optional debugging plot
+            if debug_plots:
+                import matplotlib.pyplot as plt
+                import corner as cn
+                import seaborn as sns
+
+                pngfile = f'qa-sps-properties-{data["uniqueid"]}.png'
+
+                sns.set(context='talk', style='ticks', font_scale=0.6)
+                colors = sns.color_palette()
+
+                dkw = {'color': colors[1], 'ms': 10, 'alpha': 0.75, 'mec': 'k'}
+                hkw = {'fill': True, 'alpha': 0.75, 'color': 'gray',
+                       'align': 'left', 'edgecolor': 'k'}
+                ndim = 5
+
+                zzsun_sigma = np.std(zzsun_monte)
+                tauv_sigma = np.std(tauv_monte)
+                sfr_sigma = np.std(sfr_monte)
+                logmstar_sigma = np.std(logmstar_monte)
+                age_sigma = np.std(age_monte)
+
+                plotdata = np.vstack((zzsun_monte, tauv_monte, sfr_monte, logmstar_monte, age_monte)).T
+                truths = [zzsun, tauv, sfr, logmstar, age]
+                labels = [r'$Z/Z_{\odot}$', r'$\tau_{V}$', r'SFR ($M_{\odot}/\mathrm{yr}$)',
+                          '\n'+r'$\log_{10}(M/M_{\odot})$', 'Age (Gyr)']
+                titles = [r'$Z/Z_{\odot}$='+f'{zzsun:.1f}'+r'$\pm$'+f'{zzsun_sigma:.1f}',
+                          r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
+                          r'SFR='+f'{sfr:.1f}'+r'$\pm$'+f'{sfr_sigma:.1f}'+r' $M_{\odot}/\mathrm{yr}$',
+                          r'$\log_{10}(M/M_{\odot})$='+f'{logmstar:.2f}'+r'$\pm$'+f'{logmstar_sigma:.2f}',
+                          f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr']
+                sig = [max(5.*zzsun_sigma, 0.1), max(5.*tauv_sigma, 0.005), max(5.*sfr_sigma, 3),
+                       max(5.*logmstar_sigma, 0.1), max(5.*age_sigma, 0.005)]
+                ranges = [(prop-sig1, prop+sig1) for prop, sig1 in zip([zzsun, tauv, sfr, logmstar, age], sig)]
+
+                bins = nmonte // 3
+                if bins < 10:
+                    bins = 10
+                fig = cn.corner(plotdata, bins=bins, smooth=None, plot_density=False,
+                                plot_contours=False, range=ranges,
+                                data_kwargs=dkw, hist_kwargs=hkw, labels=labels)
+                ax = np.array(fig.axes).reshape((ndim, ndim))
+                for ii, mlval, sig in zip(range(ndim), (zzsun, tauv, sfr, logmstar, age),
+                                          (zzsun_sigma, tauv_sigma, sfr_sigma, logmstar_sigma, age_sigma)):
+                    ax[ii, ii].axvline(mlval, color=colors[0], lw=2, ls='-')
+                    ax[ii, ii].axvline(mlval+sig, color=colors[0], lw=1, ls='--')
+                    ax[ii, ii].axvline(mlval-sig, color=colors[0], lw=1, ls='--')
+                    ax[ii, ii].set_title(titles[ii])
+                    if ii == 0:
+                        ax[ii, ii].set_ylabel('Number of\nRealizations')
+                    else:
+                        xx = ax[ii, ii].twinx()
+                        xx.set_yticklabels([])
+                        xx.set_ylabel('Number of\nRealizations')
+                        xx.tick_params(right=False)
+                for yi in range(ndim):
+                    for xi in range(yi):
+                        ax[yi, xi].axvline(truths[xi], color=colors[0], lw=1, ls='-', alpha=0.75)
+                        ax[yi, xi].axhline(truths[yi], color=colors[0], lw=1, ls='-', alpha=0.75)
+                fig.suptitle(f'SPS Properties: {data["uniqueid"]}')
+
+                fig.subplots_adjust(left=0.1, right=0.92, bottom=0.1, top=0.95, wspace=0.14, hspace=0.14)
+                fig.savefig(pngfile)#, bbox_inches='tight')
+                plt.close()
+                log.info(f'Wrote {pngfile}')
+
+
         msg = []
         for label, units, val, col in zip(['vdisp', 'log(M/Msun)', 'tau(V)', 'Age', 'SFR', 'Z/Zsun'],
                                           [' km/s', '', '', ' Gyr', ' Msun/yr', ''],

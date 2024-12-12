@@ -4,23 +4,36 @@ Build a Docker container for fastspecfit.
 Using podman-hpc at NERSC
 -------------------------
 
-podman-hpc pull ubuntu:22.04
-
 First, build the container:
 ```
-podman-hpc build -t desihub/fastspecfit:latest .
+time podman-hpc build --tag fastspecfit:3.1.1 --file ./Containerfile ./
+```
+then 'migrate' the image so it can be used for jobs:
+```
+podman-hpc migrate fastspecfit:3.1.1
 ```
 
-podman-hpc migrate desihub/fastspecfit:latest
+List the available images:
+```
+podman-hpc images
+```
 
 
+```
 podman-hpc login docker.io
-podman-hpc push docker.io/desihub/fastspecfit:latest
-podman-hpc pull docker.io/desihub/fastspecfit:latest
+podman-hpc push fastspecfit:3.1.1
+podman-hpc pull desihub/fastspecfit:3.1.1
+```
 
-podman-hpc run --rm -it localhost/desihub/fastspecfit:latest /bin/bash
+Enter the container:
+```
+podman-hpc run --rm -it fastspecfit:3.1.1 /bin/bash
+```
 
-
+To delete a container:
+```
+podman-hpc rmi desihub/fastspecfit:3.1.1
+```
 
 Legacy Instructions
 -------------------
@@ -41,7 +54,7 @@ Then, subsequently, to create a new (or the latest) version or tag, do:
 export DOCKER_BUILDKIT=0
 export COMPOSE_DOCKER_CLI_BUILD=0
 
-docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t desihub/fastspecfit:3.1.2 .
+docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t desihub/fastspecfit:3.1.1 .
 docker buildx build --platform linux/amd64,linux/arm64/v8 --push -t desihub/fastspecfit:latest .
 ```
 
@@ -52,8 +65,8 @@ docker run -it desihub/fastspecfit:latest
 ```
 or
 ```
-docker pull desihub/fastspecfit:3.1.2
-docker run -it desihub/fastspecfit:3.1.2
+docker pull desihub/fastspecfit:3.1.1
+docker run -it desihub/fastspecfit:3.1.1
 ```
 
 Or at NERSC:

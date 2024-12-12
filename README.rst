@@ -1,6 +1,6 @@
-.. image:: doc/_static/fastspecfit-logo.png
+.. image:: https://github.com/desihub/fastspecfit/raw/main/doc/_static/fastspecfit-logo.png
    :height: 180px
-   :target: doc/_static/fastspecfit-logo.png
+   :target: https://github.com/desihub/fastspecfit/raw/main/doc/_static/fastspecfit-logo.png
    :alt: FastSpecFit logo
 
 |Actions Status| |Coveralls Status| |Documentation Status| |ASCL Reference|

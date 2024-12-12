@@ -838,10 +838,12 @@ class LineMasker(object):
             snrpix = pix['snr']
 
 
-        # remove low signal-to-noise ratio lines from the mask
+        # remove low signal-to-noise ratio lines from the mask, but always keep
+        # the "expected" strong lines (see, e.g., CIV 1549 in
+        # sv3-dark-25960-39627770216580342).
         linenames = snrpix.keys()
-        for linename in linenames:
-            if snrpix[linename] < minsnr_linemask:
+        for linename, isstrong in zip(linenames, EMFit.line_table[EMFit.line_in_range]['isstrong'].value):
+            if not isstrong and snrpix[linename] < minsnr_linemask:
                 log.debug(f'Removing {linename} from linepix: S/N={snrpix[linename]:.1f}<{minsnr_linemask:.1f}.')
                 linepix.pop(linename)
 

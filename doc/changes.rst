@@ -5,11 +5,13 @@ Change Log
 3.1.1 (not released yet)
 ------------------------
 
+* Progress toward pure-MPI production code [`PR #200`_].
 * Fix <1% bias in fluxes and EWs of tied and free doublet ratios [`PR #198`_].
 * Backwards incompatible update to the data model; expanded unit tests [`PR #197`_].
 
 .. _`PR #197`: https://github.com/desihub/fastspecfit/pull/197
 .. _`PR #198`: https://github.com/desihub/fastspecfit/pull/198
+.. _`PR #200`: https://github.com/desihub/fastspecfit/pull/200
 
 3.1.0 (2024-11-21)
 ------------------
