@@ -4,14 +4,32 @@ Build a Docker container for fastspecfit.
 Using podman-hpc at NERSC
 -------------------------
 
+First, log into `dockerhub` so we can check-in our images:
+```
+podman-hpc login docker.io
+```
+
+Next, build, migrate, and push the base container:
+```
+podman-hpc build --tag desihub/fastspecfit-base:1.0 --file ./Containerfile-base ./
+podman-hpc migrate desihub/fastspecfit-base:1.0
+podman-hpc push desihub/fastspecfit-base:1.0
+```
+
+podman-hpc run --userns keep-id --rm --volume=/dvs_ro/cfs/cdirs --volume=/pscratch -it fastspecfit-base:1.0 /bin/bash
+
+###
+
 First, build the container:
 ```
-time podman-hpc build --tag fastspecfit:3.1.1 --file ./Containerfile ./
+podman-hpc build --tag desihub/fastspecfit:3.1.1 --file ./Containerfile ./
+podman-hpc migrate desihub/fastspecfit:3.1.1
+podman-hpc push desihub/fastspecfit:3.1.1
 ```
-then 'migrate' the image so it can be used for jobs:
-```
-podman-hpc migrate fastspecfit:3.1.1
-```
+
+podman-hpc run --userns keep-id --rm --volume=/dvs_ro/cfs/cdirs:/dvs_ro/cfs/cdirs --volume=/pscratch/sd/i/ioannis:/scratch -it fastspecfit:3.1.1 /bin/bash
+
+
 
 List the available images:
 ```
