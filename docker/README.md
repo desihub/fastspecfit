@@ -29,7 +29,7 @@ podman-hpc push desihub/fastspecfit:3.1.1
 
 podman-hpc run --userns keep-id --rm --volume=/dvs_ro/cfs/cdirs:/dvs_ro/cfs/cdirs --volume=/pscratch/sd/i/ioannis:/scratch -it fastspecfit:3.1.1 /bin/bash
 
-
+podman-hpc run --userns keep-id --group-add keep-groups --rm --volume=/dvs_ro/cfs/cdirs:/dvs_ro/cfs/cdirs --volume=/global/cfs/cdirs:/global/cfs/cdirs --volume=/pscratch/sd/i/ioannis:/scratch --env NUMBA_CACHE_DIR=/scratch/numba_cache -it desihub/fastspecfit:3.1.1 /bin/bash
 
 List the available images:
 ```
