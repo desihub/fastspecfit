@@ -1,9 +1,3 @@
-# podman-hpc login docker.io
-# podman-hpc build --tag desihub/fastspecfit-test --file ./Containerfile-test .
-# podman-hpc migrate desihub/fastspecfit-test
-# podman-hpc run --rm -it desihub/fastspecfit-test /bin/bash
-# srun --ntasks=2 podman-hpc run --rm --mpi -it desihub/fastspecfit-test /usr/local/bin/test-mpi-fastspecfit --mp=4
-
 FROM desihub/fastspecfit-base:1.0
 
 WORKDIR /src
@@ -14,7 +8,7 @@ RUN for x in \
     wheel \
     setuptools \
     pytest \
-    # numpy \
+    numpy \
     numba \
     ipython \
     ipykernel \

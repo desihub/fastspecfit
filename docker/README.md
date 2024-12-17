@@ -18,15 +18,22 @@ podman-hpc push desihub/fastspecfit-base:1.0
 
 Check the versions:
 ```
-podman-hpc run --rm -it desihub/fastspecfit-base:1.0 mpirun --version
-podman-hpc run --rm -it desihub/fastspecfit-base:1.0 python -m mpi4py --version
-podman-hpc run --rm -it desihub/fastspecfit-base:1.0 python -m mpi4py --mpi-std-version
-podman-hpc run --rm -it desihub/fastspecfit-base:1.0 python -m mpi4py --mpi-lib-version
+podman-hpc run --rm desihub/fastspecfit-base:1.0 mpirun --version
+podman-hpc run --rm desihub/fastspecfit-base:1.0 python -m mpi4py --version
+podman-hpc run --rm desihub/fastspecfit-base:1.0 python -m mpi4py --mpi-std-version
+podman-hpc run --rm desihub/fastspecfit-base:1.0 python -m mpi4py --mpi-lib-version
 ```
 
 ```
-srun --ntasks=4 podman-hpc run --rm -it --mpi desihub/fastspecfit-base:1.0 python -m mpi4py.bench helloworld
+srun --ntasks=4 podman-hpc run --rm --mpi desihub/fastspecfit-base:1.0 python -m mpi4py.bench helloworld
 ```
+
+
+### Test scripts:
+podman-hpc login docker.io
+podman-hpc build --tag desihub/fastspecfit-test --file ./Containerfile-test .
+podman-hpc migrate desihub/fastspecfit-test
+srun --ntasks=2 podman-hpc run --rm --mpi desihub/fastspecfit-test /usr/local/bin/test-mpi-fastspecfit --mp=4
 
 
 ###
@@ -38,9 +45,9 @@ podman-hpc migrate desihub/fastspecfit:3.1.1
 podman-hpc push desihub/fastspecfit:3.1.1
 ```
 
-podman-hpc run --userns keep-id --rm --volume=/dvs_ro/cfs/cdirs:/dvs_ro/cfs/cdirs --volume=/pscratch/sd/i/ioannis:/scratch -it fastspecfit:3.1.1 /bin/bash
+podman-hpc run --userns keep-id --rm --volume=/dvs_ro/cfs/cdirs:/dvs_ro/cfs/cdirs --volume=/pscratch/sd/i/ioannis:/scratch fastspecfit:3.1.1 /bin/bash
 
-podman-hpc run --userns keep-id --group-add keep-groups --rm --volume=/dvs_ro/cfs/cdirs:/dvs_ro/cfs/cdirs --volume=/global/cfs/cdirs:/global/cfs/cdirs --volume=/pscratch/sd/i/ioannis:/scratch --env NUMBA_CACHE_DIR=/scratch/numba_cache -it desihub/fastspecfit:3.1.1 /bin/bash
+podman-hpc run --userns keep-id --group-add keep-groups --rm --volume=/dvs_ro/cfs/cdirs:/dvs_ro/cfs/cdirs --volume=/global/cfs/cdirs:/global/cfs/cdirs --volume=/pscratch/sd/i/ioannis:/scratch --env NUMBA_CACHE_DIR=/scratch/numba_cache desihub/fastspecfit:3.1.1 /bin/bash
 
 List the available images:
 ```
@@ -56,7 +63,7 @@ podman-hpc pull desihub/fastspecfit:3.1.1
 
 Enter the container:
 ```
-podman-hpc run --rm -it fastspecfit:3.1.1 /bin/bash
+podman-hpc run --rm fastspecfit:3.1.1 /bin/bash
 ```
 
 To delete a container:
