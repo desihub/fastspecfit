@@ -16,7 +16,18 @@ podman-hpc migrate desihub/fastspecfit-base:1.0
 podman-hpc push desihub/fastspecfit-base:1.0
 ```
 
-podman-hpc run --userns keep-id --rm --volume=/dvs_ro/cfs/cdirs --volume=/pscratch -it fastspecfit-base:1.0 /bin/bash
+Check the versions:
+```
+podman-hpc run --rm -it desihub/fastspecfit-base:1.0 mpirun --version
+podman-hpc run --rm -it desihub/fastspecfit-base:1.0 python -m mpi4py --version
+podman-hpc run --rm -it desihub/fastspecfit-base:1.0 python -m mpi4py --mpi-std-version
+podman-hpc run --rm -it desihub/fastspecfit-base:1.0 python -m mpi4py --mpi-lib-version
+```
+
+```
+srun --ntasks=4 podman-hpc run --rm -it --mpi desihub/fastspecfit-base:1.0 python -m mpi4py.bench helloworld
+```
+
 
 ###
 

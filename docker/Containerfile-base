@@ -1,8 +1,8 @@
 FROM ubuntu:24.04
 
-RUN mkdir -p /src
 WORKDIR /src
 
+RUN mkdir -p /src
 RUN apt-get -y clean && apt -y update && apt install -y apt-utils && apt -y upgrade
 
 RUN DEBIAN_FRONTEND=noninteractive \
@@ -11,7 +11,6 @@ RUN DEBIAN_FRONTEND=noninteractive \
     gfortran \
     wget \
     git \
-    pkg-config \
     libbz2-dev \ 
     libgsl-dev \ 
     libssl-dev \
@@ -25,7 +24,7 @@ RUN DEBIAN_FRONTEND=noninteractive \
     python3-pip \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-ARG mpich=4.1.1
+ARG mpich=3.4.3
 ARG mpich_prefix=mpich-$mpich
 
 ENV FFLAGS="-fallow-argument-mismatch" \
@@ -34,8 +33,8 @@ ENV FFLAGS="-fallow-argument-mismatch" \
 RUN wget --no-check-certificate -nv https://www.mpich.org/static/downloads/$mpich/$mpich_prefix.tar.gz \
     && tar xvzf $mpich_prefix.tar.gz \
     && cd $mpich_prefix \
-    && ./configure \
-    && make -j 4 \
+    && ./configure --with-device=ch4:ofi \
+    && make -j 16 \
     && make install \
     && make clean \
     && cd .. \
@@ -44,8 +43,11 @@ RUN wget --no-check-certificate -nv https://www.mpich.org/static/downloads/$mpic
 
 RUN /sbin/ldconfig
 
-SHELL ["/bin/bash", "-c"]
-ENTRYPOINT ["/bin/bash", "-c"]
-CMD ["/bin/bash"]
+ENV PIP_ROOT_USER_ACTION=ignore
+
+RUN ln -s "$(which python3)" /usr/bin/python
+
+RUN pip3 install --break-system-packages mpi4py \
+    && rm -Rf /root/.cache/pip
 
 LABEL Maintainer="John Moustakas jmoustakas@siena.edu"
