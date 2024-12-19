@@ -920,12 +920,8 @@ class DESISpectra(object):
             scnd_target = surv_target[-1]
             desi_mask = surv_mask[0]
             scnd_mask = surv_mask[-1]
-            # need to check multiple QSO masks
-            IQSO = []
-            for bitname in ['SV0_QSO', 'MINI_SV_QSO']:
-                IQSO.append(np.where(meta[desi_target] & desi_mask[bitname] != 0)[0])
-            if len(IQSO) > 0:
-                IQSO = np.sort(np.unique(np.hstack(IQSO)))
+            IQSO = ((meta[desi_target] & desi_mask['SV0_QSO'] != 0) |
+                    (meta[desi_target] & desi_mask['MINI_SV_QSO'] != 0))
         else:
             desi_target, bgs_target, mws_target, scnd_target = surv_target
             desi_mask, bgs_mask, mws_mask, scnd_mask = surv_mask
@@ -938,9 +934,7 @@ class DESISpectra(object):
             qn['IS_QSO_QN_099'] = np.max(np.array([qn[name] for name in QNLINES]), axis=0) > QNthresh
             iqso = IQSO * qn['IS_QSO_QN_NEW_RR'] * qn['IS_QSO_QN_099']
             if np.sum(iqso) > 0:
-                #IQSO = np.where(IQSO)[0]
                 zb['Z'][iqso] = qn['Z_NEW'][iqso]
-                #zb['ZERR'][iqso] = qn['ZERR_NEW'][iqso]
                 zb['ZWARN'][iqso] = qn['ZWARN_NEW'][iqso]
             if np.sum(IWISE_VAR_QSO) > 0:
                 mgii = Table(fitsio.read(mgiifile, 'MGII', rows=fitindx, columns=MGIICOLS))
