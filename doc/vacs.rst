@@ -113,9 +113,10 @@ determined by Redrock is incorrect. To mitigate this issue, the DESI team has
 developed an approach to rectify the redshift nominally measured by Redrock
 using the machine-learning algorithm ``QuasarNet``.
 
-Let ``redrockfile`` and ``qnfile`` be the full pathname to a given `Redrock
-catalog`_ and `QuasarNet catalog`_, respectively. We update the Redrock redshift
-``Z`` (and store the original Redrock redshift in ``Z_RR``; see the
+Let ``redrockfile``, ``qnfile``, and ``mgiifile`` be the full pathname to a
+given `Redrock catalog`_, `QuasarNet catalog`_, and `MgII catalog`_,
+respectively. We update the Redrock redshift ``Z`` (and store the original
+Redrock redshift and ``ZWARNING`` bitmask in ``Z_RR`` and ``ZWARN_RR``; see the
 :ref:`fastspec data model<fastspec datamodel>`) for all QSO targets using the
 following bit of code:
 
@@ -127,36 +128,44 @@ following bit of code:
   from desitarget.targets import main_cmx_or_sv
 
   QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
-  QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
-            'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
+  QNCOLS = ['TARGETID', 'Z_NEW', 'ZWARN_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
+  MGIICOLS = ['TARGETID', 'IS_QSO_MGII']
 
   zb = Table(fitsio.read(redrockfile, 'REDSHIFTS'))
 
   # find QSO targets
-  surv_target, surv_mask, surv = main_cmx_or_sv(meta)
+  surv_target, surv_mask, surv = main_cmx_or_sv(meta, scnd=True)
   if surv == 'cmx':
       desi_target = surv_target[0]
+      scnd_target = surv_target[-1]
       desi_mask = surv_mask[0]
-      # need to check multiple QSO masks
-      IQSO = []
-      for bitname in desi_mask.names():
-          if 'QSO' in bitname:
-              IQSO.append(np.where(meta[desi_target] & desi_mask[bitname] != 0)[0])
-      if len(IQSO) > 0:
-          IQSO = np.sort(np.unique(np.hstack(IQSO)))
+      scnd_mask = surv_mask[-1]
+      IQSO = ((meta[desi_target] & desi_mask['SV0_QSO'] != 0) |
+              (meta[desi_target] & desi_mask['MINI_SV_QSO'] != 0))
+      IWISE_VAR_QSO = np.zeros(len(fitindx), bool)
   else:
-      desi_target, bgs_target, mws_target = surv_target
-      desi_mask, bgs_mask, mws_mask = surv_mask
-      IQSO = np.where(meta[desi_target] & desi_mask['QSO'] != 0)[0]
+    desi_target, bgs_target, mws_target, scnd_target = surv_target
+    desi_mask, bgs_mask, mws_mask, scnd_mask = surv_mask
+    IQSO = meta[desi_target] & desi_mask['QSO'] != 0
+    IWISE_VAR_QSO = meta[scnd_target] & scnd_mask['WISE_VAR_QSO'] != 0
 
-  if len(IQSO) > 0:
-      qn = Table(fitsio.read(qnfile, 'QN_RR', columns=QNCOLS))
-      assert(np.all(qn['TARGETID'] == zb['TARGETID'][IQSO]))
-      print('Updating QSO redshifts using a QN threshold of 0.95.')
-      qn['IS_QSO_QN'] = np.max(np.array([qn[name] for name in QNLINES]), axis=0) > 0.95
-      qn['IS_QSO_QN_NEW_RR'] &= qn['IS_QSO_QN']
-      if np.count_nonzero(qn['IS_QSO_QN_NEW_RR']) > 0:
-          zb['Z'][IQSO[qn['IS_QSO_QN_NEW_RR']]] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
+  if np.sum(IQSO) > 0 or np.sum(IWISE_VAR_QSO) > 0:
+      qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx, columns=QNCOLS))
+      assert(np.all(qn['TARGETID'] == meta['TARGETID']))
+      log.debug('Updating QSO redshifts using a QN threshold of 0.99.')
+      qn['IS_QSO_QN_099'] = np.max(np.array([qn[name] for name in QNLINES]), axis=0) > QNthresh
+      iqso = IQSO * qn['IS_QSO_QN_NEW_RR'] * qn['IS_QSO_QN_099']
+      if np.sum(iqso) > 0:
+          zb['Z'][iqso] = qn['Z_NEW'][iqso]
+          zb['ZWARN'][iqso] = qn['ZWARN_NEW'][iqso]
+      if np.sum(IWISE_VAR_QSO) > 0:
+          mgii = Table(fitsio.read(mgiifile, 'MGII', rows=fitindx, columns=MGIICOLS))
+          assert(np.all(mgii['TARGETID'] == meta['TARGETID']))
+          iwise_var_qso = (((zb['SPECTYPE'] == 'QSO') | mgii['IS_QSO_MGII'] | qn['IS_QSO_QN_099']) & (IWISE_VAR_QSO & qn['IS_QSO_QN_NEW_RR']))
+          if np.sum(iwise_var_qso) > 0:
+              zb['Z'][iwise_var_qso] = qn['Z_NEW'][iwise_var_qso]
+              zb['ZWARN'][iwise_var_qso] = qn['ZWARN_NEW'][iwise_var_qso]
+
 
 Issues
 ------
@@ -167,6 +176,7 @@ College)`_.
 
 .. _`here`: https://data.desi.lbl.gov/doc/organization/
 .. _`Redrock catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/redrock-SURVEY-PROGRAM-PIXNUM.html
-.. _`quasarnet catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/qso_qn-SURVEY-PROGRAM-PIXNUM.html
+.. _`QuasarNet catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/qso_qn-SURVEY-PROGRAM-PIXNUM.html
+.. _`MgII catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/qso_mgii-SURVEY-PROGRAM-PIXNUM.html
 .. _`open a ticket`: https://github.com/desihub/fastspecfit/issues
 .. _`John Moustakas (Siena College)`: mailto:jmoustakas@siena.edu
