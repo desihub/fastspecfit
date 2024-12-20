@@ -922,6 +922,7 @@ class DESISpectra(object):
             scnd_mask = surv_mask[-1]
             IQSO = ((meta[desi_target] & desi_mask['SV0_QSO'] != 0) |
                     (meta[desi_target] & desi_mask['MINI_SV_QSO'] != 0))
+            IWISE_VAR_QSO = np.zeros(len(fitindx), bool)
         else:
             desi_target, bgs_target, mws_target, scnd_target = surv_target
             desi_mask, bgs_mask, mws_mask, scnd_mask = surv_mask
