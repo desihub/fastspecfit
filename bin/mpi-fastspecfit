@@ -10,6 +10,70 @@ from astropy.table import Table
 from fastspecfit.logger import log
 
 
+def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
+                  input_redshifts=False):
+    """Build the set of command-line arguments.
+
+    """
+    # With --makeqa the desired output directories are in the 'redrockfiles'.
+    if args.makeqa:
+        cmd = 'fastqa'
+        cmdargs = f'{outfile} -o={redrockfile} --mp={args.mp}'
+    else:
+        if fastphot:
+            cmd = 'fastphot'
+        else:
+            cmd = 'fastspec'
+        cmdargs = f'{redrockfile} -o={outfile} --mp={args.mp}'
+
+        if args.ignore_quasarnet:
+            cmdargs += ' --ignore-quasarnet'
+        if args.ignore_quasarnet:
+            cmdargs += ' --ignore-photometry'
+        if args.no_smooth_continuum:
+            cmdargs += ' --no-smooth-continuum'
+        if args.templates:
+            cmdargs += f' --templates={args.templates}'
+        if args.templateversion:
+            cmdargs += f' --templateversion={args.templateversion}'
+        if args.fphotodir:
+            cmdargs += f' --fphotodir={args.fphotodir}'
+        if args.fphotofile:
+            cmdargs += f' --fphotofile={args.fphotofile}'
+
+    if args.verbose:
+        cmdargs += ' --verbose'
+    if args.ntargets is not None:
+        cmdargs += f' --ntargets={args.ntargets}'
+    if args.firsttarget is not None:
+        cmdargs += f' --firsttarget={args.firsttarget}'
+
+    if sample is not None:
+        # assume healpix coadds; find the targetids to process -- fragile
+        _, survey, program, healpix = os.path.basename(redrockfile).split('-')
+        healpix = int(healpix.split('.')[0])
+        I = (sample['SURVEY'] == survey) * (sample['PROGRAM'] == program) * (sample['HEALPIX'] == healpix)
+        targetids = ','.join(sample[I]['TARGETID'].astype(str))
+        cmdargs += f' --targetids={targetids}'
+        if input_redshifts:
+            inputz = ','.join(sample[I]['Z'].astype(str))
+            cmdargs += f' --input-redshifts={inputz}'
+    else:
+        if args.targetids is not None:
+            cmdargs += f' --targetids={args.targetids}'
+
+    if args.makeqa:
+        logfile = os.path.join(redrockfile, os.path.basename(outfile).replace('.gz', '').replace('.fits', '.log'))
+    else:
+        logfile = outfile.replace('.gz', '').replace('.fits', '.log')
+
+    #if args.makeqa and args.plan:
+    #    log.info(f'Still need to make {np.sum(ntargets)} QA figure(s) across {len(groups)} input file(s)')
+    #    return
+
+    return cmd, cmdargs, logfile
+
+
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False,
                     sample=None, input_redshifts=False, outdir_data='.', templates=None,
                     templateversion=None, fphotodir=None, fphotofile=None):
@@ -90,95 +154,38 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             srt = np.argsort(ntargets)
             redrockfiles = redrockfiles[srt]
             outfiles = outfiles[srt]
+            ntargets = ntargets[srt]
             for irank in range(1, subcomm.size):
                 log.debug(f'Subrank 0 (rank {rank}) sending work to subrank {irank} (rank {subranks[irank]})')
                 subcomm.send(redrockfiles, dest=irank, tag=4)
                 subcomm.send(outfiles, dest=irank, tag=5)
+                subcomm.send(ntargets, dest=irank, tag=6)
         else:
             redrockfiles = subcomm.recv(source=0, tag=4)
             outfiles = subcomm.recv(source=0, tag=5)
+            ntargets = subcomm.recv(source=0, tag=6)
 
     #print(f'Rank={comm.rank}, subrank={subcomm.rank}, redrockfiles={redrockfiles}')
-    sys.stdout.flush()
+    #sys.stdout.flush()
 
-    for redrockfile, outfile in zip(redrockfiles, outfiles):
+    for redrockfile, outfile, ntarget in zip(redrockfiles, outfiles, ntargets):
         if subcomm.rank == 0:
-            log.debug(f'Rank {comm.rank} (subrank {subcomm.rank}) started at {time.asctime()}')
+            log.debug(f'Rank {rank} (subrank {subcomm.rank}) started at {time.asctime()}')
 
-        # With --makeqa the desired output directories are in the 'redrockfiles'.
         if args.makeqa:
             from fastspecfit.qa import fastqa as fast
-            cmd = 'fastqa'
-            cmdargs = f'{outfiles[ii]} -o={redrockfiles[ii]} --mp={args.mp}'
         else:
             if fastphot:
                 from fastspecfit.fastspecfit import fastphot as fast
-                cmd = 'fastphot'
             else:
                 from fastspecfit.fastspecfit import fastspec as fast
-                cmd = 'fastspec'
-            cmdargs = f'{redrockfiles[ii]} -o={outfiles[ii]} --mp={args.mp}'
 
-            if args.ignore_quasarnet:
-                cmdargs += ' --ignore-quasarnet'
+        cmd, cmdargs, logfile = build_cmdargs(args, redrockfile, outfile, sample=sample,
+                                              fastphot=fastphot, input_redshifts=input_redshifts)
 
-            if args.ignore_quasarnet:
-                cmdargs += ' --ignore-photometry'
-
-            if args.no_smooth_continuum:
-                cmdargs += ' --no-smooth-continuum'
-
-            if args.templates:
-                cmdargs += f' --templates={args.templates}'
-
-            if args.templateversion:
-                cmdargs += f' --templateversion={args.templateversion}'
-
-            if args.fphotodir:
-                cmdargs += f' --fphotodir={args.fphotodir}'
-
-            if args.fphotofile:
-                cmdargs += f' --fphotofile={args.fphotofile}'
-
-        if args.verbose:
-            cmdargs += ' --verbose'
-
-        if args.ntargets is not None:
-            cmdargs += f' --ntargets={args.ntargets}'
-
-        if args.firsttarget is not None:
-            cmdargs += f' --firsttarget={args.firsttarget}'
-
-        if sample is not None:
-            # assume healpix coadds; find the targetids to process
-            _, survey, program, healpix = os.path.basename(redrockfiles[ii]).split('-')
-            healpix = int(healpix.split('.')[0])
-            I = (sample['SURVEY'] == survey) * (sample['PROGRAM'] == program) * (sample['HEALPIX'] == healpix)
-            targetids = ','.join(sample[I]['TARGETID'].astype(str))
-            cmdargs += f' --targetids={targetids}'
-            if input_redshifts:
-                inputz = ','.join(sample[I]['Z'].astype(str))
-                cmdargs += f' --input-redshifts={inputz}'
-        else:
-            if args.targetids is not None:
-                cmdargs += f' --targetids={args.targetids}'
-
-        if args.makeqa:
-            logfile = os.path.join(redrockfiles[ii], os.path.basename(outfiles[ii]).replace('.gz', '').replace('.fits', '.log'))
-        else:
-            logfile = outfiles[ii].replace('.gz', '').replace('.fits', '.log')
-
-        if logfile == outfiles[ii]:
-            errmsg = f'Log file {logfile} cannot be the same as outfile!'
-            log.critical(errmsg)
-            raise ValueError(errmsg)
-
-        if args.makeqa and args.plan:
-            log.info(f'Still need to make {np.sum(ntargets)} QA figure(s) across {len(groups)} input file(s)')
-            return
-
-        log.info(f'Rank {rank}, ntargets={ntargets[ii]}: {cmd} {cmdargs}')
-        sys.stdout.flush()
+        if subcomm.rank == 0:
+            log.info(f'Rank {rank} (subrank {subcomm.rank}): ntargets={ntarget}: {cmd} {cmdargs}')
+            #sys.stdout.flush()
 
         if args.dry_run:
             continue
@@ -197,16 +204,17 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
 
             dt1 = time.time() - t1
             log.info(f'  rank {rank} done in {dt1:.2f} sec')
-            if not os.path.exists(outfiles[ii]):
-                log.warning(f'  rank {rank} missing {outfiles[ii]}')
+            if not os.path.exists(outfile):
+                log.warning(f'  rank {rank} missing {outfile}')
                 raise IOError
         except:
             log.warning(f'  rank {rank} raised an exception')
             import traceback
             traceback.print_exc()
 
-    log.debug(f'  rank {rank} is done')
-    sys.stdout.flush()
+    if subcomm.rank == 0:
+        log.debug(f'  rank {rank} is done')
+    #sys.stdout.flush()
 
     if comm:
         comm.barrier()
