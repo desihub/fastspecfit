@@ -5,6 +5,7 @@ MPI wrapper for fastphot and fastspec.
 """
 import os, time
 import numpy as np
+from astropy.table import Table
 
 from fastspecfit.logger import log
 
@@ -19,24 +20,34 @@ def get_size(comm, mp=1):
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False,
                     sample=None, input_redshifts=False, outdir_data='.', templates=None,
                     templateversion=None, fphotodir=None, fphotofile=None):
+    """Main wrapper to run fastspec, fastphot, or fastqa.
 
+    Top-level MPI paraellelization is over (e.g., healpix) files, but there is
+    another level of parallelization which makes use of subcommunicators.
+
+    For example, calling `mpi-fastspecfit` with 8 MPI tasks and --mp=4 will
+    result in two (8/4) healpix files being processed simultaneously
+    (specifically, by ranks 0 and 4) and then a further level of
+    parallelization over the objects in each of those files specifically, but
+    subranks (0, 1, 2, 3) and (4, 5, 6, 7), respectively.
+
+    """
     import sys
     from desispec.parallel import stdouterr_redirected
     from fastspecfit.mpi import plan
 
     if comm:
         rank = comm.rank
-        #size = comm.size
-        size = get_size(comm, mp=args.mp)
+        size = comm.size
+        #size = get_size(comm, mp=args.mp)
 
         # Split the MPI.COMM_WORLD communicator into size // args.mp
         # subcommunicators so we can parallelize over objects in
         # fastspecfit.fastspec (or fastspecfit.fastphot).
-        colors = np.arange(size) // args.mp
+        colors = np.arange(comm.size) // args.mp
         subcomm = comm.Split(color=rank // args.mp, key=rank)
     else:
-        rank = 0
-        size = 1
+        rank, size = 0, 1
         colors = [0]
         subcomm = None
     print(comm.rank, comm.size, subcomm.rank, subcomm.size, size)
@@ -45,13 +56,13 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
     if rank == 0:
         if sample is not None:
             _, redrockfiles, outfiles, groups, ntargets = plan(
-                size=size, specprod=args.specprod, specprod_dir=specprod_dir,
+                comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
                 sample=sample, coadd_type='healpix', makeqa=args.makeqa,
                 mp=args.mp, fastphot=args.fastphot, outdir_data=outdir_data,
                 overwrite=args.overwrite)
         else:
             _, redrockfiles, outfiles, groups, ntargets = plan(
-                size=size, specprod=args.specprod, specprod_dir=specprod_dir,
+                comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
                 coadd_type=args.coadd_type, survey=args.survey, program=args.program,
                 healpix=args.healpix, tile=args.tile, night=args.night,
                 makeqa=args.makeqa, mp=args.mp, fastphot=fastphot, outdir_data=outdir_data,
@@ -59,6 +70,10 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         log.info(f'Planning took {time.time() - t0:.2f} sec')
     else:
         redrockfiles, outfiles, groups, ntargets = [], [], [], []
+
+    print(rank, redrockfiles, ntargets, groups)
+
+    return
 
     #if comm:
     #    groups = comm.bcast(groups, root=0)
@@ -303,12 +318,17 @@ def main():
             import multiprocessing
             multiprocessing.set_start_method('spawn')
 
-    # Rank 0 is responsible for planning and merging.
-    if rank == 0:
-        # check the input samplefile
-        if args.samplefile is not None:
+    # If an input samplefile is provided, read and broadcast it.
+    if args.samplefile is None:
+        sample = None
+    else:
+        if args.coadd_type != 'healpix':
+            errmsg = 'Input --samplefile is only currently compatible with --coadd-type="healpix"'
+            log.critical(errmsg)
+            raise NotImplementedError(errmsg)
+
+        if rank == 0:
             import fitsio
-            from astropy.table import Table
             if not os.path.isfile(args.samplefile):
                 log.warning(f'{args.samplefile} does not exist.')
                 return
@@ -324,80 +344,79 @@ def main():
                         '{SURVEY,PROGRAM,HEALPIX,TARGETID}'
                 log.critical(errmsg)
                 raise ValueError(errmsg)
+        else:
+            sample = Table()
 
-        if args.samplefile is None and args.coadd_type == 'healpix':
-            args.survey = args.survey.split(',')
-            args.program = args.program.split(',')
-            if args.healpix is not None:
-                args.healpix = args.healpix.split(',')
+        sample = comm.bcast(sample, root=0)
 
-        # merge
+    # Parse some of the inputs.
+    if args.samplefile is None and args.coadd_type == 'healpix':
+        args.survey = args.survey.split(',')
+        args.program = args.program.split(',')
+        if args.healpix is not None:
+            args.healpix = args.healpix.split(',')
+
+    # FIXME - merging business is a mess
+    if args.mergeall_main or args.mergeall_sv or args.mergeall_special:
+        args.mergeall = True
+
+    if args.merge or args.mergeall:
+        from fastspecfit.mpi import merge_fastspecfit
+
+        # convenience code to make the super-merge catalogs, e.g., fastspec-iron-{main,special,sv}.fits
+        if args.fastphot:
+            fastprefix = 'fastphot'
+        else:
+            fastprefix = 'fastspec'
+
         if args.mergeall_main or args.mergeall_sv or args.mergeall_special:
-            args.mergeall = True
-
-        if args.merge or args.mergeall:
-            from fastspecfit.mpi import merge_fastspecfit
-
-            # convenience code to make the super-merge catalogs, e.g., fastspec-iron-{main,special,sv}.fits
-            if args.fastphot:
-                fastprefix = 'fastphot'
+            from glob import glob
+            if args.mergedir is None:
+                mergedir = os.path.join(outdir_data, args.specprod, 'catalogs')
             else:
-                fastprefix = 'fastspec'
+                mergedir = args.mergedir
 
-            if args.mergeall_main or args.mergeall_sv or args.mergeall_special:
-                from glob import glob
-                if args.mergedir is None:
-                    mergedir = os.path.join(outdir_data, args.specprod, 'catalogs')
-                else:
-                    mergedir = args.mergedir
-
-                if args.mergeall_main:
-                    args.merge_suffix = f'{args.specprod}-main'
-                    fastfiles_to_merge = sorted(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-main-*.fits')))
-                elif args.mergeall_special:
-                    args.merge_suffix = f'{args.specprod}-special'
-                    fastfiles_to_merge = sorted(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-special-*.fits')))
-                elif args.mergeall_sv:
-                    args.merge_suffix = f'{args.specprod}-sv'
-                    fastfiles_to_merge = sorted(list(set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-*.fits'))) -
-                                                     set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-main.fits'))) -
-                                                     set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-special.fits'))) -
-                                                     set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-special-*.fits'))) -
-                                                     set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-main-*.fits'))) -
-                                                     set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-sv.fits')))))
-                else:
-                    fastfiles_to_merge = None
+            if args.mergeall_main:
+                args.merge_suffix = f'{args.specprod}-main'
+                fastfiles_to_merge = sorted(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-main-*.fits')))
+            elif args.mergeall_special:
+                args.merge_suffix = f'{args.specprod}-special'
+                fastfiles_to_merge = sorted(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-special-*.fits')))
+            elif args.mergeall_sv:
+                args.merge_suffix = f'{args.specprod}-sv'
+                fastfiles_to_merge = sorted(list(set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-*.fits'))) -
+                                                 set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-main.fits'))) -
+                                                 set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-special.fits'))) -
+                                                 set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-special-*.fits'))) -
+                                                 set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-main-*.fits'))) -
+                                                 set(glob(os.path.join(mergedir, f'{fastprefix}-{args.specprod}-sv.fits')))))
             else:
                 fastfiles_to_merge = None
+        else:
+            fastfiles_to_merge = None
 
-            if args.samplefile is not None:
-                merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type='healpix',
-                                  sample=sample, merge_suffix=args.merge_suffix,
-                                  outdir_data=outdir_data, fastfiles_to_merge=fastfiles_to_merge,
-                                  outsuffix=args.merge_suffix, mergedir=args.mergedir, overwrite=args.overwrite,
-                                  verbose=args.verbose, fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp)
-            else:
-                merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type=args.coadd_type,
-                                  survey=args.survey, program=args.program, healpix=args.healpix,
-                                  tile=args.tile, night=args.night, outdir_data=outdir_data,
-                                  fastfiles_to_merge=fastfiles_to_merge, verbose=args.verbose,
-                                  outsuffix=args.merge_suffix, mergedir=args.mergedir, overwrite=args.overwrite,
-                                  fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp)
+        if args.samplefile is not None:
+            merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type='healpix',
+                              sample=sample, merge_suffix=args.merge_suffix,
+                              outdir_data=outdir_data, fastfiles_to_merge=fastfiles_to_merge,
+                              outsuffix=args.merge_suffix, mergedir=args.mergedir, overwrite=args.overwrite,
+                              verbose=args.verbose, fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp)
+        else:
+            merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type=args.coadd_type,
+                              survey=args.survey, program=args.program, healpix=args.healpix,
+                              tile=args.tile, night=args.night, outdir_data=outdir_data,
+                              fastfiles_to_merge=fastfiles_to_merge, verbose=args.verbose,
+                              outsuffix=args.merge_suffix, mergedir=args.mergedir, overwrite=args.overwrite,
+                              fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp)
 
 
-    if args.plan and args.makeqa is False:
-        if rank == 0:
-            if args.samplefile is not None:
-                plan(size=size, specprod=args.specprod, specprod_dir=specprod_dir,
-                     sample=sample, coadd_type='healpix', makeqa=args.makeqa,
-                     mp=args.mp, fastphot=args.fastphot,
-                     outdir_data=outdir_data, overwrite=args.overwrite)
-            else:
-                plan(size=size, specprod=args.specprod, specprod_dir=specprod_dir,
-                     coadd_type=args.coadd_type, survey=args.survey, program=args.program,
-                     healpix=args.healpix, tile=args.tile, night=args.night,
-                     makeqa=args.makeqa, mp=args.mp, fastphot=args.fastphot,
-                     outdir_data=outdir_data, overwrite=args.overwrite)
+    if args.plan:
+        plan(comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
+             coadd_type=args.coadd_type, survey=args.survey, program=args.program,
+             healpix=args.healpix, tile=args.tile, night=args.night,
+             makeqa=args.makeqa, mp=args.mp, fastphot=args.fastphot,
+             outdir_data=outdir_data, overwrite=args.overwrite,
+             sample=sample)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
                         makeqa=args.makeqa, outdir_data=outdir_data, sample=sample,

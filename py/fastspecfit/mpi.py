@@ -76,14 +76,14 @@ def findfiles(filedir, prefix='redrock', coadd_type=None, survey=None,
                 log.info(f'Building file list for survey={onesurvey} and program={oneprogram}')
                 if healpix is not None:
                     for onepix in healpix:
-                        _thesefiles = glob(os.path.join(filedir, onesurvey, oneprogram, str(int(onepix)//100), onepix,
-                                                        f'{prefix}-{onesurvey}-{oneprogram}-{onepix}.{fitssuffix}'))
-                        thesefiles.append(_thesefiles)
+                        _thesefiles = os.path.join(filedir, onesurvey, oneprogram, str(int(onepix)//100), onepix,
+                                                   f'{prefix}-{onesurvey}-{oneprogram}-{onepix}.{fitssuffix}')
+                        thesefiles.append(glob(_thesefiles))
                 else:
-                    allpix = glob(os.path.join(filedir, onesurvey, oneprogram, '*'))
-                    for onepix in allpix:
-                        _thesefiles = glob(os.path.join(onepix, '*', f'{prefix}-{onesurvey}-{oneprogram}-*.{fitssuffix}'))
-                        thesefiles.append(_thesefiles)
+                    allpix = os.path.join(filedir, onesurvey, oneprogram, '*')
+                    for onepix in glob(allpix):
+                        _thesefiles = os.path.join(onepix, '*', f'{prefix}-{onesurvey}-{oneprogram}-*.{fitssuffix}')
+                        thesefiles.append(glob(_thesefiles))
         if len(thesefiles) > 0:
             thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
     elif coadd_type == 'cumulative':
@@ -132,7 +132,51 @@ def findfiles(filedir, prefix='redrock', coadd_type=None, survey=None,
     return thesefiles
 
 
-def plan(size=1, specprod=None, specprod_dir=None, coadd_type='healpix',
+def plan_merge(outdir, outprefix, coadd_type, survey, program, healpix, tile,
+               night, sample=None, gzip=False):
+    """Simple support routine to build the input and output filenames when
+    merging.
+
+    """
+    redrockfiles = None
+    if sample is not None: # special case of an input catalog
+        outfiles, _ = findfiles(outdir, prefix=outprefix, sample=sample)
+    else:
+        outfiles = findfiles(outdir, prefix=outprefix, coadd_type=coadd_type,
+                             survey=survey, program=program, healpix=healpix,
+                             tile=tile, night=night, gzip=gzip)
+    log.info(f'Found {len(outfiles)} {outprefix} files to be merged.')
+    return redrockfiles, outfiles
+
+
+def plan_makeqa(outdir, htmldir, outprefix, coadd_type, survey, program,
+                healpix, tile, night, sample=None, gzip=False):
+    """Simple support routine to build the input and output filenames when
+    building QA.
+
+    """
+    outfiles = findfiles(outdir, prefix=outprefix, coadd_type=coadd_type,
+                         survey=survey, program=program, healpix=healpix,
+                         tile=tile, night=night, gzip=gzip)
+    log.info(f'Found {len(outfiles)} {outprefix} files for QA.')
+
+    #  Hack!--build the output directories and pass them in the 'redrockfiles'
+    #  position! for coadd_type=='cumulative', strip out the 'lastnight'
+    #  argument.
+    if len(outfiles) == 0:
+        return _, outfiles
+
+    if coadd_type == 'cumulative':
+        redrockfiles = np.array([os.path.dirname(os.path.dirname(outfile)).replace(outdir, htmldir)
+                                 for outfile in outfiles])
+    else:
+        redrockfiles = np.array([os.path.dirname(outfile).replace(outdir, htmldir)
+                                 for outfile in outfiles])
+
+    return redrockfiles, outfiles
+
+
+def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
          survey=None, program=None, healpix=None, tile=None, night=None,
          sample=None, outdir_data='.', mp=1, merge=False,
          makeqa=False, fastphot=False, overwrite=False):
@@ -141,104 +185,134 @@ def plan(size=1, specprod=None, specprod_dir=None, coadd_type='healpix',
     from astropy.table import Table, vstack
     from desispec.parallel import weighted_partition
 
-    t0 = time.time()
-    if fastphot:
-        outprefix = 'fastphot'
-        gzip = False
+    if comm:
+        rank, size = comm.rank, comm.size
     else:
-        outprefix = 'fastspec'
-        gzip = True
+        rank, size = 0, 1
 
-    redux_dir = os.path.expandvars(os.environ.get('DESI_SPECTRO_REDUX'))
-
-    # look for data in the standard location
-    if coadd_type == 'healpix':
-        subdir = 'healpix'
-    else:
-        subdir = 'tiles'
-
-        # figure out which tiles belong to the SV programs
-        if tile is None:
-            tilefile = os.path.join(redux_dir, specprod, f'tiles-{specprod}.csv')
-            alltileinfo = Table.read(tilefile)
-            tileinfo = alltileinfo[['sv' in survey for survey in alltileinfo['SURVEY']]]
-
-            log.info('Retrieved a list of {} {} tiles from {}'.format(
-                len(tileinfo), ','.join(sorted(set(tileinfo['SURVEY']))), tilefile))
-
-            tile = np.array(list(set(tileinfo['TILEID'])))
-
-            #if True:
-            #    tileinfo = tileinfo[['lrg' in program or 'elg' in program for program in tileinfo['PROGRAM']]]
-            #    tile = np.array(list(set(tileinfo['TILEID'])))
-            #print(tileinfo)
-
-    if specprod_dir is None:
-        specprod_dir = os.path.join(redux_dir, specprod, subdir)
-
-    outdir = os.path.join(outdir_data, specprod, subdir)
-    htmldir = os.path.join(outdir_data, specprod, 'html', subdir)
-
-    if merge:
+    if rank > 0:
+        outdir = None
         redrockfiles = None
-        if sample is not None: # special case of an input catalog
-            outfiles, _ = findfiles(outdir, prefix=outprefix, sample=sample)
-        else:
-            outfiles = findfiles(outdir, prefix=outprefix, coadd_type=coadd_type,
-                                 survey=survey, program=program, healpix=healpix,
-                                 tile=tile, night=night, gzip=gzip)
-        log.info(f'Found {len(outfiles)} {outprefix} files to be merged.')
-    elif makeqa:
-        redrockfiles = None
-        outfiles = findfiles(outdir, prefix=outprefix, coadd_type=coadd_type,
-                             survey=survey, program=program, healpix=healpix,
-                             tile=tile, night=night, gzip=gzip)
-        log.info(f'Found {len(outfiles)} {outprefix} files for QA.')
-        ntargs = [(outfile, htmldir, outdir, coadd_type, True, overwrite, fastphot) for outfile in outfiles]
-    else:
-        if sample is not None: # special case of an input catalog
-            redrockfiles, ntargets = findfiles(specprod_dir, prefix='redrock', sample=sample)
-        else:
-            redrockfiles = findfiles(specprod_dir, prefix='redrock', coadd_type=coadd_type,
-                                     survey=survey, program=program,
-                                     healpix=healpix, tile=tile, night=night)
-        nfile = len(redrockfiles)
-        outfiles = []
-        for redrockfile in redrockfiles:
-            outfile = redrockfile.replace(specprod_dir, outdir).replace('redrock-', f'{outprefix}-')
-            if gzip:
-                outfile = outfile.replace('.fits', '.fits.gz')
-            outfiles.append(outfile)
-        outfiles = np.array(outfiles)
-
-        todo = np.ones(len(redrockfiles), bool)
-        for ii, outfile in enumerate(outfiles):
-            if os.path.isfile(outfile) and not overwrite:
-                todo[ii] = False
-        if np.count_nonzero(todo) > 0:
-            redrockfiles = redrockfiles[todo]
-            outfiles = outfiles[todo]
-            if sample is not None:
-                ntargets = ntargets[todo]
-        else: # all done!
-            redrockfiles = []
-            outfiles = []
-            if sample is not None:
-                ntargets = np.array([])
-
-        log.info(f'Found {len(redrockfiles)}/{nfile} redrockfiles (left) to do.')
-
-        # we already counted ntargets
-        if sample is None:
-            ntargs = [(redrockfile, None, None, None, False, False, False) for redrockfile in redrockfiles]
-
-    # create groups weighted by the number of targets
-    if merge:
-        groups = [np.arange(len(outfiles))]
+        outfiles = None
+        groups = None
         ntargets = None
     else:
-        # we already counted ntargets
-        if sample is None:
+        t0 = time.time()
+        if fastphot:
+            outprefix = 'fastphot'
+            gzip = False
+        else:
+            outprefix = 'fastspec'
+            gzip = True
+
+        redux_dir = os.path.expandvars(os.environ.get('DESI_SPECTRO_REDUX'))
+
+        # look for data in the standard location
+        if coadd_type == 'healpix':
+            subdir = 'healpix'
+        else:
+            subdir = 'tiles'
+
+            # figure out which tiles belong to the SV programs
+            if tile is None:
+                tilefile = os.path.join(redux_dir, specprod, f'tiles-{specprod}.csv')
+                alltileinfo = Table.read(tilefile)
+                tileinfo = alltileinfo[['sv' in survey for survey in alltileinfo['SURVEY']]]
+
+                log.info('Retrieved a list of {} {} tiles from {}'.format(
+                    len(tileinfo), ','.join(sorted(set(tileinfo['SURVEY']))), tilefile))
+
+                tile = np.array(list(set(tileinfo['TILEID'])))
+
+        if specprod_dir is None:
+            specprod_dir = os.path.join(redux_dir, specprod, subdir)
+
+        outdir = os.path.join(outdir_data, specprod, subdir)
+        htmldir = os.path.join(outdir_data, specprod, 'html', subdir)
+
+        if merge:
+            redrockfiles, outfiles = plan_merge(
+                outdir, outprefix, coadd_type, survey, program,
+                healpix, tile, night, sample=sample, gzip=gzip)
+            if len(outfiles) == 0:
+                log.debug(f'No {outprefix} files in {outdir} found!')
+                return '', list(), list(), list(), None
+            #groups = [np.arange(len(outfiles))]
+            return outdir, redrockfiles, outfiles, None, None
+        elif makeqa:
+            redrockfiles, outfiles = plan_makeqa(
+                outdir, htmldir, outprefix, coadd_type, survey, program,
+                healpix, tile, night, sample=sample, gzip=gzip)
+            if len(outfiles) == 0:
+                log.debug(f'No {outprefix} files in {outdir} left to do!')
+                return '', list(), list(), list(), None
+            ntargs = [(outfile, htmldir, outdir, coadd_type, True, overwrite, fastphot)
+                      for outfile in outfiles]
+        else:
+            if sample is not None: # special case of an input catalog
+                redrockfiles, ntargets = findfiles(specprod_dir, prefix='redrock', sample=sample)
+            else:
+                redrockfiles = findfiles(specprod_dir, prefix='redrock', coadd_type=coadd_type,
+                                         survey=survey, program=program,
+                                         healpix=healpix, tile=tile, night=night)
+
+            # In principle, we could parallelize this piece of code...
+            nfile = len(redrockfiles)
+            outfiles = []
+            for redrockfile in redrockfiles:
+                outfile = redrockfile.replace(specprod_dir, outdir).replace('redrock-', f'{outprefix}-')
+                if gzip:
+                    outfile = outfile.replace('.fits', '.fits.gz')
+                outfiles.append(outfile)
+            outfiles = np.array(outfiles)
+
+            todo = np.ones(len(redrockfiles), bool)
+            for ii, outfile in enumerate(outfiles):
+                if os.path.isfile(outfile) and not overwrite:
+                    todo[ii] = False
+            if np.count_nonzero(todo) > 0:
+                redrockfiles = redrockfiles[todo]
+                outfiles = outfiles[todo]
+                if sample is not None:
+                    ntargets = ntargets[todo]
+            else: # all done!
+                redrockfiles = []
+                outfiles = []
+                if sample is not None:
+                    ntargets = np.array([])
+
+            log.info(f'Found {len(redrockfiles)}/{nfile} redrockfiles (left) to do.')
+
+            # we already counted ntargets
+            if sample is None:
+                ntargs = [(redrockfile, None, None, None, False, False, False)
+                          for redrockfile in redrockfiles]
+
+    # Count the number of targets in each file. Distribute work to the other
+    # ranks, either via MPI or multiprocessing. Note that if `sample` exists,
+    # we already counted targets.
+    if sample is None:
+        if comm:
+            if rank == 0:
+                ntargs_byrank = np.array_split(ntargs, size)
+                for onerank in range(1, size):
+                    comm.send(ntargs_byrank[onerank], dest=onerank)
+                ntargs_onerank = ntargs_byrank[rank]
+            else:
+                ntargs_onerank = comm.recv(source=0)
+
+            ntargets = []
+            for ntarg_onerank in ntargs_onerank:
+                ntargets.append(get_ntargets_one(*ntarg_onerank))
+
+            if rank > 0:
+                comm.send(ntargets, dest=0)
+            else:
+                for onerank in range(1, size):
+                    ntargets.extend(comm.recv(source=onerank))
+                ntargets = np.hstack(ntargets)
+            comm.barrier()
+        else:
             if mp > 1:
                 with multiprocessing.Pool(mp) as P:
                     ntargets = P.map(_get_ntargets_one, ntargs)
@@ -246,60 +320,39 @@ def plan(size=1, specprod=None, specprod_dir=None, coadd_type='healpix',
                 ntargets = [get_ntargets_one(*_ntargs) for _ntargs in ntargs]
             ntargets = np.array(ntargets)
 
-        iempty = np.where(ntargets == 0)[0]
-        if len(iempty) > 0:
-            log.info(f'Skipping {len(iempty)} files with no targets.')
+        if rank == 0:
+            iempty = np.where(ntargets == 0)[0]
+            if len(iempty) > 0:
+                log.info(f'Skipping {len(iempty)} files with no targets.')
 
-        itodo = np.where(ntargets > 0)[0]
-        if len(itodo) > 0:
-            ntargets = ntargets[itodo]
-            log.info(f'Number of targets left to do: {np.sum(ntargets):,d}.')
+            itodo = np.where(ntargets > 0)[0]
+            if len(itodo) > 0:
+                ntargets = ntargets[itodo]
+                log.info(f'Number of targets left to do: {np.sum(ntargets):,d}.')
 
-            if redrockfiles is not None:
-                redrockfiles = redrockfiles[itodo]
-            if outfiles is not None:
-                outfiles = outfiles[itodo]
+                if redrockfiles is not None:
+                    redrockfiles = redrockfiles[itodo]
+                if outfiles is not None:
+                    outfiles = outfiles[itodo]
 
-            groups = weighted_partition(ntargets, size)
+                groups = weighted_partition(ntargets, size)
+            else:
+                if redrockfiles is not None:
+                    redrockfiles = []
+                if outfiles is not None:
+                    outfiles = []
+                groups = [np.array([])]
 
-            ## Assign the sample to ranks to make the ntargets distribution per rank ~flat.
-            ## https://stackoverflow.com/questions/33555496/split-array-into-equally-weighted-chunks-based-on-order
-            #indices = np.arange(len(ntargets))
-            #cumuweight = ntargets.cumsum() / ntargets.sum()
-            #idx = np.searchsorted(cumuweight, np.linspace(0, 1, size, endpoint=False)[1:])
-            #if len(idx) < size: # can happen in corner cases or with 1 rank
-            #    groups = np.array_split(indices, size) # unweighted
-            #else:
-            #    groups = np.array_split(indices, idx) # weighted
-            #for ii in range(size): # sort by weight
-            #    srt = np.argsort(ntargets[groups[ii]])
-            #    groups[ii] = groups[ii][srt]
-        else:
-            if redrockfiles is not None:
-                redrockfiles = []
-            if outfiles is not None:
-                outfiles = []
-            groups = [np.array([])]
+            if len(redrockfiles) == 0:
+                log.info('All files have been processed!')
+                return '', list(), list(), list(), None
 
-    if merge:
-        if len(outfiles) == 0:
-            log.debug(f'No {outprefix} files in {outdir} found!')
-            return '', list(), list(), list(), None
-        return outdir, redrockfiles, outfiles, None, None
-    elif makeqa:
-        if len(outfiles) == 0:
-            log.debug(f'No {outprefix} files in {outdir} left to do!')
-            return '', list(), list(), list(), None
-        #  hack--build the output directories and pass them in the 'redrockfiles'
-        #  position! for coadd_type==cumulative, strip out the 'lastnight' argument
-        if coadd_type == 'cumulative':
-            redrockfiles = np.array([os.path.dirname(os.path.dirname(outfile)).replace(outdir, htmldir) for outfile in outfiles])
-        else:
-            redrockfiles = np.array([os.path.dirname(outfile).replace(outdir, htmldir) for outfile in outfiles])
-    else:
-        if len(redrockfiles) == 0:
-            log.info('All files have been processed!')
-            return '', list(), list(), list(), None
+    if comm:
+        outdir = comm.bcast(outdir, root=0)
+        redrockfiles = comm.bcast(redrockfiles, root=0)
+        outfiles = comm.bcast(outfiles, root=0)
+        groups = comm.bcast(groups, root=0)
+        ntargets = comm.bcast(ntargets, root=0)
 
     return outdir, redrockfiles, outfiles, groups, ntargets
 
