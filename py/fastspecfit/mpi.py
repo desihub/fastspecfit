@@ -183,7 +183,6 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
 
     import fitsio
     from astropy.table import Table, vstack
-    from desispec.parallel import weighted_partition
 
     if comm:
         rank, size = comm.rank, comm.size
@@ -194,7 +193,6 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         outdir = None
         redrockfiles = None
         outfiles = None
-        groups = None
         ntargets = None
     else:
         t0 = time.time()
@@ -237,7 +235,6 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
             if len(outfiles) == 0:
                 log.debug(f'No {outprefix} files in {outdir} found!')
                 return '', list(), list(), list(), None
-            #groups = [np.arange(len(outfiles))]
             return outdir, redrockfiles, outfiles, None, None
         elif makeqa:
             redrockfiles, outfiles = plan_makeqa(
@@ -329,32 +326,21 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
             if len(itodo) > 0:
                 ntargets = ntargets[itodo]
                 log.info(f'Number of targets left to do: {np.sum(ntargets):,d}.')
-
                 if redrockfiles is not None:
                     redrockfiles = redrockfiles[itodo]
                 if outfiles is not None:
                     outfiles = outfiles[itodo]
-
-                groups = weighted_partition(ntargets, size)
             else:
                 if redrockfiles is not None:
                     redrockfiles = []
                 if outfiles is not None:
                     outfiles = []
-                groups = [np.array([])]
 
             if len(redrockfiles) == 0:
                 log.info('All files have been processed!')
                 return '', list(), list(), list(), None
 
-    if comm:
-        outdir = comm.bcast(outdir, root=0)
-        redrockfiles = comm.bcast(redrockfiles, root=0)
-        outfiles = comm.bcast(outfiles, root=0)
-        groups = comm.bcast(groups, root=0)
-        ntargets = comm.bcast(ntargets, root=0)
-
-    return outdir, redrockfiles, outfiles, groups, ntargets
+    return outdir, redrockfiles, outfiles, ntargets
 
 
 def _read_to_merge_one(args):
@@ -497,9 +483,9 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
             log.info(f'Merged output file {mergefile} exists!')
             return
 
-        _, _, outfiles, _, _ = plan(specprod=specprod, sample=sample, merge=True,
-                                    fastphot=fastphot, specprod_dir=specprod_dir,
-                                    outdir_data=outdir_data, overwrite=overwrite)
+        _, _, outfiles, _ = plan(specprod=specprod, sample=sample, merge=True,
+                                 fastphot=fastphot, specprod_dir=specprod_dir,
+                                 outdir_data=outdir_data, overwrite=overwrite)
         if len(outfiles) > 0:
             _domerge(outfiles, extname=extname, mergefile=mergefile, outprefix=outprefix,
                      specprod=specprod, coadd_type=coadd_type, fastphot=fastphot, mp=mp)
@@ -518,9 +504,9 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                     continue
                 #survey = np.atleast_1d(survey)
                 #program = np.atleast_1d(program)
-                _, _, outfiles, _, _ = plan(specprod=specprod, survey=survey, program=program, healpix=healpix,
-                                            merge=True, fastphot=fastphot, specprod_dir=specprod_dir,
-                                            outdir_data=outdir_data, overwrite=overwrite)
+                _, _, outfiles, _ = plan(specprod=specprod, survey=survey, program=program, healpix=healpix,
+                                         merge=True, fastphot=fastphot, specprod_dir=specprod_dir,
+                                         outdir_data=outdir_data, overwrite=overwrite)
                 if len(outfiles) > 0:
                     _domerge(outfiles, extname=extname, survey=survey[0], program=program[0],
                              mergefile=mergefile, outprefix=outprefix, specprod=specprod,
@@ -530,9 +516,9 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
         if os.path.isfile(mergefile) and not overwrite:
             log.info(f'Merged output file {mergefile} exists!')
             return
-        _, _, outfiles, _, _ = plan(specprod=specprod, coadd_type=coadd_type, tile=tile, night=night,
-                                    merge=True, fastphot=fastphot, specprod_dir=specprod_dir,
-                                    outdir_data=outdir_data, overwrite=overwrite)
+        _, _, outfiles, _ = plan(specprod=specprod, coadd_type=coadd_type, tile=tile, night=night,
+                                 merge=True, fastphot=fastphot, specprod_dir=specprod_dir,
+                                 outdir_data=outdir_data, overwrite=overwrite)
         if len(outfiles) > 0:
             _domerge(outfiles, extname=extname, mergefile=mergefile, outprefix=outprefix,
                      specprod=specprod, coadd_type=coadd_type, fastphot=fastphot, mp=mp)

@@ -10,13 +10,6 @@ from astropy.table import Table
 from fastspecfit.logger import log
 
 
-def get_size(comm, mp=1):
-    # Number of rank=0 ranks in all the subcommunicators; also the unique
-    # number of "colors".
-    size = int(np.ceil(comm.size / mp))
-    return size
-
-
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False,
                     sample=None, input_redshifts=False, outdir_data='.', templates=None,
                     templateversion=None, fphotodir=None, fphotofile=None):
@@ -33,92 +26,84 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
 
     """
     import sys
-    from desispec.parallel import stdouterr_redirected
+    from desispec.parallel import stdouterr_redirected, weighted_partition
     from fastspecfit.mpi import plan
 
     if comm:
         rank = comm.rank
         size = comm.size
-        #size = get_size(comm, mp=args.mp)
-
-        # Split the MPI.COMM_WORLD communicator into size // args.mp
-        # subcommunicators so we can parallelize over objects in
-        # fastspecfit.fastspec (or fastspecfit.fastphot).
-        colors = np.arange(comm.size) // args.mp
-        subcomm = comm.Split(color=rank // args.mp, key=rank)
     else:
         rank, size = 0, 1
-        colors = [0]
         subcomm = None
-    print(comm.rank, comm.size, subcomm.rank, subcomm.size, size)
 
-    t0 = time.time()
     if rank == 0:
-        if sample is not None:
-            _, redrockfiles, outfiles, groups, ntargets = plan(
-                comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
-                sample=sample, coadd_type='healpix', makeqa=args.makeqa,
-                mp=args.mp, fastphot=args.fastphot, outdir_data=outdir_data,
-                overwrite=args.overwrite)
-        else:
-            _, redrockfiles, outfiles, groups, ntargets = plan(
-                comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
-                coadd_type=args.coadd_type, survey=args.survey, program=args.program,
-                healpix=args.healpix, tile=args.tile, night=args.night,
-                makeqa=args.makeqa, mp=args.mp, fastphot=fastphot, outdir_data=outdir_data,
-                overwrite=args.overwrite)
+        t0 = time.time()
+    _, all_redrockfiles, all_outfiles, all_ntargets = plan(
+        comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
+        coadd_type=args.coadd_type, survey=args.survey, program=args.program,
+        healpix=args.healpix, tile=args.tile, night=args.night,
+        makeqa=args.makeqa, mp=args.mp, fastphot=fastphot,
+        outdir_data=outdir_data, overwrite=args.overwrite, sample=sample)
+    if rank == 0:
         log.info(f'Planning took {time.time() - t0:.2f} sec')
-    else:
-        redrockfiles, outfiles, groups, ntargets = [], [], [], []
 
-    print(rank, redrockfiles, ntargets, groups)
+    if comm:
+        # Split the MPI.COMM_WORLD communicator into subcommunicators (of size
+        # args.mp) so we can MPI-parallelize over objects.
+        allranks = np.arange(comm.size)
+        colors = np.arange(comm.size) // args.mp
 
-    return
+        color = rank // args.mp
+        subcomm = comm.Split(color=color, key=rank)
 
-    #if comm:
-    #    groups = comm.bcast(groups, root=0)
-    #    redrockfiles = comm.bcast(redrockfiles, root=0)
-    #    outfiles = comm.bcast(outfiles, root=0)
-    #    ntargets = comm.bcast(ntargets, root=0)
-    #    sample = comm.bcast(sample, root=0)
-
-    print('Size! ', size)
-
-    # Make sure all the ranks in subcomm have the same work.
-    if subcomm:
-        if subcomm.rank == 0:
-            for subrank in range(subcomm.size):
-                subcomm.send(groups[rank], dest=subrank)
-                subcomm.send(redrockfiles[groups[rank]], dest=subrank)
-                subcomm.send(outfiles[groups[rank]], dest=subrank)
-                subcomm.send(ntargets[groups[rank]], dest=subrank)
+        if rank == 0:
+            subranks0 = allranks[::args.mp] # rank=0 in each subcomm
+            log.info(f'Rank {rank}: dividing filelist into {len(subranks0):,d} sub-communicator(s) ' + \
+                     f'(size={comm.size:,d}, mp={args.mp}).')
         else:
-            groups[rank] = subcomm.recv(source=0)
-            redrockfiles[groups[rank]] = subcomm.recv(source=0)
-            outfiles[groups[rank]] = subcomm.recv(source=0)
-            ntargets[groups[rank]] = subcomm.recv(source=0)
+            subranks0 = None
 
+        subranks0 = comm.bcast(subranks0, root=0)
+
+        # Send the filelists and number of targets to each subrank0.
+        if rank == 0:
+            groups = weighted_partition(all_ntargets, len(subranks0))
+            for irank in range(1, len(subranks0)):
+                log.debug(f'Rank {rank} sending work to rank {subranks0[irank]}')
+                comm.send(all_redrockfiles[groups[irank]], dest=subranks0[irank], tag=1)
+                comm.send(all_outfiles[groups[irank]], dest=subranks0[irank], tag=2)
+                comm.send(all_ntargets[groups[irank]], dest=subranks0[irank], tag=3)
+            redrockfiles = all_redrockfiles[groups[rank]]
+            outfiles = all_outfiles[groups[rank]]
+            ntargets = all_ntargets[groups[rank]]
+        else:
+            if rank in subranks0:
+                log.debug(f'Rank {rank}: received work from rank 0')
+                redrockfiles = comm.recv(source=0, tag=1)
+                outfiles = comm.recv(source=0, tag=2)
+                ntargets = comm.recv(source=0, tag=3)
+
+        # Each subrank0 sends work to the subranks it controls.
+        if subcomm.rank == 0:
+            subranks = allranks[np.isin(colors, color)]
+            # process from smallest to largest
+            srt = np.argsort(ntargets)
+            redrockfiles = redrockfiles[srt]
+            outfiles = outfiles[srt]
+            for irank in range(1, subcomm.size):
+                log.debug(f'Subrank 0 (rank {rank}) sending work to subrank {irank} (rank {subranks[irank]})')
+                subcomm.send(redrockfiles, dest=irank, tag=4)
+                subcomm.send(outfiles, dest=irank, tag=5)
+        else:
+            redrockfiles = subcomm.recv(source=0, tag=4)
+            outfiles = subcomm.recv(source=0, tag=5)
+
+    #print(f'Rank={comm.rank}, subrank={subcomm.rank}, redrockfiles={redrockfiles}')
     sys.stdout.flush()
 
-    # all done
-    if len(redrockfiles) == 0:
-        return
-
-    #assert(len(groups) == size)
-    #assert(len(np.concatenate(groups)) == len(redrockfiles))
-
-    """
-    16 redrockfiles
-    size = 8
-    mp = 4
-    colors = np.arange(size) // mp --> [0, 0, 0, 0, 1, 1, 1, 1]
-    nsubcomm = int(np.ceil(size / mp)) --> 2
-    """
-    print(groups, rank, groups[rank])
-
-    for ii in groups[rank]:
-        log.debug(f'Rank {rank} started at {time.asctime()}')
-        sys.stdout.flush()
+    for redrockfile, outfile in zip(redrockfiles, outfiles):
+        if subcomm.rank == 0:
+            log.debug(f'Rank {comm.rank} (subrank {subcomm.rank}) started at {time.asctime()}')
 
         # With --makeqa the desired output directories are in the 'redrockfiles'.
         if args.makeqa:
@@ -309,10 +294,8 @@ def main():
         rank = comm.rank
         if comm.size > 1 and args.mp > 1 and comm.size < args.mp:
             log.warning(f'Number of MPI tasks {comm.size} should be >{args.mp} for MPI parallelism.')
-        size = get_size(comm, mp=args.mp)
     else:
-        rank, size = 0, 1
-
+        rank = 0
         # https://docs.nersc.gov/development/languages/python/parallel-python/#use-the-spawn-start-method
         if args.mp > 1 and 'NERSC_HOST' in os.environ:
             import multiprocessing
