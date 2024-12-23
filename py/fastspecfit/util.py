@@ -53,7 +53,7 @@ class MPPool(object):
     rather than a list of positional arguments.
 
     """
-    def __init__(self, nworkers, initializer=None, init_argdict=None, comm=None):
+    def __init__(self, nworkers, initializer=None, init_argdict=None):
         """
         create a pool with nworkers workers, using the current
         process if nworkers is 1.  If initiializer is not None,
@@ -61,14 +61,15 @@ class MPPool(object):
         init_argdict on startup in each each worker subprocess.
 
         """
-
         initfunc = None if initializer is None else self.apply_to_dict
 
+        ## If multiprocessing, create a pool of worker processes and initialize
+        ## single-copy objects in each worker.
+        #if args.mp > 1 and not 'NERSC_HOST' in os.environ:
+        #    import multiprocessing
+        #    multiprocessing.set_start_method('fork')
         if nworkers > 1:
-            if comm is not None:
-                from mpi4py.futures import MPIPoolExecutor as Pool
-            else:
-                from multiprocessing import Pool
+            from multiprocessing import Pool
             self.pool = Pool(nworkers,
                              initializer=initfunc,
                              initargs=(initializer, init_argdict,))

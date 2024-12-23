@@ -283,14 +283,12 @@ def plan(size=1, specprod=None, specprod_dir=None, coadd_type='healpix',
 
     if merge:
         if len(outfiles) == 0:
-            if rank == 0:
-                log.debug(f'No {outprefix} files in {outdir} found!')
+            log.debug(f'No {outprefix} files in {outdir} found!')
             return '', list(), list(), list(), None
         return outdir, redrockfiles, outfiles, None, None
     elif makeqa:
         if len(outfiles) == 0:
-            if rank == 0:
-                log.debug(f'No {outprefix} files in {outdir} left to do!')
+            log.debug(f'No {outprefix} files in {outdir} left to do!')
             return '', list(), list(), list(), None
         #  hack--build the output directories and pass them in the 'redrockfiles'
         #  position! for coadd_type==cumulative, strip out the 'lastnight' argument
@@ -300,8 +298,7 @@ def plan(size=1, specprod=None, specprod_dir=None, coadd_type='healpix',
             redrockfiles = np.array([os.path.dirname(outfile).replace(outdir, htmldir) for outfile in outfiles])
     else:
         if len(redrockfiles) == 0:
-            if rank == 0:
-                log.info('All files have been processed!')
+            log.info('All files have been processed!')
             return '', list(), list(), list(), None
 
     return outdir, redrockfiles, outfiles, groups, ntargets
