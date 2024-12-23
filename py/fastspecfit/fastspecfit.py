@@ -103,6 +103,13 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
 
+    if comm:
+        rank, size = comm.rank, comm.size
+        comm.barrier()
+    else:
+        rank, size = 0, 1
+    print(f'rank={rank} size={size}: in fastspec')
+
     # check for mandatory environment variables
     envlist = []
     if args.redux_dir is None:
@@ -159,128 +166,155 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
     sc_data.initialize(**init_sc_args)
 
-    ## If multiprocessing, create a pool of worker processes and initialize
-    ## single-copy objects in each worker.
-    #if args.mp > 1 and not 'NERSC_HOST' in os.environ:
-    #    import multiprocessing
-    #    multiprocessing.set_start_method('fork')
+    if rank == 0:
+        t0 = time.time()
+        # use multiprocessing
+        if comm is None:
+            mp_pool = MPPool(args.mp, initializer=sc_data.initialize,
+                             init_argdict=init_sc_args)
 
-    t0 = time.time()
-    mp_pool = MPPool(args.mp, initializer=sc_data.initialize,
-                     init_argdict=init_sc_args, comm=comm)
+        log.debug(f'Caching took {time.time()-t0:.5f} seconds.')
 
-    log.debug(f'Caching took {time.time()-t0:.5f} seconds.')
+        log.info(f'Cached stellar templates {sc_data.templates.file}')
+        log.info(f'Cached emission-line table {sc_data.emlines.file}')
+        log.info(f'Cached photometric filters and parameters {sc_data.photometry.fphotofile}')
+        log.info(f'Cached cosmology table {sc_data.cosmology.file}')
+        log.info(f'Cached {sc_data.igm.reference} IGM attenuation parameters.')
 
-    log.info(f'Cached stellar templates {sc_data.templates.file}')
-    log.info(f'Cached emission-line table {sc_data.emlines.file}')
-    log.info(f'Cached photometric filters and parameters {sc_data.photometry.fphotofile}')
-    log.info(f'Cached cosmology table {sc_data.cosmology.file}')
-    log.info(f'Cached {sc_data.igm.reference} IGM attenuation parameters.')
+        # Read the data.
+        Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
+                           fphotodir=args.fphotodir, mapdir=args.mapdir,
+                           redux_dir=args.redux_dir)
 
-    # Read the data.
-    Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
-                       fphotodir=args.fphotodir, mapdir=args.mapdir,
-                       redux_dir=args.redux_dir)
-
-    if fitstack:
-        data, meta = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
-                                       stackids=targetids, ntargets=args.ntargets,
-                                       constrain_age=args.constrain_age)
-    else:
-        Spec.gather_metadata(args.redrockfiles, firsttarget=args.firsttarget,
-                             targetids=targetids, input_redshifts=input_redshifts,
-                             ntargets=args.ntargets, zmin=args.zmin,
-                             redrockfile_prefix=args.redrockfile_prefix,
-                             specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
-                             use_quasarnet=args.use_quasarnet, specprod_dir=args.specproddir)
-        if len(Spec.specfiles) == 0:
-            return
-
-        data, meta = Spec.read(sc_data.photometry, fastphot=fastphot, constrain_age=args.constrain_age)
-
-    ntargets = len(meta)
-    ncoeff = sc_data.templates.ntemplates
-    if fastphot:
-        cameras = None
-    else:
-        cameras = data[0]['cameras']
-
-    fastfit_dtype, fastfit_units = get_output_dtype(
-        Spec.specprod, phot=sc_data.photometry,
-        linetable=sc_data.emlines.table, ncoeff=ncoeff,
-        cameras=cameras, fastphot=fastphot,
-        fitstack=fitstack)
-
-    specphot_dtype, specphot_units = get_output_dtype(
-        Spec.specprod, phot=sc_data.photometry,
-        linetable=sc_data.emlines.table, ncoeff=ncoeff,
-        cameras=cameras, fastphot=fastphot,
-        fitstack=fitstack, specphot=True)
-
-    # If using Monte Carlo, generate the random seed(s).
-    if args.nmonte > 0:
-        if input_seeds is not None:
-            seeds = input_seeds
+        if fitstack:
+            data, meta = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
+                                           stackids=targetids, ntargets=args.ntargets,
+                                           constrain_age=args.constrain_age)
         else:
-            rng = np.random.default_rng(seed=args.seed)
-            seeds = rng.integers(2**32, size=ntargets, dtype=np.int64)
-    else:
-        seeds = [1] * ntargets
+            Spec.gather_metadata(args.redrockfiles, firsttarget=args.firsttarget,
+                                 targetids=targetids, input_redshifts=input_redshifts,
+                                 ntargets=args.ntargets, zmin=args.zmin,
+                                 redrockfile_prefix=args.redrockfile_prefix,
+                                 specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
+                                 use_quasarnet=args.use_quasarnet, specprod_dir=args.specproddir)
+            if len(Spec.specfiles) == 0:
+                return
+
+            data, meta = Spec.read(sc_data.photometry, fastphot=fastphot, constrain_age=args.constrain_age)
+
+        ntargets = len(meta)
+        ncoeff = sc_data.templates.ntemplates
+        if fastphot:
+            cameras = None
+        else:
+            cameras = data[0]['cameras']
+
+        fastfit_dtype, fastfit_units = get_output_dtype(
+            Spec.specprod, phot=sc_data.photometry,
+            linetable=sc_data.emlines.table, ncoeff=ncoeff,
+            cameras=cameras, fastphot=fastphot,
+            fitstack=fitstack)
+
+        specphot_dtype, specphot_units = get_output_dtype(
+            Spec.specprod, phot=sc_data.photometry,
+            linetable=sc_data.emlines.table, ncoeff=ncoeff,
+            cameras=cameras, fastphot=fastphot,
+            fitstack=fitstack, specphot=True)
+
+        # If using Monte Carlo, generate the random seed(s).
+        if args.nmonte > 0:
+            if input_seeds is not None:
+                seeds = input_seeds
+            else:
+                rng = np.random.default_rng(seed=args.seed)
+                seeds = rng.integers(2**32, size=ntargets, dtype=np.int64)
+        else:
+            seeds = [1] * ntargets
+
+        fitargs = [{
+            'iobj':                iobj,
+            'data':                data[iobj],
+            'meta':                meta[iobj],
+            'fastfit_dtype':       fastfit_dtype,
+            'specphot_dtype':      specphot_dtype,
+            'broadlinefit':        args.broadlinefit,
+            'fastphot':            fastphot,
+            'fitstack':            fitstack,
+            'constrain_age':       args.constrain_age,
+            'no_smooth_continuum': args.no_smooth_continuum,
+            'debug_plots':         args.debug_plots,
+            'uncertainty_floor':   args.uncertainty_floor,
+            'minsnr_balmer_broad': args.minsnr_balmer_broad,
+            'nmonte':              args.nmonte,
+            'seed':                seeds[iobj],
+        } for iobj in range(len(meta))]
+        print('length of fitargs ', len(fitargs))
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [{
-        'iobj':                iobj,
-        'data':                data[iobj],
-        'meta':                meta[iobj],
-        'fastfit_dtype':       fastfit_dtype,
-        'specphot_dtype':      specphot_dtype,
-        'broadlinefit':        args.broadlinefit,
-        'fastphot':            fastphot,
-        'fitstack':            fitstack,
-        'constrain_age':       args.constrain_age,
-        'no_smooth_continuum': args.no_smooth_continuum,
-        'debug_plots':         args.debug_plots,
-        'uncertainty_floor':   args.uncertainty_floor,
-        'minsnr_balmer_broad': args.minsnr_balmer_broad,
-        'nmonte':              args.nmonte,
-        'seed':                seeds[iobj],
-    } for iobj in range(len(meta))]
+    if comm is not None:
+        # Rank=0 sends work to all the other ranks, including itself.
+        if rank == 0:
+            fitargs_byrank = np.array_split(fitargs, size)
+            for onerank in range(1, size):
+                print(f'Rank 0 sending data on {len(fitargs_byrank[onerank])}/{len(meta)} objects to rank {onerank}')
+                comm.send(fitargs_byrank[onerank], dest=onerank)
+            fitargs_onerank = fitargs_byrank[rank]
+        else:
+            fitargs_onerank = comm.recv(source=0)
+        print(f'Rank {rank} received data on {len(fitargs_onerank)} objects from rank 0')
 
-    out = mp_pool.starmap(fastspec_one, fitargs)
+        # Each rank, including rank 0, builds its own output table and then
+        # rank 0 collects the results.
+        out = []
+        for fitarg_onerank in fitargs_onerank:
+            out.append(fastspec_one(**fitarg_onerank))
+
+        if rank > 0:
+            print(f'Rank {rank} sending data on {len(out)} objects to rank 0.')
+            comm.send(out, dest=0)
+        else:
+            for onerank in range(1, size):
+                out.extend(comm.recv(source=onerank))
+            print(f'Rank 0 received data on {len(out)} objects.')
+        comm.barrier()
+    else:
+        out = mp_pool.starmap(fastspec_one, fitargs)
     out = list(zip(*out))
 
-    meta = create_output_meta(vstack(out[0]), phot=sc_data.photometry,
-                              fastphot=fastphot, fitstack=fitstack)
-    specphot = create_output_table(out[1], meta, specphot_units, fitstack=fitstack)
+    if rank == 0:
+        meta = create_output_meta(vstack(out[0]), phot=sc_data.photometry,
+                                  fastphot=fastphot, fitstack=fitstack)
+        specphot = create_output_table(out[1], meta, specphot_units, fitstack=fitstack)
 
-    if fastphot:
-        fastfit = None
-        modelspectra = None
-    else:
-        fastfit = create_output_table(out[2], meta, fastfit_units, fitstack=fitstack)
-        modelspectra = vstack(out[3], join_type='exact', metadata_conflicts='error')
+        if fastphot:
+            fastfit = None
+            modelspectra = None
+        else:
+            fastfit = create_output_table(out[2], meta, fastfit_units, fitstack=fitstack)
+            modelspectra = vstack(out[3], join_type='exact', metadata_conflicts='error')
 
-    # if multiprocessing, clean up workers
-    mp_pool.close()
+        # if multiprocessing, clean up workers
+        if comm is None:
+            mp_pool.close()
 
-    log.info(f'Fitting {ntargets} object(s) took {time.time()-t0:.2f} seconds.')
+        log.info(f'Fitting {ntargets} object(s) took {time.time()-t0:.2f} seconds.')
 
-    write_fastspecfit(
-        meta, specphot, fastfit, modelspectra=modelspectra,
-        outfile=args.outfile, specprod=Spec.specprod, coadd_type=Spec.coadd_type,
-        fphotofile=sc_data.photometry.fphotofile,
-        template_file=sc_data.templates.file,
-        emlinesfile=sc_data.emlines.file, fastphot=fastphot,
-        inputz=input_redshifts is not None,
-        nmonte=args.nmonte, seed=args.seed,
-        inputseeds=input_seeds is not None,
-        uncertainty_floor=args.uncertainty_floor,
-        minsnr_balmer_broad=args.minsnr_balmer_broad,
-        ignore_photometry=args.ignore_photometry,
-        broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
-        use_quasarnet=args.use_quasarnet,
-        no_smooth_continuum=args.no_smooth_continuum)
+        write_fastspecfit(
+            meta, specphot, fastfit, modelspectra=modelspectra,
+            outfile=args.outfile, specprod=Spec.specprod, coadd_type=Spec.coadd_type,
+            fphotofile=sc_data.photometry.fphotofile,
+            template_file=sc_data.templates.file,
+            emlinesfile=sc_data.emlines.file, fastphot=fastphot,
+            inputz=input_redshifts is not None,
+            nmonte=args.nmonte, seed=args.seed,
+            inputseeds=input_seeds is not None,
+            uncertainty_floor=args.uncertainty_floor,
+            minsnr_balmer_broad=args.minsnr_balmer_broad,
+            ignore_photometry=args.ignore_photometry,
+            broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
+            use_quasarnet=args.use_quasarnet,
+            no_smooth_continuum=args.no_smooth_continuum)
 
 
 def fastphot(args=None, comm=None):

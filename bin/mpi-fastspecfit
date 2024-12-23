@@ -9,84 +9,107 @@ import numpy as np
 from fastspecfit.logger import log
 
 
-def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
-                    makeqa=False, samplefile=None, input_redshifts=False,
-                    outdir_data='.', templates=None, templateversion=None,
-                    fphotodir=None, fphotofile=None):
+def get_size(comm, mp=1):
+    # Number of rank=0 ranks in all the subcommunicators; also the unique
+    # number of "colors".
+    size = int(np.ceil(comm.size / mp))
+    return size
+
+
+def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False,
+                    sample=None, input_redshifts=False, outdir_data='.', templates=None,
+                    templateversion=None, fphotodir=None, fphotofile=None):
 
     import sys
     from desispec.parallel import stdouterr_redirected
     from fastspecfit.mpi import plan
 
-    if comm is None:
-        rank, size = 0, 1
+    if comm:
+        rank = comm.rank
+        #size = comm.size
+        size = get_size(comm, mp=args.mp)
+
+        # Split the MPI.COMM_WORLD communicator into size // args.mp
+        # subcommunicators so we can parallelize over objects in
+        # fastspecfit.fastspec (or fastspecfit.fastphot).
+        colors = np.arange(size) // args.mp
+        subcomm = comm.Split(color=rank // args.mp, key=rank)
     else:
-        rank, size = comm.rank, comm.size
+        rank = 0
+        size = 1
+        colors = [0]
+        subcomm = None
+    print(comm.rank, comm.size, subcomm.rank, subcomm.size, size)
 
     t0 = time.time()
     if rank == 0:
-        if args.samplefile is not None:
-            import fitsio
-            from astropy.table import Table
-            if not os.path.isfile(args.samplefile):
-                log.warning(f'{args.samplefile} does not exist.')
-                return
-            try:
-                readcols = ['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID']
-                if input_redshifts:
-                    readcols += ['Z']
-                sample = Table(fitsio.read(args.samplefile, columns=readcols))
-            except:
-                if input_redshifts:
-                    errmsg = f'Sample file {args.samplefile} with --input-redshifts set missing required columns {SURVEY,PROGRAM,HEALPIX,TARGETID,Z}'
-                else:
-                    errmsg = f'Sample file {args.samplefile} missing required columns {SURVEY,PROGRAM,HEALPIX,TARGETID}'
-                log.critical(errmsg)
-                raise ValueError(errmsg)
-
-            _, zbestfiles, outfiles, groups, ntargets = plan(
+        if sample is not None:
+            _, redrockfiles, outfiles, groups, ntargets = plan(
                 size=size, specprod=args.specprod, specprod_dir=specprod_dir,
                 sample=sample, coadd_type='healpix', makeqa=args.makeqa,
-                mp=args.mp, fastphot=args.fastphot,
-                outdir_data=outdir_data, overwrite=args.overwrite)
+                mp=args.mp, fastphot=args.fastphot, outdir_data=outdir_data,
+                overwrite=args.overwrite)
         else:
-            sample = None
-            _, zbestfiles, outfiles, groups, ntargets = plan(
+            _, redrockfiles, outfiles, groups, ntargets = plan(
                 size=size, specprod=args.specprod, specprod_dir=specprod_dir,
                 coadd_type=args.coadd_type, survey=args.survey, program=args.program,
                 healpix=args.healpix, tile=args.tile, night=args.night,
                 makeqa=args.makeqa, mp=args.mp, fastphot=fastphot, outdir_data=outdir_data,
                 overwrite=args.overwrite)
-        log.info('Planning took {:.2f} sec'.format(time.time() - t0))
+        log.info(f'Planning took {time.time() - t0:.2f} sec')
     else:
-        sample = None
-        zbestfiles, outfiles, groups, ntargets = [], [], [], []
+        redrockfiles, outfiles, groups, ntargets = [], [], [], []
 
-    if comm:
-        zbestfiles = comm.bcast(zbestfiles, root=0)
-        outfiles = comm.bcast(outfiles, root=0)
-        groups = comm.bcast(groups, root=0)
-        ntargets = comm.bcast(ntargets, root=0)
-        sample = comm.bcast(sample, root=0)
+    #if comm:
+    #    groups = comm.bcast(groups, root=0)
+    #    redrockfiles = comm.bcast(redrockfiles, root=0)
+    #    outfiles = comm.bcast(outfiles, root=0)
+    #    ntargets = comm.bcast(ntargets, root=0)
+    #    sample = comm.bcast(sample, root=0)
+
+    print('Size! ', size)
+
+    # Make sure all the ranks in subcomm have the same work.
+    if subcomm:
+        if subcomm.rank == 0:
+            for subrank in range(subcomm.size):
+                subcomm.send(groups[rank], dest=subrank)
+                subcomm.send(redrockfiles[groups[rank]], dest=subrank)
+                subcomm.send(outfiles[groups[rank]], dest=subrank)
+                subcomm.send(ntargets[groups[rank]], dest=subrank)
+        else:
+            groups[rank] = subcomm.recv(source=0)
+            redrockfiles[groups[rank]] = subcomm.recv(source=0)
+            outfiles[groups[rank]] = subcomm.recv(source=0)
+            ntargets[groups[rank]] = subcomm.recv(source=0)
 
     sys.stdout.flush()
 
     # all done
-    if len(zbestfiles) == 0:
+    if len(redrockfiles) == 0:
         return
 
-    assert(len(groups) == size)
-    assert(len(np.concatenate(groups)) == len(zbestfiles))
+    #assert(len(groups) == size)
+    #assert(len(np.concatenate(groups)) == len(redrockfiles))
+
+    """
+    16 redrockfiles
+    size = 8
+    mp = 4
+    colors = np.arange(size) // mp --> [0, 0, 0, 0, 1, 1, 1, 1]
+    nsubcomm = int(np.ceil(size / mp)) --> 2
+    """
+    print(groups, rank, groups[rank])
 
     for ii in groups[rank]:
         log.debug(f'Rank {rank} started at {time.asctime()}')
         sys.stdout.flush()
 
-        # With --makeqa the desired output directories are in the 'zbestfiles'.
+        # With --makeqa the desired output directories are in the 'redrockfiles'.
         if args.makeqa:
             from fastspecfit.qa import fastqa as fast
             cmd = 'fastqa'
-            cmdargs = f'{outfiles[ii]} -o={zbestfiles[ii]} --mp={args.mp}'
+            cmdargs = f'{outfiles[ii]} -o={redrockfiles[ii]} --mp={args.mp}'
         else:
             if fastphot:
                 from fastspecfit.fastspecfit import fastphot as fast
@@ -94,7 +117,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             else:
                 from fastspecfit.fastspecfit import fastspec as fast
                 cmd = 'fastspec'
-            cmdargs = f'{zbestfiles[ii]} -o={outfiles[ii]} --mp={args.mp}'
+            cmdargs = f'{redrockfiles[ii]} -o={outfiles[ii]} --mp={args.mp}'
 
             if args.ignore_quasarnet:
                 cmdargs += ' --ignore-quasarnet'
@@ -128,7 +151,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
 
         if sample is not None:
             # assume healpix coadds; find the targetids to process
-            _, survey, program, healpix = os.path.basename(zbestfiles[ii]).split('-')
+            _, survey, program, healpix = os.path.basename(redrockfiles[ii]).split('-')
             healpix = int(healpix.split('.')[0])
             I = (sample['SURVEY'] == survey) * (sample['PROGRAM'] == program) * (sample['HEALPIX'] == healpix)
             targetids = ','.join(sample[I]['TARGETID'].astype(str))
@@ -141,7 +164,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
                 cmdargs += f' --targetids={args.targetids}'
 
         if args.makeqa:
-            logfile = os.path.join(zbestfiles[ii], os.path.basename(outfiles[ii]).replace('.gz', '').replace('.fits', '.log'))
+            logfile = os.path.join(redrockfiles[ii], os.path.basename(outfiles[ii]).replace('.gz', '').replace('.fits', '.log'))
         else:
             logfile = outfiles[ii].replace('.gz', '').replace('.fits', '.log')
 
@@ -166,17 +189,11 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
             if not os.path.isdir(outdir):
                 os.makedirs(outdir, exist_ok=True)
 
-            ## pure-MPI
-            #if comm is not None:
-            #    subcomm = comm.Split(color=rank)
-            #else:
-            #    subcomm = None
-
             if args.nolog:
-                fast(args=cmdargs.split())#, comm=subcomm)
+                fast(args=cmdargs.split(), comm=subcomm)
             else:
                 with stdouterr_redirected(to=logfile, overwrite=args.overwrite):
-                    fast(args=cmdargs.split())#, comm=subcomm)
+                    fast(args=cmdargs.split(), comm=subcomm)
 
             dt1 = time.time() - t1
             log.info(f'  rank {rank} done in {dt1:.2f} sec')
@@ -191,7 +208,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None,
     log.debug(f'  rank {rank} is done')
     sys.stdout.flush()
 
-    if comm is not None:
+    if comm:
         comm.barrier()
 
     if rank == 0 and not args.dry_run:
@@ -273,20 +290,21 @@ def main():
         except ImportError:
             comm = None
 
-    if comm is None:
+    if comm:
+        rank = comm.rank
+        if comm.size > 1 and args.mp > 1 and comm.size < args.mp:
+            log.warning(f'Number of MPI tasks {comm.size} should be >{args.mp} for MPI parallelism.')
+        size = get_size(comm, mp=args.mp)
+    else:
         rank, size = 0, 1
 
         # https://docs.nersc.gov/development/languages/python/parallel-python/#use-the-spawn-start-method
         if args.mp > 1 and 'NERSC_HOST' in os.environ:
             import multiprocessing
             multiprocessing.set_start_method('spawn')
-    else:
-        rank, size = comm.rank, comm.size
 
-    # Main rank is responsible for planning and merging.
+    # Rank 0 is responsible for planning and merging.
     if rank == 0:
-        #from fastspecfit.logger import log
-
         # check the input samplefile
         if args.samplefile is not None:
             import fitsio
@@ -296,8 +314,14 @@ def main():
                 return
             try:
                 sample = Table(fitsio.read(args.samplefile, columns=['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID']))
+                log.info(f'Read {len(sample)} rows from {args.samplefile}')
             except:
-                errmsg = f'Sample file {args.samplefile} missing required columns {SURVEY,PROGRAM,HEALPIX,TARGETID}'
+                if args.input_redshifts:
+                    errmsg = f'Sample file {args.samplefile} with --input-redshifts missing required columns ' + \
+                        '{SURVEY,PROGRAM,HEALPIX,TARGETID,Z}'
+                else:
+                    errmsg = f'Sample file {args.samplefile} missing required columns ' + \
+                        '{SURVEY,PROGRAM,HEALPIX,TARGETID}'
                 log.critical(errmsg)
                 raise ValueError(errmsg)
 
@@ -376,10 +400,11 @@ def main():
                      outdir_data=outdir_data, overwrite=args.overwrite)
     else:
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                        makeqa=args.makeqa, outdir_data=outdir_data,
-                        samplefile=args.samplefile, input_redshifts=args.input_redshifts,
-                        templates=args.templates, templateversion=args.templateversion,
-                        fphotodir=args.fphotodir, fphotofile=args.fphotofile)
+                        makeqa=args.makeqa, outdir_data=outdir_data, sample=sample,
+                        input_redshifts=args.input_redshifts, templates=args.templates,
+                        templateversion=args.templateversion, fphotodir=args.fphotodir,
+                        fphotofile=args.fphotofile)
+
 
 if __name__ == '__main__':
     main()
