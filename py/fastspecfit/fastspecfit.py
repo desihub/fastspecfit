@@ -15,6 +15,58 @@ from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import BoxedScalar, MPPool
 
 
+def parse(options=None, rank=0):
+    """Parse input arguments to fastspec and fastphot scripts.
+
+    """
+    import argparse, sys
+    from fastspecfit.templates import Templates
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    parser.add_argument('redrockfiles', nargs='+', help='Full path to input redrock file(s).')
+    parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename (required).')
+    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads per MPI rank.')
+    parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
+    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.')
+    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
+    parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
+    parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
+    parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
+    parser.add_argument('--nmonte', type=int, default=50, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
+    parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
+                        help='Do not model broad Balmer and helium line-emission.')
+    parser.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
+    parser.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')
+    parser.add_argument('--constrain-age', action='store_true', help='Constrain the age of the SED.')
+    parser.add_argument('--no-smooth-continuum', action='store_true', help='Do not fit the smooth continuum.')
+    parser.add_argument('--imf', type=str, default=Templates.DEFAULT_IMF, help='Initial mass function.')
+    parser.add_argument('--templateversion', type=str, default=Templates.DEFAULT_TEMPLATEVERSION, help='Template version number.')
+    parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
+    parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
+    parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
+    parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
+    parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
+    parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
+    parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
+    parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
+    parser.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
+    parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
+    parser.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum.')
+    parser.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
+    parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
+    parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
+
+    if options is None:
+        options = sys.argv[1:]
+
+    if rank == 0:
+        log.info(f'fastspec {" ".join(options)}')
+
+    return parser.parse_args(options)
+
+
 def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=True,
                  fastphot=False, fitstack=False, constrain_age=False,
                  no_smooth_continuum=False, debug_plots=False, uncertainty_floor=0.01,
@@ -249,8 +301,6 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             'seed':                seeds[iobj],
         } for iobj in range(nobj)]
 
-        # needed for production-level logging
-        sys.stdout.flush()
 
     # Fit in parallel
     t0 = time.time()
@@ -281,11 +331,9 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
                 out.extend(comm.recv(source=onerank))
             #log.debug(f'Rank 0 received data on {len(out)} objects.')
             log.info(f'Rank {rank} collected results on {len(out):,d} objects from {comm.size:,d} ranks.')
-
-        # needed for production-level logging
-        sys.stdout.flush()
     else:
         out = mp_pool.starmap(fastspec_one, fitargs)
+
     out = list(zip(*out))
 
     if rank == 0:
@@ -322,9 +370,6 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             use_quasarnet=args.use_quasarnet,
             no_smooth_continuum=args.no_smooth_continuum)
 
-        # needed for production-level logging
-        sys.stdout.flush()
-
 
 def fastphot(args=None, comm=None):
     """Main fastphot script.
@@ -357,55 +402,3 @@ def stackfit(args=None, comm=None):
 
     """
     fastspec(fitstack=True, args=args, comm=comm)
-
-
-def parse(options=None, rank=0):
-    """Parse input arguments to fastspec and fastphot scripts.
-
-    """
-    import argparse, sys
-    from fastspecfit.templates import Templates
-
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-
-    parser.add_argument('redrockfiles', nargs='+', help='Full path to input redrock file(s).')
-    parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename (required).')
-    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads per MPI rank.')
-    parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
-    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.')
-    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
-    parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
-    parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
-    parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
-    parser.add_argument('--nmonte', type=int, default=50, help='Number of Monte Carlo realizations.')
-    parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
-    parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
-                        help='Do not model broad Balmer and helium line-emission.')
-    parser.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
-    parser.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')
-    parser.add_argument('--constrain-age', action='store_true', help='Constrain the age of the SED.')
-    parser.add_argument('--no-smooth-continuum', action='store_true', help='Do not fit the smooth continuum.')
-    parser.add_argument('--imf', type=str, default=Templates.DEFAULT_IMF, help='Initial mass function.')
-    parser.add_argument('--templateversion', type=str, default=Templates.DEFAULT_TEMPLATEVERSION, help='Template version number.')
-    parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
-    parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
-    parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
-    parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
-    parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
-    parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
-    parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
-    parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
-    parser.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
-    parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
-    parser.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum.')
-    parser.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
-    parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
-    parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
-
-    if options is None:
-        options = sys.argv[1:]
-
-    if rank == 0:
-        log.info(f'fastspec {" ".join(options)}')
-
-    return parser.parse_args(options)

@@ -202,7 +202,6 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
                 with stdouterr_redirected(to=logfile, overwrite=args.overwrite, comm=subcomm):
                     #log.info(f'rank={comm.rank} subrank={subcomm.rank}')
                     fast(args=cmdargs.split(), comm=subcomm)
-            sys.stdout.flush()
 
             if subcomm.rank == 0:
                 dt1 = time.time() - t1
