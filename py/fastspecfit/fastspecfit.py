@@ -108,7 +108,9 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         comm.barrier()
     else:
         rank, size = 0, 1
-    print(f'rank={rank} size={size}: in fastspec')
+
+    if rank == 0:
+        log.info(f'fastspec {" ".join(options)}')
 
     # check for mandatory environment variables
     envlist = []
@@ -231,6 +233,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         else:
             seeds = [1] * ntargets
 
+        nobj = len(meta)
         fitargs = [{
             'iobj':                iobj,
             'data':                data[iobj],
@@ -247,37 +250,37 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             'minsnr_balmer_broad': args.minsnr_balmer_broad,
             'nmonte':              args.nmonte,
             'seed':                seeds[iobj],
-        } for iobj in range(len(meta))]
-        print('length of fitargs ', len(fitargs))
+        } for iobj in range(nobj)]
 
     # Fit in parallel
     t0 = time.time()
     if comm is not None:
-        # Rank=0 sends work to all the other ranks, including itself.
+        # Rank=0 sends work to all the other ranks (and also does work itself).
         if rank == 0:
+            log.info(f'Rank {rank} sending work on {nobj:,d} objects to {comm.size:,d} ranks.')
             fitargs_byrank = np.array_split(fitargs, size)
             for onerank in range(1, size):
-                print(f'Rank 0 sending data on {len(fitargs_byrank[onerank])}/{len(meta)} objects to rank {onerank}')
+                #log.debug(f'Rank 0 sending data on {len(fitargs_byrank[onerank])}/{len(meta)} objects to rank {onerank}')
                 comm.send(fitargs_byrank[onerank], dest=onerank)
             fitargs_onerank = fitargs_byrank[rank]
         else:
             fitargs_onerank = comm.recv(source=0)
-        print(f'Rank {rank} received data on {len(fitargs_onerank)} objects from rank 0')
+        #log.debug(f'Rank {rank} received data on {len(fitargs_onerank)} objects from rank 0')
 
-        # Each rank, including rank 0, builds its own output table and then
-        # rank 0 collects the results.
+        # Each rank, including rank 0, iterates over each object and then sends
+        # the results to rank 0.
         out = []
         for fitarg_onerank in fitargs_onerank:
             out.append(fastspec_one(**fitarg_onerank))
 
         if rank > 0:
-            print(f'Rank {rank} sending data on {len(out)} objects to rank 0.')
+            #log.debug(f'Rank {rank} sending data on {len(out)} objects to rank 0.')
             comm.send(out, dest=0)
         else:
             for onerank in range(1, size):
                 out.extend(comm.recv(source=onerank))
-            print(f'Rank 0 received data on {len(out)} objects.')
-        comm.barrier()
+            #log.debug(f'Rank 0 received data on {len(out)} objects.')
+            log.info(f'Rank {rank} collected results on {len(out):,d} objects from {comm.size:,d} ranks.')
     else:
         out = mp_pool.starmap(fastspec_one, fitargs)
     out = list(zip(*out))
@@ -294,7 +297,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             fastfit = create_output_table(out[2], meta, fastfit_units, fitstack=fitstack)
             modelspectra = vstack(out[3], join_type='exact', metadata_conflicts='error')
 
-        # if multiprocessing, clean up workers
+        # If using multiprocessing, close the pool.
         if comm is None:
             mp_pool.close()
 
@@ -396,8 +399,4 @@ def parse(options=None):
     if options is None:
         options = sys.argv[1:]
 
-    args = parser.parse_args(options)
-
-    log.info(f'fastspec {" ".join(options)}')
-
-    return args
+    return parser.parse_args(options)

@@ -1556,6 +1556,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
     else:
         tmpfile = outfile+'.tmp'
 
+    # Also update mpi._domerge
     primhdr = []
     if specprod:
         primhdr.append(('EXTNAME', 'PRIMARY'))

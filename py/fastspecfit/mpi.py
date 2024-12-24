@@ -10,7 +10,7 @@ import numpy as np
 from glob import glob
 import multiprocessing
 import fitsio
-from astropy.table import Table
+from astropy.table import Table, vstack
 
 from fastspecfit.io import get_qa_filename
 from fastspecfit.logger import log
@@ -180,10 +180,10 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
          survey=None, program=None, healpix=None, tile=None, night=None,
          sample=None, outdir_data='.', mp=1, merge=False,
          makeqa=False, fastphot=False, overwrite=False):
+    """Function which determines what files have---and have not---been
+    processed.
 
-    import fitsio
-    from astropy.table import Table, vstack
-
+    """
     if comm:
         rank, size = comm.rank, comm.size
     else:
@@ -400,11 +400,17 @@ def _domerge(outfiles, extname='FASTSPEC', survey=None, program=None,
     # sensible defaults
     deps = {}
     deps['INPUTZ'] = False
-    deps['NOSCORR'] = False
-    deps['NOPHOTO'] = False
-    deps['BRDLFIT'] = True
+    deps['INPUTS'] = False
     deps['CONSAGE'] = False
     deps['USEQNET'] = True
+    deps['NMONTE'] = 50
+    deps['SEED'] = 1
+    if not fastphot:
+        deps['NOSCORR'] = False
+        deps['NOPHOTO'] = False
+        deps['BRDLFIT'] = True
+        deps['UFLOOR'] = 0.01
+        deps['SNRBBALM'] = 2.5
     for key in deps.keys():
         if key in hdr:
             deps[key] = hdr[key]
