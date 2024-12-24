@@ -5,7 +5,7 @@ fastspecfit.fastspecfit
 See sandbox/running-fastspecfit for examples.
 
 """
-import os, time
+import os, sys, time
 import numpy as np
 
 from astropy.table import Table
@@ -108,9 +108,6 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         comm.barrier()
     else:
         rank, size = 0, 1
-
-    if rank == 0:
-        log.info(f'fastspec {" ".join(options)}')
 
     # check for mandatory environment variables
     envlist = []
@@ -252,6 +249,9 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             'seed':                seeds[iobj],
         } for iobj in range(nobj)]
 
+        # needed for production-level logging
+        sys.stdout.flush()
+
     # Fit in parallel
     t0 = time.time()
     if comm is not None:
@@ -281,6 +281,9 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
                 out.extend(comm.recv(source=onerank))
             #log.debug(f'Rank 0 received data on {len(out)} objects.')
             log.info(f'Rank {rank} collected results on {len(out):,d} objects from {comm.size:,d} ranks.')
+
+        # needed for production-level logging
+        sys.stdout.flush()
     else:
         out = mp_pool.starmap(fastspec_one, fitargs)
     out = list(zip(*out))
@@ -319,6 +322,9 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             use_quasarnet=args.use_quasarnet,
             no_smooth_continuum=args.no_smooth_continuum)
 
+        # needed for production-level logging
+        sys.stdout.flush()
+
 
 def fastphot(args=None, comm=None):
     """Main fastphot script.
@@ -353,7 +359,7 @@ def stackfit(args=None, comm=None):
     fastspec(fitstack=True, args=args, comm=comm)
 
 
-def parse(options=None):
+def parse(options=None, rank=0):
     """Parse input arguments to fastspec and fastphot scripts.
 
     """
@@ -398,5 +404,8 @@ def parse(options=None):
 
     if options is None:
         options = sys.argv[1:]
+
+    if rank == 0:
+        log.info(f'fastspec {" ".join(options)}')
 
     return parser.parse_args(options)

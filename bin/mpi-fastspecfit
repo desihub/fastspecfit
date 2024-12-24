@@ -164,11 +164,12 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             redrockfiles = subcomm.recv(source=0, tag=4)
             outfiles = subcomm.recv(source=0, tag=5)
             ntargets = subcomm.recv(source=0, tag=6)
-    print(f'Rank={comm.rank}, subrank={subcomm.rank}, redrockfiles={redrockfiles}')
+    #print(f'Rank={comm.rank}, subrank={subcomm.rank}, redrockfiles={redrockfiles}, ntargets={ntargets}')
 
     for redrockfile, outfile, ntarget in zip(redrockfiles, outfiles, ntargets):
         if subcomm.rank == 0:
-            log.debug(f'Rank {rank} (subrank {subcomm.rank}) started at {time.asctime()}')
+            log.debug(f'Rank {rank} (subrank {subcomm.rank}) started ' + \
+                      f'at {time.asctime()}')
 
         if args.makeqa:
             from fastspecfit.qa import fastqa as fast
@@ -182,7 +183,8 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
                                               fastphot=fastphot, input_redshifts=input_redshifts)
 
         if subcomm.rank == 0:
-            log.info(f'Rank {rank} (subrank {subcomm.rank}): ntargets={ntarget}: {cmd} {cmdargs}')
+            log.info(f'Rank {rank} (nsubrank={subcomm.size}): ' + \
+                     f'ntargets={ntarget}: {cmd} {cmdargs}')
 
         if args.dry_run:
             continue
@@ -198,6 +200,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
                 fast(args=cmdargs.split(), comm=subcomm)
             else:
                 with stdouterr_redirected(to=logfile, overwrite=args.overwrite, comm=subcomm):
+                    #log.info(f'rank={comm.rank} subrank={subcomm.rank}')
                     fast(args=cmdargs.split(), comm=subcomm)
             sys.stdout.flush()
 
