@@ -50,11 +50,10 @@ REDSHIFTCOLS = ('TARGETID', 'Z', 'ZWARN', 'SPECTYPE', 'SUBTYPE', 'DELTACHI2')
 # tsnr columns to read
 TSNR2COLS = ('TSNR2_BGS', 'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA')
 
-# quasarnet afterburner columns to read
-QNCOLS = ('TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', 'C_LYA', 'C_CIV',
-          'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha')
-QNLINES = ('C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha')
-
+# quasarnet and MgII afterburner columns to read
+QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha', ]
+QNCOLS = ['TARGETID', 'Z_NEW', 'ZWARN_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
+MGIICOLS = ['TARGETID', 'IS_QSO_MGII']
 
 def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
                  init_sigma_uv=None, init_sigma_narrow=None,
@@ -519,7 +518,7 @@ class DESISpectra(object):
                         targetids=None, firsttarget=0, ntargets=None,
                         input_redshifts=None, specprod_dir=None, use_quasarnet=True,
                         redrockfile_prefix='redrock-', specfile_prefix='coadd-',
-                        qnfile_prefix='qso_qn-'):
+                        qnfile_prefix='qso_qn-', mgiifile_prefix='qso_mgii-'):
         """Select targets for fitting and gather the necessary spectroscopic metadata.
 
         Parameters
@@ -560,6 +559,8 @@ class DESISpectra(object):
             Redrock file(s). Defaults to `coadd-`.
         qnfile_prefix : str
             Prefix of the QuasarNet afterburner file. Defaults to `qso_qn-`.
+        mgiifile_prefix : str
+            Prefix of the MgII afterburner file. Defaults to `qso_mgii-`.
 
         Attributes
         ----------
@@ -585,7 +586,6 @@ class DESISpectra(object):
         from astropy.table import vstack, hstack
         from desiutil.depend import getdep
         from desitarget import geomask
-        from desitarget.targets import main_cmx_or_sv
 
         if zmin is None:
             zmin = 1e-3
@@ -640,7 +640,8 @@ class DESISpectra(object):
 
             # Can we use the quasarnet afterburner file to improve QSO redshifts?
             qnfile = redrockfile.replace(redrockfile_prefix, qnfile_prefix)
-            if os.path.isfile(qnfile) and use_quasarnet and input_redshifts is None:
+            mgiifile = redrockfile.replace(redrockfile_prefix, mgiifile_prefix)
+            if os.path.isfile(qnfile) and os.path.isfile(mgiifile) and use_quasarnet and input_redshifts is None:
                 use_qn = True
             else:
                 use_qn = False
@@ -741,7 +742,7 @@ class DESISpectra(object):
                     # If using QuasarNet, it can happen that zb['Z']<zmin and
                     # therefore the object falls out of the sample before we
                     # have a chance to even read it. So apply the minimum
-                    # redshift cut below after we correct the redshift.
+                    # redshift cut below, after we correct the redshift.
                     fitindx = np.where((zb['Z'] < zmax) &
                                        (meta['OBJTYPE'] == 'TGT') & (zb['ZWARN'] <= zwarnmax) &
                                        (zb['ZWARN'] & ZWarningMask.NODATA == 0))[0]
@@ -799,36 +800,12 @@ class DESISpectra(object):
                     zb['Z'] = input_redshifts
 
             # Update the redrock redshift when quasarnet disagrees **but only
-            # for QSO targets**. From Edmond: the QN afterburner is run with a
-            # threshold 0.5. With VI, we choose 0.95 as final threshold. Note,
-            # the IS_QSO_QN_NEW_RR column contains only QSO for QN which are not
-            # QSO for RR.
+            # for QSO targets**.
             zb['Z_RR'] = zb['Z'] # add it at the end
+            #zb['ZERR_RR'] = zb['ZERR']
+            zb['ZWARN_RR'] = zb['ZWARN']
             if use_qn:
-                surv_target, surv_mask, surv = main_cmx_or_sv(meta)
-                if surv == 'cmx':
-                    desi_target = surv_target[0]
-                    desi_mask = surv_mask[0]
-                    # need to check multiple QSO masks
-                    IQSO = []
-                    for bitname in desi_mask.names():
-                        if 'QSO' in bitname:
-                            IQSO.append(np.where(meta[desi_target] & desi_mask[bitname] != 0)[0])
-                    if len(IQSO) > 0:
-                        IQSO = np.sort(np.unique(np.hstack(IQSO)))
-                else:
-                    desi_target, bgs_target, mws_target = surv_target
-                    desi_mask, bgs_mask, mws_mask = surv_mask
-                    IQSO = np.where(meta[desi_target] & desi_mask['QSO'] != 0)[0]
-                if len(IQSO) > 0:
-                    qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx[IQSO], columns=QNCOLS))
-                    assert(np.all(qn['TARGETID'] == meta['TARGETID'][IQSO]))
-                    log.info('Updating QSO redshifts using a QN threshold of 0.95.')
-                    qn['IS_QSO_QN'] = np.max(np.array([qn[name] for name in QNLINES]), axis=0) > 0.95
-                    qn['IS_QSO_QN_NEW_RR'] &= qn['IS_QSO_QN']
-                    if np.count_nonzero(qn['IS_QSO_QN_NEW_RR']) > 0:
-                        zb['Z'][IQSO[qn['IS_QSO_QN_NEW_RR']]] = qn['Z_NEW'][qn['IS_QSO_QN_NEW_RR']]
-                    del qn
+                self.update_qso_redshifts(zb, meta, qnfile, mgiifile, fitindx, self.specprod)
                 # now apply zmin
                 keep = (zb['Z'] > zmin)
                 if not np.any(keep):
@@ -922,6 +899,54 @@ class DESISpectra(object):
         else:
             log.debug(f'Gathered spectrophotometric metadata for {len(redrockfiles)} unique ' + \
                       f'redrockfile in {time.time()-t0:.2f} seconds.')
+
+
+    @staticmethod
+    def update_qso_redshifts(zb, meta, qnfile, mgiifile, fitindx, specprod):
+        """Update QSO redshifts using the afterburners.
+
+        """
+        from desitarget.targets import main_cmx_or_sv
+
+        if specprod in ['fuji', 'guadalupe', 'himalayas', 'iron']:
+            QNthresh = 0.95
+        else:
+            # updated for Jura, Kibo, Loa, ...
+            QNthresh = 0.99
+
+        surv_target, surv_mask, surv = main_cmx_or_sv(meta, scnd=True)
+        if surv == 'cmx':
+            desi_target = surv_target[0]
+            scnd_target = surv_target[-1]
+            desi_mask = surv_mask[0]
+            scnd_mask = surv_mask[-1]
+            IQSO = ((meta[desi_target] & desi_mask['SV0_QSO'] != 0) |
+                    (meta[desi_target] & desi_mask['MINI_SV_QSO'] != 0))
+            IWISE_VAR_QSO = np.zeros(len(fitindx), bool)
+        else:
+            desi_target, bgs_target, mws_target, scnd_target = surv_target
+            desi_mask, bgs_mask, mws_mask, scnd_mask = surv_mask
+            IQSO = meta[desi_target] & desi_mask['QSO'] != 0
+            IWISE_VAR_QSO = meta[scnd_target] & scnd_mask['WISE_VAR_QSO'] != 0
+        if np.sum(IQSO) > 0 or np.sum(IWISE_VAR_QSO) > 0:
+            qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx, columns=QNCOLS))
+            assert(np.all(qn['TARGETID'] == meta['TARGETID']))
+            log.debug('Updating QSO redshifts using a QN threshold of 0.99.')
+            qn['IS_QSO_QN_099'] = np.max(np.array([qn[name] for name in QNLINES]), axis=0) > QNthresh
+            iqso = IQSO * qn['IS_QSO_QN_NEW_RR'] * qn['IS_QSO_QN_099']
+            if np.sum(iqso) > 0:
+                zb['Z'][iqso] = qn['Z_NEW'][iqso]
+                zb['ZWARN'][iqso] = qn['ZWARN_NEW'][iqso]
+            if np.sum(IWISE_VAR_QSO) > 0:
+                mgii = Table(fitsio.read(mgiifile, 'MGII', rows=fitindx, columns=MGIICOLS))
+                assert(np.all(mgii['TARGETID'] == meta['TARGETID']))
+                iwise_var_qso = (((zb['SPECTYPE'] == 'QSO') | mgii['IS_QSO_MGII'] | qn['IS_QSO_QN_099']) & (IWISE_VAR_QSO & qn['IS_QSO_QN_NEW_RR']))
+                if np.sum(iwise_var_qso) > 0:
+                    zb['Z'][iwise_var_qso] = qn['Z_NEW'][iwise_var_qso]
+                    #zb['Z_ERR'][iwise_var_qso] = qn['ZERR_NEW'][iwise_var_qso]
+                    zb['ZWARN'][iwise_var_qso] = qn['ZWARN_NEW'][iwise_var_qso]
+                del mgii
+            del qn
 
 
     def read(self, photometry, fastphot=False, constrain_age=False):
@@ -2001,7 +2026,7 @@ def create_output_meta(input_meta, phot, fastphot=False, fitstack=False):
     if fitstack:
         redrockcols = ('Z')
     else:
-        redrockcols = ('Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE', 'SUBTYPE', 'Z_RR',
+        redrockcols = ('Z', 'ZWARN', 'DELTACHI2', 'SPECTYPE', 'SUBTYPE', 'Z_RR', 'ZWARN_RR',
                        'TSNR2_BGS', 'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA')
 
     meta = Table()
