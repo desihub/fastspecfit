@@ -1,0 +1,61 @@
+FROM desihub/fastspecfit-base:1.0
+
+WORKDIR /src
+
+RUN ln -s "$(which python3)" /usr/bin/python
+
+ENV PIP_ROOT_USER_ACTION=ignore
+
+RUN for x in \
+    wheel \
+    setuptools \
+    pytest \
+    numpy \
+    scipy \
+    astropy \
+    healpy \
+    fitsio \
+    numba \
+    # intel-cmplr-lib-rt \
+    # mpi4py \
+    seaborn \
+    matplotlib \
+    ipython \
+    ipykernel \
+    h5py \
+    ; do pip3 install --break-system-packages $x; done \
+    && rm -Rf /root/.cache/pip
+
+ENV DESIUTIL_VERSION 3.4.3
+ENV DESIMODEL_VERSION 0.19.2
+ENV DESITARGET_VERSION 2.8.0
+ENV DESISPEC_VERSION 0.68.1
+ENV SPECLITE_VERSION v0.20
+ENV FASTSPECFIT_VERSION main
+#ENV FASTSPECFIT_VERSION 3.1.1
+
+RUN pip3 install --break-system-packages git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
+RUN pip3 install --break-system-packages git+https://github.com/desihub/desimodel.git@${DESIMODEL_VERSION}#egg=desimodel
+RUN pip3 install --break-system-packages git+https://github.com/desihub/desitarget.git@${DESITARGET_VERSION}#egg=desitarget
+RUN pip3 install --break-system-packages git+https://github.com/desihub/desispec.git@${DESISPEC_VERSION}#egg=desispec
+RUN pip3 install --break-system-packages git+https://github.com/desihub/speclite.git@${SPECLITE_VERSION}#egg=speclite
+RUN pip3 install --break-system-packages git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit
+
+RUN mkdir /homedir && chmod 777 /homedir
+ENV HOME /homedir
+
+ENV DESI_SPECTRO_REDUX /dvs_ro/cfs/cdirs/desi/spectro/redux
+ENV DUST_DIR /dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
+ENV FPHOTO_DIR /dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9
+ENV FTEMPLATES_DIR /dvs_ro/cfs/cdirs/desi/public/external/templates/fastspecfit
+
+
+#ENV NUMBA_CACHE_DIR=/homedir/numba_cache
+#RUN chmod 777 /homedir/numba_cache
+
+# set prompt and default shell
+SHELL ["/bin/bash", "-c"]
+ENTRYPOINT ["/bin/bash", "-c"]
+CMD ["/bin/bash"]
+
+LABEL Maintainer="John Moustakas jmoustakas@siena.edu"

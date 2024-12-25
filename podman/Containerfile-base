@@ -1,0 +1,53 @@
+FROM ubuntu:24.04
+
+WORKDIR /src
+
+RUN mkdir -p /src
+RUN apt-get -y clean && apt -y update && apt install -y apt-utils && apt -y upgrade
+
+RUN DEBIAN_FRONTEND=noninteractive \
+    apt install -y --no-install-recommends \
+    build-essential \
+    gfortran \
+    wget \
+    git \
+    libbz2-dev \ 
+    libgsl-dev \ 
+    libssl-dev \
+    libcfitsio-dev \
+    libcfitsio-bin \
+    # libhdf5 needed by h5py
+    libhdf5-dev \
+    # needed by mpich \
+    python3.12 \
+    python3.12-dev \
+    python3-pip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+ARG mpich=3.4.3
+ARG mpich_prefix=mpich-$mpich
+
+ENV FFLAGS="-fallow-argument-mismatch" \
+    FCFLAGS="-fallow-argument-mismatch"
+
+RUN wget --no-check-certificate -nv https://www.mpich.org/static/downloads/$mpich/$mpich_prefix.tar.gz \
+    && tar xvzf $mpich_prefix.tar.gz \
+    && cd $mpich_prefix \
+    && ./configure --with-device=ch4:ofi \
+    && make -j 16 \
+    && make install \
+    && make clean \
+    && cd .. \
+    && rm -rf $mpich_prefix \
+    && rm -f $mpich_prefix.tar.gz
+
+RUN /sbin/ldconfig
+
+ENV PIP_ROOT_USER_ACTION=ignore
+
+RUN ln -s "$(which python3)" /usr/bin/python
+
+RUN pip3 install --break-system-packages mpi4py \
+    && rm -Rf /root/.cache/pip
+
+LABEL Maintainer="John Moustakas jmoustakas@siena.edu"
