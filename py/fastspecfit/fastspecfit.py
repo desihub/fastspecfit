@@ -152,14 +152,13 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
     from fastspecfit.io import (DESISpectra, get_output_dtype, create_output_meta,
                                 create_output_table, write_fastspecfit)
 
-    if isinstance(args, (list, tuple, type(None))):
-        args = parse(args)
-
     if comm:
         rank, size = comm.rank, comm.size
-        comm.barrier()
     else:
         rank, size = 0, 1
+
+    if isinstance(args, (list, tuple, type(None))):
+        args = parse(args, rank=rank)
 
     # check for mandatory environment variables
     envlist = []
@@ -307,7 +306,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
     if comm is not None:
         # Rank=0 sends work to all the other ranks (and also does work itself).
         if rank == 0:
-            log.info(f'Rank {rank} sending work on {nobj:,d} objects to {comm.size:,d} ranks.')
+            log.info(f'Rank {rank}: distributing {nobj:,d} objects to {comm.size:,d} ranks.')
             fitargs_byrank = np.array_split(fitargs, size)
             for onerank in range(1, size):
                 #log.debug(f'Rank 0 sending data on {len(fitargs_byrank[onerank])}/{len(meta)} objects to rank {onerank}')
@@ -319,6 +318,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
         # Each rank, including rank 0, iterates over each object and then sends
         # the results to rank 0.
+        log.info(f'Rank {rank}: fitting {len(fitargs_onerank):,d} objects.')
         out = []
         for fitarg_onerank in fitargs_onerank:
             out.append(fastspec_one(**fitarg_onerank))
@@ -330,7 +330,8 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             for onerank in range(1, size):
                 out.extend(comm.recv(source=onerank))
             #log.debug(f'Rank 0 received data on {len(out)} objects.')
-            log.info(f'Rank {rank} collected results on {len(out):,d} objects from {comm.size:,d} ranks.')
+            log.info(f'Rank {rank}: collected fitting results for {len(out):,d} ' + \
+                     f'objects from {comm.size:,d} ranks.')
     else:
         out = mp_pool.starmap(fastspec_one, fitargs)
 
@@ -371,7 +372,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             no_smooth_continuum=args.no_smooth_continuum)
 
 
-def fastphot(args=None, comm=None):
+def fastphot(args=None, comm=None, verbose=False):
     """Main fastphot script.
 
     This script is the engine to model the broadband photometry of one or more
@@ -387,10 +388,10 @@ def fastphot(args=None, comm=None):
         Intracommunicator used with MPI parallelism.
 
     """
-    fastspec(fastphot=True, args=args, comm=comm)
+    fastspec(fastphot=True, args=args, comm=comm, verbose=verbose)
 
 
-def stackfit(args=None, comm=None):
+def stackfit(args=None, comm=None, verbose=False):
     """Wrapper script to fit (model) generic stacked spectra.
 
     Parameters
@@ -401,4 +402,4 @@ def stackfit(args=None, comm=None):
         Intracommunicator used with MPI parallelism.
 
     """
-    fastspec(fitstack=True, args=args, comm=comm)
+    fastspec(fitstack=True, args=args, comm=comm, verbose=verbose)

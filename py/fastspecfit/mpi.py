@@ -278,7 +278,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
                 if sample is not None:
                     ntargets = np.array([])
 
-            log.info(f'Found {len(redrockfiles)}/{nfile} redrockfiles (left) to do.')
+            log.info(f'Found {len(redrockfiles)}/{nfile} redrockfiles left.')
 
             # we already counted ntargets
             if sample is None:
@@ -320,14 +320,22 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         if rank == 0:
             iempty = np.where(ntargets == 0)[0]
             if len(iempty) > 0:
-                log.info(f'Skipping {len(iempty)} files with no targets.')
+                log.info(f'Skipping {len(iempty)} redrockfiles with no targets.')
 
             itodo = np.where(ntargets > 0)[0]
             if len(itodo) > 0:
                 ntargets = ntargets[itodo]
-                log.info(f'Number of targets left to do: {np.sum(ntargets):,d}.')
+                log.info(f'Number of targets left: {np.sum(ntargets):,d}.')
                 if redrockfiles is not None:
                     redrockfiles = redrockfiles[itodo]
+                    if coadd_type == 'healpix':
+                        for onesurvey in np.atleast_1d(survey):
+                            for oneprogram in np.atleast_1d(program):
+                                I = np.logical_and(np.char.find(redrockfiles, onesurvey) != -1,
+                                                   np.char.find(redrockfiles, oneprogram) != -1)
+                                if np.any(I):
+                                    log.info(f' {onesurvey:>7}:{oneprogram:6}: {np.sum(I)} ' + \
+                                             f'redrockfiles, {np.sum(ntargets[I]):,d} targets')
                 if outfiles is not None:
                     outfiles = outfiles[itodo]
             else:
