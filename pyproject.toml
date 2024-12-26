@@ -70,8 +70,8 @@ script-files = [
 
 [tool.setuptools.package-data]
 fastspecfit = [
-    "data/*",
-    "test/data/*",
+    "data/**/*",
+    "test/data/**/*",
 ]
 
 [tool.setuptools.packages.find]
