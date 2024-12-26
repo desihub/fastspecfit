@@ -324,7 +324,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         for fitarg_onerank in fitargs_onerank:
             out.append(fastspec_one(**fitarg_onerank))
         log.info(f'Rank {rank}: done fitting {len(out):,d} objects in ' + \
-                 f'{(time.time()-t1:.2f) / 60.} minutes.')
+                 f'{(time.time()-t1) / 60.:.2f} minutes.')
 
         if rank > 0:
             #log.debug(f'Rank {rank} sending data on {len(out)} objects to rank 0.')
