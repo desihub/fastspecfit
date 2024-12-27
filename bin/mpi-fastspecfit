@@ -279,6 +279,7 @@ def main():
     parser.add_argument('--verbose', action='store_true', help='More verbose output.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
+    parser.add_argument('--profile', action='store_true', help='Write out profiling / timing files..')
     parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
     parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
@@ -410,12 +411,29 @@ def main():
              outdir_data=outdir_data, overwrite=args.overwrite,
              sample=sample)
     else:
+        if args.profile:
+            import cProfile
+            import pstats
+
+            profiler = cProfile.Profile()
+            profiler.enable()
+
         run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
                         makeqa=args.makeqa, outdir_data=outdir_data, sample=sample,
                         input_redshifts=args.input_redshifts, templates=args.templates,
                         templateversion=args.templateversion, fphotodir=args.fphotodir,
                         fphotofile=args.fphotofile)
 
+        if args.profile:
+            profiler.disable()
+
+            profiler.dump_stats(f'profile_rank{rank}.prof')
+            with open(f'profile_rank{rank}.txt', 'w') as F:
+                stats = pstats.Stats(profiler, stream=F)
+                stats.strip_dirs()
+                stats.sort_stats('cumtime')
+                stats.print_stats()
+                stats.print_callees()
 
 if __name__ == '__main__':
     main()
