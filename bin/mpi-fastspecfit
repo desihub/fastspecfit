@@ -40,6 +40,10 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
             cmdargs += f' --fphotodir={args.fphotodir}'
         if args.fphotofile:
             cmdargs += f' --fphotofile={args.fphotofile}'
+        if args.nmonte:
+            cmdargs += f' --nmonte={args.nmonte}'
+        if args.seed:
+            cmdargs += f' --seed={args.seed}'
 
     if args.verbose:
         cmdargs += ' --verbose'
@@ -250,6 +254,9 @@ def main():
 
     parser.add_argument('--samplefile', default=None, type=str, help='Full path to sample (FITS) file with {survey,program,healpix,targetid}.')
     parser.add_argument('--input-redshifts', action='store_true', help='Only used with --samplefile; if set, fit with redshift "Z" values.')
+    parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
+    parser.add_argument('--nmonte', type=int, default=50, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
 
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
