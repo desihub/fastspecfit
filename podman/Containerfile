@@ -14,7 +14,9 @@ RUN for x in \
     healpy \
     fitsio \
     numba \
-    intel-cmplr-lib-rt \
+    mkl \
+    mkl_fft \
+    # intel-cmplr-lib-rt \
     # mpi4py \
     seaborn \
     matplotlib \
@@ -24,10 +26,15 @@ RUN for x in \
     ; do pip3 install --break-system-packages $x; done \
     && rm -Rf /root/.cache/pip
 
-# install FFT-specific packages
-RUN pip3 install --break-system-packages \
-                 --index-url https://software.repos.intel.com/python/pypi \
-                 --extra-index-url https://pypi.org/simple mkl_fft
+## install FFT-specific packages
+#RUN pip3 install --break-system-packages \
+#                 --index-url https://software.repos.intel.com/python/pypi \
+#                 --extra-index-url https://pypi.org/simple mkl_fft
+
+# https://gitlab.com/NERSC/python-benchmark/-/tree/main/amd
+COPY fakeintel.c /src/fakeintel.c
+RUN gcc -shared -fPIC -o /usr/local/lib/libfakeintel.so /src/fakeintel.c \
+ENV LD_PRELOAD=/usr/local/lib/libfakeintel.so
 
 ENV DESIUTIL_VERSION 3.4.3
 ENV DESIMODEL_VERSION 0.19.2
@@ -42,7 +49,7 @@ RUN pip3 install --break-system-packages git+https://github.com/desihub/desimode
 RUN pip3 install --break-system-packages git+https://github.com/desihub/desitarget.git@${DESITARGET_VERSION}#egg=desitarget
 RUN pip3 install --break-system-packages git+https://github.com/desihub/desispec.git@${DESISPEC_VERSION}#egg=desispec
 RUN pip3 install --break-system-packages git+https://github.com/desihub/speclite.git@${SPECLITE_VERSION}#egg=speclite
-RUN pip3 install --break-system-packages git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit
+RUN pip3 install  --break-system-packages git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit
 
 ENV DESI_SPECTRO_REDUX /dvs_ro/cfs/cdirs/desi/spectro/redux
 ENV DUST_DIR /dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
