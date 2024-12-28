@@ -43,11 +43,21 @@ RUN wget --no-check-certificate -nv https://www.mpich.org/static/downloads/$mpic
 
 RUN /sbin/ldconfig
 
-ENV PIP_ROOT_USER_ACTION=ignore
+# Install Miniconda
+ENV CONDA_DIR=/opt/miniconda
+ENV PYTHON_VERSION=latest
 
-RUN ln -s "$(which python3)" /usr/bin/python
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-$PYTHON_VERSION-Linux-x86_64.sh -O /tmp/miniconda.sh \
+    && bash /tmp/miniconda.sh -b -p $CONDA_DIR \
+    && rm /tmp/miniconda.sh
 
-RUN pip3 install --break-system-packages mpi4py \
-    && rm -Rf /root/.cache/pip
+# Update PATH environment variable
+ENV PATH="$CONDA_DIR/bin:$PATH"
+
+# Verify Miniconda installation and initialize environment
+RUN conda init bash && conda update -n base -c defaults conda -y
+
+# Set default shell to bash
+SHELL ["/bin/bash", "-c"]
 
 LABEL Maintainer="John Moustakas jmoustakas@siena.edu"

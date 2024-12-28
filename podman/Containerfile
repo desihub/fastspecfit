@@ -1,14 +1,17 @@
-FROM desihub/fastspecfit-base:1.0
+FROM desihub/fastspecfit-base:1.1
 
 WORKDIR /src
 
-ENV PIP_ROOT_USER_ACTION=ignore
-
-RUN for x in \
+RUN conda install -y -c conda-forge \
+    "python<3.13" \
     wheel \
     setuptools \
     pytest \
-    numpy \
+    "numpy<2.0" \
+    libblas=*=*mkl \
+    mkl \
+    mkl_fft \
+    intel-cmplr-lib-rt \
     scipy \
     astropy \
     healpy \
@@ -19,19 +22,11 @@ RUN for x in \
     ipython \
     ipykernel \
     h5py \
-    ; do pip3 install --break-system-packages $x; done
+    && conda clean --all -y
 
-RUN for x in \
-    mkl \
-    # mkl_fft \
-    # intel-cmplr-lib-rt \
-    ; do pip3 install --break-system-packages $x; done \
-    && rm -Rf /root/.cache/pip
+ENV PIP_ROOT_USER_ACTION=ignore
 
-## install FFT-specific packages
-#RUN pip3 install --break-system-packages \
-#                 --index-url https://software.repos.intel.com/python/pypi \
-#                 --extra-index-url https://pypi.org/simple mkl_fft
+RUN pip install --force-reinstall --no-cache-dir --no-binary=mpi4py mpi4py
 
 # https://gitlab.com/NERSC/python-benchmark/-/tree/main/amd
 COPY fakeintel.c /src/fakeintel.c
@@ -46,12 +41,12 @@ ENV SPECLITE_VERSION v0.20
 ENV FASTSPECFIT_VERSION pure-MPI
 #ENV FASTSPECFIT_VERSION 3.1.1
 
-RUN pip3 install --break-system-packages git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
-RUN pip3 install --break-system-packages git+https://github.com/desihub/desimodel.git@${DESIMODEL_VERSION}#egg=desimodel
-RUN pip3 install --break-system-packages git+https://github.com/desihub/desitarget.git@${DESITARGET_VERSION}#egg=desitarget
-RUN pip3 install --break-system-packages git+https://github.com/desihub/desispec.git@${DESISPEC_VERSION}#egg=desispec
-RUN pip3 install --break-system-packages git+https://github.com/desihub/speclite.git@${SPECLITE_VERSION}#egg=speclite
-RUN pip3 install --break-system-packages git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit
+RUN pip install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
+RUN pip install git+https://github.com/desihub/desimodel.git@${DESIMODEL_VERSION}#egg=desimodel
+RUN pip install git+https://github.com/desihub/desitarget.git@${DESITARGET_VERSION}#egg=desitarget
+RUN pip install git+https://github.com/desihub/desispec.git@${DESISPEC_VERSION}#egg=desispec
+RUN pip install git+https://github.com/desihub/speclite.git@${SPECLITE_VERSION}#egg=speclite
+RUN pip install git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit
 
 ENV DESI_SPECTRO_REDUX /dvs_ro/cfs/cdirs/desi/spectro/redux
 ENV DUST_DIR /dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
@@ -64,6 +59,6 @@ ENV NUMBA_CACHE_DIR=$HOME/numba_cache
 
 RUN mkdir -p /homedir/numba_cache \
     && chmod -R 777 /homedir*
-RUN pytest /usr/local/lib/python3.12/dist-packages/fastspecfit/test/test_fastspecfit.py
+RUN pytest /opt/miniconda/lib/python3.12/site-packages/fastspecfit/test/test_fastspecfit.py
 
 LABEL Maintainer="John Moustakas jmoustakas@siena.edu"
