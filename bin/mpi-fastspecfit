@@ -427,13 +427,16 @@ def main():
         if args.profile:
             profiler.disable()
 
-            profiler.dump_stats(f'profile_rank{rank}.prof')
-            with open(f'profile_rank{rank}.txt', 'w') as F:
+            outfile = os.path.join(outdir_data, f'profile_rank{rank}.prof')
+            log.info(f'Writing {outfile}')
+            profiler.dump_stats(outfile)
+            with open(os.path.join(outdir_data, f'profile_rank{rank}.txt'), 'w') as F:
                 stats = pstats.Stats(profiler, stream=F)
                 stats.strip_dirs()
                 stats.sort_stats('cumtime')
                 stats.print_stats()
                 stats.print_callees()
+
 
 if __name__ == '__main__':
     main()
