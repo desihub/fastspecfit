@@ -1019,6 +1019,8 @@ class EMFitTools(object):
                     fastfit[f'{linename}_SIGMA_IVAR'] = var2ivar(values_var[line_sigma])
                     fastfit[f'{linename}_BOXFLUX_IVAR'] = var2ivar(np.var(boxflux_monte))
                     #fastfit[f'{linename}_MODELAMP_IVAR'] = var2ivar(parameters_var[line_amp])
+                else:
+                    obsamps_ivar = 0.
 
                 # require amp > 0 (line not dropped) to compute the flux and chi2
                 if obsamps[line_amp] > TINY:
