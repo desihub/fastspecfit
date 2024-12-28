@@ -14,15 +14,17 @@ RUN for x in \
     healpy \
     fitsio \
     numba \
-    mkl \
-    mkl_fft \
-    # intel-cmplr-lib-rt \
-    # mpi4py \
     seaborn \
     matplotlib \
     ipython \
     ipykernel \
     h5py \
+    ; do pip3 install --break-system-packages $x; done
+
+RUN for x in \
+    mkl \
+    # mkl_fft \
+    # intel-cmplr-lib-rt \
     ; do pip3 install --break-system-packages $x; done \
     && rm -Rf /root/.cache/pip
 
@@ -33,8 +35,8 @@ RUN for x in \
 
 # https://gitlab.com/NERSC/python-benchmark/-/tree/main/amd
 COPY fakeintel.c /src/fakeintel.c
-RUN gcc -shared -fPIC -o /usr/local/lib/libfakeintel.so /src/fakeintel.c \
-ENV LD_PRELOAD=/usr/local/lib/libfakeintel.so
+RUN gcc -shared -fPIC -o /usr/local/lib/libfakeintel.so /src/fakeintel.c
+ENV LD_PRELOAD /usr/local/lib/libfakeintel.so
 
 ENV DESIUTIL_VERSION 3.4.3
 ENV DESIMODEL_VERSION 0.19.2
