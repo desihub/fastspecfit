@@ -49,7 +49,7 @@ RUN pip3 install --break-system-packages git+https://github.com/desihub/desimode
 RUN pip3 install --break-system-packages git+https://github.com/desihub/desitarget.git@${DESITARGET_VERSION}#egg=desitarget
 RUN pip3 install --break-system-packages git+https://github.com/desihub/desispec.git@${DESISPEC_VERSION}#egg=desispec
 RUN pip3 install --break-system-packages git+https://github.com/desihub/speclite.git@${SPECLITE_VERSION}#egg=speclite
-RUN pip3 install  --break-system-packages git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit
+RUN pip3 install --break-system-packages git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit
 
 ENV DESI_SPECTRO_REDUX /dvs_ro/cfs/cdirs/desi/spectro/redux
 ENV DUST_DIR /dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
