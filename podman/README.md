@@ -17,28 +17,16 @@ When building a container, first log into `dockerhub` (credentials required):
 podman-hpc login docker.io
 ```
 
-## Build the base container
+## Build the container
 
-We first build a "base" container to hold our installation of
-[MPICH](https://www.mpich.org/) and
-[mpi4py](https://mpi4py.readthedocs.io/en/stable/). Using a base image allows us
-to make changes to the top-level container without having to rebuild the base
-image, which can take up to 20 minutes. (Note that a two-stage build does not
-work at NERSC because the cache is not persistent between login nodes.)
+The production container has a custom installation of
+[MPICH](https://www.mpich.org/) and (linked)
+[mpi4py](https://mpi4py.readthedocs.io/en/stable/), and pulls in tagged versions
+of all the requisite Python dependencies. In addition, we pre-compile and cache
+all the `numba` functions in the `FastSpecFit` code base. 
 
-Build, tag, migrate, and push the base container to `dockerhub`:
-```
-base_version=1.1
-podman-hpc build --tag desihub/fastspecfit-base:$base_version --file ./Containerfile-base .
-podman-hpc migrate desihub/fastspecfit-base:$base_version
-podman-hpc push desihub/fastspecfit-base:$base_version
-```
-
-## Build the production container
-
-The production container pulls in tagged versions of the requisite Python
-dependencies and also pre-compiles and caches all the `numba` functions in the
-`FastSpecFit` code base. As before, build, tag, migrate, and push the container:
+To build, tag, migrate, and push the container to `dockerhub`, execute the
+following commands:
 ```
 fastspec_version=3.1.1
 podman-hpc build --tag desihub/fastspecfit:$fastspec_version --file ./Containerfile .
@@ -109,8 +97,8 @@ MPICH F77:gfortran -fallow-argument-mismatch  -O2
 MPICH FC:gfortran -fallow-argument-mismatch  -O2
 ```
 
-* To make sure the `numba` cache is being used correctly, in the production
-example, above, simply set the `NUMBA_DEBUG_CACHE` environment variable
+* To verify that the `numba` cache is being used correctly, in the production
+example above simply set the `NUMBA_DEBUG_CACHE` environment variable
 on-the-fly:
 ```
 srun --ntasks=8 podman-hpc run --rm --mpi --group-add keep-groups --volume=/dvs_ro/cfs/cdirs:/dvs_ro/cfs/cdirs \

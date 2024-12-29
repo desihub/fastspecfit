@@ -1,7 +1,69 @@
-FROM desihub/fastspecfit-base:1.1
+FROM ubuntu:24.04
 
 WORKDIR /src
 
+RUN mkdir -p /src
+RUN apt-get -y clean && apt -y update && apt install -y apt-utils && apt -y upgrade
+
+RUN DEBIAN_FRONTEND=noninteractive \
+    apt install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    gfortran \
+    wget \
+    git \
+    libbz2-dev \
+    libgsl-dev \
+    libssl-dev \
+    libcfitsio-dev \
+    libcfitsio-bin \
+    # libhdf5 needed by h5py
+    libhdf5-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+ARG mpich=3.4.3
+ARG mpich_prefix=mpich-$mpich
+
+ENV FFLAGS="-fallow-argument-mismatch" \
+    FCFLAGS="-fallow-argument-mismatch"
+
+RUN wget --no-check-certificate -nv https://www.mpich.org/static/downloads/$mpich/$mpich_prefix.tar.gz \
+    && tar xvzf $mpich_prefix.tar.gz \
+    && cd $mpich_prefix \
+    && ./configure --with-device=ch4:ofi \
+    && make -j 16 \
+    && make install \
+    && make clean \
+    && cd .. \
+    && rm -rf $mpich_prefix \
+    && rm -f $mpich_prefix.tar.gz
+
+RUN /sbin/ldconfig
+
+# Try to prevent MKL from throttling AMD
+# https://gitlab.com/NERSC/python-benchmark/-/tree/main/amd
+COPY fakeintel.c /src/fakeintel.c
+RUN gcc -shared -fPIC -o /usr/local/lib/libfakeintel.so /src/fakeintel.c
+ENV LD_PRELOAD=/usr/local/lib/libfakeintel.so
+
+# Install Miniconda
+ENV CONDA_DIR=/opt/miniconda
+
+ENV miniconda_version=Miniconda3-latest-Linux-x86_64.sh
+RUN wget --no-check-certificate https://repo.anaconda.com/miniconda/$miniconda_version \
+    && bash $miniconda_version -b -p $CONDA_DIR \
+    && rm -f $miniconda_version
+
+# Update PATH environment variable
+ENV PATH="$CONDA_DIR/bin:$PATH"
+
+# Verify Miniconda installation and initialize environment
+RUN conda init bash && conda update -n base -c defaults conda -y
+
+# Set default shell to bash
+SHELL ["/bin/bash", "-c"]
+
+# Install all our dependencies
 RUN conda install -y -c conda-forge \
     "python<3.13" \
     wheel \
@@ -24,22 +86,17 @@ RUN conda install -y -c conda-forge \
     h5py \
     && conda clean --all -y
 
+# Need to install mpi4py from source to link it properly to MPICH.
 ENV PIP_ROOT_USER_ACTION=ignore
+RUN pip install --no-cache-dir --no-binary=mpi4py mpi4py
 
-RUN pip install --force-reinstall --no-cache-dir --no-binary=mpi4py mpi4py
-
-# https://gitlab.com/NERSC/python-benchmark/-/tree/main/amd
-COPY fakeintel.c /src/fakeintel.c
-RUN gcc -shared -fPIC -o /usr/local/lib/libfakeintel.so /src/fakeintel.c
-ENV LD_PRELOAD /usr/local/lib/libfakeintel.so
-
-ENV DESIUTIL_VERSION 3.4.3
-ENV DESIMODEL_VERSION 0.19.2
-ENV DESITARGET_VERSION 2.8.0
-ENV DESISPEC_VERSION 0.68.1
-ENV SPECLITE_VERSION v0.20
-ENV FASTSPECFIT_VERSION pure-MPI
-#ENV FASTSPECFIT_VERSION 3.1.1
+ENV DESIUTIL_VERSION=3.4.3
+ENV DESIMODEL_VERSION=0.19.2
+ENV DESITARGET_VERSION=2.8.0
+ENV DESISPEC_VERSION=0.68.1
+ENV SPECLITE_VERSION=v0.20
+ENV FASTSPECFIT_VERSION=pure-MPI
+#ENV FASTSPECFIT_VERSION=3.1.1
 
 RUN pip install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
 RUN pip install git+https://github.com/desihub/desimodel.git@${DESIMODEL_VERSION}#egg=desimodel
@@ -48,13 +105,13 @@ RUN pip install git+https://github.com/desihub/desispec.git@${DESISPEC_VERSION}#
 RUN pip install git+https://github.com/desihub/speclite.git@${SPECLITE_VERSION}#egg=speclite
 RUN pip install git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit
 
-ENV DESI_SPECTRO_REDUX /dvs_ro/cfs/cdirs/desi/spectro/redux
-ENV DUST_DIR /dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
-ENV FPHOTO_DIR /dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9
-ENV FTEMPLATES_DIR /dvs_ro/cfs/cdirs/desi/public/external/templates/fastspecfit
+ENV DESI_SPECTRO_REDUX=/dvs_ro/cfs/cdirs/desi/spectro/redux
+ENV DUST_DIR=/dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
+ENV FPHOTO_DIR=/dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9
+ENV FTEMPLATES_DIR=/dvs_ro/cfs/cdirs/desi/public/external/templates/fastspecfit
 
 # set up the numba cache
-ENV HOME /homedir
+ENV HOME=/homedir
 ENV NUMBA_CACHE_DIR=$HOME/numba_cache
 
 RUN mkdir -p /homedir/numba_cache \
