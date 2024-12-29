@@ -85,6 +85,7 @@ RUN conda install -y -c conda-forge \
 
 RUN conda install -y -c conda-forge \
     libblas=*=*mkl \
+    # also tried mkl_fft<1.3.9
     mkl_fft \
     intel-cmplr-lib-rt \
     && conda clean --all -y
@@ -106,14 +107,20 @@ RUN pip install git+https://github.com/desihub/desimodel.git@${DESIMODEL_VERSION
 RUN pip install git+https://github.com/desihub/desitarget.git@${DESITARGET_VERSION}#egg=desitarget
 RUN pip install git+https://github.com/desihub/desispec.git@${DESISPEC_VERSION}#egg=desispec
 RUN pip install git+https://github.com/desihub/speclite.git@${SPECLITE_VERSION}#egg=speclite
-RUN pip install git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit & echo 1
+RUN pip install git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit
 
 ENV DESI_SPECTRO_REDUX=/dvs_ro/cfs/cdirs/desi/spectro/redux
 ENV DUST_DIR=/dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
 ENV FPHOTO_DIR=/dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9
 ENV FTEMPLATES_DIR=/dvs_ro/cfs/cdirs/desi/public/external/templates/fastspecfit
 
-# set up the numba cache
+# Some environment variables to ensure good performance with MKL.
+# https://www.diracprogram.org/doc/master/installation/mkl.html
+ENV MKL_NUM_THREADS=1
+ENV MKL_DYNAMIC="FALSE"
+ENV OMP_NUM_THREADS=1
+
+# Create the numba cache.
 ENV HOME=/homedir
 ENV NUMBA_CACHE_DIR=$HOME/numba_cache
 

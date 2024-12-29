@@ -20,10 +20,10 @@ podman-hpc login docker.io
 ## Build the container
 
 The production container has a custom installation of
-[MPICH](https://www.mpich.org/) and (linked)
-[mpi4py](https://mpi4py.readthedocs.io/en/stable/), and pulls in tagged versions
-of all the requisite Python dependencies. In addition, we pre-compile and cache
-all the `numba` functions in the `FastSpecFit` code base. 
+[MPICH](https://www.mpich.org/) and pulls in appropriate versions of all the
+requisite Python dependencies, particularly
+[mpi4py](https://mpi4py.readthedocs.io/en/stable/). In addition, we pre-compile
+and cache all the `numba` functions in the `FastSpecFit` code base.
 
 To build, tag, migrate, and push the container to `dockerhub`, execute the
 following commands:
