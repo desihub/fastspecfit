@@ -444,6 +444,9 @@ def main():
                 stats.print_stats()
                 stats.print_callees()
 
+    if comm:
+        MPI.Finalize()
+
 
 if __name__ == '__main__':
     main()

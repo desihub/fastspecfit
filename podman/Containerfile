@@ -49,10 +49,12 @@ ENV LD_PRELOAD=/usr/local/lib/libfakeintel.so
 # Install Miniconda
 ENV CONDA_DIR=/opt/miniconda
 
-ENV miniconda_version=Miniconda3-latest-Linux-x86_64.sh
-RUN wget --no-check-certificate https://repo.anaconda.com/miniconda/$miniconda_version \
-    && bash $miniconda_version -b -p $CONDA_DIR \
-    && rm -f $miniconda_version
+ENV MINICONDA_VERSION=Miniforge3-Linux-x86_64.sh
+ENV MINICONDA=https://github.com/conda-forge/miniforge/releases/latest/download/$MINICONDA_VERSION
+
+RUN wget --no-check-certificate $MINICONDA \
+    && bash $MINICONDA_VERSION -b -p $CONDA_DIR \
+    && rm -f $MINICONDA_VERSION
 
 # Update PATH environment variable
 ENV PATH="$CONDA_DIR/bin:$PATH"
@@ -70,10 +72,6 @@ RUN conda install -y -c conda-forge \
     setuptools \
     pytest \
     "numpy<2.0" \
-    libblas=*=*mkl \
-    mkl \
-    mkl_fft \
-    intel-cmplr-lib-rt \
     scipy \
     astropy \
     healpy \
@@ -83,7 +81,12 @@ RUN conda install -y -c conda-forge \
     matplotlib \
     ipython \
     ipykernel \
-    h5py \
+    h5py
+
+RUN conda install -y -c conda-forge \
+    libblas=*=*mkl \
+    mkl_fft \
+    intel-cmplr-lib-rt \
     && conda clean --all -y
 
 # Need to install mpi4py from source to link it properly to MPICH.
@@ -103,7 +106,7 @@ RUN pip install git+https://github.com/desihub/desimodel.git@${DESIMODEL_VERSION
 RUN pip install git+https://github.com/desihub/desitarget.git@${DESITARGET_VERSION}#egg=desitarget
 RUN pip install git+https://github.com/desihub/desispec.git@${DESISPEC_VERSION}#egg=desispec
 RUN pip install git+https://github.com/desihub/speclite.git@${SPECLITE_VERSION}#egg=speclite
-RUN pip install git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit
+RUN pip install git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit & echo 1
 
 ENV DESI_SPECTRO_REDUX=/dvs_ro/cfs/cdirs/desi/spectro/redux
 ENV DUST_DIR=/dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
