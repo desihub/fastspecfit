@@ -64,11 +64,8 @@ class MPPool(object):
         """
         initfunc = None if initializer is None else self.apply_to_dict
 
-        ## If multiprocessing, create a pool of worker processes and initialize
-        ## single-copy objects in each worker.
-        #if args.mp > 1 and not 'NERSC_HOST' in os.environ:
-        #    import multiprocessing
-        #    multiprocessing.set_start_method('fork')
+        # If multiprocessing, create a pool of worker processes and initialize
+        # single-copy objects in each worker.
         if nworkers > 1:
             from multiprocessing import Pool
             self.pool = Pool(nworkers,
