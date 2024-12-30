@@ -356,7 +356,6 @@ def main():
         if args.healpix is not None:
             args.healpix = args.healpix.split(',')
 
-    # FIXME - merging business is a mess
     if args.mergeall_main or args.mergeall_sv or args.mergeall_special:
         args.mergeall = True
 
@@ -400,14 +399,15 @@ def main():
                               sample=sample, merge_suffix=args.merge_suffix,
                               outdir_data=outdir_data, fastfiles_to_merge=fastfiles_to_merge,
                               outsuffix=args.merge_suffix, mergedir=args.mergedir, overwrite=args.overwrite,
-                              verbose=args.verbose, fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp)
+                              fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp)
         else:
             merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type=args.coadd_type,
                               survey=args.survey, program=args.program, healpix=args.healpix,
                               tile=args.tile, night=args.night, outdir_data=outdir_data,
-                              fastfiles_to_merge=fastfiles_to_merge, verbose=args.verbose,
-                              outsuffix=args.merge_suffix, mergedir=args.mergedir, overwrite=args.overwrite,
+                              fastfiles_to_merge=fastfiles_to_merge, outsuffix=args.merge_suffix,
+                              mergedir=args.mergedir, overwrite=args.overwrite,
                               fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp)
+        return
 
 
     if args.plan:
