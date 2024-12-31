@@ -1390,7 +1390,7 @@ def fastqa(args=None, comm=None):
     # Read the fitting results.
     if not os.path.isfile(args.fastfitfile[0]):
         log.warning(f'File {args.fastfitfile[0]} not found.')
-        return
+        return 0
 
     # NB: read_fastspecfit does not use any of the single-copy structures
     # allocated below.
@@ -1408,7 +1408,7 @@ def fastqa(args=None, comm=None):
         keep = np.isin(specphot['TARGETID'], targetids)
         if not np.any(keep):
             log.warning('No matching targetids found!')
-            return
+            return 0
         specphot = specphot[keep]
         metadata = metadata[keep]
         if not fastphot:
@@ -1447,7 +1447,7 @@ def fastqa(args=None, comm=None):
 
         if len(metadata) == 0:
             log.info('Done making all QA files!')
-            return
+            return 0
 
     log.info(f'Building QA for {len(metadata)} objects.')
 
@@ -1656,3 +1656,5 @@ def fastqa(args=None, comm=None):
 
     # if multiprocessing, clean up workers
     mp_pool.close()
+
+    return 0

@@ -27,6 +27,7 @@ def filenames(outdir):
     yield filenames
 
 
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
 def test_fastphot(filenames, templates):
     """Test fastphot."""
     import fitsio
@@ -50,6 +51,7 @@ def test_fastphot(filenames, templates):
             assert(hdu.get_extname() in ['METADATA', 'SPECPHOT'])
 
 
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
 def test_fastspec(filenames, templates):
     """Test fastspec."""
     import fitsio

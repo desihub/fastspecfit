@@ -5,6 +5,7 @@ Change Log
 3.1.1 (not released yet)
 ------------------------
 
+* Pure-MPI implementation; new Podman container; bug fixes [`PR #203`_].
 * Updated algorithm for updating QSO redshifts [`PR #201`_].
 * Progress toward pure-MPI production code [`PR #200`_].
 * Fix <1% bias in fluxes and EWs of tied and free doublet ratios [`PR #198`_].
@@ -14,6 +15,7 @@ Change Log
 .. _`PR #198`: https://github.com/desihub/fastspecfit/pull/198
 .. _`PR #200`: https://github.com/desihub/fastspecfit/pull/200
 .. _`PR #201`: https://github.com/desihub/fastspecfit/pull/201
+.. _`PR #203`: https://github.com/desihub/fastspecfit/pull/203
 
 3.1.0 (2024-11-21)
 ------------------

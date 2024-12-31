@@ -12,7 +12,7 @@ from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates
 from fastspecfit.util import (
-    C_LIGHT, TINY, quantile, median, var2ivar,
+    C_LIGHT, TINY, F32MAX, quantile, median, var2ivar,
     trapz_rebin, trapz_rebin_pre)
 
 
@@ -1748,7 +1748,9 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
 
             for val_monte, col in zip([age_monte, zzsun_monte, logmstar_monte, sfr_monte],
                                       ['AGE_IVAR', 'ZZSUN_IVAR', 'LOGMSTAR_IVAR', 'SFR_IVAR']):
-                specphot[col] = var2ivar(np.var(val_monte))
+                val_ivar = var2ivar(np.var(val_monte))
+                if val_ivar < F32MAX:
+                    specphot[col] = val_ivar
 
             # optional debugging plot
             if debug_plots:

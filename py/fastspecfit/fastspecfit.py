@@ -5,7 +5,7 @@ fastspecfit.fastspecfit
 See sandbox/running-fastspecfit for examples.
 
 """
-import os, time
+import os, sys, time
 import numpy as np
 
 from astropy.table import Table
@@ -13,6 +13,58 @@ from astropy.table import Table
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import BoxedScalar, MPPool
+
+
+def parse(options=None, rank=0):
+    """Parse input arguments to fastspec and fastphot scripts.
+
+    """
+    import argparse, sys
+    from fastspecfit.templates import Templates
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    parser.add_argument('redrockfiles', nargs='+', help='Full path to input redrock file(s).')
+    parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename (required).')
+    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads per MPI rank.')
+    parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
+    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.')
+    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
+    parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
+    parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
+    parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
+    parser.add_argument('--nmonte', type=int, default=50, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
+    parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
+                        help='Do not model broad Balmer and helium line-emission.')
+    parser.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
+    parser.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')
+    parser.add_argument('--constrain-age', action='store_true', help='Constrain the age of the SED.')
+    parser.add_argument('--no-smooth-continuum', action='store_true', help='Do not fit the smooth continuum.')
+    parser.add_argument('--imf', type=str, default=Templates.DEFAULT_IMF, help='Initial mass function.')
+    parser.add_argument('--templateversion', type=str, default=Templates.DEFAULT_TEMPLATEVERSION, help='Template version number.')
+    parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
+    parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
+    parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
+    parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
+    parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
+    parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
+    parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
+    parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
+    parser.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
+    parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
+    parser.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum.')
+    parser.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
+    parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
+    parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
+
+    if options is None:
+        options = sys.argv[1:]
+
+    if rank == 0:
+        log.info(f'fastspec {" ".join(options)}')
+
+    return parser.parse_args(options)
 
 
 def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=True,
@@ -100,8 +152,13 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
     from fastspecfit.io import (DESISpectra, get_output_dtype, create_output_meta,
                                 create_output_table, write_fastspecfit)
 
+    if comm:
+        rank, size = comm.rank, comm.size
+    else:
+        rank, size = 0, 1
+
     if isinstance(args, (list, tuple, type(None))):
-        args = parse(args)
+        args = parse(args, rank=rank)
 
     # check for mandatory environment variables
     envlist = []
@@ -159,131 +216,168 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
     sc_data.initialize(**init_sc_args)
 
-    ## If multiprocessing, create a pool of worker processes and initialize
-    ## single-copy objects in each worker.
-    #if args.mp > 1 and not 'NERSC_HOST' in os.environ:
-    #    import multiprocessing
-    #    multiprocessing.set_start_method('fork')
+    if rank == 0:
+        t0 = time.time()
+        # use multiprocessing
+        if comm is None:
+            mp_pool = MPPool(args.mp, initializer=sc_data.initialize,
+                             init_argdict=init_sc_args)
 
-    t0 = time.time()
-    mp_pool = MPPool(args.mp, initializer=sc_data.initialize,
-                     init_argdict=init_sc_args, comm=comm)
+        log.debug(f'Caching took {time.time()-t0:.5f} seconds.')
 
-    log.debug(f'Caching took {time.time()-t0:.5f} seconds.')
+        log.info(f'Cached stellar templates {sc_data.templates.file}')
+        log.info(f'Cached emission-line table {sc_data.emlines.file}')
+        log.info(f'Cached photometric filters and parameters {sc_data.photometry.fphotofile}')
+        log.info(f'Cached cosmology table {sc_data.cosmology.file}')
+        log.info(f'Cached {sc_data.igm.reference} IGM attenuation parameters.')
 
-    log.info(f'Cached stellar templates {sc_data.templates.file}')
-    log.info(f'Cached emission-line table {sc_data.emlines.file}')
-    log.info(f'Cached photometric filters and parameters {sc_data.photometry.fphotofile}')
-    log.info(f'Cached cosmology table {sc_data.cosmology.file}')
-    log.info(f'Cached {sc_data.igm.reference} IGM attenuation parameters.')
+        # Read the data.
+        Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
+                           fphotodir=args.fphotodir, mapdir=args.mapdir,
+                           redux_dir=args.redux_dir)
 
-    # Read the data.
-    Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
-                       fphotodir=args.fphotodir, mapdir=args.mapdir,
-                       redux_dir=args.redux_dir)
-
-    if fitstack:
-        data, meta = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
-                                       stackids=targetids, ntargets=args.ntargets,
-                                       constrain_age=args.constrain_age)
-    else:
-        Spec.gather_metadata(args.redrockfiles, firsttarget=args.firsttarget,
-                             targetids=targetids, input_redshifts=input_redshifts,
-                             ntargets=args.ntargets, zmin=args.zmin,
-                             redrockfile_prefix=args.redrockfile_prefix,
-                             specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
-                             use_quasarnet=args.use_quasarnet, specprod_dir=args.specproddir)
-        if len(Spec.specfiles) == 0:
-            return
-
-        data, meta = Spec.read(sc_data.photometry, fastphot=fastphot, constrain_age=args.constrain_age)
-
-    ntargets = len(meta)
-    ncoeff = sc_data.templates.ntemplates
-    if fastphot:
-        cameras = None
-    else:
-        cameras = data[0]['cameras']
-
-    fastfit_dtype, fastfit_units = get_output_dtype(
-        Spec.specprod, phot=sc_data.photometry,
-        linetable=sc_data.emlines.table, ncoeff=ncoeff,
-        cameras=cameras, fastphot=fastphot,
-        fitstack=fitstack)
-
-    specphot_dtype, specphot_units = get_output_dtype(
-        Spec.specprod, phot=sc_data.photometry,
-        linetable=sc_data.emlines.table, ncoeff=ncoeff,
-        cameras=cameras, fastphot=fastphot,
-        fitstack=fitstack, specphot=True)
-
-    # If using Monte Carlo, generate the random seed(s).
-    if args.nmonte > 0:
-        if input_seeds is not None:
-            seeds = input_seeds
+        if fitstack:
+            data, meta = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
+                                           stackids=targetids, ntargets=args.ntargets,
+                                           constrain_age=args.constrain_age)
         else:
-            rng = np.random.default_rng(seed=args.seed)
-            seeds = rng.integers(2**32, size=ntargets, dtype=np.int64)
-    else:
-        seeds = [1] * ntargets
+            Spec.gather_metadata(args.redrockfiles, firsttarget=args.firsttarget,
+                                 targetids=targetids, input_redshifts=input_redshifts,
+                                 ntargets=args.ntargets, zmin=args.zmin,
+                                 redrockfile_prefix=args.redrockfile_prefix,
+                                 specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
+                                 use_quasarnet=args.use_quasarnet, specprod_dir=args.specproddir)
+            if len(Spec.specfiles) == 0:
+                return 0
+
+            data, meta = Spec.read(sc_data.photometry, fastphot=fastphot, constrain_age=args.constrain_age)
+
+        ntargets = len(meta)
+        ncoeff = sc_data.templates.ntemplates
+        if fastphot:
+            cameras = None
+        else:
+            cameras = data[0]['cameras']
+
+        fastfit_dtype, fastfit_units = get_output_dtype(
+            Spec.specprod, phot=sc_data.photometry,
+            linetable=sc_data.emlines.table, ncoeff=ncoeff,
+            cameras=cameras, fastphot=fastphot,
+            fitstack=fitstack)
+
+        specphot_dtype, specphot_units = get_output_dtype(
+            Spec.specprod, phot=sc_data.photometry,
+            linetable=sc_data.emlines.table, ncoeff=ncoeff,
+            cameras=cameras, fastphot=fastphot,
+            fitstack=fitstack, specphot=True)
+
+        # If using Monte Carlo, generate the random seed(s).
+        if args.nmonte > 0:
+            if input_seeds is not None:
+                seeds = input_seeds
+            else:
+                rng = np.random.default_rng(seed=args.seed)
+                seeds = rng.integers(2**32, size=ntargets, dtype=np.int64)
+        else:
+            seeds = [1] * ntargets
+
+        nobj = len(meta)
+        fitargs = [{
+            'iobj':                iobj,
+            'data':                data[iobj],
+            'meta':                meta[iobj],
+            'fastfit_dtype':       fastfit_dtype,
+            'specphot_dtype':      specphot_dtype,
+            'broadlinefit':        args.broadlinefit,
+            'fastphot':            fastphot,
+            'fitstack':            fitstack,
+            'constrain_age':       args.constrain_age,
+            'no_smooth_continuum': args.no_smooth_continuum,
+            'debug_plots':         args.debug_plots,
+            'uncertainty_floor':   args.uncertainty_floor,
+            'minsnr_balmer_broad': args.minsnr_balmer_broad,
+            'nmonte':              args.nmonte,
+            'seed':                seeds[iobj],
+        } for iobj in range(nobj)]
+
 
     # Fit in parallel
     t0 = time.time()
-    fitargs = [{
-        'iobj':                iobj,
-        'data':                data[iobj],
-        'meta':                meta[iobj],
-        'fastfit_dtype':       fastfit_dtype,
-        'specphot_dtype':      specphot_dtype,
-        'broadlinefit':        args.broadlinefit,
-        'fastphot':            fastphot,
-        'fitstack':            fitstack,
-        'constrain_age':       args.constrain_age,
-        'no_smooth_continuum': args.no_smooth_continuum,
-        'debug_plots':         args.debug_plots,
-        'uncertainty_floor':   args.uncertainty_floor,
-        'minsnr_balmer_broad': args.minsnr_balmer_broad,
-        'nmonte':              args.nmonte,
-        'seed':                seeds[iobj],
-    } for iobj in range(len(meta))]
+    if comm is not None:
+        # Rank=0 sends work to all the other ranks (and also does work itself).
+        if rank == 0:
+            log.info(f'Rank {rank}: distributing {nobj:,d} objects to {comm.size:,d} ranks.')
+            fitargs_byrank = np.array_split(fitargs, size)
+            for onerank in range(1, size):
+                #log.debug(f'Rank 0 sending data on {len(fitargs_byrank[onerank])}/{len(meta)} objects to rank {onerank}')
+                comm.send(fitargs_byrank[onerank], dest=onerank)
+            fitargs_onerank = fitargs_byrank[rank]
+        else:
+            fitargs_onerank = comm.recv(source=0)
+        #log.debug(f'Rank {rank} received data on {len(fitargs_onerank)} objects from rank 0')
 
-    out = mp_pool.starmap(fastspec_one, fitargs)
+        # Each rank, including rank 0, iterates over each object and then sends
+        # the results to rank 0.
+        log.info(f'Rank {rank}: fitting {len(fitargs_onerank):,d} objects.')
+        t1 = time.time()
+        out = []
+        for fitarg_onerank in fitargs_onerank:
+            out.append(fastspec_one(**fitarg_onerank))
+        log.info(f'Rank {rank}: done fitting {len(out):,d} objects in ' + \
+                 f'{(time.time()-t1) / 60.:.2f} minutes.')
+
+        if rank > 0:
+            #log.debug(f'Rank {rank} sending data on {len(out)} objects to rank 0.')
+            comm.send(out, dest=0)
+        else:
+            for onerank in range(1, size):
+                out.extend(comm.recv(source=onerank))
+            #log.debug(f'Rank 0 received data on {len(out)} objects.')
+            log.info(f'Rank {rank}: collected fitting results for {len(out):,d} ' + \
+                     f'objects from {comm.size:,d} ranks.')
+    else:
+        out = mp_pool.starmap(fastspec_one, fitargs)
+
     out = list(zip(*out))
 
-    meta = create_output_meta(vstack(out[0]), phot=sc_data.photometry,
-                              fastphot=fastphot, fitstack=fitstack)
-    specphot = create_output_table(out[1], meta, specphot_units, fitstack=fitstack)
+    if rank == 0:
+        meta = create_output_meta(vstack(out[0]), phot=sc_data.photometry,
+                                  fastphot=fastphot, fitstack=fitstack)
+        specphot = create_output_table(out[1], meta, specphot_units, fitstack=fitstack)
 
-    if fastphot:
-        fastfit = None
-        modelspectra = None
-    else:
-        fastfit = create_output_table(out[2], meta, fastfit_units, fitstack=fitstack)
-        modelspectra = vstack(out[3], join_type='exact', metadata_conflicts='error')
+        if fastphot:
+            fastfit = None
+            modelspectra = None
+        else:
+            fastfit = create_output_table(out[2], meta, fastfit_units, fitstack=fitstack)
+            modelspectra = vstack(out[3], join_type='exact', metadata_conflicts='error')
 
-    # if multiprocessing, clean up workers
-    mp_pool.close()
+        # If using multiprocessing, close the pool.
+        if comm is None:
+            mp_pool.close()
 
-    log.info(f'Fitting {ntargets} object(s) took {time.time()-t0:.2f} seconds.')
+        log.info(f'Fitting {ntargets} object(s) took {time.time()-t0:.2f} seconds.')
 
-    write_fastspecfit(
-        meta, specphot, fastfit, modelspectra=modelspectra,
-        outfile=args.outfile, specprod=Spec.specprod, coadd_type=Spec.coadd_type,
-        fphotofile=sc_data.photometry.fphotofile,
-        template_file=sc_data.templates.file,
-        emlinesfile=sc_data.emlines.file, fastphot=fastphot,
-        inputz=input_redshifts is not None,
-        nmonte=args.nmonte, seed=args.seed,
-        inputseeds=input_seeds is not None,
-        uncertainty_floor=args.uncertainty_floor,
-        minsnr_balmer_broad=args.minsnr_balmer_broad,
-        ignore_photometry=args.ignore_photometry,
-        broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
-        use_quasarnet=args.use_quasarnet,
-        no_smooth_continuum=args.no_smooth_continuum)
+        write_fastspecfit(
+            meta, specphot, fastfit, modelspectra=modelspectra,
+            outfile=args.outfile, specprod=Spec.specprod, coadd_type=Spec.coadd_type,
+            fphotofile=sc_data.photometry.fphotofile,
+            template_file=sc_data.templates.file,
+            emlinesfile=sc_data.emlines.file, fastphot=fastphot,
+            inputz=input_redshifts is not None,
+            nmonte=args.nmonte, seed=args.seed,
+            inputseeds=input_seeds is not None,
+            uncertainty_floor=args.uncertainty_floor,
+            minsnr_balmer_broad=args.minsnr_balmer_broad,
+            ignore_photometry=args.ignore_photometry,
+            broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
+            use_quasarnet=args.use_quasarnet,
+            no_smooth_continuum=args.no_smooth_continuum)
+
+        return 0
 
 
-def fastphot(args=None, comm=None):
+def fastphot(args=None, comm=None, verbose=False):
     """Main fastphot script.
 
     This script is the engine to model the broadband photometry of one or more
@@ -299,10 +393,10 @@ def fastphot(args=None, comm=None):
         Intracommunicator used with MPI parallelism.
 
     """
-    fastspec(fastphot=True, args=args, comm=comm)
+    return fastspec(fastphot=True, args=args, comm=comm, verbose=verbose)
 
 
-def stackfit(args=None, comm=None):
+def stackfit(args=None, comm=None, verbose=False):
     """Wrapper script to fit (model) generic stacked spectra.
 
     Parameters
@@ -313,57 +407,4 @@ def stackfit(args=None, comm=None):
         Intracommunicator used with MPI parallelism.
 
     """
-    fastspec(fitstack=True, args=args, comm=comm)
-
-
-def parse(options=None):
-    """Parse input arguments to fastspec and fastphot scripts.
-
-    """
-    import argparse, sys
-    from fastspecfit.templates import Templates
-
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-
-    parser.add_argument('redrockfiles', nargs='+', help='Full path to input redrock file(s).')
-    parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename (required).')
-    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads per MPI rank.')
-    parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
-    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.')
-    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
-    parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
-    parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
-    parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
-    parser.add_argument('--nmonte', type=int, default=50, help='Number of Monte Carlo realizations.')
-    parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
-    parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
-                        help='Do not model broad Balmer and helium line-emission.')
-    parser.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
-    parser.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')
-    parser.add_argument('--constrain-age', action='store_true', help='Constrain the age of the SED.')
-    parser.add_argument('--no-smooth-continuum', action='store_true', help='Do not fit the smooth continuum.')
-    parser.add_argument('--imf', type=str, default=Templates.DEFAULT_IMF, help='Initial mass function.')
-    parser.add_argument('--templateversion', type=str, default=Templates.DEFAULT_TEMPLATEVERSION, help='Template version number.')
-    parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
-    parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
-    parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
-    parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
-    parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
-    parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
-    parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
-    parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
-    parser.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
-    parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
-    parser.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum.')
-    parser.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
-    parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
-    parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
-
-    if options is None:
-        options = sys.argv[1:]
-
-    args = parser.parse_args(options)
-
-    log.info(f'fastspec {" ".join(options)}')
-
-    return args
+    return fastspec(fitstack=True, args=args, comm=comm, verbose=verbose)

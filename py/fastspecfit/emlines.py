@@ -14,7 +14,8 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
-from fastspecfit.util import C_LIGHT, TINY, SQTINY, FLUXNORM, var2ivar
+from fastspecfit.util import (C_LIGHT, TINY, SQTINY, F32MAX,
+                              FLUXNORM, var2ivar)
 from fastspecfit.emline_fit import (EMLine_Objective,
     EMLine_MultiLines, EMLine_find_peak_amplitudes,
     EMLine_build_model, EMLine_ParamsMapping)
@@ -944,7 +945,9 @@ class EMFitTools(object):
             if 'DOUBLET_RATIO' in param_modelnames[line_amp]:
                 fastfit[param_modelnames[line_amp]] = values[line_amp]
                 if results_monte is not None:
-                    fastfit[f'{param_modelnames[line_amp]}_IVAR'] = var2ivar(values_var[line_amp])
+                    doublet_ivar = var2ivar(values_var[line_amp])
+                    if doublet_ivar < F32MAX:
+                        fastfit[f'{param_modelnames[line_amp]}_IVAR'] = doublet_ivar
 
             # Also store the 'tied' doublet ratios (fragile...).
             if linemodel['tiedtoparam'][line_amp] != -1:
@@ -1012,13 +1015,21 @@ class EMFitTools(object):
                     cont_monte = np.array(cont_monte)
 
                     # Compute the variance on the line-fitting results.
-
                     obsamps_ivar = var2ivar(obsamps_var[line_amp])
-                    fastfit[f'{linename}_AMP_IVAR'] = obsamps_ivar
-                    fastfit[f'{linename}_VSHIFT_IVAR'] = var2ivar(values_var[line_vshift])
-                    fastfit[f'{linename}_SIGMA_IVAR'] = var2ivar(values_var[line_sigma])
-                    fastfit[f'{linename}_BOXFLUX_IVAR'] = var2ivar(np.var(boxflux_monte))
+                    vshift_ivar = var2ivar(values_var[line_vshift])
+                    sigma_ivar = var2ivar(values_var[line_sigma])
+                    boxflux_ivar = var2ivar(np.var(boxflux_monte))
+                    if obsamps_ivar < F32MAX:
+                        fastfit[f'{linename}_AMP_IVAR'] = obsamps_ivar
+                    if vshift_ivar < F32MAX:
+                        fastfit[f'{linename}_VSHIFT_IVAR'] = vshift_ivar
+                    if sigma_ivar < F32MAX:
+                        fastfit[f'{linename}_SIGMA_IVAR'] = sigma_ivar
+                    if boxflux_ivar < F32MAX:
+                        fastfit[f'{linename}_BOXFLUX_IVAR'] = boxflux_ivar
                     #fastfit[f'{linename}_MODELAMP_IVAR'] = var2ivar(parameters_var[line_amp])
+                else:
+                    obsamps_ivar = 0.
 
                 # require amp > 0 (line not dropped) to compute the flux and chi2
                 if obsamps[line_amp] > TINY:
@@ -1028,7 +1039,8 @@ class EMFitTools(object):
 
                     if results_monte is not None:
                         flux_ivar = var2ivar(np.var(flux_monte))
-                        fastfit[f'{linename}_FLUX_IVAR'] = flux_ivar
+                        if flux_ivar < F32MAX:
+                            fastfit[f'{linename}_FLUX_IVAR'] = flux_ivar
 
                     # keep track of sigma and z but only using XX-sigma lines
                     linesnr = obsamps[line_amp] * np.sqrt(obsamps_ivar)
@@ -1044,7 +1056,8 @@ class EMFitTools(object):
 
             if results_monte is not None:
                 cont_ivar = var2ivar(np.var(cont_monte))
-                fastfit[f'{linename}_CONT_IVAR'] = cont_ivar
+                if cont_ivar < F32MAX:
+                    fastfit[f'{linename}_CONT_IVAR'] = cont_ivar
 
             if cont != 0. and cont_ivar > 0.:
                 # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
@@ -1063,7 +1076,9 @@ class EMFitTools(object):
                         I = cont_monte != 0.
                         if np.sum(I) > 2:
                             ew_monte = flux_monte[I] / cont_monte[I] / (1. + redshift) # rest frame [A]
-                            fastfit[f'{linename}_EW_IVAR'] = var2ivar(np.var(ew_monte))
+                            ew_ivar = var2ivar(np.var(ew_monte))
+                            if ew_ivar < F32MAX:
+                                fastfit[f'{linename}_EW_IVAR'] = ew_ivar
 
 
         # Measure moments for the set of lines in self.moment_lines. We need a
@@ -1118,7 +1133,9 @@ class EMFitTools(object):
                 moments_monte = tuple(zip(*res))
 
                 for n, mom_monte in enumerate(moments_monte):
-                    fastfit[f'{moment_col}_MOMENT{n+1}_IVAR'] = var2ivar(np.var(mom_monte))
+                    mom_ivar = var2ivar(np.var(mom_monte))
+                    if mom_ivar < F32MAX:
+                        fastfit[f'{moment_col}_MOMENT{n+1}_IVAR'] = mom_ivar
 
         # get the per-group average emission-line redshifts and velocity widths
         for stats, groupname in zip((narrow_stats, broad_stats, uv_stats),
