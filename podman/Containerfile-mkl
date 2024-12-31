@@ -40,11 +40,11 @@ RUN wget --no-check-certificate -nv https://www.mpich.org/static/downloads/$mpic
 
 RUN /sbin/ldconfig
 
-## Try to prevent MKL from throttling AMD
-## https://gitlab.com/NERSC/python-benchmark/-/tree/main/amd
-#COPY fakeintel.c /src/fakeintel.c
-#RUN gcc -shared -fPIC -o /usr/local/lib/libfakeintel.so /src/fakeintel.c
-#ENV LD_PRELOAD=/usr/local/lib/libfakeintel.so
+# Try to prevent MKL from throttling AMD
+# https://gitlab.com/NERSC/python-benchmark/-/tree/main/amd
+COPY fakeintel.c /src/fakeintel.c
+RUN gcc -shared -fPIC -o /usr/local/lib/libfakeintel.so /src/fakeintel.c
+ENV LD_PRELOAD=/usr/local/lib/libfakeintel.so
 
 # Install Miniconda
 ENV CONDA_DIR=/opt/miniconda
@@ -86,7 +86,7 @@ RUN conda install -y -c conda-forge \
 RUN conda install -y -c conda-forge \
     libblas=*=*mkl \
     # also tried mkl_fft<1.3.9
-    # mkl_fft \
+    mkl_fft \
     intel-cmplr-lib-rt \
     && conda clean --all -y
 
