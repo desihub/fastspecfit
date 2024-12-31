@@ -248,7 +248,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
                                  specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
                                  use_quasarnet=args.use_quasarnet, specprod_dir=args.specproddir)
             if len(Spec.specfiles) == 0:
-                return
+                return 0
 
             data, meta = Spec.read(sc_data.photometry, fastphot=fastphot, constrain_age=args.constrain_age)
 
@@ -374,6 +374,8 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             use_quasarnet=args.use_quasarnet,
             no_smooth_continuum=args.no_smooth_continuum)
 
+        return 0
+
 
 def fastphot(args=None, comm=None, verbose=False):
     """Main fastphot script.
@@ -391,7 +393,7 @@ def fastphot(args=None, comm=None, verbose=False):
         Intracommunicator used with MPI parallelism.
 
     """
-    fastspec(fastphot=True, args=args, comm=comm, verbose=verbose)
+    return fastspec(fastphot=True, args=args, comm=comm, verbose=verbose)
 
 
 def stackfit(args=None, comm=None, verbose=False):
@@ -405,4 +407,4 @@ def stackfit(args=None, comm=None, verbose=False):
         Intracommunicator used with MPI parallelism.
 
     """
-    fastspec(fitstack=True, args=args, comm=comm, verbose=verbose)
+    return fastspec(fitstack=True, args=args, comm=comm, verbose=verbose)

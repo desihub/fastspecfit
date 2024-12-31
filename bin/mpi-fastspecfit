@@ -112,6 +112,8 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         healpix=args.healpix, tile=args.tile, night=args.night,
         makeqa=args.makeqa, mp=args.mp, fastphot=fastphot,
         outdir_data=outdir_data, overwrite=args.overwrite, sample=sample)
+    if len(all_redrockfiles) == 0:
+        return
     if rank == 0:
         log.info(f'Planning took {time.time() - t0:.2f} sec')
 
@@ -201,18 +203,19 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
                     os.makedirs(outdir, exist_ok=True)
 
             if args.nolog:
-                fast(args=cmdargs.split(), comm=subcomm)
+                err = fast(args=cmdargs.split(), comm=subcomm)
             else:
                 with stdouterr_redirected(to=logfile, overwrite=args.overwrite, comm=subcomm):
                     #log.info(f'rank={comm.rank} subrank={subcomm.rank}')
-                    fast(args=cmdargs.split(), comm=subcomm)
+                    err = fast(args=cmdargs.split(), comm=subcomm)
 
             if subcomm.rank == 0:
                 dt1 = time.time() - t1
                 log.info(f'  rank {rank} done in {dt1:.2f} sec')
-                if not os.path.exists(outfile):
-                    log.warning(f'  rank {rank} missing {outfile}')
-                    raise IOError
+                if err != 0:
+                    if not os.path.exists(outfile):
+                        log.warning(f'  rank {rank} missing {outfile}')
+                        raise IOError
         except:
             log.warning(f'  rank {rank} raised an exception')
             import traceback
@@ -296,7 +299,7 @@ def main():
     args = parser.parse_args()
 
     specprod_dir = None
-    outdir_data = os.path.expandvars(args.outdir_data)
+    outdir_data = os.path.expanduser(os.path.expandvars(args.outdir_data))
 
     if args.nompi:
         comm = None

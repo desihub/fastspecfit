@@ -1566,7 +1566,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
     from desiutil.depend import add_dependencies, possible_dependencies, setdep
 
     t0 = time.time()
-    outdir = os.path.dirname(os.path.abspath(outfile))
+    outdir = os.path.dirname(os.path.abspath(os.path.expanduser(os.path.expandvars(outfile))))
     if not os.path.isdir(outdir):
         os.makedirs(outdir, exist_ok=True)
 
