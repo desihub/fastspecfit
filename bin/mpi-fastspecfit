@@ -112,10 +112,20 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         healpix=args.healpix, tile=args.tile, night=args.night,
         makeqa=args.makeqa, mp=args.mp, fastphot=fastphot,
         outdir_data=outdir_data, overwrite=args.overwrite, sample=sample)
-    if len(all_redrockfiles) == 0:
-        return
     if rank == 0:
         log.info(f'Planning took {time.time() - t0:.2f} sec')
+        # If no work is left to do, let the other ranks know so they can return
+        # politely.
+        if len(all_redrockfiles) == 0:
+            alldone = True
+        else:
+            alldone = False
+
+    if comm:
+        alldone = comm.bcast(alldone, root=0)
+
+    if alldone:
+        return
 
     if comm:
         # Split the MPI.COMM_WORLD communicator into subcommunicators (of size
