@@ -120,6 +120,8 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             alldone = True
         else:
             alldone = False
+    else:
+        alldone = False
 
     if comm:
         alldone = comm.bcast(alldone, root=0)
