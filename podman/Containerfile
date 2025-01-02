@@ -109,10 +109,10 @@ RUN pip install git+https://github.com/desihub/desispec.git@${DESISPEC_VERSION}#
 RUN pip install git+https://github.com/desihub/speclite.git@${SPECLITE_VERSION}#egg=speclite
 RUN pip install git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit
 
-ENV DESI_SPECTRO_REDUX=/dvs_ro/cfs/cdirs/desi/spectro/redux
-ENV DUST_DIR=/dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
-ENV FPHOTO_DIR=/dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9
-ENV FTEMPLATES_DIR=/dvs_ro/cfs/cdirs/desi/public/external/templates/fastspecfit
+ENV DESI_SPECTRO_REDUX=/global/cfs/cdirs/desi/spectro/redux
+ENV DUST_DIR=/global/cfs/cdirs/cosmo/data/dust/v0_1
+ENV FPHOTO_DIR=/global/cfs/cdirs/desi/external/legacysurvey/dr9
+ENV FTEMPLATES_DIR=/global/cfs/cdirs/desi/public/external/templates/fastspecfit
 
 # Some environment variables to ensure good performance with MKL.
 # https://www.diracprogram.org/doc/master/installation/mkl.html

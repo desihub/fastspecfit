@@ -182,6 +182,10 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             redrockfiles = subcomm.recv(source=0, tag=4)
             outfiles = subcomm.recv(source=0, tag=5)
             ntargets = subcomm.recv(source=0, tag=6)
+    else:
+        redrockfiles = all_redrockfiles
+        outfiles = all_outfiles
+        ntargets = all_ntargets
     #print(f'Rank={comm.rank}, subrank={subcomm.rank}, redrockfiles={redrockfiles}, ntargets={ntargets}')
 
     for redrockfile, outfile, ntarget in zip(redrockfiles, outfiles, ntargets):
@@ -270,7 +274,7 @@ def main():
     parser.add_argument('--samplefile', default=None, type=str, help='Full path to sample (FITS) file with {survey,program,healpix,targetid}.')
     parser.add_argument('--input-redshifts', action='store_true', help='Only used with --samplefile; if set, fit with redshift "Z" values.')
     parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
-    parser.add_argument('--nmonte', type=int, default=50, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--nmonte', type=int, default=10, help='Number of Monte Carlo realizations.')
     parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
 
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
@@ -318,6 +322,11 @@ def main():
     else:
         try:
             from mpi4py import MPI
+            MPI.Init_thread(MPI.THREAD_SINGLE)
+            # needed when profiling; no effect otherwise
+            # https://docs.linaroforge.com/24.0.6/html/forge/map/python_profiling/profile_python_script.html
+            mpi4py.rc.threaded = False
+            #mpi4py.rc.thread_level = "funneled"
             comm = MPI.COMM_WORLD
         except ImportError:
             comm = None
