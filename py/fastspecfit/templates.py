@@ -180,6 +180,7 @@ class Templates(object):
         else:
             self.convolve = sc_sig.oaconvolve
 
+
     @staticmethod
     def get_templates_filename(template_version, imf):
         """Get the templates filename.

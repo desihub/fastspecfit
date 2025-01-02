@@ -309,7 +309,6 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
                     ntargets.extend(comm.recv(source=onerank))
                 if len(ntargets) > 0:
                     ntargets = np.hstack(ntargets)
-            comm.barrier()
         else:
             if mp > 1:
                 with multiprocessing.Pool(mp) as P:
