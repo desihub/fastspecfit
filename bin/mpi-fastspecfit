@@ -133,7 +133,10 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         # Split the MPI.COMM_WORLD communicator into subcommunicators (of size
         # args.mp) so we can MPI-parallelize over objects.
         allranks = np.arange(comm.size)
-        colors = np.arange(comm.size) // args.mp
+        if args.purempi:
+            colors = np.arange(comm.size) // args.mp
+        else:
+            colors = np.arange(comm.size)
 
         color = rank // args.mp
         subcomm = comm.Split(color=color, key=rank)
@@ -231,11 +234,16 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
                     os.makedirs(outdir, exist_ok=True)
 
             if args.nolog:
-                err = fast(args=cmdargs.split(), comm=subcomm)
+                if args.purempi:
+                    err = fast(args=cmdargs.split(), comm=subcomm)
+                else:
+                    err = fast(args=cmdargs.split(), comm=None)
             else:
                 with stdouterr_redirected(to=logfile, overwrite=args.overwrite, comm=subcomm):
-                    #log.info(f'rank={comm.rank} subrank={subcomm.rank}')
-                    err = fast(args=cmdargs.split(), comm=subcomm)
+                    if args.purempi:
+                        err = fast(args=cmdargs.split(), comm=subcomm)
+                    else:
+                        err = fast(args=cmdargs.split(), comm=None)
 
             if subcomm:
                 if subcomm.rank == 0:
@@ -331,6 +339,7 @@ def main():
     parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
     parser.add_argument('--profile', action='store_true', help='Write out profiling / timing files..')
     parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
+    parser.add_argument('--purempi', action='store_true', help='Use only MPI parallelism; no multiprocessing.')
     parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
     parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
 
