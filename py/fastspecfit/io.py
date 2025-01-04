@@ -927,7 +927,10 @@ class DESISpectra(object):
             desi_target, bgs_target, mws_target, scnd_target = surv_target
             desi_mask, bgs_mask, mws_mask, scnd_mask = surv_mask
             IQSO = meta[desi_target] & desi_mask['QSO'] != 0
-            IWISE_VAR_QSO = meta[scnd_target] & scnd_mask['WISE_VAR_QSO'] != 0
+            if 'WISE_VAR_QSO' in scnd_mask.names():
+                IWISE_VAR_QSO = meta[scnd_target] & scnd_mask['WISE_VAR_QSO'] != 0
+            else:
+                IWISE_VAR_QSO = np.zeros(len(meta), bool)
         if np.sum(IQSO) > 0 or np.sum(IWISE_VAR_QSO) > 0:
             qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx, columns=QNCOLS))
             assert(np.all(qn['TARGETID'] == meta['TARGETID']))
