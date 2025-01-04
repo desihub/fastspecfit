@@ -177,7 +177,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         if subcomm.rank == 0:
             subranks = allranks[np.isin(colors, color)]
             # process from smallest to largest
-            srt = np.argsort(ntargets)
+            srt = np.argsort(ntargets)#[::-1]
             redrockfiles = redrockfiles[srt]
             outfiles = outfiles[srt]
             ntargets = ntargets[srt]
@@ -199,8 +199,11 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
     for redrockfile, outfile, ntarget in zip(redrockfiles, outfiles, ntargets):
         if subcomm:
             if subcomm.rank == 0:
-                log.debug(f'Rank {rank} (subrank {subcomm.rank}) started ' + \
-                          f'at {time.asctime()}')
+                if args.purempi:
+                    log.debug(f'Rank {rank} (subrank {subcomm.rank}) started ' + \
+                              f'at {time.asctime()}')
+                else:
+                    log.debug(f'Rank {rank} started at {time.asctime()}')
         elif rank == 0:
             log.debug(f'Rank {rank} started at {time.asctime()}')
 
@@ -217,8 +220,11 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
 
         if subcomm:
             if subcomm.rank == 0:
-                log.info(f'Rank {rank} (nsubrank={subcomm.size}): ' + \
-                         f'ntargets={ntarget}: {cmd} {cmdargs}')
+                if args.purempi:
+                    log.info(f'Rank {rank} (nsubrank={subcomm.size}): ' + \
+                             f'ntargets={ntarget}: {cmd} {cmdargs}')
+                else:
+                    log.info(f'Rank {rank} ntargets={ntarget}: {cmd} {cmdargs}')
         elif rank == 0:
             log.info(f'Rank {rank}: ntargets={ntarget}: {cmd} {cmdargs}')
 
@@ -252,30 +258,28 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
 
             if subcomm:
                 if subcomm.rank == 0:
-                    dt1 = time.time() - t1
-                    log.info(f'  Rank {rank} done in {dt1:.2f} sec')
+                    log.info(f'Rank {rank} done in {time.time() - t1:.2f} sec')
                     if err != 0:
                         if not os.path.exists(outfile):
-                            log.warning(f'  rank {rank} missing {outfile}')
+                            log.warning(f'Rank {rank} missing {outfile}')
                             raise IOError
             elif rank == 0:
-                dt1 = time.time() - t1
-                log.info(f'  Rank {rank} done in {dt1:.2f} sec')
+                log.info(f'Rank {rank} done in {time.time() - t1:.2f} sec')
                 if err != 0:
                     if not os.path.exists(outfile):
-                        log.warning(f'  Rank {rank} missing {outfile}')
+                        log.warning(f'Rank {rank} missing {outfile}')
                         raise IOError
 
         except:
-            log.warning(f'  Rank {rank} raised an exception')
+            log.warning(f'Rank {rank} raised an exception')
             import traceback
             traceback.print_exc()
 
     if subcomm:
         if subcomm.rank == 0:
-            log.debug(f'  rank {rank} is done')
+            log.debug(f'Rank {rank} is done')
     elif rank == 0:
-        log.debug(f'  rank {rank} is done')
+        log.debug(f'Rank {rank} is done')
 
     if comm:
         comm.barrier()
