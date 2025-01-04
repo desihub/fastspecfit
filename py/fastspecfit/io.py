@@ -1084,7 +1084,7 @@ class DESISpectra(object):
 
                 if hasattr(photometry, 'fiber_filters'):
                     for iband, filt in enumerate(photometry.fiber_filters[onephotsys].names):
-                        mw_transmission_fiberflux[I, iband] = mwdust_transmission(ebv, filt)
+                        mw_transmission_fiberflux[I, iband] = mwdust_transmission(ebv[I], filt)
                 else:
                     mw_transmission_fiberflux = None
 
