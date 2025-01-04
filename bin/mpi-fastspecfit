@@ -135,16 +135,21 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         allranks = np.arange(comm.size)
         if args.purempi:
             colors = np.arange(comm.size) // args.mp
+            color = rank // args.mp
         else:
             colors = np.arange(comm.size)
+            color = rank
 
-        color = rank // args.mp
         subcomm = comm.Split(color=color, key=rank)
 
         if rank == 0:
-            subranks0 = allranks[::args.mp] # rank=0 in each subcomm
-            log.info(f'Rank {rank}: dividing filelist into {len(subranks0):,d} sub-communicator(s) ' + \
-                     f'(size={comm.size:,d}, mp={args.mp}).')
+            if args.purempi:
+                subranks0 = allranks[::args.mp] # rank=0 in each subcomm
+                log.info(f'Rank {rank}: dividing filelist into {len(subranks0):,d} sub-communicator(s) ' + \
+                         f'(size={comm.size:,d}, mp={args.mp}).')
+            else:
+                subranks0 = allranks
+                log.info(f'Rank {rank}: dividing filelist across {comm.size:,d} ranks.')
         else:
             subranks0 = None
 
@@ -248,21 +253,21 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             if subcomm:
                 if subcomm.rank == 0:
                     dt1 = time.time() - t1
-                    log.info(f'  rank {rank} done in {dt1:.2f} sec')
+                    log.info(f'  Rank {rank} done in {dt1:.2f} sec')
                     if err != 0:
                         if not os.path.exists(outfile):
                             log.warning(f'  rank {rank} missing {outfile}')
                             raise IOError
             elif rank == 0:
                 dt1 = time.time() - t1
-                log.info(f'  rank {rank} done in {dt1:.2f} sec')
+                log.info(f'  Rank {rank} done in {dt1:.2f} sec')
                 if err != 0:
                     if not os.path.exists(outfile):
-                        log.warning(f'  rank {rank} missing {outfile}')
+                        log.warning(f'  Rank {rank} missing {outfile}')
                         raise IOError
 
         except:
-            log.warning(f'  rank {rank} raised an exception')
+            log.warning(f'  Rank {rank} raised an exception')
             import traceback
             traceback.print_exc()
 
@@ -364,7 +369,7 @@ def main():
 
     if comm:
         rank = comm.rank
-        if comm.size > 1 and args.mp > 1 and comm.size < args.mp:
+        if rank == 0 and args.purempi and comm.size > 1 and args.mp > 1 and comm.size < args.mp:
             log.warning(f'Number of MPI tasks {comm.size} should be >{args.mp} for MPI parallelism.')
     else:
         rank = 0
