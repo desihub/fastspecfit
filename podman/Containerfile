@@ -97,15 +97,14 @@ ENV DESIMODEL_VERSION=0.19.2
 ENV DESITARGET_VERSION=2.8.0
 ENV DESISPEC_VERSION=0.68.1
 ENV SPECLITE_VERSION=v0.20
-ENV FASTSPECFIT_VERSION=more-cleanup
-#ENV FASTSPECFIT_VERSION=3.1.1
+ENV FASTSPECFIT_VERSION=main
 
 RUN pip install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
 RUN pip install git+https://github.com/desihub/desimodel.git@${DESIMODEL_VERSION}#egg=desimodel
 RUN pip install git+https://github.com/desihub/desitarget.git@${DESITARGET_VERSION}#egg=desitarget
 RUN pip install git+https://github.com/desihub/desispec.git@${DESISPEC_VERSION}#egg=desispec
 RUN pip install git+https://github.com/desihub/speclite.git@${SPECLITE_VERSION}#egg=speclite
-RUN pip install   git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit
+RUN pip install git+https://github.com/desihub/fastspecfit.git@${FASTSPECFIT_VERSION}#egg=fastspecfit
 
 ENV DESI_SPECTRO_REDUX=/global/cfs/cdirs/desi/spectro/redux
 ENV DUST_DIR=/global/cfs/cdirs/cosmo/data/dust/v0_1

@@ -84,7 +84,7 @@ class LineMasker(object):
             pix.update({'patch_contpix': {}, 'dropped': [], 'merged': [], 'merged_from': []})
             patchids = list(patchMap.keys())
             npatch = len(patchids)
-            patchmaplines = np.hstack(list(patchMap.values()))[0]
+            patchmaplines = np.hstack([patchMap[key][0] for key in patchMap.keys()])
 
         FACTOR_DEFAULT = 2.
         FACTORS = [2., 3., 4.]
