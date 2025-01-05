@@ -2,8 +2,13 @@
 Change Log
 ==========
 
-3.1.1 (not released yet)
+3.2.0 (not released yet)
 ------------------------
+
+* 
+
+3.1.1 (2025-01-05)
+------------------
 
 * Miscellaneous bug fixes [`PR #205`_].
 * Pure-MPI implementation; new Podman container; bug fixes [`PR #203`_].
