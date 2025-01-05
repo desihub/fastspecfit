@@ -1002,7 +1002,7 @@ def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4800.), fit_rest
 
 
 def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
-                       nmonte=50, rng=None, debug_plots=False):
+                       nmonte=10, rng=None, debug_plots=False):
     """Model the broadband photometry.
 
     """
@@ -1207,7 +1207,7 @@ def _continuum_nominal_vdisp(CTools, templates, specflux, specwave,
     return tauv, vdisp, coeff, contmodel, chi2
 
 
-def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
+def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=10,
                        rng=None, uniqueid=0, no_smooth_continuum=False,
                        debug_plots=False):
     """Jointly model the spectroscopy and broadband photometry.
@@ -1542,7 +1542,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
 
 
 def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
-                      nmonte=50, seed=1, constrain_age=False,
+                      nmonte=10, seed=1, constrain_age=False,
                       no_smooth_continuum=False, fitstack=False,
                       fastphot=False, debug_plots=False):
     """Fit the non-negative stellar continuum of a single spectrum.

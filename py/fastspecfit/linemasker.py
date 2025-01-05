@@ -84,6 +84,7 @@ class LineMasker(object):
             pix.update({'patch_contpix': {}, 'dropped': [], 'merged': [], 'merged_from': []})
             patchids = list(patchMap.keys())
             npatch = len(patchids)
+            patchmaplines = np.hstack([patchMap[key][0] for key in patchMap.keys()])
 
         FACTOR_DEFAULT = 2.
         FACTORS = [2., 3., 4.]
@@ -95,8 +96,18 @@ class LineMasker(object):
                 continue
             I = _get_linepix(zlinewave, sigma)
             if len(I) > 0:
-                linemask[I] = True
-                pix['linepix'][linename] = I
+                if patchMap is None:
+                    linemask[I] = True
+                    pix['linepix'][linename] = I
+                else:
+                    # Extreme corner case: fully masked r-band camera results
+                    # in hgamma "surviving" with a single pixel with ivar!=0,
+                    # which raises an exception below because the line is
+                    # dropped from patchMap. Example:
+                    # loa/main/bright/9512/39632986815075191
+                    if linename in patchmaplines:
+                        linemask[I] = True
+                        pix['linepix'][linename] = I
 
         # skip contpix
         if not get_contpix:

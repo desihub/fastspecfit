@@ -927,7 +927,10 @@ class DESISpectra(object):
             desi_target, bgs_target, mws_target, scnd_target = surv_target
             desi_mask, bgs_mask, mws_mask, scnd_mask = surv_mask
             IQSO = meta[desi_target] & desi_mask['QSO'] != 0
-            IWISE_VAR_QSO = meta[scnd_target] & scnd_mask['WISE_VAR_QSO'] != 0
+            if 'WISE_VAR_QSO' in scnd_mask.names():
+                IWISE_VAR_QSO = meta[scnd_target] & scnd_mask['WISE_VAR_QSO'] != 0
+            else:
+                IWISE_VAR_QSO = np.zeros(len(meta), bool)
         if np.sum(IQSO) > 0 or np.sum(IWISE_VAR_QSO) > 0:
             qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx, columns=QNCOLS))
             assert(np.all(qn['TARGETID'] == meta['TARGETID']))
@@ -1081,7 +1084,7 @@ class DESISpectra(object):
 
                 if hasattr(photometry, 'fiber_filters'):
                     for iband, filt in enumerate(photometry.fiber_filters[onephotsys].names):
-                        mw_transmission_fiberflux[I, iband] = mwdust_transmission(ebv, filt)
+                        mw_transmission_fiberflux[I, iband] = mwdust_transmission(ebv[I], filt)
                 else:
                     mw_transmission_fiberflux = None
 
@@ -1552,7 +1555,7 @@ def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_col
 def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
                       specprod=None, coadd_type=None, fphotofile=None,
                       template_file=None, emlinesfile=None, fastphot=False,
-                      inputz=False, inputseeds=None, nmonte=50, seed=1,
+                      inputz=False, inputseeds=None, nmonte=10, seed=1,
                       uncertainty_floor=0.01, minsnr_balmer_broad=2.5,
                       no_smooth_continuum=False, ignore_photometry=False,
                       broadlinefit=True, use_quasarnet=True, constrain_age=False,

@@ -951,18 +951,18 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
             else:
                 if np.any(linetable['isbroad'][I]):
                     if np.any(linetable['isbalmer'][I]):
-                        plotsig = fastspec['BROAD_SIGMA']
+                        plotsig = line_stats['BROAD_SIGMA']
                         if plotsig < 50:
-                            plotsig = fastspec['NARROW_SIGMA']
+                            plotsig = line_stats['NARROW_SIGMA']
                             if plotsig < 50:
                                 plotsig = plotsig_default
                                 #plotsig = plotsig_default_broad
                     else:
-                        plotsig = fastspec['UV_SIGMA']
+                        plotsig = line_stats['UV_SIGMA']
                         if plotsig < 50:
                             plotsig = plotsig_default_broad
                 else:
-                    plotsig = fastspec['NARROW_SIGMA']
+                    plotsig = line_stats['NARROW_SIGMA']
                     if plotsig < 50:
                         plotsig = plotsig_default
             sigmas.append(plotsig)
