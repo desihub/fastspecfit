@@ -641,14 +641,13 @@ class EMFitTools(object):
             fit_info = least_squares(objective, initial_guesses, jac=jac, args=(),
                                      max_nfev=5000, xtol=1e-10, ftol=1e-5, #x_scale='jac' gtol=1e-10,
                                      tr_solver='lsmr', tr_options={'maxiter': 1000, 'regularize': True},
-                                     method='trf', bounds=bounds,) # verbose=2)
+                                     method='trf', bounds=bounds)#, verbose=2)
             free_params = fit_info.x
 
             if not fit_info.success:
                 errmsg = 'least_squares optimizer failed' + \
                     (f' for {self.uniqueid}' if self.uniqueid is not None else '')
                 log.critical(errmsg)
-                raise RuntimeError(errmsg)
             elif fit_info.status == 0:
                 log.warning('optimizer failed to converge')
 
