@@ -133,7 +133,10 @@ class LineMasker(object):
                     # line.
                     J = _get_contpix(zlinewave, sigma, nsigma_factor=FACTOR_DEFAULT,
                                      linemask=None, zlyawave=zlyawave)
-                    J = np.delete(J, np.isin(J, pix['linepix'][linename]))
+                    J2 = np.delete(J, np.isin(J, pix['linepix'][linename]))
+                    # extreme check for, e.g., Lya on load/sv1/bright/6682/39632989667198594
+                    if len(J2) > 0:
+                        J = J2
 
                 if len(J) > 0:
                     pix['contpix'][linename] = J
