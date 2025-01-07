@@ -171,6 +171,11 @@ class LineMasker(object):
                     if len(J) >= mincontpix:
                         break
 
+                # desperate measures; drop the linemask condition
+                if len(J) == 0:
+                    J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=factor,
+                                     linemask=None, zlyawave=zlyawave)
+
                 if len(J) == 0:
                     errmsg = f'Unable to measure the continuum pixels for patch {patchid}'
                     log.critical(errmsg)
