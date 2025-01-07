@@ -47,16 +47,23 @@ class LineMasker(object):
             I = (wave > (zlinewave - nsigma * sigma)) * (wave < (zlinewave + nsigma * sigma)) * (ivar > 0.)
             return np.where(I)[0]
 
-        def _get_contpix(zlinewaves, sigmas, nsigma_factor=1., linemask=None, zlyawave=[]):
+        def _get_contpix(zlinewaves, sigmas, nsigma_factor=1., linemask=None,
+                         use_ivar=True, zlyawave=[]):
             # never use continuum pixels blueward of Lyman-alpha
             minwave = np.min(zlinewaves - nsigma_factor * nsigma * sigmas)
             if len(zlyawave) > 0 and minwave < zlyawave:
                 minwave = zlyawave
             maxwave = np.max(zlinewaves + nsigma_factor * nsigma * sigmas)
             if linemask is None:
-                J = (wave > minwave) * (wave < maxwave) * (ivar > 0.)
+                if use_ivar:
+                    J = (wave > minwave) * (wave < maxwave) * (ivar > 0.)
+                else:
+                    J = (wave > minwave) * (wave < maxwave)
             else:
-                J = (wave > minwave) * (wave < maxwave) * (ivar > 0.) * ~linemask
+                if use_ivar:
+                    J = (wave > minwave) * (wave < maxwave) * (ivar > 0.) * ~linemask
+                else:
+                    J = (wave > minwave) * (wave < maxwave) * ~linemask
             return np.where(J)[0]
 
         if linevshifts is None:
@@ -133,7 +140,10 @@ class LineMasker(object):
                     # line.
                     J = _get_contpix(zlinewave, sigma, nsigma_factor=FACTOR_DEFAULT,
                                      linemask=None, zlyawave=zlyawave)
-                    J = np.delete(J, np.isin(J, pix['linepix'][linename]))
+                    J2 = np.delete(J, np.isin(J, pix['linepix'][linename]))
+                    # extreme check for, e.g., Lya on load/sv1/bright/6682/39632989667198594
+                    if len(J2) > 0:
+                        J = J2
 
                 if len(J) > 0:
                     pix['contpix'][linename] = J
@@ -171,6 +181,14 @@ class LineMasker(object):
                     if len(J) >= mincontpix:
                         break
 
+                # desperate measures; drop the linemask condition and then drop
+                # the ivar condition
+                if len(J) == 0:
+                    J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=factor,
+                                     linemask=None, zlyawave=zlyawave)
+                if len(J) == 0:
+                    J = _get_contpix(zlinewaves_patch, sigmas_patch, nsigma_factor=factor,
+                                     linemask=None, zlyawave=zlyawave, use_ivar=False)
                 if len(J) == 0:
                     errmsg = f'Unable to measure the continuum pixels for patch {patchid}'
                     log.critical(errmsg)

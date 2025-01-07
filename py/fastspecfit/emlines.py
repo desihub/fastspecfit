@@ -641,14 +641,13 @@ class EMFitTools(object):
             fit_info = least_squares(objective, initial_guesses, jac=jac, args=(),
                                      max_nfev=5000, xtol=1e-10, ftol=1e-5, #x_scale='jac' gtol=1e-10,
                                      tr_solver='lsmr', tr_options={'maxiter': 1000, 'regularize': True},
-                                     method='trf', bounds=bounds,) # verbose=2)
+                                     method='trf', bounds=bounds)#, verbose=2)
             free_params = fit_info.x
 
             if not fit_info.success:
                 errmsg = 'least_squares optimizer failed' + \
                     (f' for {self.uniqueid}' if self.uniqueid is not None else '')
                 log.critical(errmsg)
-                raise RuntimeError(errmsg)
             elif fit_info.status == 0:
                 log.warning('optimizer failed to converge')
 
@@ -1283,8 +1282,8 @@ def test_broad_model(EMFit,
     # get the pixels of the broad Balmer lines
     IBalmer = EMFit.isBalmerBroad_noHelium_Strong
 
-    balmer_linesigmas = broad_values[line_params[IBalmer, ParamType.SIGMA ] ]
-    balmer_linevshifts = broad_values[line_params[IBalmer, ParamType.VSHIFT] ]
+    balmer_linesigmas = broad_values[line_params[IBalmer, ParamType.SIGMA]]
+    balmer_linevshifts = broad_values[line_params[IBalmer, ParamType.VSHIFT]]
 
     balmerpix = LineMasker.linepix_and_contpix(
         emlinewave, emlineivar, EMFit.line_table[IBalmer],
@@ -1292,6 +1291,15 @@ def test_broad_model(EMFit,
 
     balmerlines =  [EMFit.line_map[ln] for ln in balmerpix['linepix']]
     balmerpixels = [px for px in balmerpix['linepix'].values()]
+
+    # balmerlines and balmerpixels can be an empty set when a camera is fully
+    # masked; if so, politely quit here! Example: loa/main/backup/21126/2305843031363822582
+    if len(balmerlines) == 0:
+        log.debug(f'Dropping broad-line model: no good data.')
+        adopt_broad = False
+        delta_linechi2_balmer = 0
+        delta_linendof_balmer = np.int32(0)
+        return adopt_broad, delta_linechi2_balmer, delta_linendof_balmer
 
     # Determine how many lines (free parameters) are in wavelengths in and
     # around the Balmer lines, with and without broad lines.
@@ -1364,7 +1372,6 @@ def test_broad_model(EMFit,
         log.info(f'  sigma_broad={Habroad:.1f} km/s, sigma_narrow={Hanarrow:.1f} km/s')
         if _broadsnr:
             log.info(f'  {_broadsnr} > {minsnr_balmer_broad:.0f}')
-
     else:
         adopt_broad = False
         if dchi2test == False:
