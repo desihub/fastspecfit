@@ -7,12 +7,14 @@ Change Log
 
 *
 
-3.1.2 (2025-01-07)
+3.1.2 (2025-01-08)
 ------------------
 
+* A handful more bug fixes [`PR #207`_].
 * Miscellaneous bug fixes revealed in Loa/Y3 processing [`PR #206`_].
 
 .. _`PR #206`: https://github.com/desihub/fastspecfit/pull/206
+.. _`PR #207`: https://github.com/desihub/fastspecfit/pull/207
 
 3.1.1 (2025-01-05)
 ------------------
