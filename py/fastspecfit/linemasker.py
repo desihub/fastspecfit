@@ -91,7 +91,11 @@ class LineMasker(object):
             pix.update({'patch_contpix': {}, 'dropped': [], 'merged': [], 'merged_from': []})
             patchids = list(patchMap.keys())
             npatch = len(patchids)
-            patchmaplines = np.hstack([patchMap[key][0] for key in patchMap.keys()])
+            patchmaplines = []
+            for key in patchMap.keys():
+                patchmaplines.append(patchMap[key][0])
+            if len(patchmaplines) > 0:
+                patchmaplines = np.hstack(patchmaplines)
 
         FACTOR_DEFAULT = 2.
         FACTORS = [2., 3., 4.]
@@ -140,6 +144,9 @@ class LineMasker(object):
                     # line.
                     J = _get_contpix(zlinewave, sigma, nsigma_factor=FACTOR_DEFAULT,
                                      linemask=None, zlyawave=zlyawave)
+                    if len(J) == 0:
+                        J = _get_contpix(zlinewave, sigma, nsigma_factor=FACTOR_DEFAULT,
+                                         linemask=None, zlyawave=zlyawave, use_ivar=False)
                     J2 = np.delete(J, np.isin(J, pix['linepix'][linename]))
                     # extreme check for, e.g., Lya on load/sv1/bright/6682/39632989667198594
                     if len(J2) > 0:
@@ -150,6 +157,7 @@ class LineMasker(object):
                 else:
                     errmsg = f'Unable to measure the continuum pixels for line {linename}'
                     log.critical(errmsg)
+                    import pdb ; pdb.set_trace()
                     raise ValueError(errmsg)
 
         else:
