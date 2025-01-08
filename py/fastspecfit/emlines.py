@@ -606,6 +606,8 @@ class EMFitTools(object):
             # happen at high redshift and with the red camera masked, e.g.,
             # iron/main/dark/6642/39633239580608311).
             linemodel.meta['nfev'] = 0
+            linemodel.meta['obsamps'] = np.zeros(len(self.line_table))
+            linemodel['value'] = 0.
             return linemodel
         else:
             obj = EMLine_Objective(obs_bin_centers,
