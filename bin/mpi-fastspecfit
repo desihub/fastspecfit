@@ -165,11 +165,10 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             continue
 
         try:
-            if rank == 0:
-                t1 = time.time()
-                outdir = os.path.dirname(logfile)
-                if not os.path.isdir(outdir):
-                    os.makedirs(outdir, exist_ok=True)
+            t1 = time.time()
+            outdir = os.path.dirname(logfile)
+            if not os.path.isdir(outdir):
+                os.makedirs(outdir, exist_ok=True)
 
             if args.nolog:
                 err = fast(args=cmdargs.split(), comm=None)
