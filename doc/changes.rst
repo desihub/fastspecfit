@@ -7,6 +7,13 @@ Change Log
 
 *
 
+3.1.3 (2025-02-01)
+------------------
+
+* Eliminate the use of subcommunicators in ``mpi-fastspecfit`` [`PR #210`_].
+
+.. _`PR #210`: https://github.com/desihub/fastspecfit/pull/210
+
 3.1.2 (2025-01-08)
 ------------------
 
