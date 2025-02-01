@@ -176,13 +176,11 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
                 with stdouterr_redirected(to=logfile, overwrite=args.overwrite, comm=None):
                     err = fast(args=cmdargs.split(), comm=None)
 
-            if rank == 0:
-                log.info(f'Rank {rank} done in {time.time() - t1:.2f} sec')
-                if err != 0:
-                    if not os.path.exists(outfile):
-                        log.warning(f'Rank {rank} missing {outfile}')
-                        raise IOError
-
+            log.info(f'Rank {rank} done in {(time.time() - t1)/60.:.2f} min')
+            if err != 0:
+                if not os.path.exists(outfile):
+                    log.warning(f'Rank {rank} missing {outfile}')
+                    raise IOError
         except:
             log.warning(f'Rank {rank} raised an exception')
             import traceback
