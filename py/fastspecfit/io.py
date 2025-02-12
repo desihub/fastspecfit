@@ -408,9 +408,11 @@ class DESISpectra(object):
         if fphotodir is None:
             self.fphotoext = None
             self.fphotodir = os.path.expandvars(os.environ.get('FPHOTO_DIR'))
+            self.fphotodir_default = True
         else:
             # parse the extension name, if any
             fphotoext = None
+            self.fphotodir_default = False
             photodir = os.path.dirname(fphotodir)
             photobase = os.path.basename(fphotodir)
             if '[' in photobase and ']' in photobase:
@@ -1413,9 +1415,18 @@ class DESISpectra(object):
 
             legacysurveydr = self.phot.legacysurveydr
 
-            # targeting and Tractor columns to read from disk
-            tractor = gather_tractorphot(input_meta, columns=PHOTCOLS, legacysurveydir=self.fphotodir)
-
+            # targeting and Tractor columns to read from disk but need
+            # to be careful about passing DR9 values of BRICKNAME and
+            # BRICK_OBJID to the DR10 LEGACY_SURVEY_DIR
+            if self.fphotodir_default:
+                tractor = gather_tractorphot(input_meta, columns=PHOTCOLS, legacysurveydir=self.fphotodir)
+            else:
+                _input_meta = input_meta.copy()
+                for col in ['RELEASE', 'BRICKID', 'BRICK_OBJID', 'PHOTSYS']:
+                    if col in _input_meta.colnames:
+                        _input_meta.remove_column(col)
+                tractor = gather_tractorphot(_input_meta, columns=PHOTCOLS, legacysurveydir=self.fphotodir)
+            
             # DR9-specific stuff
             if legacysurveydr.lower() == 'dr9' or legacysurveydr.lower() == 'dr10':
                 metas = []

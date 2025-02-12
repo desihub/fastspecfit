@@ -768,6 +768,8 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
                 medmag = 0.0
             sedmodel_abmag = np.zeros_like(templates.wave) + medmag
         else:
+            #flam = sedmodel / FLUXNORM / CTools.massnorm
+            #np.savetxt('makani-sed.txt', np.array([[sedwave], [flam]]).squeeze().T)
             factor = 10**(0.4 * 48.6) * sedwave**2 / (C_LIGHT * 1e13) / FLUXNORM / CTools.massnorm # [erg/s/cm2/A --> maggies]
             sedmodel_abmag = -2.5*np.log10(sedmodel * factor)
             sedax.plot(sedwave / 1e4, sedmodel_abmag, color='grey', # ='~tan'
