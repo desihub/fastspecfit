@@ -52,7 +52,6 @@ TSNR2COLS = ('TSNR2_BGS', 'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA')
 
 # quasarnet and MgII afterburner columns to read
 QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha', ]
-QNCOLS = ['TARGETID', 'Z_NEW', 'ZWARN_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
 MGIICOLS = ['TARGETID', 'IS_QSO_MGII']
 
 def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
@@ -912,9 +911,13 @@ class DESISpectra(object):
 
         if specprod in ['fuji', 'guadalupe', 'himalayas', 'iron']:
             QNthresh = 0.95
+            QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
+            new_zwarn = False
         else:
             # updated for Jura, Kibo, Loa, ...
             QNthresh = 0.99
+            QNCOLS = ['TARGETID', 'Z_NEW', 'ZWARN_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
+            new_zwarn = False
 
         surv_target, surv_mask, surv = main_cmx_or_sv(meta, scnd=True)
         if surv == 'cmx':
@@ -941,7 +944,8 @@ class DESISpectra(object):
             iqso = IQSO * qn['IS_QSO_QN_NEW_RR'] * qn['IS_QSO_QN_099']
             if np.sum(iqso) > 0:
                 zb['Z'][iqso] = qn['Z_NEW'][iqso]
-                zb['ZWARN'][iqso] = qn['ZWARN_NEW'][iqso]
+                if new_zwarn:
+                    zb['ZWARN'][iqso] = qn['ZWARN_NEW'][iqso]
             if np.sum(IWISE_VAR_QSO) > 0:
                 mgii = Table(fitsio.read(mgiifile, 'MGII', rows=fitindx, columns=MGIICOLS))
                 assert(np.all(mgii['TARGETID'] == meta['TARGETID']))
@@ -949,7 +953,8 @@ class DESISpectra(object):
                 if np.sum(iwise_var_qso) > 0:
                     zb['Z'][iwise_var_qso] = qn['Z_NEW'][iwise_var_qso]
                     #zb['Z_ERR'][iwise_var_qso] = qn['ZERR_NEW'][iwise_var_qso]
-                    zb['ZWARN'][iwise_var_qso] = qn['ZWARN_NEW'][iwise_var_qso]
+                    if new_zwarn:
+                        zb['ZWARN'][iwise_var_qso] = qn['ZWARN_NEW'][iwise_var_qso]
                 del mgii
             del qn
 
