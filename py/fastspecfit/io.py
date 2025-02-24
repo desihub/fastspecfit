@@ -1575,7 +1575,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
                       uncertainty_floor=0.01, minsnr_balmer_broad=2.5,
                       no_smooth_continuum=False, ignore_photometry=False,
                       broadlinefit=True, use_quasarnet=True, constrain_age=False,
-                      verbose=True):
+                      split_hdu=False, verbose=True):
     """Write out.
 
     """
@@ -1590,10 +1590,6 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         os.makedirs(outdir, exist_ok=True)
 
     nobj = len(meta)
-    if nobj == 1:
-        log.info(f'Writing 1 object to {outfile}')
-    else:
-        log.info(f'Writing {nobj:,d} objects to {outfile}')
 
     if outfile.endswith('.gz'):
         tmpfile = outfile[:-3]+'.tmp'
@@ -1633,37 +1629,73 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
     meta.meta['EXTNAME'] = 'METADATA'
     specphot.meta['EXTNAME'] = 'SPECPHOT'
 
-    hdus = fits.HDUList()
-    hdus.append(fits.PrimaryHDU(None, primhdr))
-    hdus.append(fits.convenience.table_to_hdu(meta))
-    hdus.append(fits.convenience.table_to_hdu(specphot))
+    hdu_primary = fits.PrimaryHDU(None, primhdr)
+    hdu_meta = fits.convenience.table_to_hdu(meta)
+    hdu_specphot = fits.convenience.table_to_hdu(specphot)
     if fastfit is not None:
         fastfit.meta['EXTNAME'] = 'FASTSPEC'
-        hdus.append(fits.convenience.table_to_hdu(fastfit))
+        hdu_fastfit = fits.convenience.table_to_hdu(fastfit)
 
     if modelspectra is not None:
-        hdu = fits.ImageHDU(name='MODELS')
+        hdu_data = fits.ImageHDU(name='MODELS')
         # [nobj, 3, nwave]
-        hdu.data = np.swapaxes(np.array([modelspectra['CONTINUUM'].data,
-                                         modelspectra['SMOOTHCONTINUUM'].data,
-                                         modelspectra['EMLINEMODEL'].data]), 0, 1)
+        hdu_data.data = np.swapaxes(np.array([modelspectra['CONTINUUM'].data,
+                                              modelspectra['SMOOTHCONTINUUM'].data,
+                                              modelspectra['EMLINEMODEL'].data]), 0, 1)
         for key in modelspectra.meta:
-            hdu.header[key] = (modelspectra.meta[key][0], modelspectra.meta[key][1]) # all the spectra are identical, right??
+            hdu_data.header[key] = (modelspectra.meta[key][0], modelspectra.meta[key][1]) # all the spectra are identical, right??
 
-        hdus.append(hdu)
 
-    hdus.writeto(tmpfile, overwrite=True, checksum=True)
+    def write(hdus, tmpfile, outfile):
+        if nobj == 1:
+            log.info(f'Writing 1 object to {outfile}')
+        else:
+            log.info(f'Writing {nobj:,d} objects to {outfile}')
+        hdus.writeto(tmpfile, overwrite=True, checksum=True)
+        # compress if needed (via another tempfile), otherwise just rename
+        if outfile.endswith('.gz'):
+            tmpfilegz = outfile[:-3]+'.tmp.gz'
+            with open(tmpfile, 'rb') as f_in:
+                with gzip.open(tmpfilegz, 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+            os.rename(tmpfilegz, outfile)
+            os.remove(tmpfile)
+        else:
+            os.rename(tmpfile, outfile)
 
-    # compress if needed (via another tempfile), otherwise just rename
-    if outfile.endswith('.gz'):
-        tmpfilegz = outfile[:-3]+'.tmp.gz'
-        with open(tmpfile, 'rb') as f_in:
-            with gzip.open(tmpfilegz, 'wb') as f_out:
-                shutil.copyfileobj(f_in, f_out)
-        os.rename(tmpfilegz, outfile)
-        os.remove(tmpfile)
+
+    # For large merged catalogs (e.g., main/dark), split the HDUs into
+    # individual files.
+    if split_hdu:
+        hdu_list = [hdu_meta, hdu_specphot]
+        suffix_list = ['metadata', 'specphot']
+        if fastfit is not None:
+            hdu_list.append(hdu_fastfit)
+            suffix_list.append('fastspec')
+        if modelspectra is not None:
+            hdu_list.append(hdu_data)
+            suffix_list.append('models')
+
+        for hdu, suffix in zip(hdu_list, suffix_list):
+            if outfile.endswith('.gz'):
+                outfile_split = outfile.replace('.fits.gz', f'-{suffix}.fits.gz')
+            else:
+                outfile_split = outfile.replace('.fits', f'-{suffix}.fits')
+            hdus = fits.HDUList()
+            hdus.append(hdu_primary)
+            hdus.append(hdu)
+            write(hdus, tmpfile, outfile_split)
     else:
-        os.rename(tmpfile, outfile)
+        hdus = fits.HDUList()
+        hdus.append(hdu_primary)
+        hdus.append(hdu_meta)
+        hdus.append(hdu_specphot)
+        if fastfit is not None:
+            hdus.append(hdu_fastfit)
+        if modelspectra is not None:
+            hdus.append(hdu_data)
+        write(hdus, tmpfile, outfile)
+
 
     if verbose:
         log.debug(f'Writing out took {time.time()-t0:.2f} seconds.')
