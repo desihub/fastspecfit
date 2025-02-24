@@ -7,6 +7,14 @@ Change Log
 
 *
 
+3.1.4 (2025-02-24)
+------------------
+
+* Handle no ``ZWARN_NEW`` in Iron and older specprods; split large
+  merge files into separate HDUs [`PR #211`_].
+
+.. _`PR #211`: https://github.com/desihub/fastspecfit/pull/211
+
 3.1.3 (2025-02-01)
 ------------------
 
