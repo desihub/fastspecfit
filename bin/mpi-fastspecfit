@@ -375,7 +375,8 @@ def main():
                               tile=args.tile, night=args.night, outdir_data=outdir_data,
                               fastfiles_to_merge=fastfiles_to_merge, outsuffix=args.merge_suffix,
                               mergedir=args.mergedir, overwrite=args.overwrite,
-                              fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp)
+                              fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp,
+                              split_hdu=True)
         return
 
 
