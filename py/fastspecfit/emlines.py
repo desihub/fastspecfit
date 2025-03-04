@@ -872,8 +872,8 @@ class EMFitTools(object):
             linename = name.upper()
             line_amp, line_vshift, line_sigma = self.line_table['params'][iline]
 
-            def get_fluxes(values, obsamps, emlineflux_s, specflux_nolines_s,
-                           return_extras=False):
+            def get_fluxes(values, parameters, obsamps, emlineflux_s,
+                           specflux_nolines_s, return_extras=False):
                 """ Get all the computed fluxes associated with the current line.  Return the
                 fluxes along with some intermediate quantities if return_extras is True.  (The
                 extras are needed only if we are not using this function in Monte Carlo iteration.)
@@ -969,8 +969,8 @@ class EMFitTools(object):
 
 
             (boxflux, flux, cont), extras = get_fluxes(
-                values, obsamps, emlineflux_s, specflux_nolines_s,
-                return_extras=True)
+                values, parameters, obsamps, emlineflux_s,
+                specflux_nolines_s, return_extras=True)
 
             (linez, linesigma, linesigma_ang, patchindx, clipflux) = extras
 
@@ -1008,9 +1008,9 @@ class EMFitTools(object):
                     raise ValueError(errmsg)
 
                 if results_monte is not None:
-                    res = [get_fluxes(vv, oo, lf, sfnl) for  vv, oo, lf, sfnl in
-                           zip(values_monte, obsamps_monte, emlineflux_monte_s,
-                               specflux_nolines_monte_s)]
+                    res = [get_fluxes(vv, pp, oo, lf, sfnl) for  vv, pp, oo, lf, sfnl in
+                           zip(values_monte, parameters_monte, obsamps_monte,
+                               emlineflux_monte_s, specflux_nolines_monte_s)]
                     boxflux_monte, flux_monte, cont_monte = tuple(zip(*res))
                     flux_monte = np.array(flux_monte)
                     cont_monte = np.array(cont_monte)
