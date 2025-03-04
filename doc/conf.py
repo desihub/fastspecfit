@@ -12,7 +12,6 @@
 
 import sys
 import os
-import os.path
 from importlib import import_module
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -22,17 +21,6 @@ sys.path.insert(0, os.path.abspath('../py'))
 # -- General configuration ------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
-
-try:
-    import sphinx.ext.napoleon
-    napoleon_extension = 'sphinx.ext.napoleon'
-except ImportError:
-    try:
-        import sphinxcontrib.napoleon
-        napoleon_extension = 'sphinxcontrib.napoleon'
-        needs_sphinx = '1.2'
-    except ImportError:
-        needs_sphinx = '1.3'
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
@@ -44,17 +32,18 @@ extensions = [
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
     'sphinx_toolbox.collapse',
-    'sphinx.ext.napoleon'
+    'sphinx.ext.napoleon',
+    'sphinx_rtd_theme'
 ]
 
 # Configuration for intersphinx, copied from astropy.
 intersphinx_mapping = {
-    'python': ('http://docs.python.org/3/', None),
+    'python': ('https://docs.python.org/3/', None),
     'numpy': ('https://numpy.org/doc/stable/', None),
-    'scipy': ('http://docs.scipy.org/doc/scipy/reference/', None),
-    'matplotlib': ('http://matplotlib.org/', None),
-    'astropy': ('http://docs.astropy.org/en/stable/', None),
-    'h5py': ('http://docs.h5py.org/en/latest/', None),
+    'scipy': ('https://docs.scipy.org/doc/scipy/', None),
+    'matplotlib': ('https://matplotlib.org/stable/', None),
+    'astropy': ('https://docs.astropy.org/en/stable/', None),
+    'h5py': ('https://docs.h5py.org/en/latest/', None),
     'desiutil': ('https://desiutil.readthedocs.io/en/latest/', None),
     }
 
@@ -72,7 +61,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'fastspecfit'
-copyright = u'2019-2024, John Moustakas & the DESI Collaboration'
+copyright = u'2019-2025, John Moustakas & the DESI Collaboration'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -147,11 +136,7 @@ for missing in ('numpy', 'scipy', 'fitsio', 'astropy', 'speclite', 'seaborn',
 # a list of builtin themes.
 #html_theme = 'default'
 #html_theme = 'haiku'
-try:
-    import sphinx_rtd_theme # pip install sphinx-rtd-theme
-    html_theme = 'sphinx_rtd_theme'
-except ImportError:
-    pass
+html_theme = 'sphinx_rtd_theme'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
