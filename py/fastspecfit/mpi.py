@@ -376,7 +376,8 @@ def read_to_merge_one(filename, fastphot):
 
 
 def _domerge(outfiles, outprefix=None, specprod=None, coadd_type=None,
-             mergefile=None, fastphot=False, split_hdu=False, mp=1):
+             mergefile=None, fastphot=False, split_hdu=False,
+             nside_main=None, mp=1):
     """Support routine to merge a set of input files.
 
     """
@@ -400,11 +401,6 @@ def _domerge(outfiles, outprefix=None, specprod=None, coadd_type=None,
     if not fastphot:
         fastfit = vstack(out[2])
     del out
-
-    ## sort?
-    #srt = np.argsort(meta['TARGETID'])
-    #out = out[srt]
-    #meta = meta[srt]
 
     if outprefix:
         log.info(f'Merging {len(meta):,d} objects from {len(outfiles)} {outprefix} ' + \
@@ -447,14 +443,16 @@ def _domerge(outfiles, outprefix=None, specprod=None, coadd_type=None,
                       emlinesfile=deps2['EMLINES_FILE'], inputz=deps['INPUTZ'],
                       ignore_photometry=deps['NOPHOTO'], broadlinefit=deps['BRDLFIT'],
                       constrain_age=deps['CONSAGE'], use_quasarnet=deps['USEQNET'],
-                      no_smooth_continuum=deps['NOSCORR'], split_hdu=split_hdu)
+                      no_smooth_continuum=deps['NOSCORR'], split_hdu=split_hdu,
+                      nside=nside_main)
 
 
 def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                       healpix=None, tile=None, night=None, sample=None, outsuffix=None,
                       fastphot=False, specprod_dir=None, outdir_data='.',
                       split_hdu=False, fastfiles_to_merge=None, merge_suffix=None,
-                      mergedir=None, supermerge=False, overwrite=False, mp=1):
+                      mergedir=None, supermerge=False, overwrite=False, nside_main=None,
+                      mp=1):
     """Merge all the individual catalogs into a single large catalog. Runs only on
     rank 0.
 
@@ -466,6 +464,11 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
     from astropy.io import fits
     from astropy.table import Table, vstack
     from fastspecfit.mpi import plan
+
+    if split_hdu and nside_main:
+        errmsg = 'Using split_hdu=True and nside_main!=None is not supported.'
+        log.critical(errmsg)
+        raise ValueError(errmsg)
 
     if fastphot:
         outprefix = 'fastphot'
@@ -493,7 +496,7 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
             mergefile = os.path.join(mergedir, f'{outprefix}-{outsuffix}.fits')
             _domerge(outfiles, mergefile=mergefile, outprefix=outprefix,
                      specprod=specprod, coadd_type=coadd_type, fastphot=fastphot,
-                     split_hdu=split_hdu, mp=mp)
+                     split_hdu=split_hdu, nside_main=nside_main, mp=mp)
         else:
             log.info(f'No catalogs found: {_outfiles}')
         return
@@ -501,10 +504,13 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
     if sample is not None:
         if merge_suffix is None:
             merge_suffix = 'sample'
-        mergefile = os.path.join(mergedir, f'{outprefix}-{specprod}-{merge_suffix}.fits')
-        if os.path.isfile(mergefile) and not overwrite:
-            log.info(f'Merged output file {mergefile} exists!')
-            return
+        if nside_main:
+            print('WRITE ME!')
+        else:
+            mergefile = os.path.join(mergedir, f'{outprefix}-{specprod}-{merge_suffix}.fits')
+            if os.path.isfile(mergefile) and not overwrite:
+                log.info(f'Merged output file {mergefile} exists!')
+                return
 
         _, _, outfiles, _ = plan(specprod=specprod, sample=sample, merge=True,
                                  fastphot=fastphot, specprod_dir=specprod_dir,
@@ -512,7 +518,7 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
         if len(outfiles) > 0:
             _domerge(outfiles, mergefile=mergefile, outprefix=outprefix,
                      specprod=specprod, coadd_type=coadd_type, fastphot=fastphot,
-                     split_hdu=split_hdu, mp=mp)
+                     split_hdu=split_hdu, nside_main=nside_main, mp=mp)
 
     elif coadd_type == 'healpix' and sample is None:
         if survey is None or program is None:
@@ -530,13 +536,19 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                                          merge=True, fastphot=fastphot, specprod_dir=specprod_dir,
                                          outdir_data=outdir_data, overwrite=overwrite)
                 if len(outfiles) > 0:
-                    # split main/dark and main/bright merge files by HDU
-                    if split_hdu and survey == 'main' and ((program == 'dark') or (program == 'bright')):
-                        do_split_hdu = True
-                    else:
-                        do_split_hdu = False
+                    # split main/dark and main/bright merge files
+                    # either by HDU or nside_main healpixels
+                    do_split_hdu = False
+                    use_nside_main = None
+                    if survey == 'main' and ((program == 'dark') or (program == 'bright')):
+                        if nside_main:
+                            use_nside_main = nside_main
+                        elif split_hdu:
+                            do_split_hdu = True
+                        
                     _domerge(outfiles, mergefile=mergefile, outprefix=outprefix, specprod=specprod,
-                             coadd_type=coadd_type, fastphot=fastphot, split_hdu=do_split_hdu, mp=mp)
+                             coadd_type=coadd_type, fastphot=fastphot, split_hdu=do_split_hdu, 
+                             nside_main=use_nside_main, mp=mp)
     else:
         mergefile = os.path.join(mergedir, f'{outprefix}-{specprod}-{coadd_type}.fits')
         if os.path.isfile(mergefile) and not overwrite:
@@ -548,4 +560,4 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
         if len(outfiles) > 0:
             _domerge(outfiles, mergefile=mergefile, outprefix=outprefix,
                      specprod=specprod, coadd_type=coadd_type, fastphot=fastphot,
-                     split_hdu=split_hdu, mp=mp)
+                     split_hdu=split_hdu, nside_main=nside_main, mp=mp)

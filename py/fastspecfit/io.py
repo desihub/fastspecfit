@@ -1573,7 +1573,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
                       template_file=None, emlinesfile=None, fastphot=False,
                       inputz=False, inputseeds=None, nmonte=10, seed=1,
                       uncertainty_floor=0.01, minsnr_balmer_broad=2.5,
-                      no_smooth_continuum=False, ignore_photometry=False,
+                      nside=None, no_smooth_continuum=False, ignore_photometry=False,
                       broadlinefit=True, use_quasarnet=True, constrain_age=False,
                       split_hdu=False, verbose=True):
     """Write out.
@@ -1589,14 +1589,12 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
     if not os.path.isdir(outdir):
         os.makedirs(outdir, exist_ok=True)
 
-    nobj = len(meta)
-
     if outfile.endswith('.gz'):
         tmpfile = outfile[:-3]+'.tmp'
     else:
         tmpfile = outfile+'.tmp'
 
-    # Also update mpi._domerge
+    # Remember to also update mpi._domerge!
     primhdr = []
     if specprod:
         primhdr.append(('EXTNAME', 'PRIMARY'))
@@ -1616,6 +1614,10 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         primhdr.append(('UFLOOR', (uncertainty_floor, 'fractional uncertainty floor')))
         primhdr.append(('SNRBBALM', (minsnr_balmer_broad, 'minimum broad Balmer S/N')))
 
+    if nside:
+        primhdr.append(('NSIDE', (nside, 'HEALPix nside number')))
+        primhdr.append(('NEST', (True, 'HEALPix nested (not ring) ordering')))
+
     primhdr = fitsheader(primhdr)
     add_dependencies(primhdr, module_names=possible_dependencies+['fastspecfit'],
                      envvar_names=('DESI_SPECTRO_REDUX', 'DUST_DIR', 'FTEMPLATES_DIR', 'FPHOTO_DIR'))
@@ -1628,25 +1630,30 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
 
     meta.meta['EXTNAME'] = 'METADATA'
     specphot.meta['EXTNAME'] = 'SPECPHOT'
-
-    hdu_primary = fits.PrimaryHDU(None, primhdr)
-    hdu_meta = fits.convenience.table_to_hdu(meta)
-    hdu_specphot = fits.convenience.table_to_hdu(specphot)
     if fastfit is not None:
         fastfit.meta['EXTNAME'] = 'FASTSPEC'
-        hdu_fastfit = fits.convenience.table_to_hdu(fastfit)
 
-    if modelspectra is not None:
-        hdu_data = fits.ImageHDU(name='MODELS')
-        # [nobj, 3, nwave]
-        hdu_data.data = np.swapaxes(np.array([modelspectra['CONTINUUM'].data,
-                                              modelspectra['SMOOTHCONTINUUM'].data,
-                                              modelspectra['EMLINEMODEL'].data]), 0, 1)
-        for key in modelspectra.meta:
-            hdu_data.header[key] = (modelspectra.meta[key][0], modelspectra.meta[key][1]) # all the spectra are identical, right??
+    hdu_primary = fits.PrimaryHDU(None, primhdr)
+
+    # special case when nside is used so we don't duplicate the data unnecessarily
+    if nside is None:
+        hdu_meta = fits.convenience.table_to_hdu(meta)
+        hdu_specphot = fits.convenience.table_to_hdu(specphot)
+        if fastfit is not None:
+            hdu_fastfit = fits.convenience.table_to_hdu(fastfit)
+    
+        if modelspectra is not None:
+            hdu_data = fits.ImageHDU(name='MODELS')
+            # [nobj, 3, nwave]
+            hdu_data.data = np.swapaxes(np.array([modelspectra['CONTINUUM'].data,
+                                                  modelspectra['SMOOTHCONTINUUM'].data,
+                                                  modelspectra['EMLINEMODEL'].data]), 0, 1)
+            for key in modelspectra.meta:
+                hdu_data.header[key] = (modelspectra.meta[key][0], modelspectra.meta[key][1]) # all the spectra are identical, right??
 
 
     def write(hdus, tmpfile, outfile):
+        nobj = hdus[1].data.size # metadata table
         if nobj == 1:
             log.info(f'Writing 1 object to {outfile}')
         else:
@@ -1664,9 +1671,30 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
             os.rename(tmpfile, outfile)
 
 
-    # For large merged catalogs (e.g., main/dark), split the HDUs into
-    # individual files.
-    if split_hdu:
+    # For large merged catalogs (e.g., main/dark), split the data into
+    # nside healpixels or the HDUs into individual files.
+    if nside:
+        assert(modelspectra is None) # not supported atm
+        from fastspecfit.util import radec2pix
+        pixels = radec2pix(nside, meta['RA'].value, meta['DEC'].value)
+        for upixel in sorted(set(pixels)):
+            I = upixel == pixels
+            hdu_meta = fits.convenience.table_to_hdu(meta[I])
+            hdu_specphot = fits.convenience.table_to_hdu(specphot[I])
+            hdus = fits.HDUList()
+            hdus.append(hdu_primary)
+            hdus.append(hdu_meta)
+            hdus.append(hdu_specphot)
+            if fastfit is not None:
+                hdu_fastfit = fits.convenience.table_to_hdu(fastfit[I])
+                hdus.append(hdu_fastfit)
+            if outfile.endswith('.gz'):
+                outfile_pixel = outfile.replace('.fits.gz', f'-nside{nside}-hp{upixel:02}.fits.gz')
+            else:
+                outfile_pixel = outfile.replace('.fits', f'-nside{nside}-hp{upixel:02}.fits')
+            write(hdus, tmpfile, outfile_pixel)
+
+    elif split_hdu:
         hdu_list = [hdu_meta, hdu_specphot]
         suffix_list = ['metadata', 'specphot']
         if fastfit is not None:
@@ -1685,6 +1713,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
             hdus.append(hdu_primary)
             hdus.append(hdu)
             write(hdus, tmpfile, outfile_split)
+
     else:
         hdus = fits.HDUList()
         hdus.append(hdu_primary)
