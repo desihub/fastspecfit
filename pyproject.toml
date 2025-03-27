@@ -1,6 +1,6 @@
 [project]
 name = "fastspecfit"
-version = "3.1.2"
+version = "3.1.5"
 authors = [
     {name="John Moustakas", email="jmoustakas@siena.edu"},
 ]
@@ -18,7 +18,7 @@ classifiers = [
     "Topic :: System :: Software Distribution",
 ]
 dependencies = [
-    "numpy<2", # desiutil pinned at <2
+    "numpy",
     "astropy",
     "scipy",
     "healpy",
