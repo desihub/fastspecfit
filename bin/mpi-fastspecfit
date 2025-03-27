@@ -376,7 +376,7 @@ def main():
                               fastfiles_to_merge=fastfiles_to_merge, outsuffix=args.merge_suffix,
                               mergedir=args.mergedir, overwrite=args.overwrite,
                               fastphot=args.fastphot, supermerge=args.mergeall, mp=args.mp,
-                              split_hdu=True)
+                              nside_main=1)
         return
 
 

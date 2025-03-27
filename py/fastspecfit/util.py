@@ -22,6 +22,7 @@ TINY = np.nextafter(0, 1, dtype=np.float32)
 SQTINY = np.sqrt(TINY)
 F32MAX = np.finfo(np.float32).max
 
+
 class BoxedScalar(object):
     """
     A BoxedScalar is an item of an Numpy
@@ -575,3 +576,34 @@ def centers2edges(centers):
     edges[-1] = centers[-1] + (centers[-1] - edges[-2])
 
     return edges
+
+
+def radec2pix(nside, ra, dec):
+    '''Convert `ra`, `dec` to nested pixel number.
+
+    Args:
+        nside (int): HEALPix `nside`, ``2**k`` where 0 < k < 30.
+        ra (float or array): Right Accention in degrees.
+        dec (float or array): Declination in degrees.
+
+    Returns:
+        Array of integer pixel numbers using nested numbering scheme.
+
+    Notes:
+        This is syntactic sugar around::
+
+            hp.ang2pix(nside, ra, dec, lonlat=True, nest=True)
+
+        but also works with older versions of healpy that didn't have
+        `lonlat` yet.
+
+    '''
+    import healpy as hp
+    theta, phi = np.radians(90-dec), np.radians(ra)
+    if np.isnan(np.sum(theta)) :
+        raise ValueError("some NaN theta values")
+
+    if np.sum((theta < 0)|(theta > np.pi))>0 :
+        raise ValueError("some theta values are outside [0,pi]: {}".format(theta[(theta < 0)|(theta > np.pi)]))
+
+    return hp.ang2pix(nside, theta, phi, nest=True)

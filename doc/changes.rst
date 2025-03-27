@@ -7,6 +7,15 @@ Change Log
 
 *
 
+3.1.5 (2025-03-27)
+------------------
+
+* Significant bug fix in how the flux and EW inverse variance
+  estimates [`PR #213`_]. Also adds option of merging ``main/dark``
+  and ``main/bright`` catalogs by healpix.
+
+.. _`PR #213`: https://github.com/desihub/fastspecfit/pull/213
+
 3.1.4 (2025-02-24)
 ------------------
 
