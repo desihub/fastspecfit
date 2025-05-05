@@ -1455,10 +1455,10 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
     _, emlinegood = ivar2var(emlineivar, clip=1e-3)
     emlinebad = ~emlinegood
 
-    # This is a (dangerous???) hack.
-    if np.any(emlinebad):
-        emlineivar[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineivar[emlinegood])
-        emlineflux[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineflux[emlinegood]) # ???
+    ## This is a (dangerous???) hack.
+    #if np.any(emlinebad):
+    #    emlineivar[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineivar[emlinegood])
+    #    emlineflux[emlinebad] = np.interp(emlinewave[emlinebad], emlinewave[emlinegood], emlineflux[emlinegood]) # ???
 
     weights = np.sqrt(emlineivar)
 
@@ -1497,6 +1497,11 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
         initial_linevshift_broad=data['linevshift_broad'],
         initial_linevshift_narrow=data['linevshift_narrow'],
         initial_linevshift_balmer_broad=data['linevshift_balmer_broad'])
+    for line in data['coadd_linepix'].keys():
+        onelinepix = data['coadd_linepix'][line]
+        if np.any(oemlineivar[onelinepix] == 0):
+            print(line, emlineflux[onelinepix], oemlineivar[onelinepix])
+    import pdb ; pdb.set_trace()
 
     # fit spectrum without broad Balmer lines
     t0 = time.time()
