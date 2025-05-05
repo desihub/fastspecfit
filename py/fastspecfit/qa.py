@@ -344,13 +344,13 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
         leg_broad, leg_narrow, leg_uv = {}, {}, {}
 
         # UV
-        if fastspec['LYALPHA_AMP']*np.sqrt(fastspec['LYALPHA_AMP_IVAR']) > snrcut:
+        if 'LYALPHA_AMP' in fastspec.colnames and fastspec['LYALPHA_AMP']*np.sqrt(fastspec['LYALPHA_AMP_IVAR']) > snrcut:
             leg_uv['ewlya'] = r'EW(Ly$\alpha$)'+r'$={:.1f}$'.format(fastspec['LYALPHA_EW'])+r' $\AA$'
-        if fastspec['CIV_1549_AMP']*np.sqrt(fastspec['CIV_1549_AMP_IVAR']) > snrcut:
+        if 'CIV_1549_AMP' in fastspec.colnames and fastspec['CIV_1549_AMP']*np.sqrt(fastspec['CIV_1549_AMP_IVAR']) > snrcut:
             leg_uv['ewciv'] = r'EW(CIV)'+r'$={:.1f}$'.format(fastspec['CIV_1549_EW'])+r' $\AA$'
-        if fastspec['CIII_1908_AMP']*np.sqrt(fastspec['CIII_1908_AMP_IVAR']) > snrcut:
+        if 'CIII_1908_AMP' in fastspec.colnames and fastspec['CIII_1908_AMP']*np.sqrt(fastspec['CIII_1908_AMP_IVAR']) > snrcut:
             leg_uv['ewciii'] = r'EW(CIII])'+r'$={:.1f}$'.format(fastspec['CIII_1908_EW'])+r' $\AA$'
-        if (fastspec['MGII_2796_AMP']*np.sqrt(fastspec['MGII_2796_AMP_IVAR']) > snrcut or
+        if 'MGII_2796_AMP' in fastspec.colnames and (fastspec['MGII_2796_AMP']*np.sqrt(fastspec['MGII_2796_AMP_IVAR']) > snrcut or
             fastspec['MGII_2803_AMP']*np.sqrt(fastspec['MGII_2803_AMP_IVAR']) > snrcut):
             leg_uv['ewmgii'] = r'EW(MgII)'+r'$={:.1f}$'.format(fastspec['MGII_2796_EW']+fastspec['MGII_2803_EW'])+r' $\AA$'
             leg_uv['mgii_doublet'] = r'MgII $\lambda2796/\lambda2803={:.3f}$'.format(fastspec['MGII_DOUBLET_RATIO'])
@@ -360,11 +360,11 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
         leg_broad['deltandof'] = r'$\Delta\nu_{\mathrm{nobroad}}=$'+r'${:.0f}$'.format(fastspec['DELTA_LINENDOF'])
 
         # choose one broad Balmer line
-        if fastspec['HALPHA_BROAD_AMP']*np.sqrt(fastspec['HALPHA_BROAD_AMP_IVAR']) > snrcut:
+        if 'HALPHA_BROAD_AMP' in fastspec.colnames and fastspec['HALPHA_BROAD_AMP']*np.sqrt(fastspec['HALPHA_BROAD_AMP_IVAR']) > snrcut:
             leg_broad['ewbalmer_broad'] = r'EW(H$\alpha)_{\mathrm{broad}}=$'+r'${:.1f}$'.format(fastspec['HALPHA_BROAD_EW'])+r' $\AA$'
-        elif fastspec['HBETA_BROAD_AMP']*np.sqrt(fastspec['HBETA_BROAD_AMP_IVAR']) > snrcut:
+        elif 'HBETA_BROAD_AMP' in fastspec.colnames and fastspec['HBETA_BROAD_AMP']*np.sqrt(fastspec['HBETA_BROAD_AMP_IVAR']) > snrcut:
             leg_broad['ewbalmer_broad'] = r'EW(H$\beta)_{\mathrm{broad}}=$'+r'${:.1f}$'.format(fastspec['HBETA_BROAD_EW'])+r' $\AA$'
-        elif fastspec['HGAMMA_BROAD_AMP']*np.sqrt(fastspec['HGAMMA_BROAD_AMP_IVAR']) > snrcut:
+        elif 'HGAMMA_BROAD_AMP' in fastspec.colnames and fastspec['HGAMMA_BROAD_AMP']*np.sqrt(fastspec['HGAMMA_BROAD_AMP_IVAR']) > snrcut:
             leg_broad['ewbalmer_broad'] = r'EW(H$\gamma)_{\mathrm{broad}}=$'+r'${:.1f}$'.format(fastspec['HGAMMA_BROAD_EW'])+r' $\AA$'
 
         if (fastspec['OII_3726_AMP']*np.sqrt(fastspec['OII_3726_AMP_IVAR']) > snrcut or
