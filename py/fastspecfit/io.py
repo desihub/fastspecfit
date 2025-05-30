@@ -1553,7 +1553,7 @@ def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_col
         if 'COADDTYP' in hdr:
             coadd_type = hdr['COADDTYP']
         else:
-            coadd_type = None
+            coadd_type = 'healpix' # hack??
 
         if read_models:
             return meta, specphot, fastfit, coadd_type, fastphot, models
