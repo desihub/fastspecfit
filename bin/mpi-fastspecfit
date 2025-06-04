@@ -83,7 +83,7 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False,
                     sample=None, input_redshifts=False, outdir_data='.', templates=None,
                     templateversion=None, fphotodir=None, fphotofile=None, emlinesfile=None,
-                    mpi_per_file=False):
+                    mp_per_file=False):
     """Main wrapper to run fastspec, fastphot, or fastqa.
 
     """
@@ -190,11 +190,11 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         return
     
     # loop on each file
-    if mpi_per_file:
+    if mp_per_file:
         from joblib import Parallel, delayed
         n_jobs = args.mp
         args.mp = 1
-        Parallel(n_jobs=2)(delayed(run_one_file)(redrockfile, outfile, ntarget) for redrockfile, outfile, ntarget in zip(redrockfiles, outfiles, ntargets))
+        Parallel(n_jobs=n_jobs)(delayed(run_one_file)(redrockfile, outfile, ntarget) for redrockfile, outfile, ntarget in zip(redrockfiles, outfiles, ntargets))
     else:
         for redrockfile, outfile, ntarget in zip(redrockfiles, outfiles, ntargets):
             run_one_file(redrockfile, outfile, ntarget)
@@ -241,7 +241,7 @@ def main():
     parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
 
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
-    parser.add_argument('--mpi-per-file', default=False, action='store_true', help='Run multiprocessing on one core per spectra file with multiple simultaneous files.')
+    parser.add_argument('--mp-per-file', default=False, action='store_true', help='Run multiprocessing on one core per spectra file with multiple simultaneous files.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.') 
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
@@ -415,7 +415,7 @@ def main():
                         makeqa=args.makeqa, outdir_data=outdir_data, sample=sample,
                         input_redshifts=args.input_redshifts, templates=args.templates,
                         templateversion=args.templateversion, fphotodir=args.fphotodir,
-                        fphotofile=args.fphotofile, emlinesfile=args.emlinesfile, mpi_per_file=args.mpi_per_file)
+                        fphotofile=args.fphotofile, emlinesfile=args.emlinesfile, mp_per_file=args.mp_per_file)
 
         if args.profile:
             profiler.disable()
