@@ -40,6 +40,8 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
             cmdargs += f' --fphotodir={args.fphotodir}'
         if args.fphotofile:
             cmdargs += f' --fphotofile={args.fphotofile}'
+        if args.emlinesfile:
+            cmdargs += f' --emlinesfile={args.emlinesfile}'
         if args.nmonte:
             cmdargs += f' --nmonte={args.nmonte}'
         if args.seed:
@@ -80,7 +82,7 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
 
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False,
                     sample=None, input_redshifts=False, outdir_data='.', templates=None,
-                    templateversion=None, fphotodir=None, fphotofile=None):
+                    templateversion=None, fphotodir=None, fphotofile=None, emlinesfile=None):
     """Main wrapper to run fastspec, fastphot, or fastqa.
 
     """
@@ -237,6 +239,7 @@ def main():
     parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
     parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
+    parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
 
     parser.add_argument('--merge', action='store_true', help='Merge all individual catalogs (for a given survey and program) into one large file.')
     parser.add_argument('--mergedir', type=str, help='Output directory for merged catalogs.')
@@ -399,7 +402,7 @@ def main():
                         makeqa=args.makeqa, outdir_data=outdir_data, sample=sample,
                         input_redshifts=args.input_redshifts, templates=args.templates,
                         templateversion=args.templateversion, fphotodir=args.fphotodir,
-                        fphotofile=args.fphotofile)
+                        fphotofile=args.fphotofile, emlinesfile=args.emlinesfile)
 
         if args.profile:
             profiler.disable()
