@@ -5,7 +5,9 @@ Change Log
 3.2.0 (not released yet)
 ------------------------
 
-*
+* Add option to pass the reference to a custom linelist in ``mpi-fastspecfit`` [`PR #225`_].
+
+.. _`PR #225`: https://github.com/desihub/fastspecfit/pull/225
 
 3.1.5 (2025-03-27)
 ------------------
