@@ -342,7 +342,7 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
         sfh = np.zeros_like(fspstime) + 1. / dt #/ 2 # [Msun/yr]
 
         # force the SFR to go to zero at the edge
-        fspstime = np.hstack((fspstime, fspstime[-1]+1e-8))
+        fspstime = np.hstack((fspstime, fspstime[-1]*1.01))
         sfh = np.hstack((sfh, 0.))
 
         sp.set_tabular_sfh(fspstime, sfh)
