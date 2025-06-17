@@ -21,8 +21,8 @@ class ContinuumTools(object):
 
     """
     def __init__(self, data, templates, phot, igm, tauv_guess=0.1,
-                 vdisp_guess=250., tauv_bounds=(0., 2.),
-                 vdisp_bounds=(75., 500.), vdisp_nbin=5,
+                 vdisp_guess=100., tauv_bounds=(0., 2.),
+                 vdisp_bounds=(30., 500.), vdisp_nbin=5,
                  fluxnorm=1e17, massnorm=1e10, fastphot=False,
                  constrain_age=False):
 

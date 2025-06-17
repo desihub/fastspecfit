@@ -31,7 +31,7 @@ class Templates(object):
     MAX_PRE_VDISP = 500.
 
     def __init__(self, template_file=None, template_version=None, imf=None,
-                 mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=250.,
+                 mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=100.,
                  fastphot=False, read_linefluxes=False):
         """"
         Read the templates into a dictionary.
