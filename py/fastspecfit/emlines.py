@@ -1452,7 +1452,7 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
     emlineflux = specflux - continuummodel - smooth_continuum
 
     emlineivar = np.copy(oemlineivar)
-    _, emlinegood = ivar2var(emlineivar, clip=1e-3)
+    _, emlinegood = ivar2var(emlineivar, clip=1e-8)
     emlinebad = ~emlinegood
 
     # This is a (dangerous???) hack.

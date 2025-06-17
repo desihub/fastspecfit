@@ -41,7 +41,7 @@ def test_var_tofrom_ivar():
     assert(var2ivar(0., sigma=True) == 0.)
 
     vals = np.array([0., 10., 0., 3., 100.])
-    vals2 = np.array([0., 1e-4, 0.1])
+    vals2 = np.array([0., 1e-9, 0.1])
 
     var, mask = ivar2var(vals)
     assert(mask[0] == False & mask[2] == False)
