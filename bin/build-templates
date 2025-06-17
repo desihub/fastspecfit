@@ -395,7 +395,7 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
     return meta, newwave, fluxes, linewaves, linefluxes
 
 
-def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10.,
+def main(imf='chabrier', qpah=1.0, umin=1., gamma=0.01, agntau=10.,
          test=False, version='1.0.0', templatedir=None):
     """Build all the templates.
 
@@ -407,6 +407,8 @@ def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10.,
     # dust emission template(s)
     dustwave, dustflux = build_dustem_templates(qpah=qpah, umin=umin, gamma=gamma)#,
                                               #png=os.path.join(templatedir, 'original', 'qa-dustem.png'))
+
+    print(f'<Dust model>: q_PAH = {qpah}, U_min = {umin}, gamma = {gamma}')
 
     # Choose lookback time bins.
 
@@ -424,10 +426,12 @@ def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10.,
 
     nages = len(logages)
 
-    logmets = np.array([0.0]) # [-1.0, -0.3, 0.0, 0.3]
+    #logmets = np.array([0.0]) # [-1.0, -0.3, 0.0, 0.3]
+    logmets = np.array([-1.0, -0.3, 0.0])
     #logmets = np.array([-1.0, 0.0, 0.3]) # [-1.0, -0.3, 0.0, 0.3]
     nmets = len(logmets)
     zsolar = 0.019
+    print('<Metallicities>: '+' '.join(['{:.4f} %'.format(10.**logmet *100) for logmet in logmets]) + 'Z_sun')
 
     # for testing
     if test:
