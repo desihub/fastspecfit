@@ -247,7 +247,7 @@ def var2ivar(var, sigma=False):
     return ivar
 
 
-def ivar2var(ivar, clip=1e-3, sigma=False, allmasked_ok=False):
+def ivar2var(ivar, clip=1e-8, sigma=False, allmasked_ok=False):
     """Safely convert an inverse variance to a variance. Note that we clip at 1e-3
     by default, not zero.
 
