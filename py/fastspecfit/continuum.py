@@ -1028,9 +1028,9 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
         sedmodel_monte = None
         sedmodel_nolines_monte = None
 
+        tauv = 0.
         tauv_ivar = 0.
         dn4000_model_ivar = 0.
-
     else:
         objflamistd = np.sqrt(objflamivar)
 
