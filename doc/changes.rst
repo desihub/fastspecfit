@@ -2,8 +2,13 @@
 Change Log
 ==========
 
-3.2.0 (not released yet)
+3.2.1 (not released yet)
 ------------------------
+
+* 
+
+3.2.0 (2025-06-19)
+------------------
 
 * Add option to pass the reference to a custom linelist in ``mpi-fastspecfit`` [`PR #225`_].
 * Bug due to clip level in ``ivar2var`` function caused poor line fits

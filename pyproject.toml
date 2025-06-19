@@ -1,6 +1,6 @@
 [project]
 name = "fastspecfit"
-version = "3.1.5"
+version = "3.2.0"
 authors = [
     {name="John Moustakas", email="jmoustakas@siena.edu"},
 ]
