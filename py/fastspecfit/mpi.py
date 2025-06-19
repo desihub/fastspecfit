@@ -419,12 +419,11 @@ def _domerge(outfiles, outprefix=None, specprod=None, coadd_type=None,
     deps['USEQNET'] = True
     deps['NMONTE'] = 50
     deps['SEED'] = 1
-    if not fastphot:
-        deps['NOSCORR'] = False
-        deps['NOPHOTO'] = False
-        deps['BRDLFIT'] = True
-        deps['UFLOOR'] = 0.01
-        deps['SNRBBALM'] = 2.5
+    deps['NOSCORR'] = False
+    deps['NOPHOTO'] = False
+    deps['BRDLFIT'] = True
+    deps['UFLOOR'] = 0.01
+    deps['SNRBBALM'] = 2.5
     for key in deps.keys():
         if key in hdr:
             deps[key] = hdr[key]
