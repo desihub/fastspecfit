@@ -1595,7 +1595,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         tmpfile = outfile+'.tmp'
 
     # fastfit is an empty list when running fastphot mode
-    if len(fastfit) == 0:
+    if fastfit is not None and len(fastfit) == 0:
         fastfit = None
 
     # Remember to also update mpi._domerge!
