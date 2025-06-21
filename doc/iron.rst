@@ -9,9 +9,9 @@ Iron VAC (DR1)
 Overview
 --------
 
-This page describes the ``Iron`` value-added catalog, which will be publicly
-released as part of the `DESI Data Release 1 (DESI/DR1)`_ sometime in 2024
-(exact date TBD).
+This page describes the ``Iron`` value-added catalog, which was
+publicly released as part of the `DESI Data Release 1 (DESI/DR1)`_
+sometime in 2025 March.
 
 Please refer to the :ref:`acknowledgments` section for the conditions for using
 this VAC.
@@ -27,8 +27,8 @@ Data Content & Access
 Data from the ``Iron`` VAC can be accessed at any of the following links:
 
 ============================ ==================================================================
-Data url                     https://data.desi.lbl.gov/public/dr1/vac/dr1/fastspecfit/iron/v2.1
-`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/dr1/vac/dr1/fastspecfit/iron/v2.1``
+Data url                     https://data.desi.lbl.gov/public/dr1/vac/dr1/fastspecfit/iron/v3.0
+`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/dr1/vac/dr1/fastspecfit/iron/v3.0``
 ============================ ==================================================================
 
 For more information regarding the content and organization of the VAC, please
@@ -42,65 +42,75 @@ click on the following links:
 Summary Statistics
 ------------------
   
-The next two tables summarize the size and number of targets in each merged
-catalog. The first table gives the sample in each survey and program, while the
-second table combines all the individual programs into separate ``main``,
-``sv``, and ``special`` catalogs.
+The following four tables summarize the size and number of objects in
+each merged catalog. The first table lists the objects in the
+``main/backup`` program and in the ``cmx``, ``sv1``, ``sv2``, ``sv3``,
+and ``special`` surveys; and the second and third tables list the
+number of objects in the ``main/bright`` and ``main/dark`` program,
+respectively.
+
+.. note::
+
+   The ``main/bright`` and ``main/dark`` samples have been divided
+   into ``nside=`` healpixels in order to keep each individual catalog
+   to a reasonable size.
 
 .. rst-class:: columns
 
 ================================= ========= =================
 File Name                         File Size Number of Targets
 ================================= ========= =================
-fastspec-iron-cmx-other.fits      11.2 MB   2,762
-fastspec-iron-main-backup.fits    59.1 MB   15,163
-fastspec-iron-main-bright.fits    24.6 GB   6,445,926
-fastspec-iron-main-dark.fits      38.5 GB   10,075,557
-fastspec-iron-special-backup.fits 2.31 MB   552
-fastspec-iron-special-bright.fits 169 MB    43,261
-fastspec-iron-special-dark.fits   58.3 MB   14,954
-fastspec-iron-special-other.fits  166 MB    42,064
-fastspec-iron-sv1-backup.fits     13.6 MB   3,331
-fastspec-iron-sv1-bright.fits     506 MB    126,650
-fastspec-iron-sv1-dark.fits       931 MB    233,201
-fastspec-iron-sv1-other.fits      136 MB    34,112
-fastspec-iron-sv2-backup.fits     593 KB    105
-fastspec-iron-sv2-bright.fits     186 MB    46,486
-fastspec-iron-sv2-dark.fits       211 MB    52,690
-fastspec-iron-sv3-backup.fits     6.25 MB   1,524
-fastspec-iron-sv3-bright.fits     1.04 GB   265,292
-fastspec-iron-sv3-dark.fits       2.32 GB   592,190
-fastspec-iron.fits                70.9 GB   17,995,820
+fastspec-iron-cmx-other.fits      12 MB     2,762
+fastspec-iron-sv1-backup.fits     14.5 MB   3,331
+fastspec-iron-sv1-bright.fits     542 MB    126,650
+fastspec-iron-sv1-dark.fits       997 MB    233,202
+fastspec-iron-sv1-other.fits      146 MB    34,112
+fastspec-iron-sv2-backup.fits     647 KB    105
+fastspec-iron-sv2-bright.fits     199 MB    46,486
+fastspec-iron-sv2-dark.fits       225 MB    52,690
+fastspec-iron-sv3-backup.fits     6.7 MB    1,524
+fastspec-iron-sv3-bright.fits     1.11 GB   265,293
+fastspec-iron-sv3-dark.fits       2.48 GB   592,191
+fastspec-iron-special-backup.fits 2.49 MB   552
+fastspec-iron-special-bright.fits 181 MB    43,261
+fastspec-iron-special-dark.fits   62.6 MB   14,954
+fastspec-iron-special-other.fits  178 MB    42,064
+fastspec-iron-main-backup.fits    63.4 MB   15,163
 ================================= ========= =================
 
-The following table summarizes the number of QSO targets whose redshift has been
-updated using the procedure documented :ref:`here<qso redshifts>`.
+========================================== ========= =================
+File Name                                  File Size Number of Targets
+========================================== ========= =================
+fastspec-iron-main-bright-nside1-hp00.fits 427 MB    101,838
+fastspec-iron-main-bright-nside1-hp01.fits 4.16 GB   1,017,041
+fastspec-iron-main-bright-nside1-hp02.fits 5.56 GB   1,358,627
+fastspec-iron-main-bright-nside1-hp03.fits 1.65 GB   403,581
+fastspec-iron-main-bright-nside1-hp04.fits 4.02 GB   981,600
+fastspec-iron-main-bright-nside1-hp05.fits 1.23 GB   301,057
+fastspec-iron-main-bright-nside1-hp06.fits 5.51 GB   1,347,464
+fastspec-iron-main-bright-nside1-hp07.fits 2.76 GB   673,711
+fastspec-iron-main-bright-nside1-hp08.fits 343 MB    81,734
+fastspec-iron-main-bright-nside1-hp09.fits 280 MB    66,856
+fastspec-iron-main-bright-nside1-hp10.fits 191 MB    45,570
+fastspec-iron-main-bright-nside1-hp11.fits 280 MB    66,848
+========================================== ========= =================
 
-.. rst-class:: columns
-
-================================= ================= ===============================
-Catalog                           Number of Objects Number with Corrected Redshifts
-================================= ================= ===============================
-fastspec-iron-cmx-other.fits      2,762             34
-fastspec-iron-main-backup.fits    15,163            0
-fastspec-iron-main-bright.fits    6,445,926         348
-fastspec-iron-main-dark.fits      10,075,557        59,907
-fastspec-iron-special-backup.fits 552               0
-fastspec-iron-special-bright.fits 43,261            2
-fastspec-iron-special-dark.fits   14,954            137
-fastspec-iron-special-other.fits  42,064            0
-fastspec-iron-sv1-backup.fits     3,331             40
-fastspec-iron-sv1-bright.fits     126,650           27
-fastspec-iron-sv1-dark.fits       233,201           2,199
-fastspec-iron-sv1-other.fits      34,112            67
-fastspec-iron-sv2-backup.fits     105               0
-fastspec-iron-sv2-bright.fits     46,486            1
-fastspec-iron-sv2-dark.fits       52,690            485
-fastspec-iron-sv3-backup.fits     1,524             0
-fastspec-iron-sv3-bright.fits     265,292           28
-fastspec-iron-sv3-dark.fits       592,190           1,668
-fastspec-iron.fits                17,995,820        64,943
-================================= ================= ===============================
+======================================== ========= =================
+File Name                                File Size Number of Targets
+======================================== ========= =================
+fastspec-iron-main-dark-nside1-hp00.fits 1.44 GB   352,447
+fastspec-iron-main-dark-nside1-hp01.fits 4.58 GB   1,118,746
+fastspec-iron-main-dark-nside1-hp02.fits 6.96 GB   1,699,122
+fastspec-iron-main-dark-nside1-hp03.fits 901 MB    214,658
+fastspec-iron-main-dark-nside1-hp04.fits 7.13 GB   1,739,317
+fastspec-iron-main-dark-nside1-hp05.fits 2.37 GB   579,026
+fastspec-iron-main-dark-nside1-hp06.fits 11.7 GB   2,851,879
+fastspec-iron-main-dark-nside1-hp07.fits 4.23 GB   1,032,151
+fastspec-iron-main-dark-nside1-hp08.fits 910 MB    216,757
+fastspec-iron-main-dark-nside1-hp09.fits 657 MB    156,454
+fastspec-iron-main-dark-nside1-hp10.fits 313 MB    74,463
+fastspec-iron-main-dark-nside1-hp11.fits 171 MB    40,609
+======================================== ========= =================
 
 Code & Template Versions
 ------------------------
@@ -114,42 +124,41 @@ following bit of code::
 
   import fitsio
   from desiutil.depend import Dependencies
-  codever = Dependencies(fitsio.read_header('/path/to/fastspecfit/file.fits, ext=0))
+  codever = Dependencies(fitsio.read_header('/path/to/fastspecfit/file.fits', ext=0))
   for codename, version in codever.items():
       print(codename, version)
 
 .. rst-class:: columns
 
-================ ==========
+================ ============
 Software Package Version(s)
-================ ==========
-python           3.10.8
+================ ============
+python           3.10.14
 numpy            1.22.4
 scipy            1.8.1
-astropy          5.2.1
-yaml             6.0
-matplotlib       3.6.2
-fitsio           1.1.8
-desiutil         3.4.2
-desispec         0.60.2
-desitarget       2.7.0
-desimodel        0.19.0
-speclite         0.17
-fastspecfit      2.5.0, 2.5.1
-================ ==========
+astropy          6.0.1
+yaml             6.0.1
+matplotlib       3.8.4
+fitsio           1.2.1
+desiutil         3.4.3
+desispec         0.68.1
+desitarget       2.8.0
+speclite         0.20
+fastspecfit      3.1.5, 3.2.0
+================ ============
 
 .. rst-class:: columns
 
 ==================== =====
 Environment Variable Value
 ==================== =====
-DESI_ROOT            /dvs_ro/cfs/cdirs/desi
-DUST_DIR             /dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
-FPHOTO_DIR           /dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9
-FTEMPLATES_DIR       /dvs_ro/cfs/cdirs/desi/science/gqp/templates/fastspecfit
-FTEMPLATES_FILE      ftemplates-chabrier-1.3.0.fits (see `README.txt`_)
-FPHOTO_FILE          /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.5.1/lib/python3.10/site-packages/fastspecfit/data/legacysurvey-dr9.yaml
-EMLINES_FILE         /global/common/software/desi/perlmutter/desiconda/20230111-2.1.0/code/fastspecfit/2.5.1/lib/python3.10/site-packages/fastspecfit/data/emlines.ecsv
+DESI_SPECTRO_REDUX   /global/cfs/cdirs/desi/spectro/redux
+DUST_DIR             /global/cfs/cdirs/cosmo/data/dust/v0_1
+FPHOTO_DIR           /global/cfs/cdirs/desi/external/legacysurvey/dr9
+FTEMPLATES_DIR       /global/cfs/cdirs/desi/public/external/templates/fastspecfit
+FTEMPLATES_FILE      ftemplates-chabrier-2.0.0.fits (see `README.txt`_)
+FPHOTO_FILE          /global/common/software/desi/perlmutter/desiconda/20240425-2.2.0/code/fastspecfit/3.1.5/lib/python3.10/site-packages/fastspecfit/data/legacysurvey-dr9.yaml
+EMLINES_FILE         /global/common/software/desi/perlmutter/desiconda/20240425-2.2.0/code/fastspecfit/3.1.5/lib/python3.10/site-packages/fastspecfit/data/emlines.ecsv
 ==================== =====
 
 .. _previous versions - iron:
@@ -157,8 +166,23 @@ EMLINES_FILE         /global/common/software/desi/perlmutter/desiconda/20230111-
 Notes & Known Issues
 --------------------
 
-v2.1 (latest release)
+v3.0 (latest release)
 ~~~~~~~~~~~~~~~~~~~~~
+
+* Release date: June 2025
+* ``FastSpecFit`` version: ``3.1.5``, ``3.2.0``
+* Templates: ``ftemplates-chabrier-2.0.0.fits``  (see `README.txt`_).
+* Notes:
+
+  * Several updates to the spectrophotometric templates aimed at addressing the
+    stellar mass bias identified in `issue/#159`_ (see `PR/#166`_):
+    
+* Known issues:
+  
+  * None at this time.
+
+v2.1
+~~~~
 
 * Release date: January 2024
 * ``FastSpecFit`` version: ``2.5.0``, ``2.5.1``
