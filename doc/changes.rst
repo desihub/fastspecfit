@@ -5,7 +5,9 @@ Change Log
 3.2.1 (not released yet)
 ------------------------
 
-* 
+* Add `vdisp-nominal` and `vdisp-bounds` optional inputs [`PR #231`_].
+
+.. _`PR #231`: https://github.com/desihub/fastspecfit/pull/231
 
 3.2.0 (2025-06-19)
 ------------------
