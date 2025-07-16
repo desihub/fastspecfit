@@ -14,6 +14,9 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 
+VDISP_NOMINAL = 250. # [km/s]
+VDISP_BOUNDS = (75., 500.) # [km/s]
+
 class Templates(object):
 
     # SPS template constants (used by build-templates)
@@ -31,8 +34,8 @@ class Templates(object):
     MAX_PRE_VDISP = 500.
 
     def __init__(self, template_file=None, template_version=None, imf=None,
-                 mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=100.,
-                 fastphot=False, read_linefluxes=False):
+                 mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=VDISP_NOMINAL,
+                 vdisp_bounds=VDISP_BOUNDS, fastphot=False, read_linefluxes=False):
         """"
         Read the templates into a dictionary.
 
@@ -97,6 +100,7 @@ class Templates(object):
         # dust attenuation curve
         self.dust_klambda = Templates.klambda(self.wave)
         self.vdisp_nominal = vdisp_nominal # [km/s]
+        self.vdisp_bounds = vdisp_bounds # [km/s]
 
         pixkms_bounds = np.searchsorted(self.wave, Templates.PIXKMS_BOUNDS, 'left')
         self.pixkms_bounds = pixkms_bounds
