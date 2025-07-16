@@ -16,7 +16,8 @@ try:  # this fails when building the documentation
 except:
     C_LIGHT = 299792.458  # [km/s]
 
-FLUXNORM = 1e17  # flux normalization factor for all DESI spectra [erg/s/cm2/A]
+FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
+MASSNORM = 1e10 # mass normalization factor
 
 TINY = np.nextafter(0, 1, dtype=np.float32)
 SQTINY = np.sqrt(TINY)
