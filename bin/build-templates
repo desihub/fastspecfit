@@ -2,7 +2,8 @@
 
 '''Build a set of templates for use with FastSpecFit.
 
-time python bin/build-templates --version 2.0.0 --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates
+time python bin/build-templates --version 0.0.1 --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates
+time python bin/build-templates --version=0.0.1 --templatedir=$DESI_ROOT/users/ioannis/fastspecfit/templates --logmets=-1.,0.,0.3
 
 * Chabrier IMF
 * MIST isochrones
@@ -38,7 +39,6 @@ Notes
 import os, time
 import numpy as np
 import numpy.ma as ma
-import argparse
 import fitsio
 from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import interpn
@@ -409,7 +409,7 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
     dustwave, dustflux = build_dustem_templates(qpah=qpah, umin=umin, gamma=gamma)#,
                                               #png=os.path.join(templatedir, 'original', 'qa-dustem.png'))
 
-    print(f'<Dust model>: q_PAH = {qpah}, U_min = {umin}, gamma = {gamma}')
+    print(f'<IR Dust>: q_PAH = {qpah}, U_min = {umin}, gamma = {gamma}')
 
     # Choose lookback time bins.
 
@@ -423,21 +423,16 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
 
     agebins = np.array([agelims[:-1], agelims[1:]]).T # [Gyr]
     logages = np.log10(1e9*np.sum(agebins, axis=1) / 2) # mean age [log10(yr)] in each bin
-    print('<Ages>: '+' '.join(['{:.4f} Gyr'.format(10.**logage/1e9) for logage in logages]))
+    print('   <Ages>: '+', '.join(['{:.4f}'.format(10.**logage/1e9) for logage in logages]) + ' Gyr')
 
     nages = len(logages)
-
-    import pdb ; pdb.set_trace()
-    #logmets = np.array([0.0]) # [-1.0, -0.3, 0.0, 0.3]
-    logmets = np.array([-1.0, -0.3, 0.0])
-    #logmets = np.array([-1.0, 0.0, 0.3]) # [-1.0, -0.3, 0.0, 0.3]
     nmets = len(logmets)
     zsolar = 0.019
-    print('<Metallicities>: '+' '.join(['{:.4f} %'.format(10.**logmet *100) for logmet in logmets]) + 'Z_sun')
+    print(' <Z/Zsun>: '+', '.join(['{:.2f}'.format(10.**logmet) for logmet in logmets]))
 
     # for testing
     if test:
-        logmets = [0.0]
+        logmets = [0.]
         nmets = 1
 
     dims = (nages, nmets)
@@ -560,6 +555,8 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
 
 if __name__ == '__main__':
 
+    import argparse
+
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--templatedir', required=True, help='Location of original and output templates')
     parser.add_argument('--version', required=True, help='Version number (e.g., 2.0.0)')
@@ -575,7 +572,7 @@ if __name__ == '__main__':
     # FSPS parameters
     parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
                         help='Initial mass function')
-    parser.add_argument('--logmets', type=float, nargs=*, default=0., help='Stellar metallicity values')
+    parser.add_argument('--logmets', type=str, default='0.', help='Stellar metallicity values')
     parser.add_argument('--test', action='store_true', help='Generate a test set of SPS models.')
     args = parser.parse_args()
 
@@ -584,6 +581,7 @@ if __name__ == '__main__':
     if not os.path.isdir(origdir):
         raise IOError(f'Missing directory containing original templates {origdir}')
 
-    main(imf=args.imf, logmets=np.array(args.logmets), qpah=args.qpah,
+    logmets = np.array(args.logmets.split(',')).astype(float)
+    main(imf=args.imf, logmets=logmets, qpah=args.qpah,
          umin=args.umin, gamma=args.gamma, agntau=args.agntau, test=args.test,
          version=args.version, templatedir=templatedir)
