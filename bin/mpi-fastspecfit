@@ -44,6 +44,10 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
             cmdargs += f' --emlinesfile={args.emlinesfile}'
         if args.nmonte:
             cmdargs += f' --nmonte={args.nmonte}'
+        if args.vdisp_nominal:
+            cmdargs += f' --vdisp-nominal={args.vdisp_nominal}'
+        if args.vdisp_bounds:
+            cmdargs += f' --vdisp-bounds {float(args.vdisp_bounds[0])} {float(args.vdisp_bounds[1])}'
         if args.seed:
             cmdargs += f' --seed={args.seed}'
 
@@ -222,6 +226,7 @@ def main():
     """
     import argparse
     from fastspecfit.mpi import plan
+    from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
@@ -238,6 +243,8 @@ def main():
     parser.add_argument('--input-redshifts', action='store_true', help='Only used with --samplefile; if set, fit with redshift "Z" values.')
     parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
     parser.add_argument('--nmonte', type=int, default=10, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
+    parser.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, help='Nominal (default) velocity dispersion in km/s.')
     parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
 
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
