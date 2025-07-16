@@ -977,6 +977,96 @@ class ContinuumTools(object):
         return rchi2_spec, rchi2_phot, rchi2_tot
 
 
+def build_stellar_continuum(templateflux, templatecoeff,
+                            tauv, vdisp=None, conv_pre=None,
+                            dust_emission=True):
+
+    """Build a stellar continuum model.
+
+    Parameters
+    ----------
+    templateflux : :class:`numpy.ndarray` [ntemplates, npix]
+        Rest-frame, native-resolution template spectra corresponding to
+        `templatewave`.
+    templatecoeff : :class:`numpy.ndarray` [ntemplates]
+        Column vector of positive coefficients corresponding to each
+        template.
+    tauv : :class:`float`
+        V-band optical depth, tau(V).
+    vdisp : :class:`float`
+        Velocity dispersion in km/s. If `None`, do not convolve to the
+        specified velocity dispersion (usually because `templateflux` has
+        already been smoothed to some nominal value).
+    conv_pre: :class:`tuple` or None
+        Optional preprocessing data to accelerate template convolution with vdisp
+        (may be present only if vdisp is not None).
+    dust_emission : :class:`bool`
+        Model impact of infrared dust emission spectrum. Energy-balance is used
+        to compute the normalization of this spectrum.
+
+    Returns
+    -------
+    contmodel : :class:`numpy.ndarray` [npix]
+        Full-wavelength, native-resolution, observed-frame model spectrum.
+
+    """
+    if conv_pre is None or vdisp > Templates.MAX_PRE_VDISP:
+        # Compute the weighted sum of the templates.
+        contmodel = templatecoeff.dot(templateflux)
+
+        # Optionally convolve to the desired velocity dispersion.
+        if vdisp is not None:
+            contmodel = self.templates.convolve_vdisp(contmodel, vdisp)
+    else:
+        # if conv_pre is present, it contains flux values for non-convolved
+        # regions of template fluxes, plus FTs of tempaltes for convolved
+        # region.  Both must be combined using template coefficients.
+        flux_lohi, ft_flux_mid, fft_len = conv_pre
+
+        # Compute the weighted sum of the templates.
+        cont_lohi   = templatecoeff.dot(flux_lohi)
+        ft_cont_mid = templatecoeff.dot(ft_flux_mid)
+
+        # Convolve to the desired velocity dispersion. Use the vdisp
+        # convolution that takes precomputed FT of flux for convolved
+        # region.
+        flux_len = templateflux.shape[1]
+        contmodel = self.templates.convolve_vdisp_from_pre(
+            cont_lohi, ft_cont_mid, flux_len, fft_len, vdisp)
+
+        # sanity check for debugging
+        #contmodel0 = templateflux.dot(templatecoeff)
+        #contmodel0 = self.templates.convolve_vdisp(contmodel0, vdisp)
+        #print("DIFF ", np.max(np.abs(contmodel - contmodel0)))
+
+    # [3] - Apply dust attenuation; ToDo: allow age-dependent
+    # attenuation. Also compute the bolometric luminosity before and after
+    # attenuation but only if we have dustflux.
+
+    # [4] - Optionally add the dust emission spectrum, conserving the total
+    # (absorbed + re-emitted) energy. NB: (1) dustflux must be normalized to
+    # unity already (see templates.py); and (2) we are ignoring dust
+    # self-absorption, which should be mostly negligible.
+
+    # [5] - Redshift factors.
+
+    # Do this part in Numpy because it is very slow in Numba unless
+    # accelerated transcendentals are available via, e.g., Intel SVML.
+    A = -tauv * self.templates.dust_klambda
+    np.exp(A, out=A)
+
+    if dust_emission:
+        self.attenuate(contmodel, A,
+                       self.zfactors,
+                       self.templates.wave,
+                       self.templates.dustflux)
+    else:
+        self.attenuate_nodust(contmodel, A,
+                              self.zfactors)
+
+    return contmodel
+
+
 def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4800.), fit_restrange=(3800., 6000.)):
     """Determine if we can solve for the velocity dispersion.
 
