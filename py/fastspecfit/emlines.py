@@ -515,7 +515,7 @@ class EMFitTools(object):
 
             # record our initial gueses and bounds for the amplitude, unless
             # they are nonsensical
-            if mx >= 0. and amp >= 0.:
+            if mx >= 0. and amp >= 0. and mx > amp:
                 line = self.line_map[linename]
                 amp_idx = self.line_table['params'][line, ParamType.AMPLITUDE]
                 initials[amp_idx] = amp

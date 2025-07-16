@@ -2,12 +2,24 @@
 Change Log
 ==========
 
-3.2.0 (not released yet)
+3.2.1 (not released yet)
 ------------------------
 
+* 
+
+3.2.0 (2025-06-19)
+------------------
+
 * Add option to pass the reference to a custom linelist in ``mpi-fastspecfit`` [`PR #225`_].
+* Bug due to clip level in ``ivar2var`` function caused poor line fits
+  in very small number of strong emission lines. Issue described in
+  [`PR #227`_] and bug fixed in [`PR #228`_].
+* Make sure upper bound is above the amplitude estimate [`PR #229`_].
 
 .. _`PR #225`: https://github.com/desihub/fastspecfit/pull/225
+.. _`PR #227`: https://github.com/desihub/fastspecfit/pull/227
+.. _`PR #228`: https://github.com/desihub/fastspecfit/pull/228
+.. _`PR #229`: https://github.com/desihub/fastspecfit/pull/229
 
 3.1.5 (2025-03-27)
 ------------------

@@ -1594,6 +1594,10 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
     else:
         tmpfile = outfile+'.tmp'
 
+    # fastfit is an empty list when running fastphot mode
+    if fastfit is not None and len(fastfit) == 0:
+        fastfit = None
+
     # Remember to also update mpi._domerge!
     primhdr = []
     if specprod:
