@@ -12,8 +12,8 @@ from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates
 from fastspecfit.util import (
-    C_LIGHT, TINY, F32MAX, quantile, median, var2ivar,
-    trapz_rebin, trapz_rebin_pre)
+    C_LIGHT, TINY, F32MAX, FLUXNORM, MASSNORM, quantile,
+    median, var2ivar, trapz_rebin, trapz_rebin_pre)
 
 
 class ContinuumTools(object):
@@ -23,7 +23,7 @@ class ContinuumTools(object):
     def __init__(self, data, templates, phot, igm, tauv_guess=0.1,
                  vdisp_guess=250., tauv_bounds=(0., 2.),
                  vdisp_bounds=(75., 500.), vdisp_nbin=5,
-                 fluxnorm=1e17, massnorm=1e10, fastphot=False,
+                 fluxnorm=FLUXNORM, massnorm=MASSNORM, fastphot=False,
                  constrain_age=False):
 
         self.phot = phot
@@ -977,8 +977,8 @@ class ContinuumTools(object):
         return rchi2_spec, rchi2_phot, rchi2_tot
 
 
-def build_stellar_continuum(templateflux, templatecoeff,
-                            tauv, vdisp=None, conv_pre=None,
+def build_stellar_continuum(coeff, tauv, redshift, templates, cosmo, igm,
+                            vdisp=None, fluxnorm=FLUXNORM, massnorm=MASSNORM,
                             dust_emission=True):
 
     """Build a stellar continuum model.
@@ -1010,61 +1010,63 @@ def build_stellar_continuum(templateflux, templatecoeff,
         Full-wavelength, native-resolution, observed-frame model spectrum.
 
     """
-    if conv_pre is None or vdisp > Templates.MAX_PRE_VDISP:
-        # Compute the weighted sum of the templates.
-        contmodel = templatecoeff.dot(templateflux)
+    #@jit(nopython=True, nogil=True, fastmath=True, cache=True)
+    def attenuate(M, A, zfactors, wave, dustflux):
+        ma = M[0] * A[0]
+        prev_d = M[0] - ma
+        M[0] = ma
 
-        # Optionally convolve to the desired velocity dispersion.
-        if vdisp is not None:
-            contmodel = self.templates.convolve_vdisp(contmodel, vdisp)
-    else:
-        # if conv_pre is present, it contains flux values for non-convolved
-        # regions of template fluxes, plus FTs of tempaltes for convolved
-        # region.  Both must be combined using template coefficients.
-        flux_lohi, ft_flux_mid, fft_len = conv_pre
+        lbol_diff = 0.
+        for i in range(len(M) - 1):
+            ma = M[i+1] * A[i+1]
+            d = M[i+1] - ma
+            M[i+1] = ma
 
-        # Compute the weighted sum of the templates.
-        cont_lohi   = templatecoeff.dot(flux_lohi)
-        ft_cont_mid = templatecoeff.dot(ft_flux_mid)
+            lbol_diff += (wave[i+1] - wave[i]) * (d + prev_d)
 
-        # Convolve to the desired velocity dispersion. Use the vdisp
-        # convolution that takes precomputed FT of flux for convolved
-        # region.
-        flux_len = templateflux.shape[1]
-        contmodel = self.templates.convolve_vdisp_from_pre(
-            cont_lohi, ft_cont_mid, flux_len, fft_len, vdisp)
+            prev_d  = d
+        lbol_diff *= 0.5
 
-        # sanity check for debugging
-        #contmodel0 = templateflux.dot(templatecoeff)
-        #contmodel0 = self.templates.convolve_vdisp(contmodel0, vdisp)
-        #print("DIFF ", np.max(np.abs(contmodel - contmodel0)))
+        # final result is
+        # (M * (atten ** ebv) + lbol_diff * dustflux) * zfactors
+        for i in range(len(M)):
+            M[i] = (M[i] + lbol_diff * dustflux[i]) * zfactors[i]
 
-    # [3] - Apply dust attenuation; ToDo: allow age-dependent
-    # attenuation. Also compute the bolometric luminosity before and after
-    # attenuation but only if we have dustflux.
 
-    # [4] - Optionally add the dust emission spectrum, conserving the total
-    # (absorbed + re-emitted) energy. NB: (1) dustflux must be normalized to
-    # unity already (see templates.py); and (2) we are ignoring dust
-    # self-absorption, which should be mostly negligible.
+    #@jit(nopython=True, nogil=True, fastmath=True, cache=True)
+    def attenuate_nodust(M, A, zfactors):
+        for i in range(len(M)):
+            M[i] *= A[i] * zfactors[i]
 
-    # [5] - Redshift factors.
+    def get_zfactors(igm, ztemplatewave, redshift, dluminosity):
+        T = igm.full_IGM(redshift, ztemplatewave)
+        T *= fluxnorm * massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
+        return T
+
+    # redshift-dependent factors
+    ztemplatewave = templates.wave * (1. + redshift)
+    dlum = cosmo.luminosity_distance(redshift)
+    zfactors = get_zfactors(igm, ztemplatewave, redshift, dlum)
+
+    # Compute the weighted sum of the templates.
+    contmodel = coeff.dot(templates.flux)
+
+    # Optionally convolve to the desired velocity dispersion.
+    if vdisp is not None:
+        contmodel = templates.convolve_vdisp(contmodel, vdisp)
 
     # Do this part in Numpy because it is very slow in Numba unless
     # accelerated transcendentals are available via, e.g., Intel SVML.
-    A = -tauv * self.templates.dust_klambda
+    A = -tauv * templates.dust_klambda
     np.exp(A, out=A)
 
     if dust_emission:
-        self.attenuate(contmodel, A,
-                       self.zfactors,
-                       self.templates.wave,
-                       self.templates.dustflux)
+        attenuate(contmodel, A, zfactors, templates.wave,
+                  templates.dustflux)
     else:
-        self.attenuate_nodust(contmodel, A,
-                              self.zfactors)
+        attenuate_nodust(contmodel, A, zfactors)
 
-    return contmodel
+    return ztemplatewave, contmodel
 
 
 def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4800.), fit_restrange=(3800., 6000.)):
