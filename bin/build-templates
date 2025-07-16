@@ -20,13 +20,14 @@ Notes
   make sure you've git-updated a local checkout of the python-fsps and that
   $SPS_HOME/src/sps_vars.f90 has been edited correctly and then:
 
-  conda create -y -n fsps python 'numpy<2'
-  conda activate fsps
+  micromamba create -y -n fsps python
+  micromamba activate fsps
   cd $HOME/code
   git clone --recursive https://github.com/dfm/python-fsps.git
   export SPS_HOME=$HOME/code/python-fsps/src/fsps/libfsps
   cd python-fsps
   python -m pip install . --no-cache-dir --force-reinstall
+  cd
   python -c "import fsps; sp = fsps.StellarPopulation(); print(sp.libraries)"
 
 * The resolution of the C3K_a models is R(lambda/FWHM)=3000 or
@@ -38,7 +39,7 @@ import os, time
 import numpy as np
 import numpy.ma as ma
 import argparse
-import fitsio, fsps
+import fitsio
 from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import interpn
 
@@ -395,8 +396,8 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
     return meta, newwave, fluxes, linewaves, linefluxes
 
 
-def main(imf='chabrier', qpah=1.0, umin=1., gamma=0.01, agntau=10.,
-         test=False, version='1.0.0', templatedir=None):
+def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
+         agntau=10., test=False, version='1.0.0', templatedir=None):
     """Build all the templates.
 
     """
@@ -426,6 +427,7 @@ def main(imf='chabrier', qpah=1.0, umin=1., gamma=0.01, agntau=10.,
 
     nages = len(logages)
 
+    import pdb ; pdb.set_trace()
     #logmets = np.array([0.0]) # [-1.0, -0.3, 0.0, 0.3]
     logmets = np.array([-1.0, -0.3, 0.0])
     #logmets = np.array([-1.0, 0.0, 0.3]) # [-1.0, -0.3, 0.0, 0.3]
@@ -573,6 +575,7 @@ if __name__ == '__main__':
     # FSPS parameters
     parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
                         help='Initial mass function')
+    parser.add_argument('--logmets', type=float, nargs=*, default=0., help='Stellar metallicity values')
     parser.add_argument('--test', action='store_true', help='Generate a test set of SPS models.')
     args = parser.parse_args()
 
@@ -581,6 +584,6 @@ if __name__ == '__main__':
     if not os.path.isdir(origdir):
         raise IOError(f'Missing directory containing original templates {origdir}')
 
-    main(imf=args.imf, qpah=args.qpah, umin=args.umin, gamma=args.gamma,
-         agntau=args.agntau, test=args.test, version=args.version,
-         templatedir=templatedir)
+    main(imf=args.imf, logmets=np.array(args.logmets), qpah=args.qpah,
+         umin=args.umin, gamma=args.gamma, agntau=args.agntau, test=args.test,
+         version=args.version, templatedir=templatedir)
