@@ -44,6 +44,10 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
             cmdargs += f' --emlinesfile={args.emlinesfile}'
         if args.nmonte:
             cmdargs += f' --nmonte={args.nmonte}'
+        if args.vdisp_nominal:
+            cmdargs += f' --vdisp-nominal={args.vdisp_nominal}'
+        if args.vdisp_bounds:
+            cmdargs += f' --vdisp-bounds {float(args.vdisp_bounds[0])} {float(args.vdisp_bounds[1])}'
         if args.seed:
             cmdargs += f' --seed={args.seed}'
 
@@ -82,7 +86,8 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
 
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False,
                     sample=None, input_redshifts=False, outdir_data='.', templates=None,
-                    templateversion=None, fphotodir=None, fphotofile=None, emlinesfile=None):
+                    templateversion=None, fphotodir=None, fphotofile=None, emlinesfile=None,
+                    mp_per_file=False):
     """Main wrapper to run fastspec, fastphot, or fastqa.
 
     """
@@ -144,8 +149,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         ntargets = all_ntargets
 
 
-    # loop on each file
-    for redrockfile, outfile, ntarget in zip(redrockfiles, outfiles, ntargets):
+    def run_one_file(redrockfile, outfile, ntarget):
         if rank == 0:
             log.debug(f'Rank {rank} started at {time.asctime()}')
 
@@ -164,7 +168,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             log.info(f'Rank {rank}: ntargets={ntarget}: {cmd} {cmdargs}')
 
         if args.dry_run:
-            continue
+            return
 
         try:
             t1 = time.time()
@@ -187,7 +191,19 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             log.warning(f'Rank {rank} raised an exception')
             import traceback
             traceback.print_exc()
+        return
+    
+    # loop on each file
+    if mp_per_file:
+        from joblib import Parallel, delayed
+        n_jobs = args.mp
+        args.mp = 1
+        Parallel(n_jobs=n_jobs)(delayed(run_one_file)(redrockfile, outfile, ntarget) for redrockfile, outfile, ntarget in zip(redrockfiles, outfiles, ntargets))
+    else:
+        for redrockfile, outfile, ntarget in zip(redrockfiles, outfiles, ntargets):
+            run_one_file(redrockfile, outfile, ntarget)
 
+        
     if rank == 0:
         log.debug(f'Rank {rank} is done')
 
@@ -210,6 +226,7 @@ def main():
     """
     import argparse
     from fastspecfit.mpi import plan
+    from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
@@ -226,9 +243,12 @@ def main():
     parser.add_argument('--input-redshifts', action='store_true', help='Only used with --samplefile; if set, fit with redshift "Z" values.')
     parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
     parser.add_argument('--nmonte', type=int, default=10, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
+    parser.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, help='Nominal (default) velocity dispersion in km/s.')
     parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
 
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
+    parser.add_argument('--mp-per-file', default=False, action='store_true', help='Run multiprocessing on one core per spectra file with multiple simultaneous files.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.') 
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
@@ -402,7 +422,7 @@ def main():
                         makeqa=args.makeqa, outdir_data=outdir_data, sample=sample,
                         input_redshifts=args.input_redshifts, templates=args.templates,
                         templateversion=args.templateversion, fphotodir=args.fphotodir,
-                        fphotofile=args.fphotofile, emlinesfile=args.emlinesfile)
+                        fphotofile=args.fphotofile, emlinesfile=args.emlinesfile, mp_per_file=args.mp_per_file)
 
         if args.profile:
             profiler.disable()

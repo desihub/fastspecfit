@@ -9,7 +9,7 @@ from fastspecfit.cosmo import TabulatedDESI
 from fastspecfit.igm import Inoue14
 from fastspecfit.photometry import Photometry
 from fastspecfit.linetable import LineTable
-from fastspecfit.templates import Templates
+from fastspecfit.templates import Templates, VDISP_NOMINAL, VDISP_BOUNDS
 from fastspecfit.logger import log, DEBUG
 
 class Singletons(object):
@@ -21,6 +21,8 @@ class Singletons(object):
                    emlines_file=None,
                    fphotofile=None,
                    fastphot=False,
+                   vdisp_nominal=VDISP_NOMINAL,
+                   vdisp_bounds=VDISP_BOUNDS,
                    fitstack=False,
                    ignore_photometry=False,
                    template_file=None,
@@ -39,6 +41,8 @@ class Singletons(object):
                                    imf=template_imf,
                                    mintemplatewave=None,
                                    maxtemplatewave=40e4,
+                                   vdisp_nominal=vdisp_nominal,
+                                   vdisp_bounds=vdisp_bounds,
                                    fastphot=fastphot)
         log.debug(f'Cached stellar templates {self.templates.file}')
 

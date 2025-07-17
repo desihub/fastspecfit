@@ -2,7 +2,8 @@
 
 '''Build a set of templates for use with FastSpecFit.
 
-time python bin/build-templates --version 2.0.0 --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates
+time python bin/build-templates --version 0.0.1 --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates
+time python bin/build-templates --version=0.0.1 --templatedir=$DESI_ROOT/users/ioannis/fastspecfit/templates --logmets=-1.,0.,0.3
 
 * Chabrier IMF
 * MIST isochrones
@@ -20,13 +21,14 @@ Notes
   make sure you've git-updated a local checkout of the python-fsps and that
   $SPS_HOME/src/sps_vars.f90 has been edited correctly and then:
 
-  conda create -y -n fsps python 'numpy<2'
-  conda activate fsps
+  micromamba create -y -n fsps python
+  micromamba activate fsps
   cd $HOME/code
   git clone --recursive https://github.com/dfm/python-fsps.git
   export SPS_HOME=$HOME/code/python-fsps/src/fsps/libfsps
   cd python-fsps
   python -m pip install . --no-cache-dir --force-reinstall
+  cd
   python -c "import fsps; sp = fsps.StellarPopulation(); print(sp.libraries)"
 
 * The resolution of the C3K_a models is R(lambda/FWHM)=3000 or
@@ -37,8 +39,7 @@ Notes
 import os, time
 import numpy as np
 import numpy.ma as ma
-import argparse
-import fitsio, fsps
+import fitsio
 from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import interpn
 
@@ -395,8 +396,8 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
     return meta, newwave, fluxes, linewaves, linefluxes
 
 
-def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10.,
-         test=False, version='1.0.0', templatedir=None):
+def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
+         agntau=10., test=False, version='1.0.0', templatedir=None):
     """Build all the templates.
 
     """
@@ -407,6 +408,8 @@ def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10.,
     # dust emission template(s)
     dustwave, dustflux = build_dustem_templates(qpah=qpah, umin=umin, gamma=gamma)#,
                                               #png=os.path.join(templatedir, 'original', 'qa-dustem.png'))
+
+    print(f'<IR Dust>: q_PAH = {qpah}, U_min = {umin}, gamma = {gamma}')
 
     # Choose lookback time bins.
 
@@ -420,18 +423,16 @@ def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10.,
 
     agebins = np.array([agelims[:-1], agelims[1:]]).T # [Gyr]
     logages = np.log10(1e9*np.sum(agebins, axis=1) / 2) # mean age [log10(yr)] in each bin
-    print('<Ages>: '+' '.join(['{:.4f} Gyr'.format(10.**logage/1e9) for logage in logages]))
+    print('   <Ages>: '+', '.join(['{:.4f}'.format(10.**logage/1e9) for logage in logages]) + ' Gyr')
 
     nages = len(logages)
-
-    logmets = np.array([0.0]) # [-1.0, -0.3, 0.0, 0.3]
-    #logmets = np.array([-1.0, 0.0, 0.3]) # [-1.0, -0.3, 0.0, 0.3]
     nmets = len(logmets)
     zsolar = 0.019
+    print(' <Z/Zsun>: '+', '.join(['{:.2f}'.format(10.**logmet) for logmet in logmets]))
 
     # for testing
     if test:
-        logmets = [0.0]
+        logmets = [0.]
         nmets = 1
 
     dims = (nages, nmets)
@@ -554,6 +555,8 @@ def main(imf='chabrier', qpah=3.5, umin=1., gamma=0.01, agntau=10.,
 
 if __name__ == '__main__':
 
+    import argparse
+
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--templatedir', required=True, help='Location of original and output templates')
     parser.add_argument('--version', required=True, help='Version number (e.g., 2.0.0)')
@@ -569,6 +572,7 @@ if __name__ == '__main__':
     # FSPS parameters
     parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
                         help='Initial mass function')
+    parser.add_argument('--logmets', type=str, default='0.', help='Stellar metallicity values')
     parser.add_argument('--test', action='store_true', help='Generate a test set of SPS models.')
     args = parser.parse_args()
 
@@ -577,6 +581,7 @@ if __name__ == '__main__':
     if not os.path.isdir(origdir):
         raise IOError(f'Missing directory containing original templates {origdir}')
 
-    main(imf=args.imf, qpah=args.qpah, umin=args.umin, gamma=args.gamma,
-         agntau=args.agntau, test=args.test, version=args.version,
-         templatedir=templatedir)
+    logmets = np.array(args.logmets.split(',')).astype(float)
+    main(imf=args.imf, logmets=logmets, qpah=args.qpah,
+         umin=args.umin, gamma=args.gamma, agntau=args.agntau, test=args.test,
+         version=args.version, templatedir=templatedir)
