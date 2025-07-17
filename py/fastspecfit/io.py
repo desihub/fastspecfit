@@ -15,6 +15,7 @@ from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data
 from fastspecfit.photometry import Photometry
 from fastspecfit.util import FLUXNORM, ZWarningMask
+from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
 
 
 # list of all possible targeting bit columns
@@ -1571,11 +1572,11 @@ def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_col
 def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
                       specprod=None, coadd_type=None, fphotofile=None,
                       template_file=None, emlinesfile=None, fastphot=False,
-                      inputz=False, inputseeds=None, nmonte=10, seed=1,
-                      uncertainty_floor=0.01, minsnr_balmer_broad=2.5,
-                      nside=None, no_smooth_continuum=False, ignore_photometry=False,
-                      broadlinefit=True, use_quasarnet=True, constrain_age=False,
-                      split_hdu=False, verbose=True):
+                      inputz=False, inputseeds=None, nmonte=10, vdisp_nominal=VDISP_NOMINAL,
+                      vdisp_bounds=VDISP_BOUNDS, seed=1, uncertainty_floor=0.01,
+                      minsnr_balmer_broad=2.5, nside=None, no_smooth_continuum=False,
+                      ignore_photometry=False, broadlinefit=True, use_quasarnet=True,
+                      constrain_age=False, split_hdu=False, verbose=True):
     """Write out.
 
     """
@@ -1610,6 +1611,8 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
     primhdr.append(('CONSAGE', (constrain_age is True, 'constrain SPS ages')))
     primhdr.append(('USEQNET', (use_quasarnet is True, 'use QuasarNet redshifts')))
     primhdr.append(('NMONTE', (nmonte, 'number of Monte Carlo realizations')))
+    primhdr.append(('VDISPNOM', (vdisp_nominal, 'nominal velocity dispersion (km/s)')))
+    primhdr.append(('VDISPBND', (",".join(np.array(vdisp_bounds).astype(str)), 'velocity dispersion bounds (km/s)')))
     primhdr.append(('SEED', (seed, 'random seed for Monte Carlo reproducibility')))
     if not fastphot:
         primhdr.append(('NOSCORR', (no_smooth_continuum is True, 'no smooth continuum correction')))

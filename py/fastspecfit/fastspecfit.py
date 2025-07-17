@@ -13,7 +13,7 @@ from astropy.table import Table
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import BoxedScalar, MPPool
-
+from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
 
 def parse(options=None, rank=0):
     """Parse input arguments to fastspec and fastphot scripts.
@@ -34,6 +34,8 @@ def parse(options=None, rank=0):
     parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
     parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
     parser.add_argument('--nmonte', type=int, default=10, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
+    parser.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, help='Nominal (default) velocity dispersion in km/s.')
     parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not model broad Balmer and helium line-emission.')
@@ -211,7 +213,9 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         'template_file':     args.templates,
         'template_version':  args.templateversion,
         'template_imf':      args.imf,
-        'log_verbose':       args.verbose
+        'log_verbose':       args.verbose,
+        'vdisp_nominal':     args.vdisp_nominal,
+        'vdisp_bounds':      args.vdisp_bounds,
     }
 
     sc_data.initialize(**init_sc_args)
@@ -365,8 +369,9 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             template_file=sc_data.templates.file,
             emlinesfile=sc_data.emlines.file, fastphot=fastphot,
             inputz=input_redshifts is not None,
-            nmonte=args.nmonte, seed=args.seed,
-            inputseeds=input_seeds is not None,
+            nmonte=args.nmonte, vdisp_nominal=args.vdisp_nominal,
+            vdisp_bounds=args.vdisp_bounds,
+            seed=args.seed, inputseeds=input_seeds is not None,
             uncertainty_floor=args.uncertainty_floor,
             minsnr_balmer_broad=args.minsnr_balmer_broad,
             ignore_photometry=args.ignore_photometry,
