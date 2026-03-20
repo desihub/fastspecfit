@@ -1,6 +1,6 @@
 [project]
 name = "fastspecfit"
-version = "3.2.0"
+version = "3.2.1"
 authors = [
     {name="John Moustakas", email="jmoustakas@siena.edu"},
 ]
@@ -28,7 +28,6 @@ dependencies = [
     "fitsio",
     "speclite",
 ]
-requires-python = "<3.13"
 
 [project.optional-dependencies]
 test = [
