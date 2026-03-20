@@ -16,9 +16,9 @@ jobs:
             fail-fast: true
             matrix:
                 os: [ubuntu-latest]
-                python-version: ['3.10', '3.11', '3.12']
+                python-version: ['3.10', '3.11', '3.12', '3.13']
         env:
-            DESIUTIL_VERSION: 3.4.3
+            DESIUTIL_VERSION: 3.6.0
 
         steps:
             - name: Checkout code
@@ -51,7 +51,7 @@ jobs:
                 os: [ubuntu-latest]
                 python-version: ['3.10', '3.11', '3.12']
         env:
-            DESIUTIL_VERSION: 3.4.3
+            DESIUTIL_VERSION: 3.6.0
 
         steps:
             - name: Checkout code
@@ -74,8 +74,8 @@ jobs:
               run: pytest --cov
             - name: Coveralls
               env:
-                COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
-              run: coveralls --service=github-actions
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: coveralls
 
     docs:
         name: Doc test
