@@ -2,12 +2,19 @@
 Change Log
 ==========
 
-3.2.1 (not released yet)
+3.3.0 (not released yet)
 ------------------------
 
+*
+
+3.2.1 (2026-03-20)
+------------------
+
 * Add `vdisp-nominal` and `vdisp-bounds` optional inputs [`PR #231`_].
+* Remove `python<3.13` constraint [`PR #242`_].
 
 .. _`PR #231`: https://github.com/desihub/fastspecfit/pull/231
+.. _`PR #242`: https://github.com/desihub/fastspecfit/pull/242
 
 3.2.0 (2025-06-19)
 ------------------
