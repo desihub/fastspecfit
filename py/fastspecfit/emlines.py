@@ -17,7 +17,7 @@ from fastspecfit.photometry import Photometry
 from fastspecfit.util import (C_LIGHT, TINY, SQTINY, F32MAX,
                               FLUXNORM, var2ivar)
 from fastspecfit.emline_fit import (EMLine_Objective,
-    EMLine_MultiLines, EMLine_find_peak_amplitudes,
+    EMLine_MultiLines, EMLine_find_peak_amplitudes_and_fluxes,
     EMLine_build_model, EMLine_ParamsMapping)
 
 
@@ -607,6 +607,7 @@ class EMFitTools(object):
             # iron/main/dark/6642/39633239580608311).
             linemodel.meta['nfev'] = 0
             linemodel.meta['obsamps'] = np.zeros(len(self.line_table))
+            linemodel.meta['line_fluxes'] = np.zeros(len(self.line_table))
             linemodel['value'] = 0.
             return linemodel
         else:
@@ -677,7 +678,7 @@ class EMFitTools(object):
                 # calculate the observed maximum amplitude for each
                 # fitted spectral line after convolution with the resolution
                 # matrix.
-                obsamps = EMLine_find_peak_amplitudes(
+                obsamps, line_fluxes = EMLine_find_peak_amplitudes_and_fluxes(
                     parameters, obs_bin_centers, redshift,
                     line_wavelengths, resolution_matrices,
                     camerapix)
@@ -685,6 +686,7 @@ class EMFitTools(object):
                 # add observed values as metadata, since they are only
                 # relevant to amplitudes, not all parameters
                 linemodel.meta['obsamps'] = obsamps
+                linemodel.meta['line_fluxes'] = line_fluxes
                 return linemodel
             else:
                 return linemodel, continuum_patches
@@ -840,15 +842,18 @@ class EMFitTools(object):
 
         values = linemodel['value'].value
         obsamps = linemodel.meta['obsamps']
+        line_fluxes = linemodel.meta['line_fluxes']
 
         parameters = values.copy()
         parameters[self.doublet_idx] *= parameters[self.doublet_src]
 
         if results_monte is not None:
-            values_monte, obsamps_monte, emlineflux_monte, specflux_nolines_monte = results_monte
+            (values_monte, obsamps_monte, line_fluxes_monte, emlineflux_monte, \
+             specflux_nolines_monte) = results_monte
 
             values_var = np.var(values_monte, axis=0)
             obsamps_var = np.var(obsamps_monte, axis=0)
+            #line_fluxes_var = np.var(line_fluxes_monte, axis=0)
 
             parameters_monte = values_monte.copy()
             parameters_monte[:, self.doublet_idx] *= parameters_monte[:, self.doublet_src]
@@ -872,8 +877,8 @@ class EMFitTools(object):
             linename = name.upper()
             line_amp, line_vshift, line_sigma = self.line_table['params'][iline]
 
-            def get_fluxes(values, parameters, obsamps, emlineflux_s,
-                           specflux_nolines_s, return_extras=False):
+            def get_fluxes(values, parameters, obsamps, line_fluxes, emlineflux_s,
+                           specflux_nolines_s, return_extras=False, linename=None):
                 """ Get all the computed fluxes associated with the current line.  Return the
                 fluxes along with some intermediate quantities if return_extras is True.  (The
                 extras are needed only if we are not using this function in Monte Carlo iteration.)
@@ -911,7 +916,8 @@ class EMFitTools(object):
                         # require amp > 0 (line not dropped) to compute the flux
                         if obsamps[line_amp] > TINY:
                             # analytically integrated flux
-                            flux = np.sqrt(2. * np.pi) * parameters[line_amp] * linezwave * linesigma0 / C_LIGHT
+                            #flux = np.sqrt(2. * np.pi) * parameters[line_amp] * linezwave * linesigma0 / C_LIGHT
+                            flux = line_fluxes[line_amp]
 
                         # next, get the continuum level
                         borderindx = get_continuum_pixels(emlinewave_s, linezwave, linesigma_ang_window)
@@ -935,6 +941,7 @@ class EMFitTools(object):
             # zero out out-of-range lines
             if not self.line_in_range[iline]:
                 obsamps[line_amp] = 0.
+                line_fluxes[line_amp] = 0.
                 parameters[line_amp] = 0.
                 values[line_amp] = 0.
                 values[line_vshift] = 0.
@@ -969,8 +976,8 @@ class EMFitTools(object):
 
 
             (boxflux, flux, cont), extras = get_fluxes(
-                values, parameters, obsamps, emlineflux_s,
-                specflux_nolines_s, return_extras=True)
+                values, parameters, obsamps, line_fluxes, emlineflux_s,
+                specflux_nolines_s, return_extras=True, linename=linename)
 
             (linez, linesigma, linesigma_ang, patchindx, clipflux) = extras
 
@@ -982,6 +989,7 @@ class EMFitTools(object):
             # line.
             if npix == 0:
                 obsamps[line_amp] = 0.
+                line_fluxes[line_amp] = 0.
                 parameters[line_amp] = 0.
                 values[line_amp] = 0.
                 values[line_vshift] = 0.
@@ -1008,9 +1016,10 @@ class EMFitTools(object):
                     raise ValueError(errmsg)
 
                 if results_monte is not None:
-                    res = [get_fluxes(vv, pp, oo, lf, sfnl) for  vv, pp, oo, lf, sfnl in
+                    res = [get_fluxes(vv, pp, oo, fl, lf, sfnl) for  vv, pp, oo, fl, lf, sfnl in
                            zip(values_monte, parameters_monte, obsamps_monte,
-                               emlineflux_monte_s, specflux_nolines_monte_s)]
+                               line_fluxes_monte, emlineflux_monte_s,
+                               specflux_nolines_monte_s)]
                     boxflux_monte, flux_monte, cont_monte = tuple(zip(*res))
                     flux_monte = np.array(flux_monte)
                     cont_monte = np.array(cont_monte)
@@ -1559,17 +1568,19 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                 weights, redshift, resolution_matrix, camerapix)
             values = linemodel['value'].value
             obsamps = linemodel.meta['obsamps'] # observed amplitudes
-            return (values, obsamps, emlineflux_model)
+            line_fluxes = linemodel.meta['line_fluxes'] # pixel-integrated line fluxes
+            return (values, obsamps, line_fluxes, emlineflux_model)
 
         res = [get_results(emlf) for emlf in emlineflux_monte]
-        values_monte, obsamps_monte, emlineflux_model_monte = \
+        values_monte, obsamps_monte, line_fluxes_monte, emlineflux_model_monte = \
             tuple(zip(*res))
-        values_monte  = np.array(values_monte)  # used as array later
-        obsamps_monte = np.array(obsamps_monte) # used as array later
+        values_monte  = np.array(values_monte)
+        obsamps_monte = np.array(obsamps_monte)
+        line_fluxes_monte = np.array(line_fluxes_monte)
 
         specflux_nolines_monte = specflux_monte - emlineflux_model_monte
 
-        results_monte = (values_monte, obsamps_monte,
+        results_monte = (values_monte, obsamps_monte, line_fluxes_monte,
                          emlineflux_monte, specflux_nolines_monte)
     else:
         results_monte = None
