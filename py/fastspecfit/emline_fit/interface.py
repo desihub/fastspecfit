@@ -475,6 +475,68 @@ def find_peak_amplitudes(line_parameters,
     return max_amps
 
 
+def find_peak_amplitudes_and_fluxes(line_parameters,
+                                    obs_bin_centers,
+                                    redshift,
+                                    line_wavelengths,
+                                    resolution_matrices,
+                                    camerapix):
+    """
+    Given fitted parameters for all emission lines, report for each line
+    the largest flux contributing to any observed bin (obsamps) and the
+    integrated flux over the convolved line profile (obsfluxes).
+
+    Parameters
+    ----------
+    line_parameters : :class:`np.ndarray`
+      Array of all fitted line parameters.
+    obs_bin_centers : :class:`np.ndarray` [# obs wavelength bins]
+      Center wavelength of each observed wavelength bin.
+    redshift : :class:`np.float64`
+      Red shift of observed spectrum.
+    line_wavelengths : :class:`np.ndarray` [# lines]
+      Array of nominal wavelengths for all fitted lines.
+    resolution_matrices : tuple of :class:`fastspecfit.resolution.Resolution`
+      Resolution matrices for each camera.
+    camerapix : :class:`np.ndarray` of `int` [# cameras x 2]
+      Pixels corresponding to each camera in obs wavelength array.
+
+    Returns
+    -------
+    Tuple (obsamps, obsfluxes), each an array of length [# lines].
+    obsamps  : maximum amplitude in any observed bin for each line.
+    obsfluxes: integrated flux of the convolved line profile for each line.
+
+    """
+
+    @jit(nopython=True, nogil=True, cache=True)
+    def _update_line_maxima_and_fluxes(max_amps, line_fluxes, line_models, dwave):
+        endpts, vals = line_models
+
+        for i in range(vals.shape[0]):
+            ps, pe = endpts[i]
+            if pe > ps:
+                max_amps[i] = np.maximum(max_amps[i], np.max(vals[i, :pe-ps]))
+                for k in range(pe - ps):
+                    line_fluxes[i] += vals[i, k] * dwave[ps + k]
+
+    # Bin widths consistent with _prepare_bins midpoint-edge convention.
+    # np.gradient uses the same central-difference / one-sided extrapolation.
+    dwave = np.gradient(obs_bin_centers).astype(line_parameters.dtype)
+
+    max_amps   = np.zeros_like(line_wavelengths, dtype=line_parameters.dtype)
+    line_fluxes = np.zeros_like(line_wavelengths, dtype=line_parameters.dtype)
+
+    _build_multimodel_core(line_parameters,
+                           obs_bin_centers,
+                           redshift,
+                           line_wavelengths,
+                           resolution_matrices,
+                           camerapix,
+                           lambda m: _update_line_maxima_and_fluxes(max_amps, line_fluxes, m, dwave))
+
+    return max_amps, line_fluxes
+
 ##########################################################################
 
 
@@ -527,6 +589,10 @@ def _build_model_core(line_parameters,
                           log_obs_bin_edges[s+icam:e+icam+1],
                           redshift,
                           ibw)
+        #if line_parameters.size == 138:
+        #    i = np.argmin(abs(line_parameters-13.55))
+        #    print(i, line_parameters[i])
+        #    #import pdb ; pdb.set_trace()
 
         # convolve model with resolution matrix and store in
         # this camera's subrange of model_fluxes
