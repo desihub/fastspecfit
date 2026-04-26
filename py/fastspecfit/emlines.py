@@ -643,7 +643,7 @@ class EMFitTools(object):
 
             fit_info = least_squares(objective, initial_guesses, jac=jac, args=(),
                                      max_nfev=5000, xtol=1e-10, ftol=1e-5, #x_scale='jac' gtol=1e-10,
-                                     tr_solver='lsmr', tr_options={'maxiter': 1000, 'regularize': True},
+                                     tr_solver='lsmr', tr_options={'maxiter': 1000, 'regularize': False},
                                      method='trf', bounds=bounds)#, verbose=2)
             free_params = fit_info.x
 
