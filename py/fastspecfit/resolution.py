@@ -1,5 +1,51 @@
 import numpy as np
 from numba import jit
+import scipy
+
+
+def resolution_mat_torows(mat):
+    """Code from rvspecfit by Sergey Koposov"""
+    w = mat.shape[0]
+    w2 = w // 2
+    return np.array([np.roll(mat[_], _ - w2) for _ in range(w)])[::-1]
+
+
+def resolution_mat_tocolumns(mat):
+    """Code from rvspecfit by Sergey Koposov"""
+    w = mat.shape[0]
+    w2 = w // 2
+    return np.array([np.roll(mat[::-1][_], w2 - _) for _ in range(w)])
+
+
+def deconvolve_resolution_matrix(mat0,
+                                 sigma0_angstrom=0.5,
+                                 pix_size_angstrom=0.8):
+    """Code from rvspecfit by Sergey Koposov"""
+    width, npix = mat0.shape
+    sig_pix = sigma0_angstrom / pix_size_angstrom
+    xs = np.arange(width)
+    gau_mat = np.array([
+        1. / np.sqrt(2 * np.pi) / sig_pix *
+        np.exp(-0.5 * ((xs - i) / sig_pix)**2) for i in range(len(xs))
+    ])
+    w2 = width // 2
+    mat_rows = resolution_mat_torows(mat0)
+    # Now this stores rows of the banded matrix rather than columns
+    for i in range(w2):
+        mat_rows[:w2 - i - 1, i] = 0
+        # mat_rows[:, i] = mat_rows[:, i] / mat_rows[:, i].sum()
+        j = npix - 1 - i
+        mat_rows[w2 + 1 + i:, j] = 0
+        # mat_rows[:, j] = mat_rows[:, j] / mat_rows[:, j].sum()
+
+    mat_rows1 = scipy.linalg.solve(gau_mat, mat_rows)
+    # shift backward
+    mat = resolution_mat_tocolumns(mat_rows1)
+    # this a hack no deconvolution of edges
+    # mat[:, :w2] = mat0[:, :w2]
+    # mat[:, -w2:] = mat0[:, -w2:]
+    return mat
+
 
 class Resolution(object):
     """Resolution matrix, in the style of desispec.resolution.Resolution
@@ -17,7 +63,7 @@ class Resolution(object):
 
     """
 
-    def __init__(self, data):
+    def __init__(self, data0):
         """
         Parameters
         ----------
@@ -27,8 +73,8 @@ class Resolution(object):
            All other diagonals are assumed to be zero.
 
         """
+        data = deconvolve_resolution_matrix(data0)
         ndiag, dim = data.shape
-
         self.shape = (dim, dim)
         self.ndiag = ndiag
         self.data  = data
