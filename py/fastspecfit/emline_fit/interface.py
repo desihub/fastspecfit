@@ -133,7 +133,6 @@ class EMLine_Objective(object):
                           self.line_wavelengths,
                           self.redshift,
                           self.log_obs_bin_edges,
-                          self.ibin_widths,
                           self.resolution_matrices,
                           self.camerapix,
                           model_fluxes)
@@ -258,19 +257,13 @@ def build_model(redshift,
       else None.
 
     """
-
-    log_obs_bin_edges, ibin_widths = _prepare_bins(obs_bin_centers, camerapix)
+    log_obs_bin_edges, _ = _prepare_bins(obs_bin_centers, camerapix)
 
     model_fluxes = np.empty_like(obs_bin_centers, dtype=obs_bin_centers.dtype)
 
-    _build_model_core(line_parameters,
-                      line_wavelengths,
-                      redshift,
+    _build_model_core(line_parameters, line_wavelengths, redshift,
                       log_obs_bin_edges,
-                      ibin_widths,
-                      resolution_matrices,
-                      camerapix,
-                      model_fluxes)
+                      resolution_matrices, camerapix, model_fluxes)
 
     # suppress negative pixels arising from resolution matrix
     model_fluxes[model_fluxes < 0.] = 0.
@@ -540,14 +533,9 @@ def find_peak_amplitudes_and_fluxes(line_parameters,
 ##########################################################################
 
 
-def _build_model_core(line_parameters,
-                      line_wavelengths,
-                      redshift,
+def _build_model_core(line_parameters, line_wavelengths, redshift,
                       log_obs_bin_edges,
-                      ibin_widths,
-                      resolution_matrices,
-                      camerapix,
-                      model_fluxes):
+                      resolution_matrices, camerapix, model_fluxes):
     """
     Core loop for computing a combined model flux from a set of
     spectral emission lines.
@@ -562,8 +550,6 @@ def _build_model_core(line_parameters,
       Red shift of observed spectrum.
     log_obs_bin_edges : :class:`np.ndarray` [# obs wavelength bins + 1]
       Natural logs of observed wavelength bin edges
-    ibin_widths : :class:`np.ndarray` [# obs wavelength bins]
-      Inverse widths of each observed wavelength bin.
     resolution_matrices : tuple of :class:`fastspecfit.resolution.Resolution`
       Resolution matrices for each camera.
     camerapix : :class:`np.ndarray` of `int` [# cameras x 2]
@@ -572,27 +558,11 @@ def _build_model_core(line_parameters,
       Returns computed model flux for each wavelength bin.
 
     """
-
     for icam, campix in enumerate(camerapix):
-
-        # start and end for obs fluxes of camera icam
         s, e = campix
-
-        # Actual inverse bin widths are in ibin_widths[s+1:e+2].
-        # Setup guarantees that at least one more array entry
-        # exists to either side of this range, so we can pass
-        # those in as dummies.
-        ibw = ibin_widths[s:e+3]
-
-        mf = emline_model(line_wavelengths,
-                          line_parameters,
+        mf = emline_model(line_wavelengths, line_parameters,
                           log_obs_bin_edges[s+icam:e+icam+1],
-                          redshift,
-                          ibw)
-        #if line_parameters.size == 138:
-        #    i = np.argmin(abs(line_parameters-13.55))
-        #    print(i, line_parameters[i])
-        #    #import pdb ; pdb.set_trace()
+                          redshift)
 
         # convolve model with resolution matrix and store in
         # this camera's subrange of model_fluxes
@@ -639,18 +609,10 @@ def _build_multimodel_core(line_parameters,
         # start and end for obs fluxes of camera icam
         s, e = campix
 
-        # Actual inverse bin widths are in ibin_widths[s+1:e+2].
-        # Setup guarantees that at least one more array entry
-        # exists to either side of this range, so we can pass
-        # those in as dummies.
-        ibw = ibin_widths[s:e+3]
-
-        # compute model waveform for each spectral line
         line_models = emline_perline_models(line_wavelengths,
                                             line_parameters,
                                             log_obs_bin_edges[s+icam:e+icam+1],
                                             redshift,
-                                            ibw,
                                             resolution_matrices[icam].ndiag)
 
         # convolve each line's waveform with resolution matrix
