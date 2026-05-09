@@ -89,8 +89,8 @@ class EMLine_Objective(object):
             self.nPatches = 0
             self.J_P = None
 
-        self.log_obs_bin_edges, self.ibin_widths = \
-            _prepare_bins(obs_bin_centers, camerapix)
+        self.log_obs_bin_edges, _ = _prepare_bins(
+            obs_bin_centers, camerapix)
 
         # temporary storage to prevent allocation in params_mapping
         # on every call to objective/jacobian
@@ -194,19 +194,12 @@ class EMLine_Objective(object):
         for icam, campix in enumerate(self.camerapix):
             s, e = campix
 
-            # Actual inverse bin widths are in ibin_widths[s+1:e+2].
-            # Setup guarantees that at least one more array entry
-            # exists to either side of this range, so we can pass
-            # those in as dummies.
-            ibw = self.ibin_widths[s:e+3]
-
-            idealJac = \
-                emline_model_jacobian(line_parameters,
-                                      self.log_obs_bin_edges[s+icam:e+icam+1],
-                                      ibw,
-                                      self.redshift,
-                                      self.line_wavelengths,
-                                      self.resolution_matrices[icam].ndiag)
+            idealJac = emline_model_jacobian(
+                line_parameters,
+                self.log_obs_bin_edges[s+icam:e+icam+1],
+                self.redshift,
+                self.line_wavelengths,
+                self.resolution_matrices[icam].ndiag)
 
             # ignore any columns corresponding to fixed parameters
             endpts = idealJac[0]
