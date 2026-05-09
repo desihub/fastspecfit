@@ -89,8 +89,7 @@ class EMLine_Objective(object):
             self.nPatches = 0
             self.J_P = None
 
-        self.log_obs_bin_edges, _ = _prepare_bins(
-            obs_bin_centers, camerapix)
+        self.log_obs_bin_edges = _prepare_bins(obs_bin_centers, camerapix)
 
         # temporary storage to prevent allocation in params_mapping
         # on every call to objective/jacobian
@@ -250,7 +249,7 @@ def build_model(redshift,
       else None.
 
     """
-    log_obs_bin_edges, _ = _prepare_bins(obs_bin_centers, camerapix)
+    log_obs_bin_edges = _prepare_bins(obs_bin_centers, camerapix)
 
     model_fluxes = np.empty_like(obs_bin_centers, dtype=obs_bin_centers.dtype)
 
@@ -593,20 +592,18 @@ def _build_multimodel_core(line_parameters,
       for each camera.
 
     """
-
-    log_obs_bin_edges, ibin_widths = _prepare_bins(obs_bin_centers,
-                                                   camerapix)
+    log_obs_bin_edges = _prepare_bins(obs_bin_centers, camerapix)
 
     for icam, campix in enumerate(camerapix):
 
         # start and end for obs fluxes of camera icam
         s, e = campix
 
-        line_models = emline_perline_models(line_wavelengths,
-                                            line_parameters,
-                                            log_obs_bin_edges[s+icam:e+icam+1],
-                                            redshift,
-                                            resolution_matrices[icam].ndiag)
+        line_models = emline_perline_models(
+            line_wavelengths, line_parameters,
+            log_obs_bin_edges[s+icam:e+icam+1],
+            redshift,
+            resolution_matrices[icam].ndiag)
 
         # convolve each line's waveform with resolution matrix
         endpts, M = mulWMJ(np.ones(e - s),
@@ -747,42 +744,29 @@ def mulWMJ(w, M, Jsp):
 @jit(nopython=True, nogil=True, cache=True)
 def _prepare_bins(centers, camerapix):
     """
-    Convert bin centers to the info needed by the optimizer,
-    returned as an opaque tuple.
+    Convert bin centers to log bin edges needed by the model and Jacobian.
 
     Parameters
     ----------
     centers : :class:`np.ndarray` [# obs wavelength bins]
-      Center wavelength of each obs bin
+      Center wavelength of each obs bin.
     camerapix : :class:`np.ndarray` of `int` [# cameras x 2]
-      pixels corresponding to each camera in obs wavelength array
+      Pixels corresponding to each camera in obs wavelength array.
 
     Returns
     -------
-    Tuple containing
-       - array of log bin edges.  Edges are placed halfway between centers,
-         with extrapolation at the ends.  We return the natural log of
-         each edge's wavelength, since that is what model and Jacobian
-          building need.
-      - array of inverse widths for each wavelength bin. The array is
-        zero-padded by one cell on the left and right to accomodate
-        edge-to-bin computations.
+    :class:`np.ndarray` of natural log of bin edge wavelengths.
+    Edges are placed halfway between centers, with extrapolation at ends.
 
     """
-
     ncameras = camerapix.shape[0]
     edges = np.empty(len(centers) + ncameras, dtype=centers.dtype)
-    ibin_widths = np.empty(len(centers) + 2,  dtype=centers.dtype)
 
     for icam, campix in enumerate(camerapix):
-
         s, e = campix
         icenters = centers[s:e]
 
-        #- interior edges are just points half way between bin centers
         int_edges = 0.5 * (icenters[:-1] + icenters[1:])
-
-        #- exterior edges are extrapolation of interior bin sizes
         edge_l = icenters[ 0] - (icenters[ 1] - int_edges[ 0])
         edge_r = icenters[-1] + (icenters[-1] - int_edges[-1])
 
@@ -790,12 +774,4 @@ def _prepare_bins(centers, camerapix):
         edges[s + icam + 1:e + icam] = int_edges
         edges[e + icam]              = edge_r
 
-        # add 1 to indices i ibin_widths to skip dummy at 0
-        ibin_widths[s+1:e+1] = 1. / np.diff(edges[s+icam : e+icam+1])
-
-    # dummies before and after widths are needed
-    # for corner cases in edge -> bin computation
-    ibin_widths[0]  = 0.
-    ibin_widths[-1] = 0.
-
-    return (np.log(edges), ibin_widths)
+    return np.log(edges)
