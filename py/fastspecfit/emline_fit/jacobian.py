@@ -1,21 +1,14 @@
 import numpy as np
-
 from numba import jit
 
 from fastspecfit.util import C_LIGHT
-
-from .utils import (
-    MAX_SDEV,
-    max_buffer_width,
-    norm_cdf,
-    norm_pdf
-)
+from .resolution import SIGMA0_ANGSTROM
+from .utils import MAX_SDEV, max_buffer_width
 
 
 @jit(nopython=True, nogil=True, cache=True)
 def emline_model_jacobian(line_parameters,
                           log_obs_bin_edges,
-                          ibin_widths,
                           redshift,
                           line_wavelengths,
                           padding):
@@ -28,13 +21,11 @@ def emline_model_jacobian(line_parameters,
       Parameters of all fitted lines.
     log_obs_bin_edges : :class:`np.ndarray` [# wavelength bins + 1]
       Natural logs of observed wavelength bin edges.
-    ibin_widths : :class:np.ndarray` [# wavelength bins]
-      Inverse of width of each observed wavelength bin.
     redshift : :class:`np.float64`
-      Red shift of observed spectrum.
+      Redshift of observed spectrum.
     line_wavelengths : :class:`np.ndarray` [# lines]
       Array of nominal wavelengths for all fitted lines.
-    padding : :class:`int`:
+    padding : :class:`int`
       Number of entries to be added to size of each sparse row
       allocated for output Jacobian, for later use.
 
@@ -45,17 +36,8 @@ def emline_model_jacobian(line_parameters,
       [ endpts[j,0] , endpts[j,1] ], which are stored in dd[j].
 
     """
+    line_amplitudes, line_vshifts, line_sigmas = np.split(line_parameters, 3)
 
-    SQRT_2PI = np.sqrt(2*np.pi)
-
-    nbins = len(log_obs_bin_edges) - 1
-
-    line_amplitudes, line_vshifts, line_sigmas = \
-        np.split(line_parameters, 3)
-
-    # buffers for per-parameter calculations, sized large
-    # enough for max possible range [s .. e), plus extra
-    # padding as directed by caller.
     max_width = max_buffer_width(log_obs_bin_edges, line_sigmas, padding)
 
     nlines = len(line_wavelengths)
@@ -65,117 +47,79 @@ def emline_model_jacobian(line_parameters,
     starts = endpts[:, 0]
     ends   = endpts[:, 1]
 
-    # compute partial derivatives for avg values of all Gaussians
-    # inside each bin. For each Gaussian, we only compute
-    # contributions for bins where it is non-negligible.
-    for j in range(len(line_wavelengths)):
+    for j in range(nlines):
 
-        # line width
-        sigma = line_sigmas[j] / C_LIGHT
+        if line_amplitudes[j] == 0.:
+            continue
 
-        c0 = SQRT_2PI * np.exp(0.5 * sigma**2)
+        sigma_line = line_sigmas[j] / C_LIGHT
 
-        # wavelength shift for spectral lines
-        line_shift = 1. + redshift + line_vshifts[j] / C_LIGHT
+        line_shift       = 1. + redshift + line_vshifts[j] / C_LIGHT
         shifted_line     = line_wavelengths[j] * line_shift
         log_shifted_line = np.log(shifted_line)
 
-        # leftmost edge i that needs a value (> 0) for this line
-        lo = np.searchsorted(log_obs_bin_edges,
-                             log_shifted_line - MAX_SDEV * sigma,
-                             side="left")
+        sigma0   = SIGMA0_ANGSTROM / shifted_line
+        sigma_eff = np.sqrt(sigma_line * sigma_line + sigma0 * sigma0)
 
-        # leftmost edge i that does *not* need a value (== 1) for this line
+        inv_sigma_eff_sq = 1.0 / (sigma_eff * sigma_eff)
+
+        # support bounds using sigma_eff (wider than sigma_line for narrow lines)
+        lo = np.searchsorted(log_obs_bin_edges,
+                             log_shifted_line - MAX_SDEV * sigma_eff,
+                             side="left")
         hi = np.searchsorted(log_obs_bin_edges,
-                             log_shifted_line + MAX_SDEV * sigma,
+                             log_shifted_line + MAX_SDEV * sigma_eff,
                              side="right")
 
-        # check if entire Gaussian is outside bounds of log_obs_bin_edges
         if hi == 0 or lo == len(log_obs_bin_edges):
             continue
-
-        nedges = hi - lo + 2  # compute values at edges [lo - 1 ... hi]
-
-        # Compute contribs of each line to each partial derivative in place.
-        # No sharing of params between peaks means that we never have to
-        # add contributions from two peaks to same line.
-        dda_vals = dd[           j]
-        ddv_vals = dd[nlines   + j]
-        dds_vals = dd[2*nlines + j]
-
-        offset = (log_shifted_line / sigma + sigma) if sigma > 0. else 0.
-
-        c = c0 * line_wavelengths[j]
-        A = c / C_LIGHT * line_amplitudes[j]
-
-        # vals[i] --> edge i + lo - 1
-
-        dda_vals[0] = 0. # edge lo - 1
-        ddv_vals[0] = 0.
-        dds_vals[0] = 0.
-
-        for i in range(1, nedges - 1):
-
-            # x - offset = (log(lambda_j) - mu_i)/sigma - sigma,
-            # the argument of the Gaussian integral
-
-            x = log_obs_bin_edges[i+lo-1]/sigma - offset
-            pdf = norm_pdf(x)
-            cdf = norm_cdf(x)
-
-            dda_vals[i] = c * line_shift * sigma * cdf
-            ddv_vals[i] = A * (sigma * cdf - pdf)
-            dds_vals[i] = A * line_shift * \
-                ((1 + sigma**2) * cdf - (x + 2*sigma) * pdf)
-
-        dda_vals[nedges - 1] = c * line_shift * sigma     # edge hi
-        ddv_vals[nedges - 1] = A * sigma
-        dds_vals[nedges - 1] = A * line_shift * (1 + sigma**2)
-
-        # Compute partial derivs for bin i+lo-1 for 0 <= i < nedges - 1.
-        # But:
-        #  * if lo == 0, bin lo - 1 is not defined, so skip it
-        #  * if hi == |log_obs_bin_edges|, bin hi - 1 is not defined,
-        #      so skip it
-        # Implement skips by modifying range of computation loop.
-        #
-        # After loop, vals contains weighted partial derives of bins
-        # lo - 1 + dlo .. hi - dhi, plus up to two cells of
-        # trailing garbage.
 
         dlo = 1 if lo == 0                      else 0
         dhi = 1 if hi == len(log_obs_bin_edges) else 0
 
-        for i in range(dlo, nedges - 1 - dhi):
-            dda_vals[i-dlo] = (dda_vals[i+1] - dda_vals[i]) * ibin_widths[i+lo]
-            ddv_vals[i-dlo] = (ddv_vals[i+1] - ddv_vals[i]) * ibin_widths[i+lo]
-            dds_vals[i-dlo] = (dds_vals[i+1] - dds_vals[i]) * ibin_widths[i+lo]
+        s = lo - 1 + dlo
+        e = hi - dhi
 
-        # starts[j] is set to first valid bin
-        starts[j] = lo - 1 + dlo
+        dda_vals = dd[           j]
+        ddv_vals = dd[nlines   + j]
+        dds_vals = dd[2*nlines + j]
 
-        # ends[j] is set one past last valid bin
-        ends[j]   = hi - dhi
+        # factors shared across bins
+        # ∂f/∂amplitude = (sigma_line/sigma_eff) * G_j
+        r = sigma_line / sigma_eff
 
-    # replicate first third of endpts (which is what we
-    # set above) twice more, since same endpts apply to
-    # all three params of each line
-    for i in range(1,3):
-        endpts[i*nlines:(i+1)*nlines,:] = endpts[:nlines,:]
+        # ∂f/∂vshift = A_eff * G_j * x_j * inv_sigma_eff_sq / (C_LIGHT * line_shift)
+        A_eff     = line_amplitudes[j] * r
+        ddv_const = A_eff * inv_sigma_eff_sq / (C_LIGHT * line_shift)
 
-    # for lines with zero amplitude,
-    # partial derivatives w/r to their vshifts
-    # and sigmas are zero
+        # ∂f/∂sigma = amp * G_j / (C_LIGHT * sigma_eff) * inv_sigma_eff_sq
+        #             * (sigma0² + sigma_line² * x_j² * inv_sigma_eff_sq)
+        sigma0_sq      = sigma0 * sigma0
+        sigma_line_sq  = sigma_line * sigma_line
+        dds_const      = line_amplitudes[j] / (C_LIGHT * sigma_eff) * inv_sigma_eff_sq
+
+        for i in range(s, e):
+            log_lambda_center = 0.5 * (log_obs_bin_edges[i] + log_obs_bin_edges[i + 1])
+            x = log_lambda_center - log_shifted_line
+            G = np.exp(-0.5 * x * x * inv_sigma_eff_sq)
+
+            dda_vals[i - s] = r * G
+            ddv_vals[i - s] = ddv_const * x * G
+            dds_vals[i - s] = dds_const * (sigma0_sq + sigma_line_sq * x * x * inv_sigma_eff_sq) * G
+
+        starts[j] = s
+        ends[j]   = e
+
+    # replicate first third of endpts twice more, since same support
+    # applies to all three parameters of each line
+    for i in range(1, 3):
+        endpts[i*nlines:(i+1)*nlines, :] = endpts[:nlines, :]
+
+    # for lines with zero amplitude, vshift and sigma derivatives are zero
     for i, amp in enumerate(line_amplitudes):
         if amp == 0.:
-            endpts[i + nlines,  :] = 0
-            endpts[i + 2*nlines,:] = 0
-
-    # for lines with zero width, partial derivatives
-    # w/r to their amplitudes are zero.
-    for i, sig in enumerate(line_sigmas):
-        if sig == 0.:
-            endpts[i, :] = 0
+            endpts[i + nlines,   :] = 0
+            endpts[i + 2*nlines, :] = 0
 
     return (endpts, dd)
 
