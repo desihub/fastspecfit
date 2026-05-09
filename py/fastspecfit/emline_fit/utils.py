@@ -52,7 +52,7 @@ def norm_cdf(a):
 
 
 @jit(nopython=True, nogil=True, cache=True)
-def max_buffer_width(log_obs_bin_edges, line_sigmas, padding=0):
+def max_buffer_width(log_obs_bin_edges, line_sigmas, sigma0_angstrom, padding=0):
     # sigma_eff >= sigma0; use sigma0 as a floor so narrow/dropped lines
     # still get enough buffer for the fiducial pre-convolved profile.
     min_log_bin = np.min(np.diff(log_obs_bin_edges))
@@ -60,7 +60,7 @@ def max_buffer_width(log_obs_bin_edges, line_sigmas, padding=0):
 
     # conservative sigma_eff: quadrature sum at the blue end (smallest lambda),
     # where sigma0 in log-lambda is largest
-    sigma0_max = SIGMA0_ANGSTROM / np.exp(log_obs_bin_edges[0])
+    sigma0_max = sigma0_angstrom / np.exp(log_obs_bin_edges[0])
     sigma_eff_max = np.sqrt(max_sigma_line**2 + sigma0_max**2)
 
     max_width = int(2 * MAX_SDEV * sigma_eff_max / min_log_bin) + 2 * padding + 4

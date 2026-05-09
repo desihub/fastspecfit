@@ -89,7 +89,7 @@ def emline_perline_models(line_wavelengths,
     line_amplitudes, line_vshifts, line_sigmas = np.split(line_parameters, 3)
 
     nbins = len(log_obs_bin_edges) - 1
-    max_width = max_buffer_width(log_obs_bin_edges, line_sigmas, padding)
+    max_width = max_buffer_width(log_obs_bin_edges, line_sigmas, SIGMA0_ANGSTROM, padding)
 
     nlines = len(line_wavelengths)
     line_profiles = np.empty((nlines, max_width), dtype=line_amplitudes.dtype)

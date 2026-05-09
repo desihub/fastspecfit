@@ -38,7 +38,7 @@ def emline_model_jacobian(line_parameters,
     """
     line_amplitudes, line_vshifts, line_sigmas = np.split(line_parameters, 3)
 
-    max_width = max_buffer_width(log_obs_bin_edges, line_sigmas, padding)
+    max_width = max_buffer_width(log_obs_bin_edges, line_sigmas, SIGMA0_ANGSTROM, padding)
 
     nlines = len(line_wavelengths)
     dd     = np.empty((3 * nlines, max_width), dtype=line_amplitudes.dtype)
