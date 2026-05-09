@@ -53,29 +53,15 @@ def norm_cdf(a):
 
 @jit(nopython=True, nogil=True, cache=True)
 def max_buffer_width(log_obs_bin_edges, line_sigmas, padding=0):
-    """
-    Compute a safe estimate of the number of nonzero bin fluxes possible
-    for a line spanning a subrange of bins with edges log_obs_bin_edges,
-    assuming the line's width is one of the values in line_sigmas.
-    Optionally add 2*padding to allow future expansion to left and right.
+    # sigma_eff >= sigma0; use sigma0 as a floor so narrow/dropped lines
+    # still get enough buffer for the fiducial pre-convolved profile.
+    min_log_bin = np.min(np.diff(log_obs_bin_edges))
+    max_sigma_line = np.max(line_sigmas / C_LIGHT)
 
-    Parameters
-    ----------
-    log_obs_bin_edges : :class:`np.ndarray` [# obs wavelength bins + 1]
-      log of wavelengths of all observed bin edges.
-    line_sigmas : :class:`np.ndarray`  [# nlines]
-      Gaussian widths of all spectral lines.
-    padding : :class:`int`
-      Padding parameter to add to width for future use.
+    # conservative sigma_eff: quadrature sum at the blue end (smallest lambda),
+    # where sigma0 in log-lambda is largest
+    sigma0_max = SIGMA0_ANGSTROM / np.exp(log_obs_bin_edges[0])
+    sigma_eff_max = np.sqrt(max_sigma_line**2 + sigma0_max**2)
 
-    """
-
-    # Find the largest width sigma for any line, and
-    # allocate enough space for twice that much width
-    # in bins, given the smallest observed bin width.
-    # Add padding and a little fudge factor to be safe.
-    max_width = \
-        int(2*MAX_SDEV*np.max(line_sigmas/C_LIGHT) / \
-            np.min(np.diff(log_obs_bin_edges))) + \
-            2*padding + 4
+    max_width = int(2 * MAX_SDEV * sigma_eff_max / min_log_bin) + 2 * padding + 4
     return max_width
