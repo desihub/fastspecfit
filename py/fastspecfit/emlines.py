@@ -916,8 +916,8 @@ class EMFitTools(object):
                         # require amp > 0 (line not dropped) to compute the flux
                         if obsamps[line_amp] > TINY:
                             # analytically integrated flux
-                            #flux = np.sqrt(2. * np.pi) * parameters[line_amp] * linezwave * linesigma0 / C_LIGHT
-                            flux = line_fluxes[line_amp]
+                            flux = np.sqrt(2. * np.pi) * parameters[line_amp] * linezwave * linesigma0 / C_LIGHT
+                            #flux = line_fluxes[line_amp]
 
                         # next, get the continuum level
                         borderindx = get_continuum_pixels(emlinewave_s, linezwave, linesigma_ang_window)

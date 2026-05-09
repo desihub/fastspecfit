@@ -2,7 +2,7 @@ import numpy as np
 from numba import jit
 
 from fastspecfit.util import C_LIGHT
-from .resolution import SIGMA0_ANGSTROM
+from fastspecfit.resolution import SIGMA0_ANGSTROM
 from .utils import MAX_SDEV, max_buffer_width
 
 
