@@ -589,10 +589,6 @@ def _build_model_core(line_parameters,
                           log_obs_bin_edges[s+icam:e+icam+1],
                           redshift,
                           ibw)
-        #if line_parameters.size == 138:
-        #    i = np.argmin(abs(line_parameters-13.55))
-        #    print(i, line_parameters[i])
-        #    #import pdb ; pdb.set_trace()
 
         # convolve model with resolution matrix and store in
         # this camera's subrange of model_fluxes

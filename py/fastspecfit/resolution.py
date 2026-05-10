@@ -81,8 +81,8 @@ def _mat_tocolumns(mat):
 
 
 def deconvolve_resolution_matrix(mat0,
-                                  sigma0_angstrom=SIGMA0_ANGSTROM,
-                                  pix_size_angstrom=PIX_SIZE_ANGSTROM):
+                                 sigma0_angstrom=SIGMA0_ANGSTROM,
+                                 pix_size_angstrom=PIX_SIZE_ANGSTROM):
     """
     Compute W = M^{-1} R: the resolution matrix for spectra pre-convolved
     with a Gaussian of width sigma0_angstrom (Koposov, rvspecfit).
@@ -118,7 +118,7 @@ def deconvolve_resolution_matrix(mat0,
         mat_rows1 = scipy.linalg.lu_solve(_GAU_MAT_LU, mat_rows)
     else:
         # Fallback for non-standard matrix widths
-        gau_mat   = _make_gaussian_matrix(width, sigma0_angstrom, pix_size_angstrom)
+        gau_mat = _make_gaussian_matrix(width, sigma0_angstrom, pix_size_angstrom)
         mat_rows1 = scipy.linalg.solve(gau_mat, mat_rows)
 
     return _mat_tocolumns(mat_rows1)
@@ -126,9 +126,8 @@ def deconvolve_resolution_matrix(mat0,
 
 class Resolution(object):
     """Resolution matrix, in the style of desispec.resolution.Resolution
-    ...
-    """
 
+    """
     def __init__(self, data0):
         data = deconvolve_resolution_matrix(data0)
         ndiag, dim  = data.shape
