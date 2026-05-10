@@ -3,8 +3,6 @@ from math import erf, erfc
 
 from numba import jit
 
-from fastspecfit.resolution import Resolution
-
 from .params_mapping import ParamsMapping
 from .sparse_rep import EMLineJacobian
 
@@ -319,6 +317,7 @@ class MultiLines(object):
 
         if resolution_matrices is None:
             # create trivial diagonal resolution matrices
+            from fastspecfit.resolution import Resolution
             rm = [ Resolution(np.ones((1, e - s))) for (s, e) in camerapix ]
             resolution_matrices = tuple(rm)
 
