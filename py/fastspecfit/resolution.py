@@ -140,6 +140,15 @@ class Resolution(object):
 
     """
     def __init__(self, data0):
+        """
+        Parameters
+        ----------
+        data0 : :class:`np.ndarray` [ndiag x dim]
+           Array of values for diagonals [ndiag//2 .. -ndiag//2];
+           note that some entries at the ends of rows are ignored.
+           All other diagonals are assumed to be zero.
+
+        """
         data = deconvolve_resolution_matrix(data0)
         ndiag, dim  = data.shape
         self.shape  = (dim, dim)
