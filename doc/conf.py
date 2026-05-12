@@ -61,7 +61,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'fastspecfit'
-copyright = u'2019-2025, John Moustakas & the DESI Collaboration'
+copyright = u'John Moustakas & the DESI Collaboration'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -299,3 +299,4 @@ texinfo_documents = [
 # If true, do not generate a @detailmenu in the "Top" node's menu.
 #texinfo_no_detailmenu = False
 
+autodoc_use_legacy_class_based = True
