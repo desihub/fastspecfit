@@ -508,9 +508,8 @@ def find_peak_amplitudes_and_fluxes(line_parameters,
     obsfluxes: integrated flux of the convolved line profile for each line.
 
     """
-
     @jit(nopython=True, nogil=True, cache=True)
-    def _update_line_maxima_and_fluxes(max_amps, line_fluxes, line_models, dwave):
+    def _update_line_maxima_and_fluxes(max_amps, line_fluxes, line_models, wave_weight):
         endpts, vals = line_models
 
         for i in range(vals.shape[0]):
@@ -518,14 +517,35 @@ def find_peak_amplitudes_and_fluxes(line_parameters,
             if pe > ps:
                 max_amps[i] = np.maximum(max_amps[i], np.max(vals[i, :pe-ps]))
                 for k in range(pe - ps):
-                    line_fluxes[i] += vals[i, k] * dwave[ps + k]
+                    line_fluxes[i] += vals[i, k] * wave_weight[ps + k]
 
-    # Bin widths consistent with _prepare_bins midpoint-edge convention.
-    # np.gradient uses the same central-difference / one-sided extrapolation.
-    dwave = np.gradient(obs_bin_centers).astype(line_parameters.dtype)
+    nlines = len(line_wavelengths)
+    nbins  = len(obs_bin_centers)
 
-    max_amps   = np.zeros_like(line_wavelengths, dtype=line_parameters.dtype)
-    line_fluxes = np.zeros_like(line_wavelengths, dtype=line_parameters.dtype)
+    # Build per-pixel integration weights accounting for wavelength overlap
+    wave_weight = np.empty(nbins)
+    for s, e in camerapix:
+        wave_weight[s:e] = np.gradient(obs_bin_centers[s:e])
+
+    # For each camera pair, find wavelength overlap and halve weights there.
+    for i, (s1, e1) in enumerate(camerapix):
+        for j, (s2, e2) in enumerate(camerapix):
+            if j <= i:
+                continue
+            wmin = max(obs_bin_centers[s1:e1].min(), obs_bin_centers[s2:e2].min())
+            wmax = min(obs_bin_centers[s1:e1].max(), obs_bin_centers[s2:e2].max())
+            if wmax > wmin:
+                mask1 = np.zeros(nbins, dtype=bool)
+                mask2 = np.zeros(nbins, dtype=bool)
+                mask1[s1:e1] = (obs_bin_centers[s1:e1] >= wmin) & \
+                               (obs_bin_centers[s1:e1] <= wmax)
+                mask2[s2:e2] = (obs_bin_centers[s2:e2] >= wmin) & \
+                               (obs_bin_centers[s2:e2] <= wmax)
+                wave_weight[mask1] /= 2.
+                wave_weight[mask2] /= 2.
+
+    max_amps    = np.zeros(nlines, dtype=line_parameters.dtype)
+    line_fluxes = np.zeros(nlines, dtype=line_parameters.dtype)
 
     _build_multimodel_core(line_parameters,
                            obs_bin_centers,
@@ -533,7 +553,7 @@ def find_peak_amplitudes_and_fluxes(line_parameters,
                            line_wavelengths,
                            resolution_matrices,
                            camerapix,
-                           lambda m: _update_line_maxima_and_fluxes(max_amps, line_fluxes, m, dwave))
+                           lambda m: _update_line_maxima_and_fluxes(max_amps, line_fluxes, m, wave_weight))
 
     return max_amps, line_fluxes
 
