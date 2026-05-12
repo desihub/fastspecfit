@@ -39,10 +39,10 @@ coverage = [
     "coverage",
 ]
 doc = [
-    "Sphinx",
-    "sphinx-toolbox",
+    "Sphinx>=7.0",
+    "sphinx-toolbox>=3.5.0",
     "sphinx-rtd-theme",
-    "sphinxcontrib-napolean",
+    "sphinxcontrib-napoleon",
 ]
 
 [build-system]
