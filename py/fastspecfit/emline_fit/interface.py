@@ -3,8 +3,6 @@ from math import erf, erfc
 
 from numba import jit
 
-from fastspecfit.resolution import Resolution
-
 from .params_mapping import ParamsMapping
 from .sparse_rep import EMLineJacobian
 
@@ -226,9 +224,6 @@ class EMLine_Objective(object):
         return J
 
 
-##################################################################################
-
-
 def build_model(redshift,
                 line_parameters,
                 line_wavelengths,
@@ -334,6 +329,7 @@ class MultiLines(object):
 
         if resolution_matrices is None:
             # create trivial diagonal resolution matrices
+            from fastspecfit.resolution import Resolution
             rm = [ Resolution(np.ones((1, e - s))) for (s, e) in camerapix ]
             resolution_matrices = tuple(rm)
 
@@ -475,7 +471,87 @@ def find_peak_amplitudes(line_parameters,
     return max_amps
 
 
-##########################################################################
+def find_peak_amplitudes_and_fluxes(line_parameters,
+                                    obs_bin_centers,
+                                    redshift,
+                                    line_wavelengths,
+                                    resolution_matrices,
+                                    camerapix):
+    """
+    Given fitted parameters for all emission lines, report for each line
+    the largest flux contributing to any observed bin (obsamps) and the
+    integrated flux over the convolved line profile (obsfluxes).
+
+    Parameters
+    ----------
+    line_parameters : :class:`np.ndarray`
+      Array of all fitted line parameters.
+    obs_bin_centers : :class:`np.ndarray` [# obs wavelength bins]
+      Center wavelength of each observed wavelength bin.
+    redshift : :class:`np.float64`
+      Red shift of observed spectrum.
+    line_wavelengths : :class:`np.ndarray` [# lines]
+      Array of nominal wavelengths for all fitted lines.
+    resolution_matrices : tuple of :class:`fastspecfit.resolution.Resolution`
+      Resolution matrices for each camera.
+    camerapix : :class:`np.ndarray` of `int` [# cameras x 2]
+      Pixels corresponding to each camera in obs wavelength array.
+
+    Returns
+    -------
+    Tuple (obsamps, obsfluxes), each an array of length [# lines].
+    obsamps  : maximum amplitude in any observed bin for each line.
+    obsfluxes: integrated flux of the convolved line profile for each line.
+
+    """
+    @jit(nopython=True, nogil=True, cache=True)
+    def _update_line_maxima_and_fluxes(max_amps, line_fluxes, line_models, wave_weight):
+        endpts, vals = line_models
+
+        for i in range(vals.shape[0]):
+            ps, pe = endpts[i]
+            if pe > ps:
+                max_amps[i] = np.maximum(max_amps[i], np.max(vals[i, :pe-ps]))
+                for k in range(pe - ps):
+                    line_fluxes[i] += vals[i, k] * wave_weight[ps + k]
+
+    nlines = len(line_wavelengths)
+    nbins  = len(obs_bin_centers)
+
+    # Build per-pixel integration weights accounting for wavelength overlap
+    wave_weight = np.empty(nbins)
+    for s, e in camerapix:
+        wave_weight[s:e] = np.gradient(obs_bin_centers[s:e])
+
+    # For each camera pair, find wavelength overlap and halve weights there.
+    for i, (s1, e1) in enumerate(camerapix):
+        for j, (s2, e2) in enumerate(camerapix):
+            if j <= i:
+                continue
+            wmin = max(obs_bin_centers[s1:e1].min(), obs_bin_centers[s2:e2].min())
+            wmax = min(obs_bin_centers[s1:e1].max(), obs_bin_centers[s2:e2].max())
+            if wmax > wmin:
+                mask1 = np.zeros(nbins, dtype=bool)
+                mask2 = np.zeros(nbins, dtype=bool)
+                mask1[s1:e1] = (obs_bin_centers[s1:e1] >= wmin) & \
+                               (obs_bin_centers[s1:e1] <= wmax)
+                mask2[s2:e2] = (obs_bin_centers[s2:e2] >= wmin) & \
+                               (obs_bin_centers[s2:e2] <= wmax)
+                wave_weight[mask1] /= 2.
+                wave_weight[mask2] /= 2.
+
+    max_amps    = np.zeros(nlines, dtype=line_parameters.dtype)
+    line_fluxes = np.zeros(nlines, dtype=line_parameters.dtype)
+
+    _build_multimodel_core(line_parameters,
+                           obs_bin_centers,
+                           redshift,
+                           line_wavelengths,
+                           resolution_matrices,
+                           camerapix,
+                           lambda m: _update_line_maxima_and_fluxes(max_amps, line_fluxes, m, wave_weight))
+
+    return max_amps, line_fluxes
 
 
 def _build_model_core(line_parameters,
@@ -640,9 +716,6 @@ def _add_patches(obs_bin_centers,
         for j in range(s,e):
             model_fluxes[j] += \
                 slope * (obs_bin_centers[j] - pivotwave) + intercept
-
-
-###################################################################
 
 
 @jit(nopython=True, nogil=True, cache=True)
