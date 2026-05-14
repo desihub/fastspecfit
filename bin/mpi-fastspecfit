@@ -192,7 +192,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             import traceback
             traceback.print_exc()
         return
-    
+
     # loop on each file
     if mp_per_file:
         from joblib import Parallel, delayed
@@ -203,7 +203,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         for redrockfile, outfile, ntarget in zip(redrockfiles, outfiles, ntargets):
             run_one_file(redrockfile, outfile, ntarget)
 
-        
+
     if rank == 0:
         log.debug(f'Rank {rank} is done')
 
@@ -242,7 +242,7 @@ def main():
     parser.add_argument('--samplefile', default=None, type=str, help='Full path to sample (FITS) file with {survey,program,healpix,targetid}.')
     parser.add_argument('--input-redshifts', action='store_true', help='Only used with --samplefile; if set, fit with redshift "Z" values.')
     parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
-    parser.add_argument('--nmonte', type=int, default=10, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--nmonte', type=int, default=50, help='Number of Monte Carlo realizations.')
     parser.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
     parser.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, help='Nominal (default) velocity dispersion in km/s.')
     parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
