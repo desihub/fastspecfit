@@ -11,12 +11,23 @@ from astropy.table import Table
 from fastspecfit.logger import log
 
 class LineTable(object):
+    """Emission line table used for spectral fitting.
 
+    Parameters
+    ----------
+    emlines_file : str, optional
+        Path to an ECSV emission-line parameter file. Defaults to the
+        bundled ``data/emlines.ecsv``.
+
+    Attributes
+    ----------
+    file : str
+        Path to the emission-line file that was read.
+    table : :class:`astropy.table.Table`
+        Emission-line parameters.
+
+    """
     def __init__(self, emlines_file=None):
-
-        """Read the set of emission lines of interest.
-
-        """
         if emlines_file is None:
             # use default emlines location
             from importlib import resources
