@@ -28,6 +28,23 @@ class ParamType(IntEnum):
 
 
 class EMFitTools(object):
+    """Tools for fitting emission-line spectra from DESI spectroscopy.
+
+    Builds and manages line models, parameter tables, tying relationships,
+    doublet constraints, and fitting infrastructure for a set of spectral
+    emission lines.
+
+    Parameters
+    ----------
+    emline_table : :class:`astropy.table.Table`
+        Table of emission lines to fit.
+    uniqueid : str or None, optional
+        Unique identifier for the current object, used in log messages.
+    stronglines : bool, optional
+        If ``True``, restrict to strong lines only. Defaults to ``False``.
+
+    """
+
     def __init__(self, emline_table, uniqueid=None, stronglines=False):
 
         self.line_table = emline_table
@@ -131,7 +148,7 @@ class EMFitTools(object):
 
 
     def compute_inrange_lines(self, redshift, wavelims=(3600., 9900.), wavepad=5*0.8):
-        """ Record which lines are within the limits of the cameras """
+        """Record which lines fall within the observed wavelength range."""
 
         zlinewave = self.line_table['restwave'].value * (1. + redshift)
 
@@ -141,16 +158,24 @@ class EMFitTools(object):
 
 
     def build_linemodels(self, separate_oiii_fit=True):
-        """Build emission line model tables, with and without
-        suppression of broad lines.  Establish fixed (i.e., forced to
-        zero) params, tying relationships between params, and doublet
-        relationships for each model, as well as the relationship
-        between lines and their parameters, which we record in the
-        line table.
+        """Build broad and narrow emission-line model tables.
 
-        Parameter fixing needs to know which lines are within the
-        observed wavelength ranges of the cameras, so we first add
-        this information to the line table.
+        Establishes fixed parameters, tying relationships, and doublet
+        constraints for each model. :meth:`compute_inrange_lines` must be
+        called first to populate in-range information.
+
+        Parameters
+        ----------
+        separate_oiii_fit : bool, optional
+            If ``True``, fit [OIII] 4959,5007 separately from the other
+            narrow forbidden lines. Defaults to ``True``.
+
+        Returns
+        -------
+        linemodel_broad : :class:`astropy.table.Table`
+            Line model allowing broad Balmer + helium components.
+        linemodel_nobroad : :class:`astropy.table.Table`
+            Line model with broad components fixed to zero.
 
         """
 
@@ -430,17 +455,7 @@ class EMFitTools(object):
                                     initial_linevshift_narrow=0.,
                                     initial_linevshift_balmer_broad=0.,
                                     subtract_local_continuum=False):
-        """For all lines in the wavelength range of the data, get a good initial guess
-        on the amplitudes and line-widths. This step is critical for cases like,
-        e.g., 39633354915582193 (tile 80613, petal 05), which has strong narrow
-        lines.
-
-        linepix - dictionary of indices *defined on the coadded spectrum* for
-          all lines in range
-
-        If subtract_local_continuum=True, then contpix is mandatory.
-
-        """
+        """Build data-informed initial parameter guesses and bounds for all in-range lines."""
         from fastspecfit.util import quantile, median
 
         initials = np.empty(len(self.param_table), dtype=np.float64)
@@ -567,19 +582,42 @@ class EMFitTools(object):
                  camerapix,
                  continuum_patches=None,
                  debug=False):
-        """Optimization routine.
+        """Run the least-squares optimizer to fit emission-line parameters.
+
+        Parameters
+        ----------
+        linemodel : :class:`astropy.table.Table`
+            Line model table (modified in-place with fitted values).
+        initials : :class:`numpy.ndarray`
+            Initial parameter values for all parameters.
+        param_bounds : :class:`numpy.ndarray`, shape (nparams, 2)
+            Lower and upper bounds for all parameters.
+        obs_bin_centers : :class:`numpy.ndarray`
+            Center wavelength of each observed wavelength bin.
+        obs_bin_fluxes : :class:`numpy.ndarray`
+            Observed flux in each wavelength bin.
+        obs_weights : :class:`numpy.ndarray`
+            Per-bin weights (square root of inverse variance).
+        redshift : float
+            Redshift of the observed spectrum.
+        resolution_matrices : tuple of :class:`fastspecfit.resolution.Resolution`
+            Resolution matrices for each camera.
+        camerapix : :class:`numpy.ndarray` of int
+            Start and end wavelength bin indices for each camera.
+        continuum_patches : dict or None, optional
+            Patch pedestal parameters, or ``None`` if not used.
+        debug : bool, optional
+            Passed to the optimizer for verbose output. Defaults to ``False``.
 
         Returns
         -------
-        linemodel passed as input (*not* a copy)
-        fit continuum patches if requested
+        linemodel : :class:`astropy.table.Table`
+            The input ``linemodel`` with a ``'value'`` column added or updated,
+            and metadata ``'obsamps'``, ``'line_fluxes'``, and ``'nfev'`` set.
+        continuum_patches : dict
+            Updated patch parameters (only returned if ``continuum_patches``
+            was provided).
 
-        Modifies
-        --------
-        linemodel:
-          - adds/replaces 'value' column with values of fit line parameters
-          - sets metadata 'obsamps' to vector of observed amplitudes
-          - sets metadate 'nfev' to number of fcn evaluations by least_squares
         """
         from scipy.optimize import least_squares
 
@@ -697,7 +735,7 @@ class EMFitTools(object):
     @staticmethod
     def chi2(linemodel, emlinewave, emlineflux, emlineivar, emlineflux_model,
              continuum_model=None, nfree_patches=0, return_dof=False):
-        """Compute the reduced chi^2."""
+        """Compute the reduced chi-squared of the emission-line fit."""
 
         nfree = np.sum(linemodel['free'])
         nfree += nfree_patches
@@ -766,9 +804,7 @@ class EMFitTools(object):
                          specflux_nolines, redshift, resolution_matrices, camerapix,
                          results_monte=None, nminpix=7, nsigma=3., moment_nsigma=5.,
                          limitsigma_narrow_default=75., limitsigma_broad_default=1200.):
-        """Populate the output table with the emission-line measurements.
-
-        """
+        """Populate the output table with per-line flux measurements and uncertainties."""
         from math import erf
         from fastspecfit.util import (centers2edges, sigmaclip, quantile,
                                       median, trapz)
@@ -1197,9 +1233,7 @@ class EMFitTools(object):
 
 
 def synthphot_spectrum(phot, data, specphot, modelwave, modelflux):
-    """Synthesize photometry from the best-fitting model (continuum+emission lines).
-
-    """
+    """Synthesize broadband photometry from the best-fitting continuum + emission-line model."""
     filters = phot.synth_filters[data['photsys']]
 
     synthmaggies = Photometry.get_ab_maggies(filters, modelflux / FLUXNORM, modelwave)
@@ -1219,9 +1253,9 @@ def synthphot_spectrum(phot, data, specphot, modelwave, modelflux):
 
 def build_coadded_models(data, emlinewave, emlineflux_model, continuum_flux,
                          smooth_continuum_flux):
-    """Package together the output models, coadded across cameras.
+    """Interpolate per-camera model spectra onto a uniform wavelength grid.
 
-    Assume constant dispersion in wavelength!
+    Assumes constant dispersion in wavelength.
 
     """
     from astropy.table import Column
@@ -1287,7 +1321,41 @@ def test_broad_model(EMFit,
                      linemodel_broad, emlineflux_model_broad,
                      emlinewave, emlineflux, emlineivar, redshift,
                      minsnr_balmer_broad, minsigma_balmer_broad):
-    """Test the broad Balmer-line hypothesis.
+    """Test whether the broad Balmer-line model is preferred over the narrow-only model.
+
+    Parameters
+    ----------
+    EMFit : :class:`EMFitTools`
+        Emission-line fitting tools instance.
+    linemodel_nobroad : :class:`astropy.table.Table`
+        Fitted narrow-only line model.
+    emlineflux_model_nobroad : :class:`numpy.ndarray`
+        Best-fit model fluxes from the narrow-only fit.
+    linemodel_broad : :class:`astropy.table.Table`
+        Fitted broad + narrow line model.
+    emlineflux_model_broad : :class:`numpy.ndarray`
+        Best-fit model fluxes from the broad fit.
+    emlinewave : :class:`numpy.ndarray`
+        Observed wavelength array in Angstroms.
+    emlineflux : :class:`numpy.ndarray`
+        Observed emission-line flux array.
+    emlineivar : :class:`numpy.ndarray`
+        Inverse variance of the emission-line flux.
+    redshift : float
+        Redshift of the observed spectrum.
+    minsnr_balmer_broad : float
+        Minimum S/N required for a broad Balmer detection.
+    minsigma_balmer_broad : float
+        Minimum velocity width [km/s] required for a broad Balmer component.
+
+    Returns
+    -------
+    adopt_broad : bool
+        ``True`` if the broad-line model is preferred.
+    delta_linechi2_balmer : float
+        Improvement in chi-squared at the Balmer lines.
+    delta_linendof_balmer : int
+        Change in degrees of freedom at the Balmer lines.
 
     """
     from fastspecfit.util import quantile
@@ -1412,8 +1480,20 @@ def test_broad_model(EMFit,
 def linefit(EMFit, linemodel, initial_guesses, param_bounds,
             emlinewave, emlineflux, emlineivar, weights, redshift,
             resolution_matrix, camerapix, debug=False):
-    """Simple wrapper on EMFit.optimize.
-    Modifies linemodel in place.
+    """Fit emission-line parameters and return the model flux and fit statistics.
+
+    Thin wrapper around :meth:`EMFitTools.optimize` and
+    :meth:`EMFitTools.bestfit` that also computes chi-squared.
+
+    Returns
+    -------
+    emlineflux_model : :class:`numpy.ndarray`
+        Best-fit model flux for each wavelength bin.
+    nfree : int
+        Number of free parameters in the fit.
+    chi2 : float
+        Reduced chi-squared of the fit.
+
     """
 
     EMFit.optimize(linemodel, initial_guesses, param_bounds,
@@ -1434,21 +1514,51 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                    minsigma_balmer_broad=250., continuummodel_monte=None,
                    specflux_monte=None, synthphot=True, broadlinefit=True,
                    debug_plots=False):
-    """Perform the fit minimization / chi2 minimization.
+    """Fit emission lines in a continuum-subtracted DESI spectrum.
 
     Parameters
     ----------
-    data
-    continuummodel
-    smooth_continuum
-    synthphot
-    broadlinefit
-    minsigma_balmer_broad - minimum broad-line sigma [km/s]
+    data : dict
+        Per-spectrum data dictionary from the pipeline, including wavelength,
+        flux, inverse variance, resolution matrices, and coadd arrays.
+    fastfit : :class:`astropy.table.Row`
+        Output row to populate with fitted emission-line parameters.
+    specphot : :class:`astropy.table.Row`
+        Output row to populate with spectrophotometric quantities.
+    continuummodel : :class:`numpy.ndarray`
+        Stellar continuum model flux for each observed wavelength bin.
+    smooth_continuum : :class:`numpy.ndarray`
+        Smooth (residual) continuum model flux for each observed wavelength bin.
+    phot : :class:`fastspecfit.photometry.Photometry`
+        Photometry object providing filter curves for synthetic photometry.
+    emline_table : :class:`astropy.table.Table`
+        Table of emission lines to fit.
+    minsnr_balmer_broad : float, optional
+        Minimum S/N required to adopt the broad Balmer component.
+        Defaults to 2.5.
+    minsigma_balmer_broad : float, optional
+        Minimum velocity width [km/s] required for a broad Balmer component.
+        Defaults to 250.
+    continuummodel_monte : :class:`numpy.ndarray` or None, optional
+        Monte Carlo realizations of the continuum model, shape
+        ``(nmonte, nbins)``. Defaults to ``None``.
+    specflux_monte : :class:`numpy.ndarray` or None, optional
+        Monte Carlo realizations of the observed flux, shape
+        ``(nmonte, nbins)``. Defaults to ``None``.
+    synthphot : bool, optional
+        If ``True``, synthesize broadband photometry from the best-fit model.
+        Defaults to ``True``.
+    broadlinefit : bool, optional
+        If ``True``, attempt to fit broad Balmer components. Defaults to
+        ``True``.
+    debug_plots : bool, optional
+        If ``True``, write diagnostic QA plots. Defaults to ``False``.
 
     Returns
     -------
-    results
-    modelflux
+    spectra_out : :class:`astropy.table.Table`
+        Coadded model spectra (continuum, smooth continuum, emission-line model)
+        on a uniform wavelength grid.
 
     """
     from astropy.table import vstack
