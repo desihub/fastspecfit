@@ -8,20 +8,34 @@ Cosmology utilities.
 import numpy as np
 
 class TabulatedDESI(object):
-    """
-    Class to load tabulated z->E(z) and z->comoving_radial_distance(z) relations within DESI fiducial cosmology
-    (in LSS/data/desi_fiducial_cosmology.dat) and perform the (linear) interpolations at any z.
+    """Tabulated DESI fiducial cosmology for fast redshift interpolation.
 
-    >>> cosmo = TabulatedDESI()
-    >>> distance = cosmo.comoving_radial_distance([0.1, 0.2])
-    >>> efunc = cosmo.efunc(0.3)
+    Loads tabulated :math:`E(z)` and comoving radial distance as a function
+    of redshift and performs linear interpolation. The cosmology parameters
+    are defined by the AbacusSummit baseline (Planck 2018 ΛCDM).
 
-    The cosmology is defined in https://github.com/abacusorg/AbacusSummit/blob/master/Cosmologies/abacus_cosm000/CLASS.ini
-    and the tabulated file was obtained using https://github.com/adematti/cosmoprimo/blob/main/cosmoprimo/fiducial.py.
+    Attributes
+    ----------
+    file : str
+        Path to the tabulated cosmology file.
+    H0 : float
+        Hubble constant in km/s/Mpc.
+    h : float
+        Dimensionless Hubble parameter.
+    hubble_time : float
+        Hubble time in Gyr.
 
     Notes
     -----
-    Redshift interpolation range is [0, 100].
+    Redshift interpolation range is [0, 100]. Cosmology defined at
+    https://github.com/abacusorg/AbacusSummit; tabulated file generated
+    with https://github.com/adematti/cosmoprimo.
+
+    Examples
+    --------
+    >>> cosmo = TabulatedDESI()
+    >>> distance = cosmo.comoving_radial_distance([0.1, 0.2])
+    >>> efunc = cosmo.efunc(0.3)
 
     """
     def __init__(self):
@@ -38,7 +52,19 @@ class TabulatedDESI(object):
 
 
     def efunc(self, z):
-        r"""Return :math:`E(z)`, where the Hubble parameter is defined as :math:`H(z) = H_{0} E(z)`, unitless."""
+        r"""Return :math:`E(z) = H(z) / H_0`.
+
+        Parameters
+        ----------
+        z : float or array-like
+            Redshift.
+
+        Returns
+        -------
+        float or :class:`numpy.ndarray`
+            Dimensionless Hubble parameter at the given redshift(s).
+
+        """
         z = np.asarray(z)
         mask = (z < self._z[0]) | (z > self._z[-1])
         if mask.any():
@@ -47,7 +73,19 @@ class TabulatedDESI(object):
 
 
     def comoving_radial_distance(self, z):
-        r"""Return comoving radial distance, in :math:`\mathrm{Mpc}/h`."""
+        r"""Return comoving radial distance.
+
+        Parameters
+        ----------
+        z : float or array-like
+            Redshift.
+
+        Returns
+        -------
+        float or :class:`numpy.ndarray`
+            Comoving radial distance in :math:`\mathrm{Mpc}/h`.
+
+        """
         z = np.asarray(z)
         mask = (z < self._z[0]) | (z > self._z[-1])
         if mask.any():
@@ -57,17 +95,51 @@ class TabulatedDESI(object):
 
     # public interface
     def luminosity_distance(self, z):
-        r"""Return luminosity distance, in :math:`\mathrm{Mpc}/h`."""
+        r"""Return luminosity distance.
+
+        Parameters
+        ----------
+        z : float or array-like
+            Redshift.
+
+        Returns
+        -------
+        float or :class:`numpy.ndarray`
+            Luminosity distance in :math:`\mathrm{Mpc}/h`.
+
+        """
         return self.comoving_radial_distance(z) * (1. + z)
 
 
     def distance_modulus(self, z):
-        """Return the distance modulus at the given redshift (Hogg Eq. 24)."""
+        """Return the distance modulus.
+
+        Parameters
+        ----------
+        z : float or array-like
+            Redshift.
+
+        Returns
+        -------
+        float or :class:`numpy.ndarray`
+            Distance modulus in magnitudes (Hogg 1999, Eq. 24).
+
+        """
         return 5. * np.log10(self.luminosity_distance(z)) + 25.
 
 
     def universe_age(self, z):
         """Return the age of the universe at the given redshift.
+
+        Parameters
+        ----------
+        z : float or array-like
+            Redshift.
+
+        Returns
+        -------
+        float or :class:`numpy.ndarray`
+            Age of the universe in Gyr.
 
         """
         from scipy.integrate import quad

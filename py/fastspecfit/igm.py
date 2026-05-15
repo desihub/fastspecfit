@@ -4,42 +4,33 @@ fastspecfit.igm
 
 Tools for handling intergalactic medium (IGM) attenuation.
 
+The :class:`Inoue14` implementation is adapted from Gabriel Brammer's
+``eazy-py`` package and is used here under the MIT License.
+Copyright (c) 2016-2022 Gabriel Brammer.
+
 """
 import numpy as np
 from numba import jit
 
 
 class Inoue14(object):
-    r"""
-    IGM absorption from Inoue et al. (2014)
+    r"""IGM absorption model from Inoue et al. (2014).
 
     Parameters
     ----------
+    scale_tau : float, optional
+        Scaling factor applied to the IGM optical depth :math:`\tau`.
+        The transmission is :math:`f_\mathrm{igm} = e^{-\mathrm{scale\_tau}\,\tau}`.
+        Defaults to 1.
+
+    Attributes
+    ----------
     scale_tau : float
-        Parameter multiplied to the IGM :math:`\tau` values (exponential
-        in the linear absorption fraction).
-        I.e., :math:`f_\mathrm{igm} = e^{-\mathrm{scale\_tau} \tau}`.
-
-    Copyright (c) 2016-2022 Gabriel Brammer
-
-    Permission is hereby granted, free of charge, to any person obtaining a copy
-    of this software and associated documentation files (the "Software"), to deal
-    in the Software without restriction, including without limitation the rights
-    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the Software is
-    furnished to do so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all
-    copies or substantial portions of the Software.
-
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.
+        Optical depth scaling factor.
+    igm_params : tuple
+        Pre-computed LAF and DLA absorption coefficients.
+    reference : str
+        Citation string for the IGM model.
 
     """
     igm_params = None
@@ -76,20 +67,19 @@ class Inoue14(object):
 
 
     def full_IGM(self, z, lobs):
-        """Get full Inoue IGM absorption
+        r"""Compute the full IGM transmission at observed wavelengths.
 
         Parameters
         ----------
         z : float
-        Redshift to evaluate IGM absorption
-
-        lobs : array
-        Observed-frame wavelength(s) in Angstroms.
+            Source redshift.
+        lobs : :class:`numpy.ndarray`
+            Observed-frame wavelengths in Angstroms.
 
         Returns
         -------
-        abs : array
-        IGM absorption
+        :class:`numpy.ndarray`
+            IGM transmission :math:`e^{-\tau}` at each wavelength.
 
         """
         return self._full_IGM(z, lobs,
