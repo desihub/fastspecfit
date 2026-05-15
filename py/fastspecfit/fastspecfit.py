@@ -33,7 +33,7 @@ def parse(options=None, rank=0):
     parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
     parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
     parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
-    parser.add_argument('--nmonte', type=int, default=10, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--nmonte', type=int, default=50, help='Number of Monte Carlo realizations.')
     parser.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
     parser.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, help='Nominal (default) velocity dispersion in km/s.')
     parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')

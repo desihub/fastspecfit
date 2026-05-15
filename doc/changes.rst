@@ -5,7 +5,10 @@ Change Log
 3.3.0 (not released yet)
 ------------------------
 
-*
+* Deconvolve the resolution matrix before fitting, as recommended
+  by S. Koposov and update config files [`PR #244`_].
+
+.. _`PR #244`: https://github.com/desihub/fastspecfit/pull/244
 
 3.2.1 (2026-03-20)
 ------------------

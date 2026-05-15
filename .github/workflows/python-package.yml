@@ -17,8 +17,6 @@ jobs:
             matrix:
                 os: [ubuntu-latest]
                 python-version: ['3.10', '3.11', '3.12', '3.13']
-        env:
-            DESIUTIL_VERSION: 3.6.0
 
         steps:
             - name: Checkout code
@@ -34,9 +32,7 @@ jobs:
                 sudo apt-get update
                 sudo apt install libbz2-dev
                 python -m pip install --upgrade pip setuptools wheel
-                python -m pip install pytest
-                python -m pip install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
-                python -m pip install -r requirements.txt
+                python -m pip install -e ".[test]"
             - name: Verify Installation
               run: pip list
             - name: Run the test
@@ -50,8 +46,6 @@ jobs:
             matrix:
                 os: [ubuntu-latest]
                 python-version: ['3.10', '3.11', '3.12']
-        env:
-            DESIUTIL_VERSION: 3.6.0
 
         steps:
             - name: Checkout code
@@ -67,9 +61,7 @@ jobs:
                 sudo apt-get update
                 sudo apt install libbz2-dev
                 python -m pip install --upgrade pip setuptools wheel
-                python -m pip install pytest pytest-cov coveralls
-                python -m pip install git+https://github.com/desihub/desiutil.git@${DESIUTIL_VERSION}#egg=desiutil
-                python -m pip install -r requirements.txt
+                python -m pip install -e ".[coverage]"
             - name: Run the test with coverage
               run: pytest --cov
             - name: Coveralls
@@ -96,7 +88,7 @@ jobs:
               with:
                 python-version: ${{ matrix.python-version }}
             - name: Install Python dependencies
-              run: python -m pip install --upgrade pip setuptools wheel Sphinx sphinx-toolbox sphinx-rtd-theme
+              run: python -m pip install --upgrade pip setuptools wheel && pip install -e ".[doc]"
             - name: Test the documentation
               run: sphinx-build -W --keep-going -b html doc doc/_build/html
 
@@ -114,7 +106,6 @@ jobs:
               uses: actions/checkout@v4
               with:
                 fetch-depth: 0
-
             - name: Set up Python ${{ matrix.python-version }}
               uses: actions/setup-python@v5
               with:
@@ -122,6 +113,5 @@ jobs:
             - name: Install Python dependencies
               run: python -m pip install --upgrade pip wheel pycodestyle
             - name: Test the style; failures are allowed
-              # This is equivalent to an allowed falure.
               continue-on-error: true
               run: pycodestyle --count py/fastspecfit
