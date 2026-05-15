@@ -13,8 +13,18 @@ MAX_SDEV = 5.
 
 @jit(nopython=True, nogil=True, cache=True)
 def norm_pdf(a):
-    """
-    PDF of standard normal distribution at a point a
+    """PDF of the standard normal distribution.
+
+    Parameters
+    ----------
+    a : float
+        Evaluation point.
+
+    Returns
+    -------
+    float
+        Probability density at ``a``.
+
     """
 
     SQRT_2PI = np.sqrt(2 * np.pi)
@@ -24,8 +34,18 @@ def norm_pdf(a):
 
 @jit(nopython=True, nogil=True, cache=True)
 def norm_cdf(a):
-    """
-    Approximate the integral of a standard normal PDF from -infty to a.
+    """Approximate the CDF of the standard normal distribution.
+
+    Parameters
+    ----------
+    a : float
+        Upper integration limit.
+
+    Returns
+    -------
+    float
+        Integral of the standard normal PDF from :math:`-\\infty` to ``a``.
+
     """
 
     SQRT1_2 = 1.0 / np.sqrt(2)
@@ -53,20 +73,21 @@ def norm_cdf(a):
 
 @jit(nopython=True, nogil=True, cache=True)
 def max_buffer_width(log_obs_bin_edges, line_sigmas, padding=0):
-    """
-    Compute a safe estimate of the number of nonzero bin fluxes possible
-    for a line spanning a subrange of bins with edges log_obs_bin_edges,
-    assuming the line's width is one of the values in line_sigmas.
-    Optionally add 2*padding to allow future expansion to left and right.
+    """Estimate the maximum number of nonzero bins possible for any spectral line.
 
     Parameters
     ----------
-    log_obs_bin_edges : :class:`np.ndarray` [# obs wavelength bins + 1]
-      log of wavelengths of all observed bin edges.
-    line_sigmas : :class:`np.ndarray`  [# nlines]
-      Gaussian widths of all spectral lines.
-    padding : :class:`int`
-      Padding parameter to add to width for future use.
+    log_obs_bin_edges : :class:`np.ndarray`
+        Log wavelengths of all observed bin edges.
+    line_sigmas : :class:`np.ndarray`
+        Gaussian widths of all spectral lines in km/s.
+    padding : int, optional
+        Extra bins to add on each side for future expansion. Defaults to 0.
+
+    Returns
+    -------
+    int
+        Safe upper bound on the number of bins with nonzero flux for any line.
 
     """
 

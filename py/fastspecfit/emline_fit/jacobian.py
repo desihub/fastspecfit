@@ -19,30 +19,30 @@ def emline_model_jacobian(line_parameters,
                           redshift,
                           line_wavelengths,
                           padding):
-    """
-    Compute Jacobian of the function computed in emline_model().
+    """Compute the sparse Jacobian of :func:`emline_model`.
 
     Parameters
     ----------
-    line_parameters : :class:`np.ndarray`
-      Parameters of all fitted lines.
-    log_obs_bin_edges : :class:`np.ndarray` [# wavelength bins + 1]
-      Natural logs of observed wavelength bin edges.
-    ibin_widths : :class:np.ndarray` [# wavelength bins]
-      Inverse of width of each observed wavelength bin.
-    redshift : :class:`np.float64`
-      Red shift of observed spectrum.
-    line_wavelengths : :class:`np.ndarray` [# lines]
-      Array of nominal wavelengths for all fitted lines.
-    padding : :class:`int`:
-      Number of entries to be added to size of each sparse row
-      allocated for output Jacobian, for later use.
+    line_parameters : :class:`numpy.ndarray`
+        Concatenated array of amplitudes, velocity shifts, and sigmas for
+        all lines.
+    log_obs_bin_edges : :class:`numpy.ndarray`
+        Natural logs of observed wavelength bin edges.
+    ibin_widths : :class:`numpy.ndarray`
+        Inverse widths of each observed wavelength bin.
+    redshift : float
+        Redshift of the observed spectrum.
+    line_wavelengths : :class:`numpy.ndarray`
+        Nominal rest-frame wavelengths of all fitted lines in Angstroms.
+    padding : int
+        Extra entries to pad each sparse row for later use.
 
     Returns
     -------
-    :class:`tuple` (endpts, dd)
-      Sparse Jacobian, where column j has nonzero values in interval
-      [ endpts[j,0] , endpts[j,1] ], which are stored in dd[j].
+    endpts : :class:`numpy.ndarray` of int, shape (3*nlines, 2)
+        Start and end bin indices of the nonzero range for each parameter.
+    dd : :class:`numpy.ndarray`, shape (3*nlines, max_width)
+        Partial derivative values within each parameter's nonzero bin range.
 
     """
 
@@ -186,29 +186,29 @@ def patch_jacobian(obs_bin_centers,
                    obs_weights,
                    patch_endpts,
                    patch_pivotwave):
-    """
-    Compute partial Jacobian associated with just the patch parameters
-    in the sparse column form used in sparse_rep.py.  This Jacobian
-    is independent of both the line model and the particular choices
-    of slope/intercept for each patch, so can be computed once when
-    we set up the optimization.
+    """Compute the patch pedestal Jacobian in sparse column form.
+
+    This Jacobian depends only on the patch geometry (not the line model
+    or slope/intercept values), so it can be computed once at setup time.
 
     Parameters
     ----------
-    obs_bin_centers : :class:`np.ndarray` [# wavelength bins]
-      Center of each observed wavelength bin.
-    obs_weights : :class:`np.ndarray` [# wavelength bins]
-      Weights for each observed wavelength bin.
-    patch_endpts : :class:`np.ndarray` [# patches x 2]
-      Endpoints of each patch in wavelength array.
-    patch_pivotwave : :class:`np.ndarray` [# patches]
-      Wavelength offset for fitted affine params of each patch .
+    obs_bin_centers : :class:`numpy.ndarray`
+        Center wavelength of each observed bin in Angstroms.
+    obs_weights : :class:`numpy.ndarray`
+        Weights for each observed wavelength bin.
+    patch_endpts : :class:`numpy.ndarray` of int, shape (npatches, 2)
+        Start and end bin indices for each patch.
+    patch_pivotwave : :class:`numpy.ndarray`
+        Pivot wavelength for the affine pedestal of each patch.
 
     Returns
     -------
-    :class:`tuple` (endpts, M)
-      Sparse Jacobian, where column j has nonzero values in interval
-      [ endpts[j,0] , endpts[j,1] ], which are stored in M[j].
+    endpts : :class:`numpy.ndarray` of int, shape (2*npatches, 2)
+        Start and end bin indices for slope and intercept columns.
+    M : :class:`numpy.ndarray`, shape (2*npatches, max_width)
+        Weighted partial derivatives with respect to slope and intercept
+        for each patch.
 
     """
 
