@@ -17,7 +17,59 @@ from fastspecfit.util import (
 
 
 class ContinuumTools(object):
-    """Tools for dealing with spectral continua.
+    """Tools for fitting and manipulating stellar continua.
+
+    Parameters
+    ----------
+    data : dict
+        Per-object spectral and photometric data dictionary.
+    templates : :class:`fastspecfit.templates.Templates`
+        Stellar population synthesis templates.
+    phot : :class:`fastspecfit.photometry.Photometry`
+        Photometric filter and band information.
+    igm : :class:`fastspecfit.igm.Inoue14`
+        IGM attenuation model.
+    tauv_guess : float, optional
+        Initial guess for the V-band optical depth. Defaults to 0.1.
+    vdisp_guess : float, optional
+        Initial guess for the velocity dispersion in km/s.
+    tauv_bounds : tuple, optional
+        Lower and upper bounds on tau(V). Defaults to (0., 2.).
+    vdisp_bounds : tuple, optional
+        Lower and upper bounds on the velocity dispersion in km/s.
+    vdisp_nbin : int, optional
+        Number of grid points for the velocity dispersion chi2 scan.
+        Defaults to 5.
+    fluxnorm : float, optional
+        Flux normalization factor in erg/s/cm2/A. Defaults to 1e17.
+    massnorm : float, optional
+        Stellar mass normalization in solar masses. Defaults to 1e10.
+    fastphot : bool, optional
+        If ``True``, skip spectroscopic preprocessing. Defaults to ``False``.
+    constrain_age : bool, optional
+        If ``True``, exclude templates older than the age of the universe
+        at the object's redshift. Defaults to ``False``.
+
+    Attributes
+    ----------
+    ztemplatewave : :class:`numpy.ndarray`
+        Redshifted template wavelength array in Angstroms.
+    zfactors : :class:`numpy.ndarray`
+        Combined flux scaling factors including IGM attenuation, luminosity
+        distance, and flux normalization.
+    agekeep : slice or :class:`numpy.ndarray`
+        Index selection for templates younger than the age of the universe.
+    nage : int
+        Number of age templates in use.
+    vdisp_grid : :class:`numpy.ndarray`
+        Velocity dispersion grid used in the chi2 scan.
+    phot_pre : tuple
+        Preprocessing cache for photometry synthesis.
+    wavelen : int
+        Total spectroscopic pixel count (set only when ``fastphot=False``).
+    spec_pre : tuple
+        Preprocessing cache for spectroscopic resampling
+        (set only when ``fastphot=False``).
 
     """
     def __init__(self, data, templates, phot, igm, tauv_guess=0.1,
@@ -79,15 +131,23 @@ class ContinuumTools(object):
 
 
     def get_zfactors(self, igm, ztemplatewave, redshift, dluminosity):
-        """Convenience method to cache the factors that depend on redshift and the
-        redshifted wavelength array, including the attenuation due to the IGM.
+        """Cache the redshift-dependent flux scaling factors including IGM attenuation.
 
-        ztemplatewave : :class:`numpy.ndarray` [npix]
-            Redshifted wavelength array.
-        redshift : :class:`float`
+        Parameters
+        ----------
+        igm : :class:`fastspecfit.igm.Inoue14`
+            IGM attenuation model.
+        ztemplatewave : :class:`numpy.ndarray`
+            Redshifted template wavelength array in Angstroms.
+        redshift : float
             Object redshift.
-        dluminosity : :class:`float`
-            Luminosity distance corresponding to `redshift`.
+        dluminosity : float
+            Luminosity distance in Mpc.
+
+        Returns
+        -------
+        :class:`numpy.ndarray`
+            Combined flux scaling factors.
 
         """
         T = igm.full_IGM(redshift, ztemplatewave)
@@ -114,34 +174,37 @@ class ContinuumTools(object):
 
         Parameters
         ----------
-        wave : :class:`numpy.ndarray` [npix]
-           Observed-frame wavelength array.
-        flux : :class:`numpy.ndarray` [npix]
-           Spectrum corresponding to `wave`.
-        ivar : :class:`numpy.ndarray` [npix]
-           Inverse variance spectrum corresponding to `flux`.
-        linemask : :class:`numpy.ndarray` of type :class:`bool`, optional, defaults to `None`
-           Boolean mask with the same number of pixels as `wave` where `True`
-           means a pixel is (possibly) affected by an emission line
-           (specifically a strong line which likely cannot be median-smoothed).
-        smooth_window : :class:`int`, optional, defaults to 50 pixels
-           Width of the sliding window used to compute the iteratively clipped
-           statistics (mean, median, sigma); a magic number. Note: the nominal
-           extraction width (0.8 A) and observed-frame wavelength range
-           (3600-9800 A) corresponds to pixels that are 66-24 km/s. So
-           `smooth_window` of 50 corresponds to 3300-1200 km/s, which is
-           conservative for all but the broadest lines. A magic number.
-        smooth_step : :class:`int`, optional, defaults to 10 pixels
-           Width of the step size when computing smoothed statistics; a magic
-           number.
-        png : :class:`str`, optional, defaults to `None`
-           Generate a simple QA plot and write it out to this filename.
+        wave : :class:`numpy.ndarray`
+            Observed-frame wavelength array in Angstroms.
+        flux : :class:`numpy.ndarray`
+            Spectrum corresponding to ``wave``.
+        ivar : :class:`numpy.ndarray`
+            Inverse variance spectrum corresponding to ``flux``.
+        linemask : :class:`numpy.ndarray` of bool
+            Boolean mask where ``True`` marks pixels possibly affected by
+            emission lines.
+        camerapix : array-like
+            Per-camera start/end pixel index pairs.
+        uniqueid : int or str, optional
+            Object identifier used in debug plot filenames.
+        smooth_window : int, optional
+            Width of the sliding window in pixels. Defaults to 75.
+        smooth_step : int, optional
+            Step size of the sliding window in pixels. Defaults to 125.
+        clip_sigma : float, optional
+            Sigma threshold for iterative clipping. Defaults to 2.
+        nminpix : int, optional
+            Minimum number of unmasked pixels required per window. Defaults to 15.
+        nmaskpix : int, optional
+            Number of pixels to mask at each camera edge. Defaults to 9.
+        debug_plots : bool, optional
+            If ``True``, write a QA plot to the current directory.
 
         Returns
         -------
-        smooth_flux :class:`numpy.ndarray` [npix]
-        Smooth continuum spectrum which can be subtracted from `flux` in
-        order to create a pure emission-line spectrum.
+        :class:`numpy.ndarray`
+            Smooth continuum spectrum that can be subtracted from ``flux``
+            to produce a pure emission-line spectrum.
 
         """
         from numpy.lib.stride_tricks import sliding_window_view
@@ -322,8 +385,14 @@ class ContinuumTools(object):
 
     @staticmethod
     def lums_keys():
-        """Simple method which defines the rest-frame luminosity keys and
-        wavelengths.
+        """Return rest-frame luminosity output keys and reference wavelengths.
+
+        Returns
+        -------
+        keys : tuple of str
+            Output column names for rest-frame luminosities.
+        waves : tuple of float
+            Corresponding rest-frame reference wavelengths in Angstroms.
 
         """
         keys = ('LOGL_1450', 'LOGLNU_1500', 'LOGL_1700',
@@ -334,8 +403,14 @@ class ContinuumTools(object):
 
     @staticmethod
     def cfluxes_keys():
-        """Simple method which defines the observed-frame continuum flux keys
-        and wavelengths.
+        """Return observed-frame continuum flux output keys and reference wavelengths.
+
+        Returns
+        -------
+        keys : tuple of str
+            Output column names for continuum fluxes.
+        waves : tuple of float
+            Corresponding rest-frame reference wavelengths in Angstroms.
 
         """
         keys = ('FLYA_1215_CONT', 'FOII_3727_CONT', 'FHBETA_CONT',
@@ -347,6 +422,27 @@ class ContinuumTools(object):
     def continuum_fluxes(self, continuum, uniqueid=0, width1=50., width2=100.,
                          debug_plots=False):
         """Compute rest-frame luminosities and observed-frame continuum fluxes.
+
+        Parameters
+        ----------
+        continuum : :class:`numpy.ndarray`
+            Best-fit stellar continuum model at the native template wavelengths.
+        uniqueid : int or str, optional
+            Object identifier used in debug plot filenames.
+        width1 : float, optional
+            Inner half-width in Angstroms for continuum measurement. Defaults to 50.
+        width2 : float, optional
+            Outer half-width in Angstroms for continuum measurement. Defaults to 100.
+        debug_plots : bool, optional
+            If ``True``, write a QA plot to the current directory.
+
+        Returns
+        -------
+        lums : :class:`numpy.ndarray`
+            Rest-frame luminosities at the wavelengths defined by :func:`lums_keys`.
+        cfluxes : :class:`numpy.ndarray`
+            Observed-frame continuum fluxes at the wavelengths defined by
+            :func:`cfluxes_keys`.
 
         """
         from fastspecfit.util import sigmaclip
@@ -931,19 +1027,30 @@ class ContinuumTools(object):
                                split=0, ndof_spec=0, ndof_phot=0):
         """Compute the reduced spectroscopic and/or photometric chi2.
 
-        resid:
-           Vector of residuals from least-squares fitting
-        ncoeff:
-           Number of template coefficients fitted
-        vdisp_fitted:
-           True if the velocity dispersion was fitted
-        split:
-           Boundary between initial spectroscopy elements of
-           residual and final photometry elements
-        ndof_spec:
-           Number of spectroscopy degrees of freedom
-        ndof_phot:
-           Number of photometry degrees of freedom
+        Parameters
+        ----------
+        resid : :class:`numpy.ndarray`
+            Residual vector from least-squares fitting.
+        ncoeff : int
+            Number of template coefficients fitted.
+        vdisp_fitted : bool
+            ``True`` if the velocity dispersion was a free parameter.
+        split : int, optional
+            Index separating spectroscopic and photometric residuals.
+            Defaults to 0.
+        ndof_spec : int, optional
+            Number of spectroscopic degrees of freedom. Defaults to 0.
+        ndof_phot : int, optional
+            Number of photometric degrees of freedom. Defaults to 0.
+
+        Returns
+        -------
+        rchi2_spec : float
+            Reduced chi2 for the spectroscopy.
+        rchi2_phot : float
+            Reduced chi2 for the photometry.
+        rchi2_tot : float
+            Reduced chi2 for the combined fit.
 
         """
         # tauv is always a free parameter
@@ -978,10 +1085,27 @@ class ContinuumTools(object):
 
 
 def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4800.), fit_restrange=(3800., 6000.)):
-    """Determine if we can solve for the velocity dispersion.
+    """Determine whether the spectrum has sufficient coverage to fit velocity dispersion.
 
-    min_restrange - minimum required rest wavelength range
-    fit_restrange - fitted rest wavelength range
+    Parameters
+    ----------
+    redshift : float
+        Object redshift.
+    specwave : :class:`numpy.ndarray`
+        Observed-frame wavelength array in Angstroms.
+    min_restrange : tuple, optional
+        Minimum required rest-frame wavelength range (lo, hi) in Angstroms.
+        Defaults to (3800., 4800.).
+    fit_restrange : tuple, optional
+        Rest-frame wavelength range used when fitting velocity dispersion.
+        Defaults to (3800., 6000.).
+
+    Returns
+    -------
+    compute_vdisp : bool
+        ``True`` if the spectrum covers the minimum required rest-frame range.
+    pixel_range : tuple of int
+        Start and end pixel indices of the fitting wavelength range.
 
     """
     restwave = specwave / (1. + redshift)
@@ -1003,7 +1127,33 @@ def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4800.), fit_rest
 
 def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
                        nmonte=10, rng=None, debug_plots=False):
-    """Model the broadband photometry.
+    """Fit the stellar continuum to broadband photometry only.
+
+    Parameters
+    ----------
+    redshift : float
+        Object redshift.
+    objflam : :class:`numpy.ndarray`
+        Observed photometry in units of 10**-17 erg/s/cm2/A.
+    objflamivar : :class:`numpy.ndarray`
+        Inverse variance of ``objflam``.
+    CTools : :class:`ContinuumTools`
+        Initialized continuum-fitting tools for this object.
+    uniqueid : int or str, optional
+        Object identifier used in log messages and debug plot filenames.
+    nmonte : int, optional
+        Number of Monte Carlo realizations for uncertainty estimation.
+        Defaults to 10.
+    rng : :class:`numpy.random.Generator`, optional
+        Random number generator for Monte Carlo draws.
+    debug_plots : bool, optional
+        If ``True``, write QA plots to the current directory.
+
+    Returns
+    -------
+    tuple
+        Fitted continuum parameters, model spectra, and uncertainty estimates.
+        See source for the full unpacking order.
 
     """
     data = CTools.data
@@ -1105,7 +1255,42 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
 def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
                       specistd, fitmask, agekeep, deltachi2min=25.,
                       fit_for_min=False, debug_plots=False):
-    """Determine the velocity dispersion via a chi2 scan.
+    """Determine the stellar velocity dispersion via a chi2 grid scan.
+
+    Parameters
+    ----------
+    CTools : :class:`ContinuumTools`
+        Initialized continuum-fitting tools for this object.
+    templates : :class:`fastspecfit.templates.Templates`
+        Stellar population synthesis templates.
+    uniqueid : int or str
+        Object identifier used in log messages and debug plot filenames.
+    specflux : :class:`numpy.ndarray`
+        Observed-frame spectrum in 10**-17 erg/s/cm2/A.
+    specwave : :class:`numpy.ndarray`
+        Observed-frame wavelength array in Angstroms.
+    specistd : :class:`numpy.ndarray`
+        Square root of the inverse variance of ``specflux``.
+    fitmask : :class:`numpy.ndarray` of bool
+        Boolean mask selecting the wavelength range used for the vdisp fit.
+    agekeep : slice or :class:`numpy.ndarray`
+        Index selection for age templates to use.
+    deltachi2min : float, optional
+        Minimum peak-to-peak delta-chi2 required to accept a fit.
+        Defaults to 25.
+    fit_for_min : bool, optional
+        If ``True``, fit a parabola to refine the chi2 minimum.
+        Defaults to ``False``.
+    debug_plots : bool, optional
+        If ``True``, write a QA plot to the current directory.
+
+    Returns
+    -------
+    vdisp : float
+        Best-fit velocity dispersion in km/s, or the nominal value if the
+        fit failed.
+    vdisp_ivar : float
+        Inverse variance of ``vdisp``; zero if the fit failed.
 
     """
     from fastspecfit.util import find_minima, minfit
@@ -1210,7 +1395,36 @@ def _continuum_nominal_vdisp(CTools, templates, specflux, specwave,
 def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=10,
                        rng=None, uniqueid=0, no_smooth_continuum=False,
                        debug_plots=False):
-    """Jointly model the spectroscopy and broadband photometry.
+    """Jointly fit the stellar continuum to spectroscopy and broadband photometry.
+
+    Parameters
+    ----------
+    redshift : float
+        Object redshift.
+    objflam : :class:`numpy.ndarray`
+        Observed photometry in units of 10**-17 erg/s/cm2/A.
+    objflamivar : :class:`numpy.ndarray`
+        Inverse variance of ``objflam``.
+    CTools : :class:`ContinuumTools`
+        Initialized continuum-fitting tools for this object.
+    nmonte : int, optional
+        Number of Monte Carlo realizations for uncertainty estimation.
+        Defaults to 10.
+    rng : :class:`numpy.random.Generator`, optional
+        Random number generator for Monte Carlo draws.
+    uniqueid : int or str, optional
+        Object identifier used in log messages and debug plot filenames.
+    no_smooth_continuum : bool, optional
+        If ``True``, skip the nonparametric smooth continuum step.
+        Defaults to ``False``.
+    debug_plots : bool, optional
+        If ``True``, write QA plots to the current directory.
+
+    Returns
+    -------
+    tuple
+        Fitted continuum parameters, model spectra, and uncertainty estimates.
+        See source for the full unpacking order.
 
     """
     from fastspecfit.util import find_minima, minfit
