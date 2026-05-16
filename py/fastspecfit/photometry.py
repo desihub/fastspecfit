@@ -15,19 +15,22 @@ from fastspecfit.util import trapz, C_LIGHT, FLUXNORM
 
 
 class Photometry(object):
-    """Class to load filters and containing filter- and dust-related methods.
+    """Load filter curves and provide photometric synthesis methods.
+
+    Parameters
+    ----------
+    fphotofile : :class:`str` or None, optional
+        Path to the YAML file defining filter names, bands, and column
+        mappings. Defaults to the bundled DR9 configuration.
+    fitstack : :class:`bool`, optional
+        If ``True``, load the stacked-spectra photometry configuration
+        instead of the default DR9 one. Default is ``False``.
+    ignore_photometry : :class:`bool`, optional
+        If ``True``, set all photometric bands to not be fit. Default is
+        ``False``.
 
     """
     def __init__(self, fphotofile=None, fitstack=False, ignore_photometry=False):
-
-        """
-        Parameters
-        ----------
-        ignore_photometry : :class:`bool`
-            Boolean flag indicating whether or not to ignore the broadband
-            photometry.
-
-        """
         from speclite import filters
         import yaml
 
@@ -157,20 +160,20 @@ class Photometry(object):
         Parameters
         ----------
         redshift : :class:`float`
-           Galaxy or QSO redshift.
+            Galaxy or QSO redshift.
         dmod : :class:`float`
-           Distance modulus corresponding to `redshift`.
-        zmodelwave : `numpy.ndarray`
-           Observed-frame (redshifted) model wavelength array.
-        zmodelflux : `numpy.ndarray`
-           Observed-frame (redshifted) model spectrum.
+            Distance modulus corresponding to ``redshift``.
+        zmodelwave : :class:`numpy.ndarray`
+            Observed-frame (redshifted) model wavelength array in Angstroms.
+        zmodelflux : :class:`numpy.ndarray`
+            Observed-frame (redshifted) model spectrum in erg/s/cm2/A.
 
         Returns
         -------
-        synth_absmag : `numpy.ndarray`
-           Absolute magnitudes based on synthesized photometry.
-        synth_maggies_rest : `numpy.ndarray`
-           Synthesized rest-frame photometry.
+        synth_absmag : :class:`numpy.ndarray`
+            Absolute magnitudes synthesized from the model SED.
+        synth_maggies_rest : :class:`numpy.ndarray`
+            Synthesized rest-frame photometry in maggies.
 
         """
         if redshift <= 0.:
@@ -196,47 +199,51 @@ class Photometry(object):
 
         Parameters
         ----------
-        nanomaggies : `numpy.ndarray`
-           Input photometric fluxes in the `filters_obs` bandpasses.
-        ivar_nanomaggies : `numpy.ndarray`
-           Inverse variance photometry corresponding to `nanomaggies`.
+        nanomaggies : :class:`numpy.ndarray`
+            Input photometric fluxes in the observed-frame bandpasses, in
+            nanomaggies.
+        ivar_nanomaggies : :class:`numpy.ndarray`
+            Inverse variance photometry corresponding to ``nanomaggies``.
         redshift : :class:`float`
-           Galaxy or QSO redshift.
+            Galaxy or QSO redshift.
         dmod : :class:`float`
-           Distance modulus corresponding to `redshift`.
-        zmodelwave : `numpy.ndarray`
-           Observed-frame (redshifted) model wavelength array.
-        zmodelflux : `numpy.ndarray`
-           Observed-frame (redshifted) model spectrum.
-        synth_absmag : `numpy.ndarray`
-           Absolute magnitudes based on synthesized photometry.
-        synth_maggies_rest : `numpy.ndarray`
-           Synthesized rest-frame photometry.
-        snrmin : :class:`float`, defaults to 2.
-           Minimum signal-to-noise ratio in the input photometry (`maggies`) in
-           order for that bandpass to be used to compute a K-correction.
+            Distance modulus corresponding to ``redshift``.
+        photsys : :class:`str`
+            Photometric system (e.g. ``'N'`` or ``'S'``) selecting the
+            appropriate observed-frame filter set.
+        zmodelwave : :class:`numpy.ndarray`
+            Observed-frame (redshifted) model wavelength array in Angstroms.
+        zmodelflux : :class:`numpy.ndarray`
+            Observed-frame (redshifted) model spectrum in erg/s/cm2/A.
+        synth_absmag : :class:`numpy.ndarray`
+            Absolute magnitudes synthesized from the model SED.
+        synth_maggies_rest : :class:`numpy.ndarray`
+            Synthesized rest-frame photometry in maggies.
+        snrmin : :class:`float`, optional
+            Minimum S/N in an observed bandpass for it to contribute to the
+            K-correction. Default is 2.
 
         Returns
         -------
-        kcorr : `numpy.ndarray`
-           K-corrections for each bandpass in `absmag_filters`.
-        absmag : `numpy.ndarray`
-           Absolute magnitudes, band-shifted according to `band_shift` (if
-           provided) for each bandpass in `absmag_filters`.
-        ivarabsmag : `numpy.ndarray`
-           Inverse variance corresponding to `absmag`.
-        synth_maggies_obs : `numpy.ndarray`
-           Synthesized observed-frame photometry.
+        kcorr : :class:`numpy.ndarray`
+            K-corrections for each bandpass in ``absmag_filters``.
+        absmag : :class:`numpy.ndarray`
+            Band-shifted absolute magnitudes for each bandpass in
+            ``absmag_filters``.
+        ivarabsmag : :class:`numpy.ndarray`
+            Inverse variance corresponding to ``absmag``; zero when derived
+            from synthesized photometry.
+        synth_maggies_obs : :class:`numpy.ndarray`
+            Synthesized observed-frame photometry in maggies.
 
         Notes
         -----
-        By default, the K-correction is computed by finding the observed-frame
-        bandpass closest in wavelength (and with a minimum signal-to-noise ratio) to
-        the desired band-shifted absolute magnitude bandpass. In other words, by
-        default we endeavor to minimize the K-correction. The inverse variance,
-        `ivarabsmag`, is derived from the inverse variance of the K-corrected
-        photometry. If no bandpass is available then `ivarabsmag` is set to zero and
-        `absmag` is derived from the synthesized rest-frame photometry.
+        The K-correction uses the observed-frame bandpass whose rest-frame
+        effective wavelength most closely matches the desired band-shifted
+        absolute-magnitude band (and which meets the ``snrmin`` threshold),
+        minimizing the K-correction. When no qualifying bandpass is available,
+        ``ivarabsmag`` is set to zero and ``absmag`` falls back to
+        ``synth_absmag``.
 
         """
         nabs = len(self.absmag_filters)
@@ -287,9 +294,23 @@ class Photometry(object):
 
     @staticmethod
     def get_ab_maggies_pre(filters, wave):
-        """
-        Compute preprocessing data for get_ab_maggies_unchecked() for given filter list
-        and target wavelength.
+        """Precompute filter-interpolation data for :meth:`get_ab_maggies_unchecked`.
+
+        Parameters
+        ----------
+        filters : :class:`speclite.filters.FilterSequence`
+            Filter sequence whose response functions lie strictly within
+            ``wave``.
+        wave : :class:`numpy.ndarray`
+            Wavelength array in Angstroms.
+
+        Returns
+        -------
+        pre : :class:`tuple`
+            Tuple of ``(lo, hi, resp, idenom)`` per filter, where ``lo`` and
+            ``hi`` are the slice indices into ``wave``, ``resp`` is the
+            interpolated response times wavelength, and ``idenom`` is the
+            reciprocal of the AB-reference normalization integral.
 
         """
         # AB reference spctrum in erg/s/cm2/Hz times the speed of light in A/s
@@ -316,20 +337,28 @@ class Photometry(object):
 
     @staticmethod
     def get_ab_maggies_unchecked(filters, flux, wave, pre=None):
-        """Like `get_ab_maggies()`, but by-passing the units and, more
-        importantly, the padding and interpolation of wave/flux that
-        speclite does.  We assume that the response function for each
-        filter lies strictly within the bounds of wave, and that the
-        response functions don't change so fast that we would need to
-        interpolate wave to get an accurate integral.
+        """Synthesize AB maggies without speclite's padding or interpolation.
 
-        When wave comes from a stellar template, it has a very large
-        wavelength range, so these assumptions are reasonable.  When
-        wave comes from an actual camera, however, the filter
-        responses are known to exceed the cameras' range of observed
-        wavelengths.
+        Assumes all filter response functions lie strictly within ``wave``.
+        Use :meth:`get_ab_maggies` when wavelength coverage may be
+        insufficient.
 
-        flux and wave are assumed to be in erg/s/cm2/A and A, respectively.
+        Parameters
+        ----------
+        filters : :class:`speclite.filters.FilterSequence`
+            Filter sequence.
+        flux : :class:`numpy.ndarray`
+            Spectrum in erg/s/cm2/A.
+        wave : :class:`numpy.ndarray`
+            Wavelength array in Angstroms.
+        pre : :class:`tuple` or None, optional
+            Precomputed interpolation data from :meth:`get_ab_maggies_pre`;
+            computed on the fly if ``None``.
+
+        Returns
+        -------
+        maggies : :class:`numpy.ndarray`
+            Synthesized flux in maggies, one value per filter.
 
         """
         if pre == None:
@@ -347,9 +376,22 @@ class Photometry(object):
 
     @staticmethod
     def get_ab_maggies(filters, flux, wave):
-        """This version of get_ab_maggies() is robust to wavelength vectors
-        that do not entirely cover one the response range of one or more
-        filters.
+        """Synthesize AB maggies, padding the spectrum when wavelength coverage is insufficient.
+
+        Parameters
+        ----------
+        filters : :class:`speclite.filters.FilterSequence`
+            Filter sequence.
+        flux : :class:`numpy.ndarray`
+            Spectrum (or array of spectra) in erg/s/cm2/A.
+        wave : :class:`numpy.ndarray`
+            Wavelength array in Angstroms.
+
+        Returns
+        -------
+        maggies : :class:`numpy.ndarray`
+            Synthesized flux in maggies, shape ``(nfilters,)`` or
+            ``(nspectra, nfilters)``.
 
         """
         try:
@@ -379,11 +421,13 @@ class Photometry(object):
 
     @staticmethod
     def to_nanomaggies(maggies):
+        """Convert maggies to nanomaggies (multiply by 1e9)."""
         return maggies * 1e9
 
 
     @staticmethod
     def get_photflam(maggies, lambda_eff):
+        """Convert maggies to erg/s/cm2/A at the given effective wavelength."""
         factor = 10.**(-0.4 * 48.6) * C_LIGHT * 1e13 / lambda_eff**2 # [maggies-->erg/s/cm2/A]
         return maggies * factor
 
@@ -392,26 +436,38 @@ class Photometry(object):
     def parse_photometry(bands, maggies, lambda_eff, ivarmaggies=None,
                          nanomaggies=True, nsigma=2., min_uncertainty=None,
                          get_abmag=False):
-        """Parse input (nano)maggies to various outputs and pack into a table.
+        """Parse (nano)maggies into a photometric table with flux-density and magnitude columns.
 
         Parameters
         ----------
-        flam - 10-17 erg/s/cm2/A
-        fnu - 10-17 erg/s/cm2/Hz
-        abmag - AB mag
-        nanomaggies - input maggies are actually 1e-9 maggies
-
-        nsigma - magnitude limit
-
-        get_abmag - true iff table will be used by fastqa (which needs
-        columns that fastspec does not)
+        bands : :class:`numpy.ndarray` of str
+            Photometric band names.
+        maggies : :class:`numpy.ndarray`
+            Photometric fluxes; interpreted as nanomaggies when
+            ``nanomaggies=True``.
+        lambda_eff : :class:`numpy.ndarray`
+            Effective wavelengths of each band in Angstroms.
+        ivarmaggies : :class:`numpy.ndarray` or None, optional
+            Inverse variance; zeros assumed if ``None``.
+        nanomaggies : :class:`bool`, optional
+            If ``True``, treat ``maggies`` as nanomaggies. Default is
+            ``True``.
+        nsigma : :class:`float`, optional
+            S/N threshold for computing magnitude upper limits. Default is 2.
+        min_uncertainty : :class:`numpy.ndarray` or None, optional
+            Minimum magnitude uncertainty per band, added in quadrature to
+            ``ivarmaggies`` before computing ``flam_ivar``.
+        get_abmag : :class:`bool`, optional
+            If ``True``, also compute AB-magnitude columns needed by
+            ``fastqa``. Default is ``False``.
 
         Returns
         -------
-        phot - photometric table
-
-        Notes
-        -----
+        phot : :class:`astropy.table.Table`
+            Table with columns ``band``, ``lambda_eff``, ``nanomaggies``,
+            ``nanomaggies_ivar``, ``flam``, and ``flam_ivar``. When
+            ``get_abmag=True``, also includes ``abmag``, ``abmag_ivar``,
+            ``abmag_brighterr``, ``abmag_fainterr``, and ``abmag_limit``.
 
         """
         if ivarmaggies is None:
@@ -523,28 +579,37 @@ class Photometry(object):
 
     @staticmethod
     def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
-        """Compute DN(4000) and, optionally, the inverse variance.
+        """Compute the Dn(4000) spectral break index and its inverse variance.
 
         Parameters
         ----------
-        wave
-        flam
-        flam_ivar
-        redshift
-        rest
+        wave : :class:`numpy.ndarray`
+            Wavelength array in Angstroms.
+        flam : :class:`numpy.ndarray`
+            Flux density in erg/s/cm2/A.
+        flam_ivar : :class:`numpy.ndarray` or None, optional
+            Inverse variance of ``flam``; uniform weights assumed if ``None``.
+        redshift : :class:`float` or None, optional
+            Object redshift; required when ``rest=False``.
+        rest : :class:`bool`, optional
+            If ``True``, ``wave`` is already in the rest frame. Default is
+            ``True``.
 
         Returns
         -------
+        dn4000 : :class:`float`
+            Dn(4000) index (0 if coverage is insufficient or computation
+            fails).
+        dn4000_ivar : :class:`float`
+            Inverse variance of ``dn4000``; 0 when ``flam_ivar`` is
+            ``None``.
 
         Notes
         -----
-        If `rest`=``False`` then `redshift` input is required.
-
-        Require full wavelength coverage over the definition of the index.
-
-        See eq. 11 in Bruzual 1983
-        (https://articles.adsabs.harvard.edu/pdf/1983ApJ...273..105B) but with
-        the "narrow" definition of Balogh et al. 1999.
+        Uses the narrow-band definition of Balogh et al. (1999): the ratio
+        of mean flux density in 4000–4100 Å to that in 3850–3950 Å (rest
+        frame), following eq. 11 of Bruzual (1983). Returns zeros when
+        wavelength coverage is insufficient or integration fails.
 
         """
         dn4000, dn4000_ivar = 0., 0.
@@ -620,16 +685,22 @@ class Photometry(object):
 
 
 def tractorphot_datamodel(from_file=False, datarelease='dr9'):
-    """Initialize the tractorphot data model for a given Legacy Surveys data
-    release.
+    """Return a zero-filled table matching the Tractor catalog data model.
 
-    Args:
-        from_file (bool, optional): read the datamodel from a file on-disk.
-        datarelease (str, optional): data release to read; currently only `dr9`
-          and `dr10` are supported.
+    Parameters
+    ----------
+    from_file : :class:`bool`, optional
+        If ``True``, read the data model from an actual Tractor catalog on
+        disk. Default is ``False``.
+    datarelease : :class:`str`, optional
+        Legacy Surveys data release; ``'dr9'`` and ``'dr10'`` are supported.
+        Default is ``'dr9'``.
 
-    Returns an `astropy.table.Table` which follows the Tractor catalog
-    datamodel for the given data release.
+    Returns
+    -------
+    datamodel : :class:`astropy.table.Table`
+        Single-row table with the Tractor catalog column names and dtypes,
+        all values set to zero.
 
     """
     if from_file:
@@ -1058,9 +1129,7 @@ def tractorphot_datamodel(from_file=False, datarelease='dr9'):
 
 def _gather_tractorphot_onebrick(input_cat, legacysurveydir, radius_match, racolumn, deccolumn,
                                  datamodel, restrict_region):
-    """Support routine for gather_tractorphot.
-
-    """
+    """Retrieve Tractor photometry for targets sharing a single brick."""
     import astropy.units as u
     from astropy.coordinates import SkyCoord
     from desitarget import geomask
@@ -1193,23 +1262,37 @@ def _gather_tractorphot_onebrick(input_cat, legacysurveydir, radius_match, racol
 def gather_tractorphot(input_cat, racolumn='TARGET_RA', deccolumn='TARGET_DEC',
                        legacysurveydir=None, dr9dir=None, radius_match=1.0,
                        restrict_region=None, columns=None):
-    """Retrieve the Tractor catalog for all the objects in this catalog (one brick).
+    """Retrieve Tractor photometry for all objects in an input catalog.
 
-    Args:
-        input_cat (astropy.table.Table): input table with the following
-          (required) columns: TARGETID, TARGET_RA, TARGET_DEC. Additional
-          optional columns that will ensure proper matching are BRICKNAME,
-          RELEASE, PHOTSYS, BRICKID, and BRICK_OBJID.
-        legacysurveydir (str): full path to the location of the Tractor catalogs
-        dr9dir (str): relegated keyword; please use `legacysurveydir`
-        radius_match (float, arcsec): matching radius (default, 1 arcsec)
-        restrict_region (str): when positional matching, restrict the region to
-          check for photometry, otherwise check both 'north' and 'south'
-          (default None)
-        columns (str array): return this subset of columns
+    Matches using ``BRICKID``/``BRICK_OBJID`` when available; falls back to
+    positional matching within ``radius_match`` arcseconds.
 
-    Returns a table of Tractor photometry. Matches are identified either using
-    BRICKID and BRICK_OBJID or using positional matching (1 arcsec radius).
+    Parameters
+    ----------
+    input_cat : :class:`astropy.table.Table`
+        Input catalog with required columns ``TARGETID``, ``TARGET_RA``, and
+        ``TARGET_DEC``. Optional columns ``BRICKNAME``, ``RELEASE``,
+        ``PHOTSYS``, ``BRICKID``, and ``BRICK_OBJID`` improve matching.
+    racolumn : :class:`str`, optional
+        Name of the RA column. Default is ``'TARGET_RA'``.
+    deccolumn : :class:`str`, optional
+        Name of the Dec column. Default is ``'TARGET_DEC'``.
+    legacysurveydir : :class:`str` or None, optional
+        Path to the Legacy Surveys Tractor catalog directory tree.
+    dr9dir : :class:`str` or None, optional
+        Deprecated alias for ``legacysurveydir``.
+    radius_match : :class:`float`, optional
+        Positional matching radius in arcseconds. Default is 1.0.
+    restrict_region : :class:`str` or None, optional
+        Restrict positional matching to ``'north'`` or ``'south'``;
+        both are checked by default.
+    columns : array-like or None, optional
+        If provided, return only this subset of columns.
+
+    Returns
+    -------
+    out : :class:`astropy.table.Table`
+        Tractor photometry matched to ``input_cat``, in the same row order.
 
     """
     from desitarget.targets import decode_targetid
