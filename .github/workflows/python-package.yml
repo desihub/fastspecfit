@@ -13,10 +13,10 @@ jobs:
         name: Unit tests
         runs-on: ${{ matrix.os }}
         strategy:
-            fail-fast: true
+            fail-fast: false
             matrix:
                 os: [ubuntu-latest]
-                python-version: ['3.10', '3.11', '3.12', '3.13']
+                python-version: ['3.10', '3.12', '3.14']
 
         steps:
             - name: Checkout code
@@ -35,6 +35,13 @@ jobs:
                 python -m pip install -e ".[test]"
             - name: Verify Installation
               run: pip list
+            - name: Set template cache path
+              run: echo "FTEMPLATES_CACHE_DIR=$HOME/.cache/fastspecfit-templates" >> $GITHUB_ENV
+            - name: Cache template files
+              uses: actions/cache@v4
+              with:
+                path: ${{ env.FTEMPLATES_CACHE_DIR }}
+                key: ${{ runner.os }}-fastspecfit-templates-2.0.0
             - name: Run the test
               run: pytest
 
@@ -42,10 +49,10 @@ jobs:
         name: Test coverage
         runs-on: ${{ matrix.os }}
         strategy:
-            fail-fast: true
+            fail-fast: false
             matrix:
                 os: [ubuntu-latest]
-                python-version: ['3.10', '3.11', '3.12']
+                python-version: ['3.12']
 
         steps:
             - name: Checkout code
@@ -62,6 +69,13 @@ jobs:
                 sudo apt install libbz2-dev
                 python -m pip install --upgrade pip setuptools wheel
                 python -m pip install -e ".[coverage]"
+            - name: Set template cache path
+              run: echo "FTEMPLATES_CACHE_DIR=$HOME/.cache/fastspecfit-templates" >> $GITHUB_ENV
+            - name: Cache template files
+              uses: actions/cache@v4
+              with:
+                path: ${{ env.FTEMPLATES_CACHE_DIR }}
+                key: ${{ runner.os }}-fastspecfit-templates-2.0.0
             - name: Run the test with coverage
               run: pytest --cov
             - name: Coveralls
