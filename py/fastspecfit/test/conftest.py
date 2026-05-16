@@ -4,6 +4,7 @@ fastspecfit.test.conftest
 
 """
 import os
+import pathlib
 import pytest
 from urllib.request import urlretrieve
 
@@ -20,8 +21,13 @@ def outdir(tmp_path_factory):
 
 @pytest.fixture(scope='session')
 def templatedir(outdir, template_version):
-    templatedir = outdir / template_version
-    templatedir.mkdir()
+    cache_dir = os.environ.get('FTEMPLATES_CACHE_DIR')
+    if cache_dir:
+        templatedir = pathlib.Path(cache_dir) / template_version
+        templatedir.mkdir(parents=True, exist_ok=True)
+    else:
+        templatedir = outdir / template_version
+        templatedir.mkdir()
     yield templatedir
 
 
@@ -35,6 +41,6 @@ def templates(templatedir, template_version):
         urlretrieve(url, templates)
     yield templates
 
-    # Optional cleanup
-    if os.path.isfile(templates):
+    # Skip cleanup when using a persistent cache directory.
+    if not os.environ.get('FTEMPLATES_CACHE_DIR') and os.path.isfile(templates):
         os.remove(templates)
