@@ -13,7 +13,13 @@ from fastspecfit.templates import Templates, VDISP_NOMINAL, VDISP_BOUNDS
 from fastspecfit.logger import log, DEBUG
 
 class Singletons(object):
+    """Container for per-process singleton data structures.
 
+    Holds global shared objects (templates, emission lines, photometry,
+    cosmology, IGM model) that are read from disk once at startup and
+    shared across all worker threads/processes within a single MPI rank.
+
+    """
     def __init__(self):
         pass
 
@@ -30,7 +36,41 @@ class Singletons(object):
                    template_imf=None,
                    log_verbose=False,
     ):
+        """Load all singleton data structures from disk.
 
+        Parameters
+        ----------
+        emlines_file : :class:`str` or None, optional
+            Path to the emission-line parameter file; uses the bundled
+            default when ``None``.
+        fphotofile : :class:`str` or None, optional
+            Path to the photometric configuration YAML file; uses the
+            bundled DR9 default when ``None``.
+        fastphot : :class:`bool`, optional
+            If ``True``, load templates in photometry-only mode. Default
+            is ``False``.
+        vdisp_nominal : :class:`float`, optional
+            Nominal velocity dispersion in km/s used to pre-cache FFTs.
+        vdisp_bounds : tuple of float, optional
+            ``(min, max)`` velocity dispersion bounds in km/s.
+        fitstack : :class:`bool`, optional
+            If ``True``, use the stacked-spectra photometry configuration.
+            Default is ``False``.
+        ignore_photometry : :class:`bool`, optional
+            If ``True``, disable photometric fitting. Default is ``False``.
+        template_file : :class:`str` or None, optional
+            Full path to the SPS template FITS file; auto-detected when
+            ``None``.
+        template_version : :class:`str` or None, optional
+            Template version string; used when ``template_file`` is
+            ``None``.
+        template_imf : :class:`str` or None, optional
+            Initial mass function name for template selection.
+        log_verbose : :class:`bool`, optional
+            If ``True``, set the logger level to ``DEBUG``. Default is
+            ``False``.
+
+        """
         # adjust logging level if requested
         if log_verbose:
             log.setLevel(DEBUG)

@@ -60,7 +60,47 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
                  init_sigma_balmer=None, init_vshift_uv=None,
                  init_vshift_narrow=None, init_vshift_balmer=None,
                  fastphot=False, synthphot=True, debug_plots=False):
-    """Pre-process the data for a single object.
+    """Pre-process a single DESI spectrum for fitting.
+
+    Applies MW dust corrections to photometry, processes per-camera spectra
+    (masking, uncertainty floor, dust correction), and builds the emission-line
+    mask. Modifies ``specdata`` in-place.
+
+    Parameters
+    ----------
+    specdata : dict
+        Per-object data dictionary. Modified in-place with processed arrays.
+    meta : :class:`astropy.table.Row`
+        Metadata row for this object.
+    uncertainty_floor : float, optional
+        Minimum fractional uncertainty added in quadrature to the formal
+        inverse variance. Defaults to 0.01.
+    RV : float, optional
+        Total-to-selective extinction ratio. Defaults to 3.1.
+    init_sigma_uv : float or None, optional
+        Initial UV line-width guess in km/s for emission-line masking.
+    init_sigma_narrow : float or None, optional
+        Initial narrow line-width guess in km/s for emission-line masking.
+    init_sigma_balmer : float or None, optional
+        Initial broad Balmer line-width guess in km/s for emission-line masking.
+    init_vshift_uv : float or None, optional
+        Initial UV velocity shift in km/s for emission-line masking.
+    init_vshift_narrow : float or None, optional
+        Initial narrow-line velocity shift in km/s for emission-line masking.
+    init_vshift_balmer : float or None, optional
+        Initial broad Balmer velocity shift in km/s for emission-line masking.
+    fastphot : bool, optional
+        If ``True``, skip spectroscopic processing. Defaults to ``False``.
+    synthphot : bool, optional
+        Synthesize photometry from the coadded spectrum. Defaults to ``True``.
+    debug_plots : bool, optional
+        Write diagnostic plots to the working directory. Defaults to ``False``.
+
+    Returns
+    -------
+    specdata : dict
+        The input dictionary updated with processed spectroscopic and
+        photometric data.
 
     """
     from fastspecfit.util import mwdust_transmission
@@ -256,7 +296,26 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
 
 
 def one_stacked_spectrum(specdata, meta, synthphot=True, debug_plots=False):
-    """Unpack the data for a single stacked spectrum.
+    """Pre-process a single stacked DESI spectrum for fitting.
+
+    Similar to :func:`one_spectrum` but for stacked spectra: uses dummy
+    photometry and skips MW dust correction. Modifies ``specdata`` in-place.
+
+    Parameters
+    ----------
+    specdata : dict
+        Per-object data dictionary. Modified in-place with processed arrays.
+    meta : :class:`astropy.table.Row`
+        Metadata row for this object.
+    synthphot : bool, optional
+        Synthesize photometry from the coadded spectrum. Defaults to ``True``.
+    debug_plots : bool, optional
+        Write diagnostic plots to the working directory. Defaults to ``False``.
+
+    Returns
+    -------
+    specdata : dict
+        The input dictionary updated with processed spectroscopic data.
 
     """
     from fastspecfit.linemasker import LineMasker
@@ -384,18 +443,27 @@ def one_stacked_spectrum(specdata, meta, synthphot=True, debug_plots=False):
 
 
 class DESISpectra(object):
+    """Reader for DESI spectra and associated metadata.
+
+    Parameters
+    ----------
+    phot : :class:`fastspecfit.photometry.Photometry`
+        Photometry configuration object.
+    cosmo : :class:`fastspecfit.cosmo.TabulatedDESI`
+        Tabulated cosmology object.
+    redux_dir : str or None, optional
+        Full path to the DESI spectroscopic reduction outputs. Defaults to
+        ``$DESI_SPECTRO_REDUX``.
+    fphotodir : str or None, optional
+        Top-level directory of the source photometry (Legacy Survey). Defaults
+        to ``$FPHOTO_DIR``.
+    mapdir : str or None, optional
+        Directory containing the Milky Way dust maps. Defaults to
+        ``$DUST_DIR/maps``.
+
+    """
+
     def __init__(self, phot, cosmo, redux_dir=None, fphotodir=None, mapdir=None):
-        """Class to read in DESI spectra and associated metadata.
-
-        Parameters
-        ----------
-        redux_dir : str
-            Full path to the location of the reduced DESI data. Optional and
-            defaults to `$DESI_SPECTRO_REDUX`.
-        mapdir : :class:`str`, optional
-            Full path to the Milky Way dust maps.
-
-        """
         if redux_dir is None:
             if not 'DESI_SPECTRO_REDUX' in os.environ:
                 errmsg = "'DESI_SPECTRO_REDUX' environment variable or redux_dir must be set"
@@ -521,68 +589,53 @@ class DESISpectra(object):
                         input_redshifts=None, specprod_dir=None, use_quasarnet=True,
                         redrockfile_prefix='redrock-', specfile_prefix='coadd-',
                         qnfile_prefix='qso_qn-', mgiifile_prefix='qso_mgii-'):
-        """Select targets for fitting and gather the necessary spectroscopic metadata.
+        """Select targets for fitting and gather spectroscopic metadata.
 
         Parameters
         ----------
-        redrockfiles : str or array
+        redrockfiles : str or array-like
             Full path to one or more input Redrock file(s).
-        zmin : float
-            Minimum redshift of observed targets to select. Defaults to
-            0.001. Note that any value less than or equal to zero will raise an
-            exception because a positive redshift is needed to compute the
-            distance modulus when modeling the broadband photometry.
-        zmax : float or `None`
-            Maximum redshift of observed targets to select. `None` is equivalent
-            to not having an upper redshift limit.
-        zwarnmax : int or `None`
-            Maximum Redrock zwarn value for selected targets. `None` is
-            equivalent to not having any cut on zwarn.
-        targetids : int or array or `None`
-            Restrict the sample to the set of targetids in this list. If `None`,
-            select all targets which satisfy the selection criteria.
-        firsttarget : int
-            Integer offset of the first object to consider in each file. Useful
-            for debugging and testing. Defaults to 0.
-        ntargets : int or `None`
-            Number of objects to analyze in each file. Useful for debugging and
-            testing. If `None`, select all targets which satisfy the selection
-            criteria.
-        input_redshifts : float or array or `None`
-            Input redshifts to use for each input `targetids` input If `None`,
-            use the nominal Redrock (or QuasarNet) redshifts.
-        use_quasarnet : `bool`
-            Use QuasarNet to improve QSO redshifts, if the afterburner file is
-            present. Defaults to `True`.
-        redrockfile_prefix : str
-            Prefix of the `redrockfiles`. Defaults to `redrock-`.
-        specfile_prefix : str
-            Prefix of the spectroscopic coadds corresponding to the input
-            Redrock file(s). Defaults to `coadd-`.
-        qnfile_prefix : str
-            Prefix of the QuasarNet afterburner file. Defaults to `qso_qn-`.
-        mgiifile_prefix : str
-            Prefix of the MgII afterburner file. Defaults to `qso_mgii-`.
-
-        Attributes
-        ----------
-        coadd_type : str
-            Type of coadded spectra (healpix, cumulative, pernight, or perexp).
-        meta : list of :class:`astropy.table.Table`
-            Array of tables (one per input `redrockfile`) with the metadata
-            needed to fit the data and to write to the output file(s).
-        redrockfiles : str array
-            Input Redrock file names.
-        specfiles : str array
-            Spectroscopic file names corresponding to each each input Redrock file.
-        specprod : str
-            Spectroscopic production name for the input Redrock file.
+        zmin : float or None, optional
+            Minimum redshift of targets to select. Defaults to 0.001.
+        zmax : float or None, optional
+            Maximum redshift of targets to select. ``None`` imposes no upper
+            limit.
+        zwarnmax : int or None, optional
+            Maximum Redrock ``ZWARN`` value for selected targets. ``None``
+            imposes no cut.
+        targetids : int or array-like or None, optional
+            Restrict to these TARGETIDs. If ``None``, select all targets
+            satisfying the other criteria.
+        firsttarget : int, optional
+            Index of the first object to consider in each file. Defaults to 0.
+        ntargets : int or None, optional
+            Number of objects to analyze per file. If ``None``, select all
+            passing targets.
+        input_redshifts : float or array-like or None, optional
+            Override redshifts for each entry in ``targetids``. If ``None``,
+            use Redrock (or QuasarNet) redshifts.
+        specprod_dir : str or None, optional
+            Override the spectroscopic production directory.
+        use_quasarnet : bool, optional
+            Use QuasarNet afterburner redshifts for QSOs when available.
+            Defaults to ``True``.
+        redrockfile_prefix : str, optional
+            Filename prefix of the Redrock files. Defaults to ``'redrock-'``.
+        specfile_prefix : str, optional
+            Filename prefix of the spectroscopic coadds. Defaults to
+            ``'coadd-'``.
+        qnfile_prefix : str, optional
+            Filename prefix of the QuasarNet afterburner file. Defaults to
+            ``'qso_qn-'``.
+        mgiifile_prefix : str, optional
+            Filename prefix of the MgII afterburner file. Defaults to
+            ``'qso_mgii-'``.
 
         Notes
         -----
-        We assume that `specprod` is the same for all input Redrock files,
-        although we don't explicitly do this check. Specifically, we only read
-        the header of the first file.
+        Sets the following instance attributes: ``coadd_type``, ``meta``,
+        ``redrockfiles``, ``specfiles``, and ``specprod``.  The ``specprod``
+        is read from the header of the first Redrock file only.
 
         """
         from astropy.table import vstack, hstack
@@ -961,76 +1014,32 @@ class DESISpectra(object):
 
 
     def read(self, photometry, fastphot=False, constrain_age=False):
-        """Read selected spectra and/or broadband photometry.
+        """Read selected spectra and photometry for all gathered targets.
+
+        Reads DESI coadded spectra from disk, gathers Tractor photometry, and
+        calls :func:`one_spectrum` for each object to produce the per-object
+        data dictionaries used by the fitting routines.
 
         Parameters
         ----------
-        fastphot : bool
-            Read the broadband photometry; otherwise, handle the DESI
-            three-camera spectroscopy. Optional; defaults to `False`.
-        synthphot : bool
-            Synthesize photometry from the coadded optical spectrum. Optional;
-            defaults to `True`.
-        remember_coadd : bool
-            Add the coadded spectrum to the returned dictionary. Optional;
-            defaults to `False` (in order to reduce memory usage).
+        photometry : :class:`fastspecfit.photometry.Photometry`
+            Photometry configuration object.
+        fastphot : bool, optional
+            If ``True``, read photometry only (no spectra). Defaults to
+            ``False``.
+        constrain_age : bool, optional
+            If ``True``, pass age-constraint information to the per-object
+            processor. Defaults to ``False``.
 
         Returns
         -------
-        List of dictionaries (:class:`dict`, one per object) the following keys:
-            targetid : numpy.int64
-                DESI target ID.
-            redshift : numpy.float64
-                Redrock redshift.
-            cameras : :class:`list`
-                List of camera names present for this spectrum.
-            wave : :class:`list`
-                Three-element list of `numpy.ndarray` wavelength vectors, one for
-                each camera.
-            flux : :class:`list`
-                Three-element list of `numpy.ndarray` flux spectra, one for each
-                camera and corrected for Milky Way extinction.
-            ivar : :class:`list`
-                Three-element list of `numpy.ndarray` inverse variance spectra, one
-                for each camera.
-            res : :class:`list`
-                Three-element list of :class:`fastspecfit.resolution.Resolution`
-                objects, one for each camera.
-            snr : `numpy.ndarray`
-                Median per-pixel signal-to-noise ratio in the grz cameras.
-            linemask : :class:`list`
-                Three-element list of `numpy.ndarray` boolean emission-line masks,
-                one for each camera. This mask is used during continuum-fitting.
-            linename : :class:`list`
-                Three-element list of emission line names which might be present
-                in each of the three DESI cameras.
-            linepix : :class:`list`
-                Three-element list of pixel indices, one per camera, which were
-                identified in :class:`FFit.build_linemask` to belong to emission
-                lines.
-            contpix : :class:`list`
-                Three-element list of pixel indices, one per camera, which were
-                identified in :class:`FFit.build_linemask` to not be
-                "contaminated" by emission lines.
-            coadd_wave : `numpy.ndarray`
-                Coadded wavelength vector with all three cameras combined.
-            coadd_flux : `numpy.ndarray`
-                Flux corresponding to `coadd_wave`.
-            coadd_ivar : `numpy.ndarray`
-                Inverse variance corresponding to `coadd_flux`.
-            photsys : str
-                Photometric system.
-            phot : `astropy.table.Table`
-                Total photometry in `grzW1W2`, corrected for Milky Way extinction.
-            fiberphot : `astropy.table.Table`
-                Fiber photometry in `grzW1W2`, corrected for Milky Way extinction.
-            fibertotphot : `astropy.table.Table`
-                Fibertot photometry in `grzW1W2`, corrected for Milky Way extinction.
-            synthphot : :class:`astropy.table.Table`
-                Photometry in `grz` synthesized from the Galactic
-                extinction-corrected coadded spectra (with a mild extrapolation
-                of the data blueward and redward to accommodate the g-band and
-                z-band filter curves, respectively.
+        data : list of dict
+            Per-object data dictionaries (one per target), each containing
+            wavelength, flux, inverse variance, resolution matrices, emission-line
+            masks, photometry, and coadded spectra.
+        meta : list of :class:`astropy.table.Table`
+            Updated metadata tables with photometry and dust-transmission columns
+            populated.
 
         """
         from astropy.table import vstack
@@ -1164,82 +1173,31 @@ class DESISpectra(object):
 
     def read_stacked(self, stackfiles, firsttarget=0, ntargets=None,
                      stackids=None, synthphot=True, constrain_age=False):
-        """Read one or more stacked spectra.
+        """Read one or more stacked DESI spectra.
 
         Parameters
         ----------
-        stackfiles : str or array
-            Full path to one or more input stacked-spectra file(s).
-        stackids : int or array or `None`
-            Restrict the sample to the set of stackids in this list. If `None`,
-            fit everything.
-        firsttarget : int
-            Integer offset of the first object to consider in each file. Useful
-            for debugging and testing. Defaults to 0.
-        ntargets : int or `None`
-            Number of objects to analyze in each file. Useful for debugging and
-            testing. If `None`, select all targets which satisfy the selection
-            criteria.
-        synthphot : bool
-            Synthesize photometry from the coadded optical spectrum. Optional;
-            defaults to `True`.
+        stackfiles : str or array-like
+            Full path to one or more stacked-spectra FITS file(s).
+        firsttarget : int, optional
+            Index of the first object to consider in each file. Defaults to 0.
+        ntargets : int or None, optional
+            Number of objects to read per file. If ``None``, read all.
+        stackids : int or array-like or None, optional
+            Restrict to these stack IDs. If ``None``, read all.
+        synthphot : bool, optional
+            Synthesize photometry from the coadded spectrum. Defaults to
+            ``True``.
+        constrain_age : bool, optional
+            Pass age-constraint information to the per-object processor.
+            Defaults to ``False``.
 
         Returns
         -------
-        List of dictionaries (:class:`dict`, one per object) the following keys:
-            targetid : numpy.int64
-                DESI target ID.
-            redshift : numpy.float64
-                Redrock redshift.
-            cameras : :class:`list`
-                List of camera names present for this spectrum.
-            wave : :class:`list`
-                Three-element list of `numpy.ndarray` wavelength vectors, one for
-                each camera.
-            flux : :class:`list`
-                Three-element list of `numpy.ndarray` flux spectra, one for each
-                camera and corrected for Milky Way extinction.
-            ivar : :class:`list`
-                Three-element list of `numpy.ndarray` inverse variance spectra, one
-                for each camera.
-            res : :class:`list`
-                Three-element list of :class:`fastspecfit.resolution.Resolution`
-                objects, one for each camera.
-            snr : `numpy.ndarray`
-                Median per-pixel signal-to-noise ratio in the grz cameras.
-            linemask : :class:`list`
-                Three-element list of `numpy.ndarray` boolean emission-line masks,
-                one for each camera. This mask is used during continuum-fitting.
-            linename : :class:`list`
-                Three-element list of emission line names which might be present
-                in each of the three DESI cameras.
-            linepix : :class:`list`
-                Three-element list of pixel indices, one per camera, which were
-                identified in :class:`FFit.build_linemask` to belong to emission
-                lines.
-            contpix : :class:`list`
-                Three-element list of pixel indices, one per camera, which were
-                identified in :class:`FFit.build_linemask` to not be
-                "contaminated" by emission lines.
-            coadd_wave : `numpy.ndarray`
-                Coadded wavelength vector with all three cameras combined.
-            coadd_flux : `numpy.ndarray`
-                Flux corresponding to `coadd_wave`.
-            coadd_ivar : `numpy.ndarray`
-                Inverse variance corresponding to `coadd_flux`.
-            photsys : str
-                Photometric system.
-            phot : `astropy.table.Table`
-                Total photometry in `grzW1W2`, corrected for Milky Way extinction.
-            fiberphot : `astropy.table.Table`
-                Fiber photometry in `grzW1W2`, corrected for Milky Way extinction.
-            fibertotphot : `astropy.table.Table`
-                Fibertot photometry in `grzW1W2`, corrected for Milky Way extinction.
-            synthphot : :class:`astropy.table.Table`
-                Photometry in `grz` synthesized from the Galactic
-                extinction-corrected coadded spectra (with a mild extrapolation
-                of the data blueward and redward to accommodate the g-band and
-                z-band filter curves, respectively.
+        data : list of dict
+            Per-object data dictionaries.
+        meta : list of :class:`astropy.table.Table`
+            Metadata tables.
 
         """
         from astropy.table import vstack
@@ -1402,10 +1360,7 @@ class DESISpectra(object):
 
 
     def _gather_photometry(self, specprod=None, alltiles=None):
-        """Gather photometry. Unfortunately some of the bandpass information here will
-        be repeated (and has to be consistent with) continuum.Fiters.
-
-        """
+        """Gather Tractor photometry from disk and merge into the metadata tables."""
         from astropy.table import vstack
         from desitarget import geomask
         from fastspecfit.photometry import gather_tractorphot
@@ -1519,7 +1474,38 @@ class DESISpectra(object):
 
 def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_columns=None,
                      fastspec_columns=None, read_models=False):
-    """Read the fitting results.
+    """Read fastspecfit fitting results from a FITS file.
+
+    Parameters
+    ----------
+    fastfitfile : str
+        Full path to the fastspecfit output FITS file.
+    rows : array-like or None, optional
+        Row indices to read. If ``None``, read all rows.
+    metadata_columns : list of str or None, optional
+        Column names to read from the METADATA extension. If ``None``, read all.
+    specphot_columns : list of str or None, optional
+        Column names to read from the SPECPHOT extension. If ``None``, read all.
+    fastspec_columns : list of str or None, optional
+        Column names to read from the FASTSPEC extension. If ``None``, read all.
+    read_models : bool, optional
+        If ``True``, also read the MODELS extension. Defaults to ``False``.
+
+    Returns
+    -------
+    meta : :class:`astropy.table.Table` or None
+        Metadata table, or ``None`` if the file is not found.
+    specphot : :class:`astropy.table.Table` or None
+        Spectrophotometric results table.
+    fastfit : :class:`astropy.table.Table` or None
+        Emission-line fitting results, or ``None`` in fastphot mode.
+    coadd_type : str or None
+        Coadd type string from the file header.
+    fastphot : bool or None
+        ``True`` if the file was produced in fastphot (photometry-only) mode.
+    models : :class:`numpy.ndarray` or None
+        Model spectra array (only included in the return tuple when
+        ``read_models=True``).
 
     """
     if os.path.isfile(fastfitfile):
@@ -1577,9 +1563,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
                       minsnr_balmer_broad=2.5, nside=None, no_smooth_continuum=False,
                       ignore_photometry=False, broadlinefit=True, use_quasarnet=True,
                       constrain_age=False, split_hdu=False, verbose=True):
-    """Write out.
-
-    """
+    """Write fastspecfit results to a multi-extension FITS file."""
     import gzip, shutil
     from astropy.io import fits
     from desispec.io.util import fitsheader
@@ -1739,7 +1723,27 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
 
 def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
                     fastphot=False):
-    """Build the QA filename.
+    """Build the QA PNG filename for one or more objects.
+
+    Parameters
+    ----------
+    metadata : :class:`astropy.table.Table`, :class:`astropy.table.Row`, or :class:`numpy.void`
+        Metadata for one or more objects.
+    coadd_type : str
+        Coadd type: ``'healpix'``, ``'cumulative'``, ``'pernight'``,
+        ``'perexp'``, ``'custom'``, or ``'stacked'``.
+    outprefix : str or None, optional
+        Filename prefix. Defaults to ``'fastspec'`` or ``'fastphot'``.
+    outdir : str or None, optional
+        Output directory. Defaults to the current directory.
+    fastphot : bool, optional
+        If ``True``, use ``'fastphot'`` as the default prefix. Defaults to
+        ``False``.
+
+    Returns
+    -------
+    pngfile : str or list of str
+        QA filename(s) for the given object(s).
 
     """
     import astropy.table.row as row
@@ -1791,8 +1795,28 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
 
 def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
                       outdir='.', overwrite=False):
-    """Utility function to write a single DESI spectrum (e.g., for paper figures or
-    unit tests).
+    """Extract and fit a single DESI spectrum from the full production.
+
+    Utility function for generating paper figures or unit tests: reads a
+    single target from the full production, writes minimal coadd and redrock
+    files, runs ``fastspec``, and generates QA.
+
+    Parameters
+    ----------
+    survey : str
+        Survey name (e.g., ``'main'``, ``'sv3'``).
+    program : str
+        Program name (e.g., ``'dark'``, ``'bright'``).
+    healpix : int
+        HEALPix pixel number.
+    targetid : int
+        DESI TARGETID.
+    specprod : str, optional
+        Spectroscopic production name. Defaults to ``'fuji'``.
+    outdir : str, optional
+        Output directory. Defaults to the current directory.
+    overwrite : bool, optional
+        Overwrite existing output files. Defaults to ``False``.
 
     """
     from redrock.external.desi import write_zbest
@@ -1888,9 +1912,36 @@ def select(metadata, specphot, fastfit=None, coadd_type='healpix',
 
 def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
                      specphot=False, fastphot=False, fitstack=False):
-    """
-    Get type of one fastspecfit output data record, along
-    with dictionary of units for any fields that have them.
+    """Build the NumPy dtype for one fastspecfit output data record.
+
+    Parameters
+    ----------
+    specprod : str
+        Spectroscopic production name.
+    phot : :class:`fastspecfit.photometry.Photometry`
+        Photometry object providing band and column information.
+    linetable : :class:`astropy.table.Table`
+        Emission-line table.
+    ncoeff : int
+        Number of stellar template coefficients.
+    cameras : list of str, optional
+        Camera names. Defaults to ``['B', 'R', 'Z']``.
+    specphot : bool, optional
+        If ``True``, build the SPECPHOT extension dtype. Defaults to
+        ``False``.
+    fastphot : bool, optional
+        If ``True``, omit spectroscopy-only fields. Defaults to ``False``.
+    fitstack : bool, optional
+        If ``True``, omit per-object spectroscopic fields. Defaults to
+        ``False``.
+
+    Returns
+    -------
+    out_dtype : list
+        NumPy dtype specification as a list of ``(name, dtype[, shape])``
+        tuples.
+    out_units : dict
+        Mapping from column name to astropy unit.
 
     """
     import astropy.units as u
@@ -2075,6 +2126,22 @@ def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
 def create_output_meta(input_meta, phot, fastphot=False, fitstack=False):
     """Create the fastspecfit output metadata table.
 
+    Parameters
+    ----------
+    input_meta : :class:`astropy.table.Table`
+        Input metadata table from :meth:`~fastspecfit.io.DESISpectra.read`.
+    phot : :class:`fastspecfit.photometry.Photometry`
+        Photometry object providing band and column information.
+    fastphot : bool, optional
+        If ``True``, omit spectroscopy-specific columns. Defaults to ``False``.
+    fitstack : bool, optional
+        If ``True``, format for stacked-spectra output. Defaults to ``False``.
+
+    Returns
+    -------
+    meta : :class:`astropy.table.Table`
+        Output metadata table with columns in the standard data model order.
+
     """
     from fastspecfit.io import TARGETINGBITS
     from astropy.table import Table
@@ -2168,6 +2235,23 @@ def create_output_meta(input_meta, phot, fastphot=False, fitstack=False):
 
 def create_output_table(records, meta, units, fitstack=False):
     """Generate the output FASTSPEC/FASTPHOT or SPECPHOT table.
+
+    Parameters
+    ----------
+    records : list of :class:`numpy.ndarray`
+        Per-object output records.
+    meta : :class:`astropy.table.Table`
+        Output metadata table from :func:`create_output_meta`.
+    units : dict
+        Mapping from column name to astropy unit.
+    fitstack : bool, optional
+        If ``True``, format for stacked-spectra output. Defaults to ``False``.
+
+    Returns
+    -------
+    output_table : :class:`astropy.table.Table`
+        Table with identification columns from ``meta`` prepended to the
+        fitted-quantity columns.
 
     """
     from astropy.table import hstack
