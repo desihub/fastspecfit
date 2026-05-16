@@ -21,6 +21,7 @@ dependencies = [
     "numpy",
     "astropy",
     "scipy",
+    "PyYAML",
     "healpy",
     "numba",
     "seaborn",
