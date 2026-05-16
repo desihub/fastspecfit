@@ -1819,7 +1819,6 @@ def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
         Overwrite existing output files. Defaults to ``False``.
 
     """
-    from redrock.external.desi import write_zbest
     from desispec.io import write_spectra, read_spectra
     from fastspecfit.qa import fastqa
     from fastspecfit.fastspecfit import fastspec
@@ -1849,19 +1848,18 @@ def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
     expfibermap = Table.read(redrockfile, 'EXP_FIBERMAP')
     tsnr2 = Table.read(redrockfile, 'TSNR2')
 
-    spechdr = fitsio.read_header(coaddfile)
-
     zbest = zbest[np.isin(zbest['TARGETID'], targetid)]
     fibermap = fibermap[np.isin(fibermap['TARGETID'], targetid)]
     expfibermap = expfibermap[np.isin(expfibermap['TARGETID'], targetid)]
     tsnr2 = tsnr2[np.isin(tsnr2['TARGETID'], targetid)]
 
-    archetype_version = None
-    template_version = {redhdr[f'TEMNAM{nn:02d}']: redhdr[f'TEMVER{nn:02d}'] for nn in range(10)}
-
     print(f'Writing {out_redrockfile}')
-    write_zbest(out_redrockfile, zbest, fibermap, expfibermap, tsnr2,
-                template_version, archetype_version, spec_header=spechdr)
+    with fitsio.FITS(out_redrockfile, 'rw', clobber=True) as ff:
+        ff.write(None, header=redhdr)
+        ff.write(zbest.as_array(), extname='REDSHIFTS')
+        ff.write(fibermap.as_array(), extname='FIBERMAP')
+        ff.write(expfibermap.as_array(), extname='EXP_FIBERMAP')
+        ff.write(tsnr2.as_array(), extname='TSNR2')
 
     spec = read_spectra(coaddfile).select(targets=targetid)
     print(f'Writing {out_coaddfile}')

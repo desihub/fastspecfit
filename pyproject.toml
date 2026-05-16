@@ -37,6 +37,9 @@ dependencies = [
 test = [
     "pytest",
 ]
+testdata = [
+    "redrock @ git+https://github.com/desihub/redrock.git",
+]
 coverage = [
     "pytest-cov",
     "coveralls",
