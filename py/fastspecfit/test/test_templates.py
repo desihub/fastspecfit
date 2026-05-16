@@ -8,9 +8,9 @@ import os
 
 # See conftest.py for fixtures used by multiple unit tests.
 
-def test_templates_nofilename(outdir, template_version, templates):
+def test_templates_nofilename(templatedir, template_version, templates):
     from fastspecfit.templates import Templates
-    os.environ['FTEMPLATES_DIR'] = str(outdir)
+    os.environ['FTEMPLATES_DIR'] = str(templatedir.parent)
     temp = Templates()
     assert(os.path.isfile(temp.file))
 
