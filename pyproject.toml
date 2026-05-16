@@ -28,9 +28,9 @@ dependencies = [
     "matplotlib",
     "fitsio",
     "speclite",
-    "desiutil @ git+https://github.com/desihub/desiutil.git@3.6.0",
-    "desitarget @ git+https://github.com/desihub/desitarget.git@4.6.0",
-    "desispec @ git+https://github.com/desihub/desispec.git@0.70.0",
+    "desiutil",
+    "desitarget",
+    "desispec",
 ]
 
 [project.optional-dependencies]
