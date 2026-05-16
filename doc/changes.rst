@@ -5,10 +5,14 @@ Change Log
 3.3.0 (not released yet)
 ------------------------
 
+* Add unit tests for ``emline_fit``, ``resolution``, ``linemasker``, ``continuum``,
+  ``emlines``, and ``io`` modules; cache template download in CI; streamline
+  Python version matrix [`PR #246`_].
 * Rewrite all docstrings to uniform NumPy style for ReadTheDocs rendering [`PR #245`_].
 * Deconvolve the resolution matrix before fitting, as recommended
   by S. Koposov and update config files [`PR #244`_].
 
+.. _`PR #246`: https://github.com/desihub/fastspecfit/pull/246
 .. _`PR #245`: https://github.com/desihub/fastspecfit/pull/245
 .. _`PR #244`: https://github.com/desihub/fastspecfit/pull/244
 
