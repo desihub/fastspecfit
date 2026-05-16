@@ -5,9 +5,11 @@ Change Log
 3.3.0 (not released yet)
 ------------------------
 
+* Rewrite all docstrings to uniform NumPy style for ReadTheDocs rendering [`PR #245`_].
 * Deconvolve the resolution matrix before fitting, as recommended
   by S. Koposov and update config files [`PR #244`_].
 
+.. _`PR #245`: https://github.com/desihub/fastspecfit/pull/245
 .. _`PR #244`: https://github.com/desihub/fastspecfit/pull/244
 
 3.2.1 (2026-03-20)
