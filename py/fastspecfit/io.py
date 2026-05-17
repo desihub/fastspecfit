@@ -472,7 +472,8 @@ class DESISpectra(object):
 
         if fphotodir is None:
             self.fphotoext = None
-            self.fphotodir = os.path.expandvars(os.environ.get('FPHOTO_DIR'))
+            fphoto_env = os.environ.get('FPHOTO_DIR')
+            self.fphotodir = os.path.expandvars(fphoto_env) if fphoto_env else None
             self.fphotodir_default = True
         else:
             # parse the extension name, if any
@@ -490,7 +491,8 @@ class DESISpectra(object):
             self.fphotodir = fphotodir
 
         if mapdir is None:
-            self.mapdir = os.path.join(os.path.expandvars(os.environ.get('DUST_DIR')), 'maps')
+            dust_env = os.environ.get('DUST_DIR')
+            self.mapdir = os.path.join(os.path.expandvars(dust_env), 'maps') if dust_env else None
         else:
             self.mapdir = mapdir
 
@@ -751,13 +753,10 @@ class DESISpectra(object):
                     log.info('specprod={}, coadd_type={}, tileid={}, petal={}, night={}'.format(
                         self.specprod, self.coadd_type, tileid, petal, night))
 
-                # cache the tiles file so we can grab the survey and program name appropriate for this tile
-                if not hasattr(self, 'tileinfo'):
+                # cache the tiles file so we can grab the survey and program name
+                # appropriate for this tile; silently skip if redux_dir is unavailable
+                if not hasattr(self, 'tileinfo') and self.redux_dir is not None:
                     if specprod_dir is None:
-                        if self.redux_dir is None:
-                            errmsg = "'DESI_SPECTRO_REDUX' environment variable or --redux_dir must be set"
-                            log.critical(errmsg)
-                            raise KeyError(errmsg)
                         specprod_dir = os.path.join(self.redux_dir, self.specprod)
                     infofile = os.path.join(specprod_dir, f'tiles-{self.specprod}.csv')
                     if os.path.isfile(infofile):
