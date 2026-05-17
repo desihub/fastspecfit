@@ -465,11 +465,8 @@ class DESISpectra(object):
 
     def __init__(self, phot, cosmo, redux_dir=None, fphotodir=None, mapdir=None):
         if redux_dir is None:
-            if not 'DESI_SPECTRO_REDUX' in os.environ:
-                errmsg = "'DESI_SPECTRO_REDUX' environment variable or redux_dir must be set"
-                log.critical(errmsg)
-                raise KeyError(errmsg)
-            self.redux_dir = os.path.expandvars(os.environ.get('DESI_SPECTRO_REDUX'))
+            redux_env = os.environ.get('DESI_SPECTRO_REDUX')
+            self.redux_dir = os.path.expandvars(redux_env) if redux_env else None
         else:
             self.redux_dir = os.path.expandvars(redux_dir)
 
@@ -757,6 +754,10 @@ class DESISpectra(object):
                 # cache the tiles file so we can grab the survey and program name appropriate for this tile
                 if not hasattr(self, 'tileinfo'):
                     if specprod_dir is None:
+                        if self.redux_dir is None:
+                            errmsg = "'DESI_SPECTRO_REDUX' environment variable or --redux_dir must be set"
+                            log.critical(errmsg)
+                            raise KeyError(errmsg)
                         specprod_dir = os.path.join(self.redux_dir, self.specprod)
                     infofile = os.path.join(specprod_dir, f'tiles-{self.specprod}.csv')
                     if os.path.isfile(infofile):
