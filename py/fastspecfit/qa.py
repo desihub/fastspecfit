@@ -605,6 +605,8 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
             templates.flux_nolines, specphot['COEFF'],
             vdisp=specphot['VDISP'], conv_pre=templates.conv_pre_nolines,
             tauv=specphot['TAUV'])
+        if fitstack:
+            contmodel *= 1e-17 # FIXME!
 
         _desicontinuum = CTools.continuum_to_spectroscopy(contmodel, interp=True)
 
