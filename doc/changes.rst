@@ -5,6 +5,12 @@ Change Log
 3.3.0 (not released yet)
 ------------------------
 
+* Add integration tests for ``stackfit`` and ``fastqa``; fix ``stackfit``
+  incorrectly requiring dust-map and photometry environment variables; fix
+  ``fastqa`` incorrectly requiring ``DESI_SPECTRO_REDUX`` when
+  ``--redrockfiles`` is provided; fix ``fastqa`` ``KeyError: 'TARGETID'``
+  when running QA on stacked outputs by deriving the ``fitstack`` flag from
+  the file header rather than the ``--stackfit`` CLI argument [`PR #247`_].
 * Add unit tests for ``emline_fit``, ``resolution``, ``linemasker``, ``continuum``,
   ``emlines``, and ``io`` modules; cache template download in CI; streamline
   Python version matrix [`PR #246`_].
@@ -12,6 +18,7 @@ Change Log
 * Deconvolve the resolution matrix before fitting, as recommended
   by S. Koposov and update config files [`PR #244`_].
 
+.. _`PR #247`: https://github.com/desihub/fastspecfit/pull/247
 .. _`PR #246`: https://github.com/desihub/fastspecfit/pull/246
 .. _`PR #245`: https://github.com/desihub/fastspecfit/pull/245
 .. _`PR #244`: https://github.com/desihub/fastspecfit/pull/244
