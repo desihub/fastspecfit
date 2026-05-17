@@ -8,6 +8,10 @@ import pathlib
 import pytest
 from urllib.request import urlretrieve
 
+# Use the non-interactive Agg backend so QA tests can render figures in
+# headless CI environments without a display.
+os.environ.setdefault('MPLBACKEND', 'Agg')
+
 
 @pytest.fixture(scope='session')
 def template_version():
