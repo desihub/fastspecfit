@@ -33,17 +33,14 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx_toolbox.collapse',
     'sphinx.ext.napoleon',
-    'sphinx_rtd_theme'
 ]
 
-# Configuration for intersphinx, copied from astropy.
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3/', None),
     'numpy': ('https://numpy.org/doc/stable/', None),
     'scipy': ('https://docs.scipy.org/doc/scipy/', None),
     'matplotlib': ('https://matplotlib.org/stable/', None),
     'astropy': ('https://docs.astropy.org/en/stable/', None),
-    'h5py': ('https://docs.h5py.org/en/latest/', None),
     'desiutil': ('https://desiutil.readthedocs.io/en/latest/', None),
     }
 
