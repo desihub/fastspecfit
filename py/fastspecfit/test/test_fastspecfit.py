@@ -1,100 +1,92 @@
 """
 fastspecfit.test.test_fastspecfit
-=================================
+==================================
 
 """
 import os
 import pytest
 
 
-@pytest.fixture
-def filenames(outdir):
-    from importlib import resources
-
-    redux_dir = resources.files('fastspecfit').joinpath('test/data')
-    specproddir = resources.files('fastspecfit').joinpath('test/data')
-    mapdir = resources.files('fastspecfit').joinpath('test/data')
-    fphotodir = resources.files('fastspecfit').joinpath('test/data')
-    redrockfile = resources.files('fastspecfit').joinpath('test/data/redrock-4-80613-thru20210324.fits')
-    stackfile = resources.files('fastspecfit').joinpath('test/data/stack-LRG.fits')
-    fastspec_outfile = os.path.join(outdir, 'fastspec.fits')
-    fastphot_outfile = os.path.join(outdir, 'fastphot.fits')
-    stackfit_outfile = os.path.join(outdir, 'stackfit.fits')
-
-    filenames = {'redux_dir': redux_dir, 'specproddir': specproddir,
-                 'mapdir': mapdir, 'fphotodir': fphotodir,
-                 'redrockfile': redrockfile, 'stackfile': stackfile,
-                 'fastspec_outfile': fastspec_outfile,
-                 'fastphot_outfile': fastphot_outfile,
-                 'stackfit_outfile': stackfit_outfile}
-
-    yield filenames
-
+# ---------------------------------------------------------------------------
+# Fitting integration tests
+# ---------------------------------------------------------------------------
 
 @pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
-def test_fastphot(filenames, templates):
-    """Test fastphot."""
+def test_fastphot(fastphot_output):
+    """Test that fastphot produces a valid output file."""
     import fitsio
-    from fastspecfit.fastspecfit import fastphot, parse
-
-    outfile = filenames["fastphot_outfile"]
-
-    cmd = f'fastphot {filenames["redrockfile"]} -o {outfile} ' + \
-        f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} ' + \
-        f'--redux_dir {filenames["redux_dir"]} ' + \
-        f'--specproddir {filenames["specproddir"]} --templates {templates}'
-
-    args = parse(options=cmd.split()[1:])
-    fastphot(args=args)
-
-    assert(os.path.exists(outfile))
-
-    fits = fitsio.FITS(outfile)
+    assert os.path.exists(fastphot_output)
+    fits = fitsio.FITS(fastphot_output)
     for hdu in fits:
-        if hdu.has_data(): # skip zeroth extension
+        if hdu.has_data():
             assert(hdu.get_extname() in ['METADATA', 'SPECPHOT'])
 
 
 @pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
-def test_stackfit(filenames, templates):
-    """Test stackfit."""
+def test_stackfit(stackfit_output):
+    """Test that stackfit produces a valid output file."""
     import fitsio
-    from fastspecfit.fastspecfit import stackfit, parse
-
-    outfile = filenames["stackfit_outfile"]
-
-    cmd = f'stackfit {filenames["stackfile"]} -o {outfile} --templates {templates}'
-
-    args = parse(options=cmd.split()[1:])
-    stackfit(args=args)
-
-    assert(os.path.exists(outfile))
-
-    fits = fitsio.FITS(outfile)
+    assert os.path.exists(stackfit_output)
+    fits = fitsio.FITS(stackfit_output)
     for hdu in fits:
         if hdu.has_data():
             assert(hdu.get_extname() in ['METADATA', 'SPECPHOT', 'FASTSPEC', 'MODELS'])
 
 
 @pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
-def test_fastspec(filenames, templates):
-    """Test fastspec."""
+def test_fastspec(fastspec_output):
+    """Test that fastspec produces a valid output file."""
     import fitsio
-    from fastspecfit.fastspecfit import fastspec, parse
-
-    outfile = filenames["fastspec_outfile"]
-
-    cmd = f'fastspec {filenames["redrockfile"]} -o {outfile} ' + \
-        f'--redux_dir {filenames["redux_dir"]} ' + \
-        f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} ' + \
-        f'--specproddir {filenames["specproddir"]} --templates {templates}'
-
-    args = parse(options=cmd.split()[1:])
-    fastspec(args=args)
-
-    assert(os.path.exists(outfile))
-
-    fits = fitsio.FITS(outfile)
+    assert os.path.exists(fastspec_output)
+    fits = fitsio.FITS(fastspec_output)
     for hdu in fits:
-        if hdu.has_data(): # skip zeroth extension
+        if hdu.has_data():
             assert(hdu.get_extname() in ['METADATA', 'SPECPHOT', 'FASTSPEC', 'MODELS'])
+
+
+# ---------------------------------------------------------------------------
+# QA integration tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
+def test_qa_fastphot(fastphot_output, filenames, templates, outdir):
+    """Test that fastqa runs and produces output for a fastphot file."""
+    from pathlib import Path
+    from fastspecfit.qa import fastqa, parse as qa_parse
+    qa_outdir = str(outdir / 'qa_fastphot')
+    cmd = (f'fastqa {fastphot_output} '
+           f'--redrockfiles {filenames["redrockfile"]} '
+           f'--redux_dir {filenames["redux_dir"]} '
+           f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
+           f'--templates {templates} --outdir {qa_outdir} --overwrite')
+    fastqa(args=qa_parse(options=cmd.split()[1:]))
+    assert len(list(Path(qa_outdir).glob('*.png'))) > 0
+
+
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
+def test_qa_fastspec(fastspec_output, filenames, templates, outdir):
+    """Test that fastqa runs and produces output for a fastspec file."""
+    from pathlib import Path
+    from fastspecfit.qa import fastqa, parse as qa_parse
+    qa_outdir = str(outdir / 'qa_fastspec')
+    cmd = (f'fastqa {fastspec_output} '
+           f'--redrockfiles {filenames["redrockfile"]} '
+           f'--redux_dir {filenames["redux_dir"]} '
+           f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
+           f'--templates {templates} --outdir {qa_outdir} --overwrite')
+    fastqa(args=qa_parse(options=cmd.split()[1:]))
+    assert len(list(Path(qa_outdir).glob('*.png'))) > 0
+
+
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
+def test_qa_stackfit(stackfit_output, filenames, templates, outdir):
+    """Test that fastqa runs and produces output for a stackfit file."""
+    from pathlib import Path
+    from fastspecfit.qa import fastqa, parse as qa_parse
+    qa_outdir = str(outdir / 'qa_stackfit')
+    cmd = (f'fastqa {stackfit_output} '
+           f'--redrockfiles {filenames["stackfile"]} '
+           f'--redux_dir {filenames["redux_dir"]} '
+           f'--templates {templates} --outdir {qa_outdir} --overwrite')
+    fastqa(args=qa_parse(options=cmd.split()[1:]))
+    assert len(list(Path(qa_outdir).glob('*.png'))) > 0
