@@ -56,7 +56,6 @@ def test_qa_fastphot(fastphot_output, filenames, templates, outdir):
     qa_outdir = str(outdir / 'qa_fastphot')
     cmd = (f'fastqa {fastphot_output} '
            f'--redrockfiles {filenames["redrockfile"]} '
-           f'--redux_dir {filenames["redux_dir"]} '
            f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
            f'--templates {templates} --outdir {qa_outdir} --overwrite')
     fastqa(args=qa_parse(options=cmd.split()[1:]))
@@ -71,7 +70,6 @@ def test_qa_fastspec(fastspec_output, filenames, templates, outdir):
     qa_outdir = str(outdir / 'qa_fastspec')
     cmd = (f'fastqa {fastspec_output} '
            f'--redrockfiles {filenames["redrockfile"]} '
-           f'--redux_dir {filenames["redux_dir"]} '
            f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
            f'--templates {templates} --outdir {qa_outdir} --overwrite')
     fastqa(args=qa_parse(options=cmd.split()[1:]))
@@ -86,7 +84,6 @@ def test_qa_stackfit(stackfit_output, filenames, templates, outdir):
     qa_outdir = str(outdir / 'qa_stackfit')
     cmd = (f'fastqa {stackfit_output} '
            f'--redrockfiles {filenames["stackfile"]} '
-           f'--redux_dir {filenames["redux_dir"]} '
            f'--templates {templates} --outdir {qa_outdir} --overwrite')
     fastqa(args=qa_parse(options=cmd.split()[1:]))
     assert len(list(Path(qa_outdir).glob('*.png'))) > 0

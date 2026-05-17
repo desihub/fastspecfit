@@ -1471,11 +1471,13 @@ def fastqa(args=None, comm=None):
         args = parse(args)
 
     if args.redux_dir is None:
-        if not 'DESI_SPECTRO_REDUX' in os.environ:
-            errmsg = "'DESI_SPECTRO_REDUX' environment variable or redux_dir must be set"
+        if args.redrockfiles is None and 'DESI_SPECTRO_REDUX' not in os.environ:
+            errmsg = ("'DESI_SPECTRO_REDUX' environment variable or --redux_dir must be "
+                      "set when --redrockfiles is not provided.")
             log.critical(errmsg)
             raise KeyError(errmsg)
-        args.redux_dir = os.path.expandvars(os.environ.get('DESI_SPECTRO_REDUX'))
+        if 'DESI_SPECTRO_REDUX' in os.environ:
+            args.redux_dir = os.path.expandvars(os.environ.get('DESI_SPECTRO_REDUX'))
     else:
         args.redux_dir = os.path.expandvars(args.redux_dir)
 
