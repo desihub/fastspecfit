@@ -1563,7 +1563,7 @@ def fastqa(args=None, comm=None):
         'emlines_file':      args.emlinesfile,
         'fphotofile':        args.fphotofile,
         'fastphot':          fastphot,
-        'fitstack':          args.stackfit,
+        'fitstack':          coadd_type == 'stacked',
         'ignore_photometry': ignore_photometry,
         'template_file':     args.templates,
         'template_version':  args.templateversion,
