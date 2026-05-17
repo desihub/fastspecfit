@@ -39,6 +39,7 @@ test = [
 ]
 testdata = [
     "redrock @ git+https://github.com/desihub/redrock.git",
+    "desigal @ git+https://github.com/desihub/desigal.git",
 ]
 coverage = [
     "pytest-cov",
