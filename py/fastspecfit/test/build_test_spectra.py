@@ -30,6 +30,7 @@ data model changes; it must not be run as part of the automated test suite.
 Run from the ``test/`` directory::
 
     python build_test_spectra.py
+
 """
 import os
 import numpy as np

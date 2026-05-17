@@ -2,8 +2,8 @@
 
 This script stacks five sv3/dark LRG spectra from the ``loa`` spectroscopic
 production into a single rest-frame spectrum and writes the result to
-``test/data/``.  The five targets span z ~ 0.41–0.45 and were selected by
-hand to be representative LRGs with reliable fastspecfit solutions.  Spectra
+``test/data/``. The five targets span z ~ 0.41–0.45 and were selected by
+hand to be representative LRGs with reliable fastspecfit solutions. Spectra
 are shifted to the rest frame, normalized in a 50 Å window centered on
 4500 Å (rest), and combined with inverse-variance weighting via
 ``desigal.specutils.stack.stack_spectra``.
@@ -11,8 +11,8 @@ are shifted to the rest frame, normalized in a 50 Å window centered on
 Requirements
 ------------
 ``DESI_ROOT`` (or a valid ``SPECPROD`` environment) must be set so that
-``desispec`` can locate the ``loa`` coadd files.  ``desigal`` must be
-installed (``pip install fastspecfit[testdata]``).  This script is intended
+``desispec`` can locate the ``loa`` coadd files. ``desigal`` must be
+installed (``pip install fastspecfit[testdata]``). This script is intended
 to be run once by collaborators with NERSC access when the test target or
 stacking parameters change; it must not be run as part of the automated
 test suite.
@@ -25,6 +25,7 @@ Outputs
 -------
 ``test/data/stack-LRG.fits``
     Single-bin stacked spectrum in the format expected by ``stackfit``.
+
 """
 import os
 import warnings
