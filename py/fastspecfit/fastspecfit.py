@@ -232,13 +232,16 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args, rank=rank)
 
+    if fitstack:
+        args.ignore_photometry = True
+
     # check for mandatory environment variables
     envlist = []
-    if args.redux_dir is None:
+    if not fitstack and args.redux_dir is None:
         envlist += ['DESI_SPECTRO_REDUX']
-    if args.mapdir is None:
+    if not fitstack and args.mapdir is None:
         envlist += ['DUST_DIR']
-    if args.fphotodir is None:
+    if not fitstack and args.fphotodir is None:
         envlist += ['FPHOTO_DIR']
     if args.templates is None:
         envlist += ['FTEMPLATES_DIR']
@@ -247,9 +250,6 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             errmsg = f'Mandatory environment variable {env} missing.'
             log.critical(errmsg)
             raise KeyError(errmsg)
-
-    if fitstack:
-        args.ignore_photometry = True
 
     if verbose:
         args.verbose = True

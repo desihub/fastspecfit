@@ -16,13 +16,17 @@ def filenames(outdir):
     mapdir = resources.files('fastspecfit').joinpath('test/data')
     fphotodir = resources.files('fastspecfit').joinpath('test/data')
     redrockfile = resources.files('fastspecfit').joinpath('test/data/redrock-4-80613-thru20210324.fits')
+    stackfile = resources.files('fastspecfit').joinpath('test/data/stack-LRG.fits')
     fastspec_outfile = os.path.join(outdir, 'fastspec.fits')
     fastphot_outfile = os.path.join(outdir, 'fastphot.fits')
+    stackfit_outfile = os.path.join(outdir, 'stackfit.fits')
 
     filenames = {'redux_dir': redux_dir, 'specproddir': specproddir,
                  'mapdir': mapdir, 'fphotodir': fphotodir,
-                 'redrockfile': redrockfile, 'fastspec_outfile': fastspec_outfile,
-                 'fastphot_outfile': fastphot_outfile, }
+                 'redrockfile': redrockfile, 'stackfile': stackfile,
+                 'fastspec_outfile': fastspec_outfile,
+                 'fastphot_outfile': fastphot_outfile,
+                 'stackfit_outfile': stackfit_outfile}
 
     yield filenames
 
@@ -49,6 +53,27 @@ def test_fastphot(filenames, templates):
     for hdu in fits:
         if hdu.has_data(): # skip zeroth extension
             assert(hdu.get_extname() in ['METADATA', 'SPECPHOT'])
+
+
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
+def test_stackfit(filenames, templates):
+    """Test stackfit."""
+    import fitsio
+    from fastspecfit.fastspecfit import stackfit, parse
+
+    outfile = filenames["stackfit_outfile"]
+
+    cmd = f'stackfit {filenames["stackfile"]} -o {outfile} --templates {templates}'
+
+    args = parse(options=cmd.split()[1:])
+    stackfit(args=args)
+
+    assert(os.path.exists(outfile))
+
+    fits = fitsio.FITS(outfile)
+    for hdu in fits:
+        if hdu.has_data():
+            assert(hdu.get_extname() in ['METADATA', 'SPECPHOT', 'FASTSPEC', 'MODELS'])
 
 
 @pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
