@@ -36,7 +36,7 @@ EXTNAME = PRIMARY
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. collapse:: Required Header Keywords Table
+.. dropdown:: Required Header Keywords Table
     :open:
 
     .. rst-class:: keywords
@@ -73,7 +73,7 @@ Metadata associated with each object fitted.
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. collapse:: Required Header Keywords Table
+.. dropdown:: Required Header Keywords Table
     :open:
 
     .. rst-class:: keywords
@@ -177,7 +177,7 @@ Table with spectrophotometric quantities.
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. collapse:: Required Header Keywords Table
+.. dropdown:: Required Header Keywords Table
     :open:
 
     .. rst-class:: keywords
@@ -341,7 +341,7 @@ Table with spectral fitting results.
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. collapse:: Required Header Keywords Table
+.. dropdown:: Required Header Keywords Table
     :open:
 
     .. rst-class:: keywords
@@ -438,7 +438,7 @@ Best-fitting model spectra (corrected for Galactic extinction).
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. collapse:: Required Header Keywords Table
+.. dropdown:: Required Header Keywords Table
     :open:
 
     .. rst-class:: keywords

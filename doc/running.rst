@@ -19,7 +19,7 @@ takes one or more `Redrock`_ redshift catalogs as input (and one or more
 corresponding DESI spectra) and, by default, jointly models the DESI
 spectrophotometry and broadband photometry.
 
-.. collapse:: Click to view the fastspec help message.
+.. dropdown:: Click to view the fastspec help message.
 
     .. code-block:: bash
 
@@ -88,7 +88,7 @@ interested in, and an (arbitrary) output filename::
   $> fastspec $DESI_ROOT/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --targetids 39633345008634465 --outfile fastspec-example.fits
 
-.. collapse:: Click to view the informational output printed to the screen after
+.. dropdown:: Click to view the informational output printed to the screen after
               executing this command. 
 
     .. code-block:: python
@@ -135,7 +135,7 @@ following command::
 
   $> fastqa ./fastspec-example.fits --outdir ./
 
-.. collapse:: Click to view the informational output printed to the screen after
+.. dropdown:: Click to view the informational output printed to the screen after
               executing this command. 
 
     .. code-block:: python
@@ -255,7 +255,7 @@ redshift) using ``fastphot``. Using the same example object as above, we have::
   $> fastphot $DESI_ROOT/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --targetids 39633345008634465 --outfile fastphot-example.fits
 
-.. collapse:: Click to view the informational output printed to the screen after
+.. dropdown:: Click to view the informational output printed to the screen after
               executing this command. 
 
     .. code-block:: python
@@ -284,7 +284,7 @@ And to generate the QA::
 
   $> fastqa fastphot-example.fits --outdir ./
 
-.. collapse:: Click to view the informational output printed to the screen after
+.. dropdown:: Click to view the informational output printed to the screen after
               executing this command. 
 
     .. code-block:: python

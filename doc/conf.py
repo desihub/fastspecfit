@@ -31,7 +31,7 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
-    'sphinx_toolbox.collapse',
+    'sphinx_design',
     'sphinx.ext.napoleon',
 ]
 

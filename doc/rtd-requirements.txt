@@ -1,3 +1,2 @@
-Sphinx<8.2.0
-sphinx-toolbox
+sphinx-design
 sphinx-rtd-theme>1.2
