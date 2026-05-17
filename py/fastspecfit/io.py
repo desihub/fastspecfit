@@ -465,17 +465,15 @@ class DESISpectra(object):
 
     def __init__(self, phot, cosmo, redux_dir=None, fphotodir=None, mapdir=None):
         if redux_dir is None:
-            if not 'DESI_SPECTRO_REDUX' in os.environ:
-                errmsg = "'DESI_SPECTRO_REDUX' environment variable or redux_dir must be set"
-                log.critical(errmsg)
-                raise KeyError(errmsg)
-            self.redux_dir = os.path.expandvars(os.environ.get('DESI_SPECTRO_REDUX'))
+            redux_env = os.environ.get('DESI_SPECTRO_REDUX')
+            self.redux_dir = os.path.expandvars(redux_env) if redux_env else None
         else:
             self.redux_dir = os.path.expandvars(redux_dir)
 
         if fphotodir is None:
             self.fphotoext = None
-            self.fphotodir = os.path.expandvars(os.environ.get('FPHOTO_DIR'))
+            fphoto_env = os.environ.get('FPHOTO_DIR')
+            self.fphotodir = os.path.expandvars(fphoto_env) if fphoto_env else None
             self.fphotodir_default = True
         else:
             # parse the extension name, if any
@@ -493,7 +491,8 @@ class DESISpectra(object):
             self.fphotodir = fphotodir
 
         if mapdir is None:
-            self.mapdir = os.path.join(os.path.expandvars(os.environ.get('DUST_DIR')), 'maps')
+            dust_env = os.environ.get('DUST_DIR')
+            self.mapdir = os.path.join(os.path.expandvars(dust_env), 'maps') if dust_env else None
         else:
             self.mapdir = mapdir
 
@@ -754,8 +753,9 @@ class DESISpectra(object):
                     log.info('specprod={}, coadd_type={}, tileid={}, petal={}, night={}'.format(
                         self.specprod, self.coadd_type, tileid, petal, night))
 
-                # cache the tiles file so we can grab the survey and program name appropriate for this tile
-                if not hasattr(self, 'tileinfo'):
+                # cache the tiles file so we can grab the survey and program name
+                # appropriate for this tile; silently skip if redux_dir is unavailable
+                if not hasattr(self, 'tileinfo') and self.redux_dir is not None:
                     if specprod_dir is None:
                         specprod_dir = os.path.join(self.redux_dir, self.specprod)
                     infofile = os.path.join(specprod_dir, f'tiles-{self.specprod}.csv')
@@ -1819,7 +1819,6 @@ def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
         Overwrite existing output files. Defaults to ``False``.
 
     """
-    from redrock.external.desi import write_zbest
     from desispec.io import write_spectra, read_spectra
     from fastspecfit.qa import fastqa
     from fastspecfit.fastspecfit import fastspec
@@ -1849,19 +1848,18 @@ def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
     expfibermap = Table.read(redrockfile, 'EXP_FIBERMAP')
     tsnr2 = Table.read(redrockfile, 'TSNR2')
 
-    spechdr = fitsio.read_header(coaddfile)
-
     zbest = zbest[np.isin(zbest['TARGETID'], targetid)]
     fibermap = fibermap[np.isin(fibermap['TARGETID'], targetid)]
     expfibermap = expfibermap[np.isin(expfibermap['TARGETID'], targetid)]
     tsnr2 = tsnr2[np.isin(tsnr2['TARGETID'], targetid)]
 
-    archetype_version = None
-    template_version = {redhdr[f'TEMNAM{nn:02d}']: redhdr[f'TEMVER{nn:02d}'] for nn in range(10)}
-
     print(f'Writing {out_redrockfile}')
-    write_zbest(out_redrockfile, zbest, fibermap, expfibermap, tsnr2,
-                template_version, archetype_version, spec_header=spechdr)
+    with fitsio.FITS(out_redrockfile, 'rw', clobber=True) as ff:
+        ff.write(None, header=redhdr)
+        ff.write(zbest.as_array(), extname='REDSHIFTS')
+        ff.write(fibermap.as_array(), extname='FIBERMAP')
+        ff.write(expfibermap.as_array(), extname='EXP_FIBERMAP')
+        ff.write(tsnr2.as_array(), extname='TSNR2')
 
     spec = read_spectra(coaddfile).select(targets=targetid)
     print(f'Writing {out_coaddfile}')

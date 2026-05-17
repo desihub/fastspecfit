@@ -1,5 +1,31 @@
-"""Build miniature dust maps centered on tile 80613: (RA, Dec)=(104-107, 56-58). 
+"""Build miniature SFD dust maps for use in fastspecfit unit tests.
 
+This script extracts small cutouts from the full-sky Schlegel, Finkbeiner &
+Davis (1998) dust maps and writes them to the ``test/data/`` directory. The
+cutouts cover a generous border around DESI tile 80613, spanning roughly
+RA 104–107 deg, Dec 56–58 deg. Both galactic-pole hemispheres (NGP and SGP)
+are written because the SFD map is split into two FITS files; the NGP file
+covers the region of interest for tile 80613, while the SGP file is included
+so the test data directory mirrors the expected directory structure.
+
+Requirements
+------------
+The ``DUST_DIR`` environment variable must point to a directory containing the
+full-resolution SFD maps at ``$DUST_DIR/maps/SFD_dust_4096_{ngp,sgp}.fits``.
+
+Outputs
+-------
+``test/data/SFD_dust_4096_ngp.fits`` and ``test/data/SFD_dust_4096_sgp.fits``:
+    Cropped FITS images with WCS headers updated to reflect the subarray
+    extent. These files are checked into the repository and consumed by
+    the photometry unit tests via the ``DUST_DIR`` test fixture.
+
+Notes
+-----
+Run this script once from the ``test/`` directory whenever the test target or
+sky footprint changes. It must not be run as part of the automated test suite.
+The pixel-coordinate arithmetic follows the same Lambert equal-area projection
+used internally by ``desiutil.dust.SFDMap``.
 """
 import os
 import numpy as np

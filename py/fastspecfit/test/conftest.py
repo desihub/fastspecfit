@@ -8,6 +8,11 @@ import pathlib
 import pytest
 from urllib.request import urlretrieve
 
+# Use the non-interactive Agg backend so QA tests can render figures in
+# headless CI environments without a display.
+os.environ.setdefault('MPLBACKEND', 'Agg')
+
+
 @pytest.fixture(scope='session')
 def template_version():
     yield '2.0.0'
@@ -44,3 +49,58 @@ def templates(templatedir, template_version):
     # Skip cleanup when using a persistent cache directory.
     if not os.environ.get('FTEMPLATES_CACHE_DIR') and os.path.isfile(templates):
         os.remove(templates)
+
+
+@pytest.fixture(scope='session')
+def filenames(outdir):
+    from importlib import resources
+    redux_dir    = resources.files('fastspecfit').joinpath('test/data')
+    specproddir  = resources.files('fastspecfit').joinpath('test/data')
+    mapdir       = resources.files('fastspecfit').joinpath('test/data')
+    fphotodir    = resources.files('fastspecfit').joinpath('test/data')
+    redrockfile  = resources.files('fastspecfit').joinpath('test/data/redrock-4-80613-thru20210324.fits')
+    stackfile    = resources.files('fastspecfit').joinpath('test/data/stack-LRG.fits')
+    yield {
+        'redux_dir':        redux_dir,
+        'specproddir':      specproddir,
+        'mapdir':           mapdir,
+        'fphotodir':        fphotodir,
+        'redrockfile':      redrockfile,
+        'stackfile':        stackfile,
+        'fastphot_outfile': os.path.join(outdir, 'fastphot.fits'),
+        'fastspec_outfile': os.path.join(outdir, 'fastspec.fits'),
+        'stackfit_outfile': os.path.join(outdir, 'stackfit.fits'),
+    }
+
+
+@pytest.fixture(scope='session')
+def fastphot_output(filenames, templates):
+    from fastspecfit.fastspecfit import fastphot, parse
+    outfile = filenames['fastphot_outfile']
+    cmd = (f'fastphot {filenames["redrockfile"]} -o {outfile} '
+           f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
+           f'--redux_dir {filenames["redux_dir"]} '
+           f'--specproddir {filenames["specproddir"]} --templates {templates}')
+    fastphot(args=parse(options=cmd.split()[1:]))
+    yield outfile
+
+
+@pytest.fixture(scope='session')
+def fastspec_output(filenames, templates):
+    from fastspecfit.fastspecfit import fastspec, parse
+    outfile = filenames['fastspec_outfile']
+    cmd = (f'fastspec {filenames["redrockfile"]} -o {outfile} '
+           f'--redux_dir {filenames["redux_dir"]} '
+           f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
+           f'--specproddir {filenames["specproddir"]} --templates {templates}')
+    fastspec(args=parse(options=cmd.split()[1:]))
+    yield outfile
+
+
+@pytest.fixture(scope='session')
+def stackfit_output(filenames, templates):
+    from fastspecfit.fastspecfit import stackfit, parse
+    outfile = filenames['stackfit_outfile']
+    cmd = f'stackfit {filenames["stackfile"]} -o {outfile} --templates {templates}'
+    stackfit(args=parse(options=cmd.split()[1:]))
+    yield outfile
