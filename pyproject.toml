@@ -1,6 +1,6 @@
 [project]
 name = "fastspecfit"
-version = "3.2.1"
+dynamic = ["version"]
 authors = [
     {name="John Moustakas", email="jmoustakas@siena.edu"},
 ]
@@ -53,10 +53,11 @@ doc = [
 ]
 
 [build-system]
-requires = ["setuptools",
-            "wheel"
-            ]
+requires = ["setuptools", "setuptools-scm", "wheel"]
 build-backend = 'setuptools.build_meta'
+
+[tool.setuptools_scm]
+version_file = "py/fastspecfit/_version.py"
 
 [project.scripts]
 fastspec = "fastspecfit.fastspecfit:fastspec"
