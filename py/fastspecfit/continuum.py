@@ -13,7 +13,8 @@ from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates, VDISP_NOMINAL, VDISP_BOUNDS
 from fastspecfit.util import (
     C_LIGHT, TINY, F32MAX, quantile, median, var2ivar,
-    trapz_rebin, trapz_rebin_pre, _trapz_rebin_batch)
+    trapz_rebin, trapz_rebin_pre, _trapz_rebin_batch,
+    NMONTE_DEFAULT)
 
 
 class ContinuumTools(object):
@@ -1281,7 +1282,7 @@ def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4800.), fit_rest
 
 
 def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
-                       nmonte=50, rng=None, debug_plots=False):
+                       nmonte=NMONTE_DEFAULT, rng=None, debug_plots=False):
     """Fit the stellar continuum to broadband photometry only.
 
     Parameters
@@ -1548,7 +1549,7 @@ def _continuum_nominal_vdisp(CTools, templates, specflux, specwave,
     return tauv, vdisp, coeff, contmodel, chi2
 
 
-def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
+def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEFAULT,
                        rng=None, uniqueid=0, no_smooth_continuum=False,
                        debug_plots=False):
     """Jointly fit the stellar continuum to spectroscopy and broadband photometry.
@@ -1912,7 +1913,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
 
 
 def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
-                      nmonte=50, seed=1, constrain_age=False,
+                      nmonte=NMONTE_DEFAULT, seed=1, constrain_age=False,
                       no_smooth_continuum=False, fitstack=False,
                       fastphot=False, debug_plots=False):
     """Fit the non-negative stellar continuum of a single spectrum.

@@ -12,7 +12,7 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data
-from fastspecfit.util import BoxedScalar, MPPool
+from fastspecfit.util import BoxedScalar, MPPool, NMONTE_DEFAULT
 from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
 
 def parse(options=None, rank=0):
@@ -46,7 +46,7 @@ def parse(options=None, rank=0):
     parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
     parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
     parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
-    parser.add_argument('--nmonte', type=int, default=50, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--nmonte', type=int, default=NMONTE_DEFAULT, help='Number of Monte Carlo realizations.')
     parser.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
     parser.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, help='Nominal (default) velocity dispersion in km/s.')
     parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
@@ -85,7 +85,7 @@ def parse(options=None, rank=0):
 def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=True,
                  fastphot=False, fitstack=False, constrain_age=False,
                  no_smooth_continuum=False, debug_plots=False, uncertainty_floor=0.01,
-                 minsnr_balmer_broad=2.5, nmonte=50, seed=1):
+                 minsnr_balmer_broad=2.5, nmonte=NMONTE_DEFAULT, seed=1):
     """Fit the continuum and emission lines for a single DESI object.
 
     Parameters
