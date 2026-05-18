@@ -27,6 +27,8 @@ Contents
 
    install.rst
    running.rst
+   data.rst
+   tutorials.rst
    algorithms.rst
    api.rst
    changes.rst
