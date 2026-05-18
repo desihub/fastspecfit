@@ -3,6 +3,9 @@
 Installation & Setup
 ====================
 
+.. contents:: Contents
+    :depth: 3
+
 ``FastSpecFit`` can be set up in two ways:
 
 - :ref:`At NERSC<nersc installation>` — for DESI collaborators using the shared software stack.
@@ -91,22 +94,32 @@ Data Dependencies
 ~~~~~~~~~~~~~~~~~
 
 Running ``FastSpecFit`` on DESI spectra requires four additional data products,
-each specified by an environment variable:
+each pointed to by an environment variable.
 
-.. list-table::
-   :header-rows: 1
-   :widths: 30 70
+``DESI_SPECTRO_REDUX``
+   Root directory of the DESI spectroscopic reduction outputs. The products
+   within are organized according to the `DESI data model`_; the `DESI data
+   organization`_ page describes the full on-disk layout. The DESI
+   `Early Data Release (EDR)`_ and `Data Release 1 (DR1)`_ are publicly
+   available.
 
-   * - Variable
-     - Purpose
-   * - ``DESI_SPECTRO_REDUX``
-     - Root directory of DESI spectroscopic reduction outputs
-   * - ``DUST_DIR``
-     - `Schlegel, Finkbeiner, & Davis dust maps`_
-   * - ``FPHOTO_DIR``
-     - `DESI Legacy Imaging Surveys DR9`_ broadband photometry
-   * - ``FTEMPLATES_DIR``
-     - Stellar population synthesis template files
+``DUST_DIR``
+   Location of the `Schlegel, Finkbeiner, & Davis (1998)`_ dust reddening
+   maps, used to correct spectra and photometry for Milky Way dust extinction.
+   The maps can be downloaded from the NERSC public portal (see commands
+   below).
+
+``FPHOTO_DIR``
+   Location of the `DESI Legacy Imaging Surveys DR9`_ broadband photometry,
+   which provides optical and near-infrared fluxes used for joint
+   spectrophotometric SED fitting. See the `DR9 description`_ for an overview
+   of the imaging data and data products.
+
+``FTEMPLATES_DIR``
+   Location of the stellar population synthesis template files used by
+   ``FastSpecFit`` to model the stellar continuum. Templates are distributed
+   via the DESI public data portal and can be downloaded with the command
+   below.
 
 Set these variables and download the required external files::
 
@@ -119,11 +132,6 @@ Set these variables and download the required external files::
     https://portal.nersc.gov/project/cosmo/data/dust/v0_1/maps
   wget -O $FTEMPLATES_DIR/ftemplates-chabrier-2.0.0.fits \
     https://data.desi.lbl.gov/public/external/templates/fastspecfit/2.0.0/ftemplates-chabrier-2.0.0.fits
-
-.. note::
-
-   The DESI `Early Data Release (EDR)`_ and `Data Release 1 (DR1)`_ are
-   publicly available.
 
 Building the Documentation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -138,8 +146,11 @@ dependencies and run Sphinx::
 .. _`Miniforge`: https://github.com/conda-forge/miniforge
 .. _`Anaconda`: https://www.anaconda.com
 .. _`PyPI`: https://pypi.org/project/fastspecfit
-.. _`Schlegel, Finkbeiner, & Davis dust maps`: https://ui.adsabs.harvard.edu/abs/1998ApJ...500..525S/abstract
+.. _`Schlegel, Finkbeiner, & Davis (1998)`: https://ui.adsabs.harvard.edu/abs/1998ApJ...500..525S/abstract
+.. _`DESI data model`: https://desidatamodel.readthedocs.io/en/latest/
+.. _`DESI data organization`: https://data.desi.lbl.gov/doc/organization/
 .. _`DESI Legacy Imaging Surveys DR9`: https://www.legacysurvey.org/dr9
+.. _`DR9 description`: https://www.legacysurvey.org/dr9/description/
 .. _`NERSC`: https://www.nersc.gov/
 .. _`JupyterHub`: https://jupyter.nersc.gov/
 .. _`Early Data Release (EDR)`: https://data.desi.lbl.gov/doc/releases/edr/
