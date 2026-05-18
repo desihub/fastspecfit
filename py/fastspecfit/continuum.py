@@ -885,6 +885,69 @@ class ContinuumTools(object):
         return resid
 
 
+    def _fit_stellar_continuum_varpro(self, templateflux, tauv_bounds,
+                                      dust_emission, objflam, objflamistd):
+        """Fit stellar continuum via variable projection (VARPRO).
+
+        Handles the ``fit_vdisp=False``, photometry-only case.  For fixed
+        ``tauv``, the full model (including energy-balance dust emission) is
+        linear in the template coefficients, so the inner problem reduces to
+        non-negative least squares.  The outer problem is a scalar bounded
+        minimization over ``tauv`` solved with Brent's method (~10-15
+        function evaluations), replacing the TRF optimizer that otherwise
+        finite-differences over all ``ntemplates + 1`` parameters.
+
+        """
+        from scipy.optimize import minimize_scalar, nnls
+
+        wave      = self.templates.wave
+        dust_kl   = self.templates.dust_klambda
+        dustflux  = self.templates.dustflux
+        zfactors  = self.zfactors
+        ntemplates = templateflux.shape[0]
+        nphot      = len(objflam)
+
+        b   = objflam * objflamistd
+        Psi = np.empty((nphot, ntemplates))
+        phi = np.empty_like(templateflux)
+
+        def _fill(tauv):
+            """Compute attenuated per-template flux and photometry design matrix."""
+            A = np.exp(-tauv * dust_kl)
+            for k in range(ntemplates):
+                Tk = templateflux[k]
+                if dust_emission:
+                    # Trapezoidal integral of absorbed bolometric luminosity
+                    # for template k alone (matches Numba attenuate()).
+                    d_k = 0.5 * np.dot(
+                        (Tk[:-1] * (1. - A[:-1]) + Tk[1:] * (1. - A[1:])),
+                        np.diff(wave))
+                    phi[k] = (Tk * A + d_k * dustflux) * zfactors
+                else:
+                    phi[k] = Tk * A * zfactors
+                Psi[:, k] = self.continuum_to_photometry(phi[k]) * objflamistd
+
+        def objective(tauv):
+            _fill(tauv)
+            coeff, _ = nnls(Psi, b)
+            return np.sum((Psi @ coeff - b) ** 2)
+
+        result = minimize_scalar(objective, bounds=tauv_bounds, method='bounded',
+                                 options={'xatol': 1e-4})
+        tauv = result.x
+
+        # One explicit final solve at the optimum so that coeff, phi, and
+        # the residuals are mutually consistent regardless of Brent's
+        # internal bracketing order.
+        _fill(tauv)
+        coeff, _ = nnls(Psi, b)
+
+        self.optimizer_saved_contmodel = coeff @ phi
+        resid = Psi @ coeff - b
+
+        return tauv, self.templates.vdisp_nominal, coeff, resid
+
+
     def fit_stellar_continuum(self, templateflux, fit_vdisp=False, conv_pre=None,
                               vdisp_guess=None, tauv_guess=None, vdisp_bounds=None,
                               tauv_bounds=None, coeff_guess=None, dust_emission=True,
@@ -973,6 +1036,10 @@ class ContinuumTools(object):
             tauv_bounds = self.tauv_bounds
         if vdisp_bounds is None:
             vdisp_bounds = self.vdisp_bounds
+
+        if not fit_vdisp and synthphot and not synthspec:
+            return self._fit_stellar_continuum_varpro(
+                templateflux, tauv_bounds, dust_emission, objflam, objflamistd)
 
         ntemplates = templateflux.shape[0]
 
