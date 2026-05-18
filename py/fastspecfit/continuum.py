@@ -864,10 +864,12 @@ class ContinuumTools(object):
         out = np.empty((ntemplates, self.wavelen))
         for icam, (s, e) in enumerate(self.data['camerapix']):
             ncam = e - s
-            resamp = np.empty((ntemplates, ncam))
+            resamp  = np.empty((ntemplates, ncam))
+            out_cam = np.empty((ntemplates, ncam))
             edges, ibw = self.spec_pre[icam]
             _trapz_rebin_batch(self.ztemplatewave, phi, edges, ibw, resamp)
-            self.data['res'][icam].matmat(resamp, out[:, s:e])
+            self.data['res'][icam].matmat(resamp, out_cam)
+            out[:, s:e] = out_cam
         return out
 
 
