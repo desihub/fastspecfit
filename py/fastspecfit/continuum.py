@@ -889,7 +889,8 @@ class ContinuumTools(object):
                               vdisp_guess=None, tauv_guess=None, vdisp_bounds=None,
                               tauv_bounds=None, coeff_guess=None, dust_emission=True,
                               objflam=None, objflamistd=None, specflux=None,
-                              specistd=None, synthphot=False, synthspec=False):
+                              specistd=None, synthphot=False, synthspec=False,
+                              ftol=1e-6, xtol=1e-10):
         """Fit a stellar continuum using bounded non-linear least-squares.
 
         Parameters
@@ -931,6 +932,14 @@ class ContinuumTools(object):
             True iff fitting objective includes object photometry.
         synthspec: :class:`bool`
             True iff fitting objective includes observed spectrum.
+        ftol : float, optional
+            Relative tolerance on the cost function for convergence.
+            Defaults to ``1e-6``; pass a looser value (e.g. ``1e-3``) when
+            only a relative chi2 ranking is needed (e.g. the vdisp scan).
+        xtol : float, optional
+            Relative tolerance on the parameter step for convergence.
+            Defaults to ``1e-10``; pass a looser value (e.g. ``1e-5``) when
+            only a relative chi2 ranking is needed.
 
         Returns
         -------
@@ -1008,7 +1017,7 @@ class ContinuumTools(object):
         fit_info = least_squares(self._stellar_objective, initial_guesses, kwargs=farg,
                                  bounds=tuple(zip(*bounds)), method='trf',
                                  tr_solver='exact', tr_options={'regularize': True},
-                                 x_scale='jac', max_nfev=5000, ftol=1e-6, xtol=1e-10)#, verbose=2)
+                                 x_scale='jac', max_nfev=5000, ftol=ftol, xtol=xtol)#, verbose=2)
         bestparams = fit_info.x
         resid      = fit_info.fun
 
@@ -1305,7 +1314,8 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
             input_templateflux_nolines, fit_vdisp=False, conv_pre=None,
             #tauv_bounds=(0., 2.),
             specflux=specflux, specistd=specistd*fitmask,
-            dust_emission=False, synthspec=True)
+            dust_emission=False, synthspec=True,
+            ftol=1e-3, xtol=1e-5)
         chi2grid[iv] = resid1.dot(resid1)
 
     # Require the peak-to-peak delta-chi2 to be at least deltachi2min and the
