@@ -33,13 +33,16 @@ described in the :ref:`data model<fastspec datamodel>` pages.
     .. code-block:: bash
 
         $> fastspec --help
-        usage: fastspec [-h] -o OUTFILE [--mp MP] [-n NTARGETS] [--firsttarget FIRSTTARGET] [--targetids TARGETIDS] [--no-broadlinefit] [--nophoto] [--percamera-models]
-                        [--imf IMF] [--templateversion TEMPLATEVERSION] [--templates TEMPLATES] [--redrockfile-prefix REDROCKFILE_PREFIX]
-                        [--specfile-prefix SPECFILE_PREFIX] [--qnfile-prefix QNFILE_PREFIX] [--mapdir MAPDIR] [--dr9dir DR9DIR] [--specproddir SPECPRODDIR] [--verbose]
-                        [redrockfiles ...]
+        usage: fastspec [-h] -o OUTFILE [--mp MP] [-n NTARGETS] [--firsttarget FIRSTTARGET] [--targetids TARGETIDS] [--input-redshifts INPUT_REDSHIFTS] [--input-seeds INPUT_SEEDS]
+                        [--seed SEED] [--nmonte NMONTE] [--vdisp-nominal VDISP_NOMINAL] [--vdisp-bounds VDISP_BOUNDS VDISP_BOUNDS] [--zmin ZMIN] [--no-broadlinefit]
+                        [--ignore-photometry] [--ignore-quasarnet] [--constrain-age] [--no-smooth-continuum] [--imf IMF] [--templateversion TEMPLATEVERSION] [--templates TEMPLATES]
+                        [--redrockfile-prefix REDROCKFILE_PREFIX] [--specfile-prefix SPECFILE_PREFIX] [--qnfile-prefix QNFILE_PREFIX] [--mapdir MAPDIR] [--fphotodir FPHOTODIR]
+                        [--fphotofile FPHOTOFILE] [--emlinesfile EMLINESFILE] [--redux_dir REDUX_DIR] [--specproddir SPECPRODDIR] [--uncertainty-floor UNCERTAINTY_FLOOR]
+                        [--minsnr-balmer-broad MINSNR_BALMER_BROAD] [--debug-plots] [--verbose]
+                        redrockfiles [redrockfiles ...]
 
         positional arguments:
-          redrockfiles          Full path to input redrock file(s). (default: None)
+          redrockfiles          Full path to input redrock file(s).
 
         options:
           -h, --help            show this help message and exit
@@ -52,9 +55,23 @@ described in the :ref:`data model<fastspec datamodel>` pages.
                                 Index of first object to to process in each file, zero-indexed. (default: 0)
           --targetids TARGETIDS
                                 Comma-separated list of TARGETIDs to process. (default: None)
-          --no-broadlinefit     Do not allow for broad Balmer and Helium line-fitting. (default: True)
-          --nophoto             Do not include the photometry in the model fitting. (default: False)
-          --percamera-models    Return the per-camera (not coadded) model spectra. (default: False)
+          --input-redshifts INPUT_REDSHIFTS
+                                Comma-separated list of input redshifts corresponding to the (required) --targetids input. (default: None)
+          --input-seeds INPUT_SEEDS
+                                Comma-separated list of input random-number seeds corresponding to the (required) --targetids input. (default: None)
+          --seed SEED           Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed. (default: 1)
+          --nmonte NMONTE       Number of Monte Carlo realizations. (default: 50)
+          --vdisp-nominal VDISP_NOMINAL
+                                Nominal (default) velocity dispersion in km/s. (default: 250.0)
+          --vdisp-bounds VDISP_BOUNDS VDISP_BOUNDS
+                                Nominal (default) velocity dispersion in km/s. (default: (75.0, 500.0))
+          --zmin ZMIN           Override the default minimum redshift required for modeling. (default: None)
+          --no-broadlinefit     Do not model broad Balmer and helium line-emission. (default: True)
+          --ignore-photometry   Ignore the broadband photometry during model fitting. (default: False)
+          --ignore-quasarnet    Do not use QuasarNet to improve QSO redshifts. (default: True)
+          --constrain-age       Constrain the age of the SED. (default: False)
+          --no-smooth-continuum
+                                Do not fit the smooth continuum. (default: False)
           --imf IMF             Initial mass function. (default: chabrier)
           --templateversion TEMPLATEVERSION
                                 Template version number. (default: 2.0.0)
@@ -67,9 +84,21 @@ described in the :ref:`data model<fastspec datamodel>` pages.
           --qnfile-prefix QNFILE_PREFIX
                                 Prefix of the QuasarNet afterburner file(s). (default: qso_qn-)
           --mapdir MAPDIR       Optional directory name for the dust maps. (default: None)
-          --dr9dir DR9DIR       Optional directory name for the DR9 photometry. (default: None)
+          --fphotodir FPHOTODIR
+                                Top-level location of the source photometry. (default: None)
+          --fphotofile FPHOTOFILE
+                                Photometric information file. (default: None)
+          --emlinesfile EMLINESFILE
+                                Emission line parameter file. (default: None)
+          --redux_dir REDUX_DIR
+                                Optional full path $DESI_SPECTRO_REDUX. (default: None)
           --specproddir SPECPRODDIR
                                 Optional directory name for the spectroscopic production. (default: None)
+          --uncertainty-floor UNCERTAINTY_FLOOR
+                                Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum. (default: 0.01)
+          --minsnr-balmer-broad MINSNR_BALMER_BROAD
+                                Minimum broad Balmer S/N to force broad+narrow-line model. (default: 2.5)
+          --debug-plots         Generate a variety of debugging plots (written to $PWD). (default: False)
           --verbose             Be verbose (for debugging purposes). (default: False)
 
 .. note::
@@ -87,71 +116,55 @@ To model the spectrum of a single object, provide ``fastspec`` the full path
 of an input Redrock catalog, the ``targetid`` of the object of interest, and
 an output filename::
 
-  $> fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
+  fastspec $DESI_SPECTRO_REDUX/loa/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --targetids 39633345008634465 --outfile fastspec-example.fits
 
-.. dropdown:: Click to view the informational output printed to the screen after
-              executing this command.
+.. dropdown:: Click to view the logging output.
 
-    .. code-block:: python
+    .. code-block:: none
 
-        INFO:fastspecfit.py:122:parse: /global/homes/i/ioannis/code/desihub/fastspecfit/bin/fastspec /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits --targetids 39633345008634465 --outfile fastspec-example.fits
-        INFO:io.py:525:select: Reading and parsing 1 unique redrockfile(s).
-        INFO:io.py:579:select: specprod=iron, coadd_type=healpix, survey=sv1, program=bright, healpix=7108
-        INFO:io.py:847:select: Gathered photometric metadata for 1 objects in 0.19 sec
-        INFO:io.py:937:read_and_unpack: Reading 1 spectrum from /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/coadd-sv1-bright-7108.fits
-        INFO:spectra.py:291:read_spectra: iotime 0.215 sec to read coadd-sv1-bright-7108.fits at 2023-02-24T04:49:07.030436
-        INFO:io.py:966:read_and_unpack: Coadding across cameras took 0.01 seconds.
-        INFO:io.py:111:unpack_one_spectrum: Pre-processing object 0 [targetid 39633345008634465 z=0.368744].
-        INFO:fastspecfit.py:174:fastspec: Reading and unpacking 1 spectra to be fitted took 3.57 seconds.
-        INFO:fastspecfit.py:50:fastspec_one: Continuum- and emission-line fitting object 0 [targetid 39633345008634465, z=0.368744].
-        INFO:io.py:1505:cache_templates: Reading /global/cfs/cdirs/desi/science/gqp/templates/fastspecfit/1.0.0/ftemplates-chabrier-1.0.0.fits
-        INFO:continuum.py:1760:continuum_specfit: S/N_b=3.20, S/N_r=6.20, S/N_z=6.04, rest wavelength coverage=2630-7177 A.
-        INFO:continuum.py:1775:continuum_specfit: Fitting for the velocity dispersion took 1.44 seconds.
-        INFO:continuum.py:1790:continuum_specfit: Finding vdisp failed; adopting vdisp=125 km/s.
-        WARNING:continuum.py:1243:templates2data: Padding model spectrum due to insufficient wavelength coverage to synthesize photometry.
-        INFO:continuum.py:1857:continuum_specfit: Median aperture correction = 1.320 [1.209-1.471].
-        INFO:continuum.py:1884:continuum_specfit: Final fitting with 120 models took 0.38 seconds.
-        INFO:continuum.py:1918:continuum_specfit: Spectroscopic DN(4000)=0.944+/-0.028, Model Dn(4000)=1.101
-        INFO:continuum.py:1953:continuum_specfit: Smooth continuum correction: b=-0.252%, r=0.125%, z=0.036%
-        INFO:continuum.py:1978:continuum_specfit: Mstar=9.178 Msun, Mr=-19.80 mag, A(V)=0.542, Age=0.753 Gyr, SFR=3.535 Msun/yr, Z/Zsun=-0.473
-        INFO:continuum.py:2019:continuum_specfit: Continuum-fitting took 2.10 seconds.
-        INFO:emlines.py:2337:emline_specfit: Initial line-fitting with 28 free parameters took 0.35 seconds [niter=2, rchi2=1.5841].
-        INFO:emlines.py:2381:emline_specfit: Second (broad) line-fitting with 39 free parameters took 0.77 seconds [niter=3, rchi2=1.7877].
-        INFO:emlines.py:2386:emline_specfit: Chi2 with broad lines = 1.78772 and without broad lines = 1.58412 [chi2_narrow-chi2_broad=-0.20360]
-        INFO:emlines.py:2409:emline_specfit: Dropping broad-line model: delta-rchi2 -0.204<0.000.
-        INFO:emlines.py:2517:emline_specfit: Final line-fitting with 35 free parameters took 0.41 seconds [niter=2, rchi2=1.5550].
-        INFO:emlines.py:2608:emline_specfit: Dn(4000)=1.033 in the emission-line subtracted spectrum.
-        INFO:emlines.py:2649:emline_specfit: Emission-line fitting took 1.71 seconds.
-        INFO:fastspecfit.py:214:fastspec: Fitting 1 object(s) took 4.31 seconds.
-        INFO:io.py:1335:write_fastspecfit: Writing results for 1 object to fastspec-example.fits
-        INFO:io.py:1392:write_fastspecfit: Writing out took 1.38 seconds.
+        INFO:fastspecfit.py:302:fastspec: Cached stellar templates /global/cfs/cdirs/desi/public/external/templates/fastspecfit/2.0.0/ftemplates-chabrier-2.0.0.fits
+        INFO:fastspecfit.py:303:fastspec: Cached emission-line table /global/common/software/desi/users/ioannis/fastspecfit/py/fastspecfit/data/emlines.ecsv
+        INFO:fastspecfit.py:304:fastspec: Cached photometric filters and parameters /global/common/software/desi/users/ioannis/fastspecfit/py/fastspecfit/data/legacysurvey-dr9.yaml
+        INFO:fastspecfit.py:305:fastspec: Cached cosmology table /global/common/software/desi/users/ioannis/fastspecfit/py/fastspecfit/data/desi_fiducial_cosmology.dat
+        INFO:fastspecfit.py:306:fastspec: Cached Inoue+2014 IGM attenuation parameters.
+        INFO:io.py:728:gather_metadata: specprod=loa, coadd_type=healpix, survey=sv1, program=bright, healpix=7108
+        INFO:io.py:1063:read: Reading 1 spectrum from /global/cfs/cdirs/desi/spectro/redux/loa/healpix/sv1/bright/71/7108/coadd-sv1-bright-7108.fits
+        INFO:fastspecfit.py:154:fastspec_one: Continuum- and emission-line fitting object 0 [targetid 39633345008634465, seed 2032329983, z=0.368743].
+        INFO:continuum.py:1456:continuum_fastspec: Median spectral S/N_b=3.42 S/N_r=6.45 S/N_z=6.19
+        INFO:continuum.py:1320:vdisp_by_chi2scan: Initial velocity dispersion fit failed: delta-chi2=6<25
+        INFO:continuum.py:1647:continuum_fastspec: Median aperture correction 1.451 [1.175-1.839].
+        INFO:continuum.py:1844:continuum_specfit: Smooth continuum correction: b=7.370% r=1.651% z=-2.640%
+        INFO:continuum.py:2049:continuum_specfit: vdisp=250.00 km/s log(M/Msun)=9.36+/-0.05 tau(V)=0.00+/-0.00 Age=10.57+/-0.57 Gyr SFR=0.73+/-0.03 Msun/yr Z/Zsun=0.00
+        INFO:emlines.py:1722:emline_specfit: delta(v) UV=0.0 km/s Balmer broad=0.0 km/s narrow=-0.5+/-1.1 km/s
+        INFO:emlines.py:1732:emline_specfit: sigma UV=0 km/s Balmer broad=0 km/s narrow=88+/-1 km/s
+        INFO:emlines.py:1763:emline_specfit: Dn(4000)=1.051 in the emission-line subtracted spectrum.
+        INFO:fastspecfit.py:433:fastspec: Fitting 1 object(s) took 9.12 seconds.
+        INFO:io.py:1649:write: Writing 1 object to fastspec-example.fits
 
 |
 
 See the :ref:`fastspec data model<fastspec datamodel>` for a full description
 of the output file. Visualize the results using ``fastqa``::
 
-  $> fastqa ./fastspec-example.fits --outdir ./
+  fastqa ./fastspec-example.fits --outdir ./
 
-.. dropdown:: Click to view the informational output printed to the screen after
-              executing this command.
+.. dropdown:: Click to view the logging output.
 
-    .. code-block:: python
+    .. code-block:: none
 
-        INFO:fastqa:53:parse: /global/homes/i/ioannis/code/desihub/fastspecfit/bin/fastqa ./fastspec-example.fits --outdir ./
-        INFO:io.py:1716:read_fastspecfit: Read 1 object(s) from ./fastspec-example.fits
-        INFO:fastqa:131:main: Building QA for 1 objects.
-        INFO:io.py:665:select: Reading and parsing 1 unique redrockfile(s).
-        INFO:io.py:720:select: specprod=iron, coadd_type=healpix, survey=sv1, program=bright, healpix=7108
-        INFO:io.py:995:select: Gathered photometric metadata for 1 objects in 0.07 sec
-        INFO:io.py:1085:read_and_unpack: Reading 1 spectrum from /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/coadd-sv1-bright-7108.fits
-        INFO:spectra.py:291:read_spectra: iotime 0.470 sec to read coadd-sv1-bright-7108.fits at 2023-03-31T14:14:14.983411
-        INFO:io.py:1114:read_and_unpack: Coadding across cameras took 0.01 seconds.
-        INFO:io.py:111:unpack_one_spectrum: Pre-processing object 0 [targetid 39633345008634465 z=0.368744].
-        INFO:fastspecfit.py:656:qa_fastspec: timeout 15 wget -q -o /dev/null -O ./tmp.fastspec-sv1-bright-7108-39633345008634465.jpeg "https://www.legacysurvey.org/viewer/jpeg-cutout?ra=105.48977452498902&dec=56.669300058331935&width=114&height=87&layer=ls-dr9"
-        INFO:fastspecfit.py:1342:qa_fastspec: Writing ./fastspec-sv1-bright-7108-39633345008634465.png
-        INFO:fastqa:241:main: QA for everything took: 12.64 sec
+        INFO:qa.py:1447:parse: /global/common/software/desi/users/ioannis/fastspecfit/bin/fastqa ./fastspec-example.fits --outdir ./
+        INFO:io.py:1530:read_fastspecfit: Read 1 object(s) from ./fastspec-example.fits
+        INFO:qa.py:1546:fastqa: Building QA for 1 objects.
+        INFO:qa.py:1586:fastqa: Cached stellar templates /global/cfs/cdirs/desi/public/external/templates/fastspecfit/2.0.0/ftemplates-chabrier-2.0.0.fits
+        INFO:qa.py:1587:fastqa: Cached emission-line table /global/common/software/desi/users/ioannis/fastspecfit/py/fastspecfit/data/emlines.ecsv
+        INFO:qa.py:1588:fastqa: Cached photometric filters and parameters /global/common/software/desi/users/ioannis/fastspecfit/py/fastspecfit/data/legacysurvey-dr9.yaml
+        INFO:qa.py:1589:fastqa: Cached cosmology table /global/common/software/desi/users/ioannis/fastspecfit/py/fastspecfit/data/desi_fiducial_cosmology.dat
+        INFO:qa.py:1590:fastqa: Cached Inoue+2014 IGM attenuation parameters.
+        INFO:io.py:728:gather_metadata: specprod=loa, coadd_type=healpix, survey=sv1, program=bright, healpix=7108
+        INFO:io.py:1063:read: Reading 1 spectrum from /global/cfs/cdirs/desi/spectro/redux/loa/healpix/sv1/bright/71/7108/coadd-sv1-bright-7108.fits
+        INFO:qa.py:675:qa_fastspec: https://www.legacysurvey.org/viewer/jpeg-cutout?ra=105.48977452498902&dec=56.669300058331935&width=114&height=87&layer=ls-dr9
+        INFO:qa.py:1395:qa_fastspec: Writing ./fastspec-sv1-bright-7108-39633345008634465.png
 
 |
 
@@ -199,7 +212,7 @@ and is significantly faster than ``fastspec``. Using the same example object::
 .. dropdown:: Click to view the informational output printed to the screen after
               executing this command.
 
-    .. code-block:: python
+    .. code-block:: none
 
         INFO:fastspecfit.py:127:parse: /global/homes/i/ioannis/code/desihub/fastspecfit/bin/fastphot /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits --targetids 39633345008634465 --outfile fastphot-example.fits
         INFO:io.py:665:select: Reading and parsing 1 unique redrockfile(s).
@@ -228,7 +241,7 @@ And to generate the QA::
 .. dropdown:: Click to view the informational output printed to the screen after
               executing this command.
 
-    .. code-block:: python
+    .. code-block:: none
 
         INFO:fastqa:53:parse: /global/homes/i/ioannis/code/desihub/fastspecfit/bin/fastqa fastphot-example.fits --outdir ./
         INFO:io.py:1716:read_fastspecfit: Read 1 object(s) from fastphot-example.fits
