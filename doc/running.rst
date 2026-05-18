@@ -48,7 +48,7 @@ spectrophotometry and broadband photometry.
           --percamera-models    Return the per-camera (not coadded) model spectra. (default: False)
           --imf IMF             Initial mass function. (default: chabrier)
           --templateversion TEMPLATEVERSION
-                                Template version number. (default: 1.0.0)
+                                Template version number. (default: 2.0.0)
           --templates TEMPLATES
                                 Optional full path and filename to the templates. (default: None)
           --redrockfile-prefix REDROCKFILE_PREFIX
@@ -85,7 +85,7 @@ To model the spectrum of a single object, we simply provide ``fastspec`` the
 full path of an input Redrock catalog, the ``targetid`` of the object we are
 interested in, and an (arbitrary) output filename::
 
-  $> fastspec $DESI_ROOT/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
+  $> fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --targetids 39633345008634465 --outfile fastspec-example.fits
 
 .. dropdown:: Click to view the informational output printed to the screen after
@@ -181,7 +181,7 @@ results:
     open square markers represent the photometry synthesized from the
     best-fitting model. The blue, green, and red spectra in this panel are the
     best-fitting DESI model after multiplying by the derived aperture correction
-    (showin the bottom portion of the panel as the factor of 1.32).
+    (shown in the bottom portion of the panel as the factor of 1.32).
 
   * *Lower-right panel*: Zoomed panels showing the data and best-fit model for
     all the emission lines within the observed spectral range.
@@ -252,7 +252,7 @@ One fastphot Example
 ``FastSpecFit`` can also model the broadband photometry (at the given DESI
 redshift) using ``fastphot``. Using the same example object as above, we have::
 
-  $> fastphot $DESI_ROOT/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
+  $> fastphot $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --targetids 39633345008634465 --outfile fastphot-example.fits
 
 .. dropdown:: Click to view the informational output printed to the screen after
@@ -321,76 +321,31 @@ More Examples
 In the examples above, we selected one specific object using the ``--targetids``
 optional input, which can also be a comma-separated list. For example::
 
-  $> fastspec /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
+  $> fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --targetids 39633345008634465,39633334917139798,39633348330522913 \
     --outfile fastspec-example2.fits
 
 Alternatively, you may want to fit a subset of the targets on this healpixel,
 say the first 20 objects, in which case you would use the ``--ntargets`` keyword::
 
-  $> fastspec /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
+  $> fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --ntargets 20 --outfile fastspec-example3.fits
 
 If you don't want to start at the zeroth object, you can offset by an integer
 number of targets using the ``--firsttarget`` option, which in this example
 would fit objects 50 through 70::
 
-  $> fastspec /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
+  $> fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --firsttarget 50 --ntargets 20 --outfile fastspec-example4.fits
 
-Finally, when fitting more than one object, you probably want to use
-multiprocessing, so that multiple objects are fit simultaneously. We can use
-parallelism (assuming you're on a machine with more than one core) using the
-``--mp`` input::
+Finally, when fitting more than one object you will want to use multiprocessing
+so that multiple objects are fit simultaneously, using the ``--mp`` flag::
 
-  $> fastspec /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
+  $> fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --firsttarget 50 --ntargets 20 --mp 20 --outfile fastspec-example5.fits
 
-You can see all the options by calling either ``fastspec`` or ``fastphot`` with
-the ``--help`` option, although most users will only invoke the options
-documented above::
-
-  $> fastspec --help
-  usage: fastspec [-h] -o OUTFILE [--mp MP] [-n NTARGETS] [--firsttarget FIRSTTARGET] [--targetids TARGETIDS] [--no-broadlinefit] [--nophoto] [--percamera-models]
-                  [--imf IMF] [--templateversion TEMPLATEVERSION] [--templates TEMPLATES] [--redrockfile-prefix REDROCKFILE_PREFIX]
-                  [--specfile-prefix SPECFILE_PREFIX] [--qnfile-prefix QNFILE_PREFIX] [--mapdir MAPDIR] [--dr9dir DR9DIR] [--specproddir SPECPRODDIR] [--verbose]
-                  [redrockfiles ...]
-  
-  positional arguments:
-    redrockfiles          Full path to input redrock file(s). (default: None)
-  
-  options:
-    -h, --help            show this help message and exit
-    -o OUTFILE, --outfile OUTFILE
-                          Full path to output filename (required). (default: None)
-    --mp MP               Number of multiprocessing threads per MPI rank. (default: 1)
-    -n NTARGETS, --ntargets NTARGETS
-                          Number of targets to process in each file. (default: None)
-    --firsttarget FIRSTTARGET
-                          Index of first object to to process in each file, zero-indexed. (default: 0)
-    --targetids TARGETIDS
-                          Comma-separated list of TARGETIDs to process. (default: None)
-    --no-broadlinefit     Do not allow for broad Balmer and Helium line-fitting. (default: True)
-    --nophoto             Do not include the photometry in the model fitting. (default: False)
-    --percamera-models    Return the per-camera (not coadded) model spectra. (default: False)
-    --imf IMF             Initial mass function. (default: chabrier)
-    --templateversion TEMPLATEVERSION
-                          Template version number. (default: 1.0.0)
-    --templates TEMPLATES
-                          Optional full path and filename to the templates. (default: None)
-    --redrockfile-prefix REDROCKFILE_PREFIX
-                          Prefix of the input Redrock file name(s). (default: redrock-)
-    --specfile-prefix SPECFILE_PREFIX
-                          Prefix of the spectral file(s). (default: coadd-)
-    --qnfile-prefix QNFILE_PREFIX
-                          Prefix of the QuasarNet afterburner file(s). (default: qso_qn-)
-    --mapdir MAPDIR       Optional directory name for the dust maps. (default: None)
-    --dr9dir DR9DIR       Optional directory name for the DR9 photometry. (default: None)
-    --specproddir SPECPRODDIR
-                          Optional directory name for the spectroscopic production. (default: None)
-    --verbose             Be verbose (for debugging purposes). (default: False)
-
-What if you want to fit a particular survey, program, or healpixel. Do you
+The full set of options is shown in the help dropdown in the `Overview`_ section
+above. What if you want to fit a particular survey, program, or healpixel. Do you
 really need to specify the full path to each individual Redrock file? No!
 ``FastSpecFit`` knows how the DESI data are organized, but to access this
 information we need to use the higher-level ``mpi-fastspecfit`` script. For
@@ -401,7 +356,6 @@ single interactive Perlmutter node)::
   $> salloc -N 1 -C cpu -A desi -t 00:10:00 --qos interactive -L cfs
   $> source /global/cfs/cdirs/desi/software/desi_environment.sh main
   $> module load fastspecfit/main
-  $> export FASTSPECFIT_TEMPLATES=$DESI_ROOT/science/gqp/templates/SSP-CKC14z
   $> time mpi-fastspecfit --specprod iron --survey sv1 --program bright \
     --healpix 7108 --mp 128 --outdir-data .
   $> ls -l ./iron/healpix/sv1/bright/71/7108
