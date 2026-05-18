@@ -886,46 +886,65 @@ class ContinuumTools(object):
 
 
     def _fit_stellar_continuum_varpro(self, templateflux, tauv_bounds,
-                                      dust_emission, objflam, objflamistd):
+                                      dust_emission, synthphot, synthspec,
+                                      objflam, objflamistd, specflux, specistd):
         """Fit stellar continuum via variable projection (VARPRO).
 
-        Handles the ``fit_vdisp=False``, photometry-only case.  For fixed
-        ``tauv``, the full model (including energy-balance dust emission) is
-        linear in the template coefficients, so the inner problem reduces to
-        non-negative least squares.  The outer problem is a scalar bounded
-        minimization over ``tauv`` solved with Brent's method (~10-15
-        function evaluations), replacing the TRF optimizer that otherwise
-        finite-differences over all ``ntemplates + 1`` parameters.
+        Handles all ``fit_vdisp=False`` cases (photometry-only,
+        spectroscopy-only, or combined).  For fixed ``tauv``, the full model
+        (including energy-balance dust emission) is linear in the template
+        coefficients, so the inner problem reduces to non-negative least
+        squares.  The outer problem is a scalar bounded minimization over
+        ``tauv`` solved with Brent's method (~10-15 function evaluations),
+        replacing the TRF optimizer that otherwise finite-differences over
+        all ``ntemplates + 1`` parameters.
+
+        Spectroscopic and photometric residuals are stacked in that order,
+        matching the ``split`` convention used by
+        :meth:`stellar_continuum_chi2`.
 
         """
         from scipy.optimize import minimize_scalar, nnls
 
-        wave      = self.templates.wave
-        dust_kl   = self.templates.dust_klambda
-        dustflux  = self.templates.dustflux
-        zfactors  = self.zfactors
+        wave     = self.templates.wave
+        dust_kl  = self.templates.dust_klambda
+        dustflux = self.templates.dustflux
+        zfactors = self.zfactors
         ntemplates = templateflux.shape[0]
-        nphot      = len(objflam)
 
-        b   = objflam * objflamistd
-        Psi = np.empty((nphot, ntemplates))
+        nspec = len(specflux) if synthspec else 0
+        nphot = len(objflam)  if synthphot else 0
+        nrows = nspec + nphot
+
+        # Precompute quantities that are independent of tauv.
+        wave_diff    = np.diff(wave)
+        dustflux_zf  = dustflux * zfactors
+
+        b   = np.empty(nrows)
+        Psi = np.empty((nrows, ntemplates))
         phi = np.empty_like(templateflux)
 
+        if synthspec:
+            b[:nspec] = specflux * specistd
+        if synthphot:
+            b[nspec:] = objflam * objflamistd
+
         def _fill(tauv):
-            """Compute attenuated per-template flux and photometry design matrix."""
-            A = np.exp(-tauv * dust_kl)
+            A          = np.exp(-tauv * dust_kl)
+            one_minus_A = 1. - A
             for k in range(ntemplates):
                 Tk = templateflux[k]
                 if dust_emission:
-                    # Trapezoidal integral of absorbed bolometric luminosity
-                    # for template k alone (matches Numba attenuate()).
                     d_k = 0.5 * np.dot(
-                        (Tk[:-1] * (1. - A[:-1]) + Tk[1:] * (1. - A[1:])),
-                        np.diff(wave))
-                    phi[k] = (Tk * A + d_k * dustflux) * zfactors
+                        Tk[:-1] * one_minus_A[:-1] + Tk[1:] * one_minus_A[1:],
+                        wave_diff)
+                    phi[k] = Tk * A * zfactors + d_k * dustflux_zf
                 else:
                     phi[k] = Tk * A * zfactors
-                Psi[:, k] = self.continuum_to_photometry(phi[k]) * objflamistd
+                if synthspec:
+                    Psi[:nspec, k] = self.continuum_to_spectroscopy(phi[k]) * specistd
+                if synthphot:
+                    Psi[nspec:, k] = self.continuum_to_photometry(phi[k]) * objflamistd
 
         def objective(tauv):
             _fill(tauv)
@@ -1037,9 +1056,10 @@ class ContinuumTools(object):
         if vdisp_bounds is None:
             vdisp_bounds = self.vdisp_bounds
 
-        if not fit_vdisp and synthphot and not synthspec:
+        if not fit_vdisp and (synthphot or synthspec):
             return self._fit_stellar_continuum_varpro(
-                templateflux, tauv_bounds, dust_emission, objflam, objflamistd)
+                templateflux, tauv_bounds, dust_emission, synthphot, synthspec,
+                objflam, objflamistd, specflux, specistd)
 
         ntemplates = templateflux.shape[0]
 
