@@ -3,101 +3,129 @@
 Installation & Setup
 ====================
 
-``FastSpecFit`` is simple to install and has a relatively small number of
-standard dependencies. Here, we describe two different ways of setting up
-``FastSpecFit``:
+.. contents:: Contents
+    :depth: 3
 
-  1. :ref:`at NERSC (for DESI collaborators)<nersc installation>`; or
-  2. :ref:`on a laptop<laptop installation>`.
+``FastSpecFit`` can be set up in two ways:
+
+- :ref:`At NERSC<nersc installation>` — for DESI collaborators, using the shared software stack.
+- :ref:`On a laptop<laptop installation>` — for interactive work or running on smaller datasets.
 
 .. _nersc installation:
 
-1. NERSC Installation
----------------------
+NERSC Installation
+------------------
 
-At `NERSC`_, ``FastSpecFit`` can be loaded trivially on top of the standard DESI
-software stack. In a login or interactive `Perlmutter
-<https://docs.nersc.gov/systems/perlmutter>`_ node, simply run the following
-commands::
+On a `NERSC`_ `Perlmutter
+<https://docs.nersc.gov/systems/perlmutter/architecture>`_ login or
+interactive node, load ``FastSpecFit`` on top of the standard DESI
+software stack::
 
   source /global/cfs/cdirs/desi/software/desi_environment.sh main
   module load fastspecfit/main
 
-Or, to load a specific version or tag of the code simply replace ``main`` with
-the desired version, for example::
+To load a specific tagged versions, replace ``main`` with the desired
+release, for example::
 
-  source /global/cfs/cdirs/desi/software/desi_environment.sh 24.8
-  module load fastspecfit/2.5.2
+  source /global/cfs/cdirs/desi/software/desi_environment.sh 26.3
+  module load fastspecfit/3.2.1
 
 JupyterHub
-##########
+~~~~~~~~~~
 
-Alternatively, some users may want to access ``FastSpecFit`` through `NERSC`_'s
-`JupyterHub`_ notebook server. In order to use this service, however, we first
-have to install the appropriate *kernel*. To set up the ``main`` kernel do (just
-once!)::
+To use ``FastSpecFit`` within NERSC's `JupyterHub`_, first install the
+appropriate Jupyter kernel (one time). Then, to access the ``main``
+branch::
 
   mkdir -p ${HOME}/.local/share/jupyter/kernels/fastspecfit-main
   wget -O ${HOME}/.local/share/jupyter/kernels/fastspecfit-main/kernel.json \
     https://raw.githubusercontent.com/desihub/fastspecfit/main/etc/jupyter-kernel.json
 
-Or you can install a kernal with the latest version of the code by executing the
-following commands (as before, just one time)::
+Or, to use the latest tagged release::
 
   mkdir -p ${HOME}/.local/share/jupyter/kernels/fastspecfit-latest
   wget -O ${HOME}/.local/share/jupyter/kernels/fastspecfit-latest/kernel.json \
     https://raw.githubusercontent.com/desihub/fastspecfit/main/etc/jupyter-kernel-latest.json
 
-Then, in `JupyterHub`_, select either the *FastSpecFit Main* or *FastSpecFit
-Latest* kernel and then have fun coding!
-
+Then select the *FastSpecFit Main* or *FastSpecFit Latest* kernel from the
+JupyterHub launcher.
 
 .. _laptop installation:
 
-2. Laptop Installation
-----------------------
+Laptop Installation
+-------------------
 
-To install ``FastSpecFit`` and all its dependencies on a laptop we recommend a
-dedicated `Miniforge`_ environment. (Unfortunately, ``FastSpecFit`` has not yet
-been uploaded to `PyPi`_, although there is an `open ticket`_ to do so.)
-Therefore, for the time being, the code and its dependencies must be installed
-"by hand" in an accessible location (e.g., */path/to/desi/code*) with the
-following commands::
+Create a Virtual Environment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-  conda create -y --name fastspec python numpy scipy numba astropy matplotlib seaborn
-  conda activate fastspec
-  pip install fitsio healpy speclite
+We recommend `micromamba`_ for creating isolated Python environments, though
+`Miniforge`_ and `Anaconda`_ work equally well.
 
-  export DESI_CODE=/path/to/desi/code
-  mkdir -p $DESI_CODE
+.. code-block:: bash
 
-  pushd $DESI_CODE
-  for package in desiutil desimodel desitarget desispec fastspecfit; do
-    git clone https://github.com/desihub/$package.git
-    export PATH=$DESI_CODE/$package/bin:$PATH
-    export PYTHONPATH=$DESI_CODE/$package/py:$PYTHONPATH
-  done
-  popd
+   micromamba create -n fastspec python
+   micromamba activate fastspec
 
-Note that if you are planning to write documentation you will also need to
-install the following dependencies::
+.. dropdown:: Using Miniforge or Anaconda instead
 
-  pip install sphinx sphinx-toolbox sphinx-rtd-theme sphinxcontrib-napoleon
+   .. code-block:: bash
 
-Finally, ``FastSpecFit`` has four more data dependencies, each specified with
-their own environment variable:
+      conda create -n fastspec python
+      conda activate fastspec
 
-  * ``DESI_ROOT``, which specifies the top-level location of the DESI data;
-  * ``DUST_DIR``, which specifies the location of the `Schlegel, Finkbeiner, &
-    Davis dust maps`_;
-  * ``FPHOTO_DIR``, which specifies the location of the `DESI Legacy Imaging
-    Surveys Data Release 9 (DR9)`_ data; and
-  * ``FTEMPLATES_DIR``, which indicates the location of the stellar population
-    synthesis models used by ``FastSpecFit``.
+Install FastSpecFit
+~~~~~~~~~~~~~~~~~~~
 
-These environment variables can be set with the following commands::
+``FastSpecFit`` is available on `PyPI`_ and installs with a single command::
 
-  export DESI_ROOT=/path/to/desi/data
+  pip install fastspecfit
+
+.. dropdown:: Developer installation
+
+   To modify the source code, clone the repository and install in editable mode::
+
+     git clone https://github.com/desihub/fastspecfit.git
+     pip install -e fastspecfit
+
+   To also install the test and documentation dependencies::
+
+     pip install -e "fastspecfit[test,doc]"
+
+Data Dependencies
+~~~~~~~~~~~~~~~~~
+
+Running ``FastSpecFit`` on DESI data requires four additional data
+products, each pointed to by an environment variable.
+
+``DESI_SPECTRO_REDUX``
+   Root directory of the DESI spectroscopic reduction outputs. The
+   DESI products are organized according to the `DESI data model`_;
+   the `DESI data organization`_ page describes the full on-disk
+   layout. The DESI `Early Data Release (EDR)`_ and `Data Release 1
+   (DR1)`_ are already publicly available, with Data Release 2 (DR2)
+   expected to be public in early 2027.
+
+``DUST_DIR``
+   Location of the `Schlegel, Finkbeiner, & Davis (1998)`_ dust reddening
+   maps, used to correct spectra and photometry for Milky Way dust extinction.
+   The maps can be downloaded from the NERSC public portal (see commands
+   below).
+
+``FPHOTO_DIR``
+   Location of the `DESI Legacy Imaging Surveys DR9`_ broadband photometry,
+   which provides optical and near-infrared fluxes used for joint
+   spectrophotometric SED fitting. See the `DR9 description`_ for an overview
+   of the imaging data and data products.
+
+``FTEMPLATES_DIR``
+   Location of the stellar population synthesis template files used by
+   ``FastSpecFit`` to model the stellar continuum. Templates are distributed
+   via the DESI public data portal and can be downloaded with the command
+   below.
+
+Set these variables and download the required external files::
+
+  export DESI_SPECTRO_REDUX=/path/to/spectro/redux
   export DUST_DIR=/path/to/dustmaps
   export FPHOTO_DIR=/path/to/dr9/data
   export FTEMPLATES_DIR=/path/to/templates/fastspecfit
@@ -107,31 +135,25 @@ These environment variables can be set with the following commands::
   wget -O $FTEMPLATES_DIR/ftemplates-chabrier-2.0.0.fits \
     https://data.desi.lbl.gov/public/external/templates/fastspecfit/2.0.0/ftemplates-chabrier-2.0.0.fits
 
-.. note::
+Building the Documentation
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-  The DESI `Early Data Release (EDR)`_ became publicly available in
-  June 2023!
+To build the documentation locally, install the optional documentation
+dependencies and run Sphinx::
 
+  pip install "fastspecfit[doc]"
+  sphinx-build -W --keep-going -b html doc doc/_build/html
+
+.. _`micromamba`: https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html
 .. _`Miniforge`: https://github.com/conda-forge/miniforge
-
-.. _`PyPi`: https://packaging.python.org/en/latest
-
-.. _`open ticket`: https://github.com/desihub/fastspecfit/issues/83
-
-.. _`Schlegel, Finkbeiner, & Davis dust maps`: https://ui.adsabs.harvard.edu/abs/1998ApJ...500..525S/abstract
-
-.. _`DESI Legacy Imaging Surveys Data Release 9 (DR9)`: https://www.legacysurvey.org/dr9
-
+.. _`Anaconda`: https://www.anaconda.com
+.. _`PyPI`: https://pypi.org/project/fastspecfit
+.. _`Schlegel, Finkbeiner, & Davis (1998)`: https://ui.adsabs.harvard.edu/abs/1998ApJ...500..525S/abstract
+.. _`DESI data model`: https://desidatamodel.readthedocs.io/en/latest/
+.. _`DESI data organization`: https://data.desi.lbl.gov/doc/organization/
+.. _`DESI Legacy Imaging Surveys DR9`: https://www.legacysurvey.org/dr9
+.. _`DR9 description`: https://www.legacysurvey.org/dr9/description/
 .. _`NERSC`: https://www.nersc.gov/
-
 .. _`JupyterHub`: https://jupyter.nersc.gov/
-
-.. _`DockerHub/desihub`: https://hub.docker.com/u/desihub
-
-.. _`shifter`: https://docs.nersc.gov/development/shifter/
-
 .. _`Early Data Release (EDR)`: https://data.desi.lbl.gov/doc/releases/edr/
-
 .. _`Data Release 1 (DR1)`: https://data.desi.lbl.gov/doc/releases/dr1
-
-.. _`DESI Data Release`: https://data.desi.lbl.gov

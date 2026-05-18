@@ -47,10 +47,9 @@ coverage = [
     "coverage",
 ]
 doc = [
-    "Sphinx<8.2.0",
-    "sphinx-toolbox",
+    "Sphinx",
+    "sphinx-design",
     "sphinx-rtd-theme",
-    "sphinxcontrib-napoleon",
 ]
 
 [build-system]
