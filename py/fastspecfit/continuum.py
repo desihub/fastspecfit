@@ -13,7 +13,7 @@ from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates, VDISP_NOMINAL, VDISP_BOUNDS
 from fastspecfit.util import (
     C_LIGHT, TINY, F32MAX, quantile, median, var2ivar,
-    trapz_rebin, trapz_rebin_pre)
+    trapz_rebin, trapz_rebin_pre, _trapz_rebin_batch)
 
 
 class ContinuumTools(object):
@@ -116,11 +116,25 @@ class ContinuumTools(object):
         else:
             filters = self.phot.filters[photsys]
 
+        _maggies_pre = Photometry.get_ab_maggies_pre(filters, self.ztemplatewave)
         self.phot_pre = (
             filters,
             filters.effective_wavelengths.value,
-            Photometry.get_ab_maggies_pre(filters, self.ztemplatewave)
+            _maggies_pre,
         )
+        # Per-filter resp-weighted trapezoidal vectors for continuum_to_photometry_batch.
+        # For filter f: numer[t] = phi[t, lo:hi] @ r_tw_f,  where
+        #   r_tw_f[j] = 0.5 * resp[j] * (dwave[j-1] + dwave[j])  (interior)
+        # avoiding any numpy-version-specific trapz API.
+        wave = self.ztemplatewave
+        _rtw = []
+        for lo, hi, resp, _ in _maggies_pre:
+            dwave = np.diff(wave[lo:hi])
+            r_tw = np.zeros(hi - lo)
+            r_tw[:-1] += 0.5 * resp[:-1] * dwave
+            r_tw[1:]  += 0.5 * resp[1:]  * dwave
+            _rtw.append(r_tw)
+        self.phot_batch_weights = tuple(_rtw)
 
         if not fastphot:
             self.wavelen = np.sum([len(w) for w in self.data['wave']])
@@ -833,6 +847,50 @@ class ContinuumTools(object):
         return modelphot
 
 
+    def continuum_to_spectroscopy_batch(self, phi):
+        """Apply :meth:`continuum_to_spectroscopy` to all rows of ``phi``.
+
+        Parameters
+        ----------
+        phi : :class:`numpy.ndarray`, shape (ntemplates, npix)
+
+        Returns
+        -------
+        out : :class:`numpy.ndarray`, shape (ntemplates, nspec)
+
+        """
+        ntemplates = phi.shape[0]
+        out = np.empty((ntemplates, self.wavelen))
+        for icam, (s, e) in enumerate(self.data['camerapix']):
+            ncam = e - s
+            resamp = np.empty((ntemplates, ncam))
+            edges, ibw = self.spec_pre[icam]
+            _trapz_rebin_batch(self.ztemplatewave, phi, edges, ibw, resamp)
+            self.data['res'][icam].matmat(resamp, out[:, s:e])
+        return out
+
+
+    def continuum_to_photometry_batch(self, phi):
+        """Apply :meth:`continuum_to_photometry` to all rows of ``phi``.
+
+        Parameters
+        ----------
+        phi : :class:`numpy.ndarray`, shape (ntemplates, npix)
+
+        Returns
+        -------
+        out : :class:`numpy.ndarray`, shape (ntemplates, nphot)
+
+        """
+        filters, effwave, maggies_pre = self.phot_pre
+        ntemplates = phi.shape[0]
+        maggies = np.empty((ntemplates, len(maggies_pre)))
+        for ifilt, ((lo, hi, _, idenom), r_tw) in enumerate(
+                zip(maggies_pre, self.phot_batch_weights)):
+            maggies[:, ifilt] = phi[:, lo:hi] @ r_tw * idenom
+        return Photometry.get_photflam(maggies, effwave)
+
+
     def _stellar_objective(self, params, templateflux, dust_emission,
                            fit_vdisp, conv_pre, objflam, objflamistd,
                            specflux, specistd, synthphot, synthspec):
@@ -930,21 +988,22 @@ class ContinuumTools(object):
             b[nspec:] = objflam * objflamistd
 
         def _fill(tauv):
-            A          = np.exp(-tauv * dust_kl)
-            one_minus_A = 1. - A
-            for k in range(ntemplates):
-                Tk = templateflux[k]
-                if dust_emission:
-                    d_k = 0.5 * np.dot(
-                        Tk[:-1] * one_minus_A[:-1] + Tk[1:] * one_minus_A[1:],
-                        wave_diff)
-                    phi[k] = Tk * A * zfactors + d_k * dustflux_zf
-                else:
-                    phi[k] = Tk * A * zfactors
-                if synthspec:
-                    Psi[:nspec, k] = self.continuum_to_spectroscopy(phi[k]) * specistd
-                if synthphot:
-                    Psi[nspec:, k] = self.continuum_to_photometry(phi[k]) * objflamistd
+            A           = np.exp(-tauv * dust_kl)     # (npix,)
+            Az          = A * zfactors                 # (npix,)
+            phi[:]      = templateflux * Az            # (ntemplates, npix)
+            if dust_emission:
+                one_minus_A = 1. - A
+                d = 0.5 * (
+                    templateflux[:, :-1] * one_minus_A[:-1] +
+                    templateflux[:, 1:]  * one_minus_A[1:]
+                ) @ wave_diff                          # (ntemplates,)
+                phi[:] += d[:, None] * dustflux_zf
+            if synthspec:
+                spec_batch = self.continuum_to_spectroscopy_batch(phi)  # (ntemplates, nspec)
+                Psi[:nspec, :] = spec_batch.T * specistd[:, None]
+            if synthphot:
+                phot_batch = self.continuum_to_photometry_batch(phi)    # (ntemplates, nphot)
+                Psi[nspec:, :] = phot_batch.T * objflamistd[:, None]
 
         def objective(tauv):
             _fill(tauv)
@@ -1222,7 +1281,7 @@ def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4800.), fit_rest
 
 
 def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
-                       nmonte=10, rng=None, debug_plots=False):
+                       nmonte=50, rng=None, debug_plots=False):
     """Fit the stellar continuum to broadband photometry only.
 
     Parameters
@@ -1489,7 +1548,7 @@ def _continuum_nominal_vdisp(CTools, templates, specflux, specwave,
     return tauv, vdisp, coeff, contmodel, chi2
 
 
-def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=10,
+def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=50,
                        rng=None, uniqueid=0, no_smooth_continuum=False,
                        debug_plots=False):
     """Jointly fit the stellar continuum to spectroscopy and broadband photometry.
@@ -1853,7 +1912,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=10,
 
 
 def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
-                      nmonte=10, seed=1, constrain_age=False,
+                      nmonte=50, seed=1, constrain_age=False,
                       no_smooth_continuum=False, fitstack=False,
                       fastphot=False, debug_plots=False):
     """Fit the non-negative stellar continuum of a single spectrum.

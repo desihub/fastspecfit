@@ -567,6 +567,22 @@ def _trapz_rebin(x, y, edges, ibw, out):
     return results
 
 
+@jit(nopython=True, nogil=True, fastmath=True, cache=True)
+def _trapz_rebin_batch(x, Y, edges, ibw, out):
+    """Apply :func:`_trapz_rebin` to each row of ``Y`` (ntemplates × npix).
+
+    Parameters
+    ----------
+    x : :class:`numpy.ndarray`, shape (npix,)
+    Y : :class:`numpy.ndarray`, shape (ntemplates, npix)
+    edges, ibw : precomputed bin edges and inverse widths from :func:`trapz_rebin_pre`
+    out : :class:`numpy.ndarray`, shape (ntemplates, nbins)
+
+    """
+    for t in range(Y.shape[0]):
+        _trapz_rebin(x, Y[t], edges, ibw, out[t])
+
+
 @jit(nopython=True, nogil=True, cache=True)
 def centers2edges(centers):
     """Convert bin centers to bin edges by linear extrapolation at the boundaries.

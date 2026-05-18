@@ -198,6 +198,26 @@ class Resolution(object):
         return self._matvec(self.data, v, out)
 
 
+    def matmat(self, V, out=None):
+        """Apply the resolution matrix to all rows of ``V`` (ntemplates × dim).
+
+        Parameters
+        ----------
+        V : :class:`numpy.ndarray`, shape (ntemplates, dim)
+        out : :class:`numpy.ndarray` or None, optional
+            Pre-allocated output of the same shape; allocated if ``None``.
+
+        Returns
+        -------
+        out : :class:`numpy.ndarray`, shape (ntemplates, dim)
+
+        """
+        if out is None:
+            out = np.empty_like(V)
+
+        return self._matmat(self.data, V, out)
+
+
     @staticmethod
     @jit(nopython=True, fastmath=False, nogil=True, cache=True)
     def _matvec(D, v, out):
@@ -214,6 +234,28 @@ class Resolution(object):
 
             for n in range(j_end - j_start):
                 out[i_start + n] += D[i, j_start + n] * v[j_start + n]
+
+        return out
+
+
+    @staticmethod
+    @jit(nopython=True, fastmath=False, nogil=True, cache=True)
+    def _matmat(D, V, out):
+        """Apply the resolution matrix to all rows of ``V``, writing results into ``out``."""
+        out[:] = 0.
+
+        ntemplates = V.shape[0]
+        ndiag, dim = D.shape
+        for t in range(ntemplates):
+            for i in range(ndiag):
+                k = ndiag//2 - i
+
+                i_start = np.maximum(0, -k)
+                j_start = np.maximum(0,  k)
+                j_end   = np.minimum(dim + k, dim)
+
+                for n in range(j_end - j_start):
+                    out[t, i_start + n] += D[i, j_start + n] * V[t, j_start + n]
 
         return out
 
