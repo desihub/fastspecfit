@@ -126,12 +126,10 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
         nanomaggies=True, lambda_eff=filters.effective_wavelengths.value,
         min_uncertainty=phot.min_uncertainty)
 
-    # Optionally add the fiber photometry; note that the transmission
-    # factors were computed in DESISpectra.read.
+    # Optionally add the fiber photometry; MW extinction correction already
+    # applied in-place to meta by DESISpectra.read.
     if hasattr(phot, 'fiber_filters'):
         fiber_filters = phot.fiber_filters[specdata['photsys']]
-
-        mw_transmission_fiberflux = specdata['mw_transmission_fiberflux']
 
         fibermaggies = np.zeros(len(phot.fiber_bands))
         fibertotmaggies = np.zeros(len(phot.fiber_bands))
@@ -139,8 +137,8 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
 
         for iband, band in enumerate(phot.fiber_bands):
             band = band.upper()
-            fibermaggies[iband] = meta[f'FIBERFLUX_{band}'] / mw_transmission_fiberflux[iband]
-            fibertotmaggies[iband] = meta[f'FIBERTOTFLUX_{band}'] / mw_transmission_fiberflux[iband]
+            fibermaggies[iband] = meta[f'FIBERFLUX_{band}']
+            fibertotmaggies[iband] = meta[f'FIBERTOTFLUX_{band}']
 
         lambda_eff=fiber_filters.effective_wavelengths.value
         specdata['fiberphot'] = Photometry.parse_photometry(phot.fiber_bands,
@@ -1105,6 +1103,11 @@ class DESISpectra(object):
                 else:
                     mw_transmission_fiberflux = None
 
+            if mw_transmission_fiberflux is not None:
+                for iband, band in enumerate(photometry.fiber_bands):
+                    meta[f'FIBERFLUX_{band.upper()}'] /= mw_transmission_fiberflux[:, iband]
+                    meta[f'FIBERTOTFLUX_{band.upper()}'] /= mw_transmission_fiberflux[:, iband]
+
             if fastphot:
                 for iobj in range(nobj):
                     specdata = {
@@ -1115,8 +1118,6 @@ class DESISpectra(object):
                         'dmodulus': dmod[iobj],
                         'tuniv': tuniv[iobj],
                         }
-                    if mw_transmission_fiberflux is not None:
-                        specdata.update({'mw_transmission_fiberflux': mw_transmission_fiberflux[iobj, :]})
                     alldata.append(specdata)
             else:
                 # Don't use .select since meta and spec can be sorted
@@ -1159,9 +1160,6 @@ class DESISpectra(object):
                         'coadd_ivar': coadd_spec.ivar[coadd_cams][iobj, :],
                         'coadd_res': [Resolution(coadd_spec.resolution_data[coadd_cams][iobj, :])],
                     }
-                    if mw_transmission_fiberflux is not None:
-                        specdata.update({'mw_transmission_fiberflux': mw_transmission_fiberflux[iobj, :]})
-
                     alldata.append(specdata)
 
             allmeta.append(meta)

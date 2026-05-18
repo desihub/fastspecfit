@@ -169,8 +169,10 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
             meta[f'FLUX_IVAR_{band.upper()}'] = fluxivar[iband]
 
         if hasattr(phot, 'fiber_bands'):
-            fibertotflux = data['fiberphot']['nanomaggies']
+            fiberflux = data['fiberphot']['nanomaggies']
+            fibertotflux = data['fibertotphot']['nanomaggies']
             for iband, band in enumerate(phot.fiber_bands):
+                meta[f'FIBERFLUX_{band.upper()}'] = fiberflux[iband]
                 meta[f'FIBERTOTFLUX_{band.upper()}'] = fibertotflux[iband]
 
     # output structures

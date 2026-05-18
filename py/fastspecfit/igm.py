@@ -82,6 +82,8 @@ class Inoue14(object):
             IGM transmission :math:`e^{-\tau}` at each wavelength.
 
         """
+        if np.issubdtype(np.asarray(lobs).dtype, np.integer):
+            lobs = np.asarray(lobs, dtype=np.float64)
         return self._full_IGM(z, lobs,
                               self.scale_tau,
                               self.igm_params)

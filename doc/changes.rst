@@ -5,6 +5,10 @@ Change Log
 3.3.0 (not released yet)
 ------------------------
 
+* Fix ``Inoue14.full_IGM`` returning all-ones when ``lobs`` is an integer
+  array; fix MW extinction correction not applied to ``FIBERFLUX`` and
+  ``FIBERTOTFLUX`` in the output metadata table; fix ``FIBERTOTFLUX`` writeback
+  in ``fastspec_one`` using wrong data source [`PR #249`_].
 * Overhaul documentation: replace ``sphinx-toolbox`` with ``sphinx-design``;
   remove stale ``Sphinx<8.2`` pin; expand API docs to include
   ``fastspecfit.emline_fit`` subpackage; rewrite ``install.rst`` with
@@ -25,6 +29,7 @@ Change Log
 * Deconvolve the resolution matrix before fitting, as recommended
   by S. Koposov and update config files [`PR #244`_].
 
+.. _`PR #249`: https://github.com/desihub/fastspecfit/pull/249
 .. _`PR #248`: https://github.com/desihub/fastspecfit/pull/248
 .. _`PR #247`: https://github.com/desihub/fastspecfit/pull/247
 .. _`PR #246`: https://github.com/desihub/fastspecfit/pull/246
