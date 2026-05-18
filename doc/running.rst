@@ -32,7 +32,7 @@ described in the :ref:`data model<fastspec datamodel>` pages.
 
     .. code-block:: bash
 
-        $> fastspec --help
+        fastspec --help
         usage: fastspec [-h] -o OUTFILE [--mp MP] [-n NTARGETS] [--firsttarget FIRSTTARGET] [--targetids TARGETIDS] [--input-redshifts INPUT_REDSHIFTS] [--input-seeds INPUT_SEEDS]
                         [--seed SEED] [--nmonte NMONTE] [--vdisp-nominal VDISP_NOMINAL] [--vdisp-bounds VDISP_BOUNDS VDISP_BOUNDS] [--zmin ZMIN] [--no-broadlinefit]
                         [--ignore-photometry] [--ignore-quasarnet] [--constrain-age] [--no-smooth-continuum] [--imf IMF] [--templateversion TEMPLATEVERSION] [--templates TEMPLATES]
@@ -234,7 +234,7 @@ and is significantly faster than ``fastspec``. Using the same example object::
 
 And to generate the QA::
 
-  $> fastqa fastphot-example.fits --outdir ./
+  fastqa fastphot-example.fits --outdir ./
 
 .. dropdown:: Click to view the logging output.
 
@@ -362,18 +362,18 @@ The ``--targetids``, ``--ntargets``, ``--firsttarget``, and ``--mp`` flags
 control which objects are fit and how many cores are used. ``--targetids``
 accepts a comma-separated list::
 
-  $> fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
+  fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --targetids 39633345008634465,39633334917139798,39633348330522913 \
     --outfile fastspec-example2.fits
 
 To fit a contiguous subset, use ``--ntargets`` and optionally ``--firsttarget``::
 
-  $> fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
+  fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --firsttarget 50 --ntargets 20 --outfile fastspec-example3.fits
 
 When fitting more than one object, enable multiprocessing with ``--mp``::
 
-  $> fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
+  fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --firsttarget 50 --ntargets 20 --mp 20 --outfile fastspec-example4.fits
 
 .. _`production`:
@@ -388,13 +388,13 @@ spectroscopic production with ``--specprod``.
 
 Use ``--plan`` or ``--dry-run`` to inspect the work before committing::
 
-  $> mpi-fastspecfit --specprod iron --survey sv1 --program bright \
+  mpi-fastspecfit --specprod iron --survey sv1 --program bright \
     --healpix 7108 --outdir-data . --plan
 
   INFO:mpi.py:223:_findfiles: Building file list for survey=sv1 and program=bright
   INFO:mpi.py:309:plan: Found 1/1 redrockfiles (left) to do.
 
-  $> mpi-fastspecfit --specprod iron --survey sv1 --program bright \
+  mpi-fastspecfit --specprod iron --survey sv1 --program bright \
     --healpix 7108 --outdir-data . --dry-run
 
   INFO:mpi.py:223:_findfiles: Building file list for survey=sv1 and program=bright
@@ -404,12 +404,12 @@ Use ``--plan`` or ``--dry-run`` to inspect the work before committing::
 
 To run on a single interactive Perlmutter node::
 
-  $> salloc -N 1 -C cpu -A desi -t 00:10:00 --qos interactive -L cfs
-  $> source /global/cfs/cdirs/desi/software/desi_environment.sh main
-  $> module load fastspecfit/main
-  $> time mpi-fastspecfit --specprod iron --survey sv1 --program bright \
+  salloc -N 1 -C cpu -A desi -t 00:10:00 --qos interactive -L cfs
+  source /global/cfs/cdirs/desi/software/desi_environment.sh main
+  module load fastspecfit/main
+  time mpi-fastspecfit --specprod iron --survey sv1 --program bright \
     --healpix 7108 --mp 128 --outdir-data .
-  $> ls -l ./iron/healpix/sv1/bright/71/7108
+  ls -l ./iron/healpix/sv1/bright/71/7108
 
   INFO:mpi.py:223:_findfiles: Building file list for survey=sv1 and program=bright
   INFO:mpi.py:309:plan: Found 1/1 redrockfiles (left) to do.
@@ -429,7 +429,7 @@ To run on a single interactive Perlmutter node::
 Omitting ``--survey``, ``--program``, or ``--healpix`` causes the code to
 iterate over all available values. For example, to plan a full SV3 run::
 
-  $> mpi-fastspecfit --specprod iron --survey sv3 --outdir-data . --plan
+  mpi-fastspecfit --specprod iron --survey sv3 --outdir-data . --plan
   INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=bright
   INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=dark
   INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=other
@@ -439,7 +439,7 @@ iterate over all available values. For example, to plan a full SV3 run::
 
 To fit broadband photometry instead of spectroscopy, add ``--fastphot``::
 
-  $> mpi-fastspecfit --specprod iron --survey sv3 --outdir-data . --plan --fastphot
+  mpi-fastspecfit --specprod iron --survey sv3 --outdir-data . --plan --fastphot
   INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=bright
   INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=dark
   INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=other
@@ -449,13 +449,13 @@ To fit broadband photometry instead of spectroscopy, add ``--fastphot``::
 
 ``mpi-fastspecfit`` also supports tile-based coadds via ``--coadd-type``::
 
-  $> mpi-fastspecfit --specprod iron --coadd-type cumulative --tile 80613 --outdir-data . --plan
+  mpi-fastspecfit --specprod iron --coadd-type cumulative --tile 80613 --outdir-data . --plan
   INFO:mpi.py:309:plan: Found 10/10 redrockfiles (left) to do.
 
-  $> mpi-fastspecfit --specprod iron --coadd-type pernight --tile 80613 --outdir-data . --plan
+  mpi-fastspecfit --specprod iron --coadd-type pernight --tile 80613 --outdir-data . --plan
   INFO:mpi.py:309:plan: Found 57/57 redrockfiles (left) to do.
 
-  $> mpi-fastspecfit --specprod iron --coadd-type perexp --tile 80613 --outdir-data . --plan
+  mpi-fastspecfit --specprod iron --coadd-type perexp --tile 80613 --outdir-data . --plan
   INFO:mpi.py:309:plan: Found 283/283 redrockfiles (left) to do.
 
 Slurm Batch Jobs
