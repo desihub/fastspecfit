@@ -5,7 +5,16 @@ Change Log
 3.3.1 (not released yet)
 ------------------------
 
-* 
+* Performance optimizations: replace TRF continuum optimizer with Variable
+  Projection (VARPRO) for all ``fit_vdisp=False`` cases; vectorize the VARPRO
+  inner loop (batched phi construction, spectroscopy, and photometry); use loose
+  convergence tolerances for Monte Carlo and chi2-scan fits; warm-start Monte
+  Carlo emission-line refits from the nominal best-fit values; add
+  ``bin/profile-fastspec`` profiling harness [`PR #251`_].
+
+.. _`PR #251`: https://github.com/desihub/fastspecfit/pull/251
+
+
 
 3.3.0 (2026-05-18)
 ------------------
