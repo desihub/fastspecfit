@@ -58,6 +58,8 @@ def parse_args(argv=None):
     p.add_argument('--mode', choices=['fastspec', 'fastphot', 'stackfit'],
                    default='fastspec',
                    help='Fitting mode to profile (default: fastspec).')
+    p.add_argument('--fastphot', action='store_true',
+                   help='Shorthand for --mode fastphot.')
     p.add_argument('--templates', default=None,
                    help='Path to template FITS file.  Overrides FTEMPLATES_CACHE_DIR lookup.')
     p.add_argument('--nwarm', type=int, default=2,
@@ -70,7 +72,10 @@ def parse_args(argv=None):
                    help='Number of top cProfile entries to print (default: 30).')
     p.add_argument('--outdir', default=None,
                    help='Directory for output FITS and .prof files.  Defaults to a temp dir.')
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    if args.fastphot:
+        args.mode = 'fastphot'
+    return args
 
 
 # ---------------------------------------------------------------------------
