@@ -329,24 +329,13 @@ straightforward to generate custom figures:
    spectra, so the observed data must be dereddened before plotting, as shown
    above.
 
-Generating QA Figures (fastqa)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Generating and Fitting Stacked Spectra
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. note::
 
-   A dedicated ``fastqa`` reference section with its full option list and
-   batch-generation examples will be added here.
-
-Running in a Notebook
-~~~~~~~~~~~~~~~~~~~~~
-
-``FastSpecFit`` can also be driven interactively from a Jupyter notebook via
-its Python API. See `tutorial-fastspecfit.ipynb`_ for a complete worked
-example that covers calling ``fastspec`` and ``fastphot`` programmatically,
-generating QA figures, and reading results.
-
-``stackfit`` fits stacked or coadded spectra and shares the same interface;
-its dedicated documentation will be added here.
+   Documentation and examples for generating and fitting stacked spectra
+   with ``stackfit`` will be added here.
 
 .. _fitting_at_scale:
 
