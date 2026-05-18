@@ -85,7 +85,7 @@ def parse(options=None, rank=0):
 def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=True,
                  fastphot=False, fitstack=False, constrain_age=False,
                  no_smooth_continuum=False, debug_plots=False, uncertainty_floor=0.01,
-                 minsnr_balmer_broad=2.5, nmonte=10, seed=1):
+                 minsnr_balmer_broad=2.5, nmonte=50, seed=1):
     """Fit the continuum and emission lines for a single DESI object.
 
     Parameters

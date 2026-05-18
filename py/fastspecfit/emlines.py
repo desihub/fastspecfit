@@ -581,7 +581,8 @@ class EMFitTools(object):
                  resolution_matrices,
                  camerapix,
                  continuum_patches=None,
-                 debug=False):
+                 debug=False,
+                 ftol=1e-5, xtol=1e-10):
         """Run the least-squares optimizer to fit emission-line parameters.
 
         Parameters
@@ -680,7 +681,7 @@ class EMFitTools(object):
             bounds = ( bounds[:, 0], bounds[:, 1] )
 
             fit_info = least_squares(objective, initial_guesses, jac=jac, args=(),
-                                     max_nfev=5000, xtol=1e-10, ftol=1e-5, #x_scale='jac' gtol=1e-10,
+                                     max_nfev=5000, xtol=xtol, ftol=ftol, #x_scale='jac' gtol=1e-10,
                                      tr_solver='lsmr', tr_options={'maxiter': 1000, 'regularize': True},
                                      method='trf', bounds=bounds)#, verbose=2)
             free_params = fit_info.x
@@ -1479,11 +1480,22 @@ def test_broad_model(EMFit,
 
 def linefit(EMFit, linemodel, initial_guesses, param_bounds,
             emlinewave, emlineflux, emlineivar, weights, redshift,
-            resolution_matrix, camerapix, debug=False):
+            resolution_matrix, camerapix, debug=False, ftol=1e-5, xtol=1e-10):
     """Fit emission-line parameters and return the model flux and fit statistics.
 
     Thin wrapper around :meth:`EMFitTools.optimize` and
     :meth:`EMFitTools.bestfit` that also computes chi-squared.
+
+    Parameters
+    ----------
+    ftol : float, optional
+        Relative tolerance on the cost function for convergence. Defaults to
+        ``1e-5``; pass a looser value (e.g. ``1e-3``) for Monte Carlo
+        realizations where only approximate parameter values are needed.
+    xtol : float, optional
+        Relative tolerance on the parameter step for convergence. Defaults to
+        ``1e-10``; pass a looser value (e.g. ``1e-5``) for Monte Carlo
+        realizations.
 
     Returns
     -------
@@ -1498,7 +1510,8 @@ def linefit(EMFit, linemodel, initial_guesses, param_bounds,
 
     EMFit.optimize(linemodel, initial_guesses, param_bounds,
                    emlinewave, emlineflux, weights, redshift,
-                   resolution_matrix, camerapix, debug=debug)
+                   resolution_matrix, camerapix, debug=debug,
+                   ftol=ftol, xtol=xtol)
 
     emlineflux_model = EMFit.bestfit(linemodel, redshift, emlinewave,
                                      resolution_matrix, camerapix)
@@ -1685,7 +1698,8 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
             emlineflux_model, _, _ = linefit(
                 EMFit, linemodel, initial_guesses, param_bounds,
                 emlinewave, emlineflux, emlineivar,
-                weights, redshift, resolution_matrix, camerapix)
+                weights, redshift, resolution_matrix, camerapix,
+                ftol=1e-3, xtol=1e-5)
             values = linemodel['value'].value
             obsamps = linemodel.meta['obsamps'] # observed amplitudes
             line_fluxes = linemodel.meta['line_fluxes'] # pixel-integrated line fluxes
