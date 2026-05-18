@@ -3,11 +3,6 @@
 Running FastSpecFit
 ===================
 
-.. note::
-   
-   Before running any of the examples below, we assume that you have
-   successfully :ref:`installed and set up<install>` ``FastSpecFit``.
-
 .. contents:: Contents
     :depth: 3
 
@@ -118,13 +113,22 @@ For a broader introduction to working with DESI data, see the `Getting
 Started`_ and `Digging Deeper`_ tutorial collections in the `DESI tutorials`_
 repository.
 
-Overview
---------
+.. _fitting_individual:
 
-The primary executable script for ``FastSpecFit`` is called ``fastspec``, which
-takes one or more `Redrock`_ redshift catalogs as input (and one or more
-corresponding DESI spectra) and, by default, jointly models the DESI
-spectrophotometry and broadband photometry.
+Fitting Individual Objects
+--------------------------
+
+.. note::
+
+   The examples in this section and in :ref:`Fitting at Scale<fitting_at_scale>`
+   assume that ``FastSpecFit`` has been successfully
+   :ref:`installed and set up<install>`.
+
+``fastspec`` jointly models the DESI spectrophotometry and broadband
+photometry for one or more objects, taking one or more `Redrock`_ redshift
+catalogs as input. ``fastphot`` models only the broadband photometry and is
+significantly faster. Both tools write results to a multi-extension FITS file
+described in the :ref:`data model<fastspec datamodel>` pages.
 
 .. dropdown:: Click to view the fastspec help message.
 
@@ -135,10 +139,10 @@ spectrophotometry and broadband photometry.
                         [--imf IMF] [--templateversion TEMPLATEVERSION] [--templates TEMPLATES] [--redrockfile-prefix REDROCKFILE_PREFIX]
                         [--specfile-prefix SPECFILE_PREFIX] [--qnfile-prefix QNFILE_PREFIX] [--mapdir MAPDIR] [--dr9dir DR9DIR] [--specproddir SPECPRODDIR] [--verbose]
                         [redrockfiles ...]
-        
+
         positional arguments:
           redrockfiles          Full path to input redrock file(s). (default: None)
-        
+
         options:
           -h, --help            show this help message and exit
           -o OUTFILE, --outfile OUTFILE
@@ -170,39 +174,26 @@ spectrophotometry and broadband photometry.
                                 Optional directory name for the spectroscopic production. (default: None)
           --verbose             Be verbose (for debugging purposes). (default: False)
 
-|
+.. note::
 
-Note that in addition to the `Redrock`_ catalog, ``fastspec`` also requires the
-DESI coadded spectrum to be located in the same directory (with a default
-*coadd-* prefix). In addition, there are two key support routines, which we
-describe in more detail below:
-
-  * ``fastqa``, to build quality assurance (QA) figures; and
-  * ``mpi-fastspecfit``, to execute a variety of tasks (in parallel) on larger
-    numbers of input files or catalogs.
-
-.. _`RedRock`: https://github.com/desihub/redrock
-.. _`DESI tutorials`: https://github.com/desihub/tutorials
-.. _`Getting Started`: https://github.com/desihub/tutorials/tree/main/01_getting_started
-.. _`Digging Deeper`: https://github.com/desihub/tutorials/tree/main/02_digging_deeper
-.. _`tutorial-fastspecfit.ipynb`: https://github.com/desihub/fastspecfit/blob/main/doc/nb/tutorial-fastspecfit.ipynb
-.. _`tutorial-kcorrections.ipynb`: https://github.com/desihub/fastspecfit/blob/main/doc/nb/tutorial-kcorrections.ipynb
-.. _`tutorial-vmax.ipynb`: https://github.com/desihub/fastspecfit/blob/main/doc/nb/tutorial-vmax.ipynb
+   In addition to the `Redrock`_ catalog, ``fastspec`` requires the DESI
+   coadded spectrum to be located in the same directory (with a default
+   *coadd-* prefix).
 
 .. _`fastspec example`:
 
-One fastspec Example
---------------------
+Running fastspec
+~~~~~~~~~~~~~~~~
 
-To model the spectrum of a single object, we simply provide ``fastspec`` the
-full path of an input Redrock catalog, the ``targetid`` of the object we are
-interested in, and an (arbitrary) output filename::
+To model the spectrum of a single object, provide ``fastspec`` the full path
+of an input Redrock catalog, the ``targetid`` of the object of interest, and
+an output filename::
 
   $> fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --targetids 39633345008634465 --outfile fastspec-example.fits
 
 .. dropdown:: Click to view the informational output printed to the screen after
-              executing this command. 
+              executing this command.
 
     .. code-block:: python
 
@@ -239,17 +230,14 @@ interested in, and an (arbitrary) output filename::
         INFO:io.py:1392:write_fastspecfit: Writing out took 1.38 seconds.
 
 |
-        
-See the :ref:`fastspec data model<fastspec datamodel>` for a full description of
-the contents of the ``fastspec-example.fits`` file which is written out. We can
-visualize the results to create the
-``fastspec-sv1-bright-7108-39633345008634465.png`` file by invoking the
-following command::
+
+See the :ref:`fastspec data model<fastspec datamodel>` for a full description
+of the output file. Visualize the results using ``fastqa``::
 
   $> fastqa ./fastspec-example.fits --outdir ./
 
 .. dropdown:: Click to view the informational output printed to the screen after
-              executing this command. 
+              executing this command.
 
     .. code-block:: python
 
@@ -299,77 +287,19 @@ results:
   * *Lower-right panel*: Zoomed panels showing the data and best-fit model for
     all the emission lines within the observed spectral range.
 
-In some cases it may be convenient to generate your own figure of the data and
-the best-fitting models, which you can do by reading the data yourself and using
-the spectra stored in the ``MODELS`` FITS extension:
-
-.. code-block:: python
-
-  import numpy as np
-  import fitsio 
-  from astropy.table import Table
-  import matplotlib.pyplot as plt
-  
-  from desiutil.dust import dust_transmission
-  from desispec.io import read_spectra
-  from desispec.coaddition import coadd_cameras
-  
-  specfile = '/global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/coadd-sv1-bright-7108.fits'
-  fastfile = 'fastspec-example.fits'
-
-  meta = Table(fitsio.read(fastfile, 'METADATA'))
-  fast = Table(fitsio.read(fastfile, 'FASTSPEC'))
-  
-  models, hdr = fitsio.read(fastfile, 'MODELS', header=True)
-  modelwave = hdr['CRVAL1'] + np.arange(hdr['NAXIS1']) * hdr['CDELT1']
-  
-  spec = read_spectra(specfile).select(targets=meta['TARGETID'])
-  coadd_spec = coadd_cameras(spec)
-  bands = coadd_spec.bands[0]
-  
-  mw_transmission_spec = dust_transmission(coadd_spec.wave[bands], meta['EBV'])
-  
-  fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
-  ax1.plot(coadd_spec.wave[bands], coadd_spec.flux[bands].flatten() / mw_transmission_spec,
-           color='gray', alpha=0.7, label='Data')
-  ax1.plot(modelwave, models[0, 0, :], label='Stellar Continuum Model', ls='-', color='blue')
-  ax1.plot(modelwave, models[0, 1, :], label='Smooth Continuum Correction', ls='--', color='k')
-  ax1.set_ylim(-2.5, 7.5)
-  ax1.legend(fontsize=8, loc='upper right')
-
-  ax2.plot(coadd_spec.wave[bands], coadd_spec.flux[bands].flatten() / mw_transmission_spec,
-           color='gray', alpha=0.7, label='Data')
-  ax2.plot(modelwave, np.sum(models, axis=1).flatten(), label='Final Model', ls='-', color='red')
-  ax2.legend(fontsize=8, loc='upper left')
-  ax2.set_xlabel(r'Observed-frame Wavelength ($\AA$)')
-
-  fig.subplots_adjust(hspace=0.05, top=0.95, right=0.95)
-  fig.text(0.05, 0.5, r'Flux Density ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)',
-            ha='center', va='center', rotation='vertical')
-
-  fig.savefig('fastspec-example.png')
-
-.. image:: _static/fastspec-example.png
-
-.. note::
-   
-   All the quantities and models returned by ``FastSpecFit`` are measured from
-   DESI spectra which have been corrected for Galactic extinction, so the data
-   have to be extinction-corrected when generating the figure above.
-
 .. _`fastphot example`:
 
-One fastphot Example
---------------------
+Running fastphot
+~~~~~~~~~~~~~~~~
 
-``FastSpecFit`` can also model the broadband photometry (at the given DESI
-redshift) using ``fastphot``. Using the same example object as above, we have::
+``fastphot`` models only the broadband photometry at the `Redrock`_ redshift,
+and is significantly faster than ``fastspec``. Using the same example object::
 
   $> fastphot $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --targetids 39633345008634465 --outfile fastphot-example.fits
 
 .. dropdown:: Click to view the informational output printed to the screen after
-              executing this command. 
+              executing this command.
 
     .. code-block:: python
 
@@ -398,7 +328,7 @@ And to generate the QA::
   $> fastqa fastphot-example.fits --outdir ./
 
 .. dropdown:: Click to view the informational output printed to the screen after
-              executing this command. 
+              executing this command.
 
     .. code-block:: python
 
@@ -416,55 +346,150 @@ And to generate the QA::
 
 .. image:: _static/fastphot-sv1-bright-7108-39633345008634465.png
 
-Once again, please refer to the :ref:`fastphot data model<fastphot datamodel>`
-for a full description of the contents of the ``fastphot-example.fits`` file.
+Refer to the :ref:`fastphot data model<fastphot datamodel>` for a full
+description of the output file.
 
 .. note::
-   
-   As documented above, the orange points (or arrows) show the observed *grz*
-   (optical) and *W1-W4* (infrared) fluxes or :math:`2\sigma` upper limits from
-   the *Legacy Surveys*, and the open square markers represent the photometry
+
+   The orange points (or arrows) show the observed *grz* (optical) and
+   *W1-W4* (infrared) fluxes or :math:`2\sigma` upper limits from the
+   *Legacy Surveys*, and the open square markers represent the photometry
    synthesized from the best-fitting model.
 
-.. _`production`:
+Plotting the Best-Fit Model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-More Examples
--------------
+The ``MODELS`` extension stores the best-fit spectral components, making it
+straightforward to generate custom figures:
 
-In the examples above, we selected one specific object using the ``--targetids``
-optional input, which can also be a comma-separated list. For example::
+.. code-block:: python
+
+  import numpy as np
+  import fitsio
+  from astropy.table import Table
+  import matplotlib.pyplot as plt
+
+  from desiutil.dust import dust_transmission
+  from desispec.io import read_spectra
+  from desispec.coaddition import coadd_cameras
+
+  specfile = '$DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/coadd-sv1-bright-7108.fits'
+  fastfile = 'fastspec-example.fits'
+
+  meta = Table(fitsio.read(fastfile, 'METADATA'))
+  fast = Table(fitsio.read(fastfile, 'FASTSPEC'))
+
+  models, hdr = fitsio.read(fastfile, 'MODELS', header=True)
+  modelwave = hdr['CRVAL1'] + np.arange(hdr['NAXIS1']) * hdr['CDELT1']
+
+  spec = read_spectra(specfile).select(targets=meta['TARGETID'])
+  coadd_spec = coadd_cameras(spec)
+  bands = coadd_spec.bands[0]
+
+  mw_transmission_spec = dust_transmission(coadd_spec.wave[bands], meta['EBV'])
+
+  fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+  ax1.plot(coadd_spec.wave[bands], coadd_spec.flux[bands].flatten() / mw_transmission_spec,
+           color='gray', alpha=0.7, label='Data')
+  ax1.plot(modelwave, models[0, 0, :], label='Stellar Continuum Model', ls='-', color='blue')
+  ax1.plot(modelwave, models[0, 1, :], label='Smooth Continuum Correction', ls='--', color='k')
+  ax1.set_ylim(-2.5, 7.5)
+  ax1.legend(fontsize=8, loc='upper right')
+
+  ax2.plot(coadd_spec.wave[bands], coadd_spec.flux[bands].flatten() / mw_transmission_spec,
+           color='gray', alpha=0.7, label='Data')
+  ax2.plot(modelwave, np.sum(models, axis=1).flatten(), label='Final Model', ls='-', color='red')
+  ax2.legend(fontsize=8, loc='upper left')
+  ax2.set_xlabel(r'Observed-frame Wavelength ($\AA$)')
+
+  fig.subplots_adjust(hspace=0.05, top=0.95, right=0.95)
+  fig.text(0.05, 0.5, r'Flux Density ($10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1}$)',
+            ha='center', va='center', rotation='vertical')
+
+  fig.savefig('fastspec-example.png')
+
+.. image:: _static/fastspec-example.png
+
+.. note::
+
+   All quantities and models are measured from Galactic-extinction-corrected
+   spectra, so the observed data must be dereddened before plotting, as shown
+   above.
+
+Generating QA Figures (fastqa)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. note::
+
+   A dedicated ``fastqa`` reference section with its full option list and
+   batch-generation examples will be added here.
+
+Running in a Notebook
+~~~~~~~~~~~~~~~~~~~~~
+
+``FastSpecFit`` can also be driven interactively from a Jupyter notebook via
+its Python API. See `tutorial-fastspecfit.ipynb`_ for a complete worked
+example that covers calling ``fastspec`` and ``fastphot`` programmatically,
+generating QA figures, and reading results.
+
+``stackfit`` fits stacked or coadded spectra and shares the same interface;
+its dedicated documentation will be added here.
+
+.. _fitting_at_scale:
+
+Fitting at Scale
+----------------
+
+.. _target_selection:
+
+Target Selection
+~~~~~~~~~~~~~~~~
+
+The ``--targetids``, ``--ntargets``, ``--firsttarget``, and ``--mp`` flags
+control which objects are fit and how many cores are used. ``--targetids``
+accepts a comma-separated list::
 
   $> fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
     --targetids 39633345008634465,39633334917139798,39633348330522913 \
     --outfile fastspec-example2.fits
 
-Alternatively, you may want to fit a subset of the targets on this healpixel,
-say the first 20 objects, in which case you would use the ``--ntargets`` keyword::
+To fit a contiguous subset, use ``--ntargets`` and optionally ``--firsttarget``::
 
   $> fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
-    --ntargets 20 --outfile fastspec-example3.fits
+    --firsttarget 50 --ntargets 20 --outfile fastspec-example3.fits
 
-If you don't want to start at the zeroth object, you can offset by an integer
-number of targets using the ``--firsttarget`` option, which in this example
-would fit objects 50 through 70::
+When fitting more than one object, enable multiprocessing with ``--mp``::
 
   $> fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
-    --firsttarget 50 --ntargets 20 --outfile fastspec-example4.fits
+    --firsttarget 50 --ntargets 20 --mp 20 --outfile fastspec-example4.fits
 
-Finally, when fitting more than one object you will want to use multiprocessing
-so that multiple objects are fit simultaneously, using the ``--mp`` flag::
+.. _`production`:
 
-  $> fastspec $DESI_SPECTRO_REDUX/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits \
-    --firsttarget 50 --ntargets 20 --mp 20 --outfile fastspec-example5.fits
+Production Runs with mpi-fastspecfit
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The full set of options is shown in the help dropdown in the `Overview`_ section
-above. What if you want to fit a particular survey, program, or healpixel. Do you
-really need to specify the full path to each individual Redrock file? No!
-``FastSpecFit`` knows how the DESI data are organized, but to access this
-information we need to use the higher-level ``mpi-fastspecfit`` script. For
-example, to fit all the objects in the *Iron* spectroscopic production from
-``survey=sv``, ``program=bright`` and ``healpix=7108``, we would do (here, on a
-single interactive Perlmutter node)::
+For large-scale runs across many healpixels or tiles, use the higher-level
+``mpi-fastspecfit`` script, which understands the DESI data organization and
+can distribute work across MPI ranks. One must always specify the
+spectroscopic production with ``--specprod``.
+
+Use ``--plan`` or ``--dry-run`` to inspect the work before committing::
+
+  $> mpi-fastspecfit --specprod iron --survey sv1 --program bright \
+    --healpix 7108 --outdir-data . --plan
+
+  INFO:mpi.py:223:_findfiles: Building file list for survey=sv1 and program=bright
+  INFO:mpi.py:309:plan: Found 1/1 redrockfiles (left) to do.
+
+  $> mpi-fastspecfit --specprod iron --survey sv1 --program bright \
+    --healpix 7108 --outdir-data . --dry-run
+
+  INFO:mpi.py:223:_findfiles: Building file list for survey=sv1 and program=bright
+  INFO:mpi.py:309:plan: Found 1/1 redrockfiles (left) to do.
+  INFO:mpi-fastspecfit:46:run_fastspecfit: Planning took 0.01 sec
+  INFO:mpi-fastspecfit:96:run_fastspecfit: Rank 0, ntargets=264: fastspec /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits -o ./iron/healpix/sv1/bright/71/7108/fastspec-sv1-bright-7108.fits --mp 128
+
+To run on a single interactive Perlmutter node::
 
   $> salloc -N 1 -C cpu -A desi -t 00:10:00 --qos interactive -L cfs
   $> source /global/cfs/cdirs/desi/software/desi_environment.sh main
@@ -472,45 +497,24 @@ single interactive Perlmutter node)::
   $> time mpi-fastspecfit --specprod iron --survey sv1 --program bright \
     --healpix 7108 --mp 128 --outdir-data .
   $> ls -l ./iron/healpix/sv1/bright/71/7108
-  
+
   INFO:mpi.py:223:_findfiles: Building file list for survey=sv1 and program=bright
   INFO:mpi.py:309:plan: Found 1/1 redrockfiles (left) to do.
   INFO:mpi-fastspecfit:46:run_fastspecfit: Planning took 0.16 sec
   INFO:mpi-fastspecfit:96:run_fastspecfit: Rank 0, ntargets=264: fastspec /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits -o ./iron/healpix/sv1/bright/71/7108/fastspec-sv1-bright-7108.fits --mp 128
   INFO:mpi-fastspecfit:119:run_fastspecfit:   rank 0 done in 113.58 sec
   INFO:mpi-fastspecfit:140:run_fastspecfit: All done at Sun Aug  7 06:17:02 2022
-  
+
   real	1m55.770s
   user	14m38.856s
-  sys	1m16.424s  
+  sys	1m16.424s
 
   total 12092
   -rw-rw-r-- 1 ioannis ioannis 12007670 Aug  7 06:17 fastspec-sv1-bright-7108.fits
   -rw-rw-r-- 1 ioannis ioannis   370424 Aug  7 06:17 fastspec-sv1-bright-7108.log
 
-Since fitting can be relatively expensive (in this case, it took about two
-minutes to fit 264 targets with 128 cores), you may want to see what's going to
-happen before fitting large numbers of objects, which we can do using the
-``--plan`` and/or ``--dry-run`` options::
-
-  $> mpi-fastspecfit --specprod iron --survey sv1 --program bright \
-    --healpix 7108 --outdir-data . --plan
-    
-  INFO:mpi.py:223:_findfiles: Building file list for survey=sv1 and program=bright
-  INFO:mpi.py:309:plan: Found 1/1 redrockfiles (left) to do.
-
-  $> mpi-fastspecfit --specprod iron --survey sv1 --program bright \
-    --healpix 7108 --outdir-data . --dry-run
-    
-  INFO:mpi.py:223:_findfiles: Building file list for survey=sv1 and program=bright
-  INFO:mpi.py:309:plan: Found 1/1 redrockfiles (left) to do.
-  INFO:mpi-fastspecfit:46:run_fastspecfit: Planning took 0.01 sec
-  INFO:mpi-fastspecfit:96:run_fastspecfit: Rank 0, ntargets=264: fastspec /global/cfs/cdirs/desi/spectro/redux/iron/healpix/sv1/bright/71/7108/redrock-sv1-bright-7108.fits -o ./iron/healpix/sv1/bright/71/7108/fastspec-sv1-bright-7108.fits --mp 128
-
-If you leave off any combination of the ``--survey``, ``--program``, and/or
-``--healpix`` options, the code will assume that you want all the possible
-values of these keywords. For example, to see how many SV3 Redrock files would
-need to be fit (not recommended without MPI parallelism!), one would do::
+Omitting ``--survey``, ``--program``, or ``--healpix`` causes the code to
+iterate over all available values. For example, to plan a full SV3 run::
 
   $> mpi-fastspecfit --specprod iron --survey sv3 --outdir-data . --plan
   INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=bright
@@ -520,13 +524,7 @@ need to be fit (not recommended without MPI parallelism!), one would do::
   INFO:mpi.py:309:plan: Found 1023/1023 redrockfiles (left) to do.
   INFO:mpi.py:326:plan: Skipping 70 files with no targets.
 
-.. note::  
-
-  One must always specify the spectroscopic production when calling
-  ``mpi-fastspecfit``, in this case ``--specprod iron``. 
-
-To fit the broadband photometry instead of the DESI spectroscopy, simply call
-any of the examples in this section with the ``--fastphot`` option::
+To fit broadband photometry instead of spectroscopy, add ``--fastphot``::
 
   $> mpi-fastspecfit --specprod iron --survey sv3 --outdir-data . --plan --fastphot
   INFO:mpi.py:223:_findfiles: Building file list for survey=sv3 and program=bright
@@ -536,15 +534,36 @@ any of the examples in this section with the ``--fastphot`` option::
   INFO:mpi.py:309:plan: Found 1023/1023 redrockfiles (left) to do.
   INFO:mpi.py:326:plan: Skipping 70 files with no targets.
 
-Finally, ``mpi-fastspecfit`` also knows about the tile-based *cumulative*,
-*per-night*, and *per-exposure* coadds via the ``--coadd-type`` optional
-input. For example::
+``mpi-fastspecfit`` also supports tile-based coadds via ``--coadd-type``::
 
   $> mpi-fastspecfit --specprod iron --coadd-type cumulative --tile 80613 --outdir-data . --plan
   INFO:mpi.py:309:plan: Found 10/10 redrockfiles (left) to do.
 
   $> mpi-fastspecfit --specprod iron --coadd-type pernight --tile 80613 --outdir-data . --plan
   INFO:mpi.py:309:plan: Found 57/57 redrockfiles (left) to do.
-  
+
   $> mpi-fastspecfit --specprod iron --coadd-type perexp --tile 80613 --outdir-data . --plan
   INFO:mpi.py:309:plan: Found 283/283 redrockfiles (left) to do.
+
+Slurm Batch Jobs
+~~~~~~~~~~~~~~~~
+
+.. note::
+
+   A Slurm batch job template for multi-node production runs will be added here.
+
+Merging Output Catalogs
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. note::
+
+   Documentation on merging per-healpix output files into a single catalog
+   will be added here.
+
+.. _`RedRock`: https://github.com/desihub/redrock
+.. _`DESI tutorials`: https://github.com/desihub/tutorials
+.. _`Getting Started`: https://github.com/desihub/tutorials/tree/main/01_getting_started
+.. _`Digging Deeper`: https://github.com/desihub/tutorials/tree/main/02_digging_deeper
+.. _`tutorial-fastspecfit.ipynb`: https://github.com/desihub/fastspecfit/blob/main/doc/nb/tutorial-fastspecfit.ipynb
+.. _`tutorial-kcorrections.ipynb`: https://github.com/desihub/fastspecfit/blob/main/doc/nb/tutorial-kcorrections.ipynb
+.. _`tutorial-vmax.ipynb`: https://github.com/desihub/fastspecfit/blob/main/doc/nb/tutorial-vmax.ipynb
