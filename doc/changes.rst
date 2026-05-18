@@ -2,8 +2,13 @@
 Change Log
 ==========
 
-3.3.0 (not released yet)
+3.3.1 (not released yet)
 ------------------------
+
+* 
+
+3.3.0 (2026-05-18)
+------------------
 
 * Fix ``Inoue14.full_IGM`` returning all-ones when ``lobs`` is an integer
   array; fix MW extinction correction not applied to ``FIBERFLUX`` and
