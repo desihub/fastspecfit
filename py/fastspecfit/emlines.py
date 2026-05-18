@@ -1691,12 +1691,14 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
 
     if nmonte > 0:
         # Monte Carlo to get the uncertainties on the derived parameters.
+        bestfit_initials = linemodel_pref['value'].value
+
         def get_results(emlineflux):
             linemodel = linemodel_pref.copy() # avoid stepping on original line model
 
             # updates linemodel in place
             emlineflux_model, _, _ = linefit(
-                EMFit, linemodel, initial_guesses, param_bounds,
+                EMFit, linemodel, bestfit_initials, param_bounds,
                 emlinewave, emlineflux, emlineivar,
                 weights, redshift, resolution_matrix, camerapix,
                 ftol=1e-3, xtol=1e-5)
