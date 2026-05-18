@@ -13,22 +13,25 @@ Installation & Setup
 NERSC Installation
 ------------------
 
-On a `NERSC`_ `Perlmutter <https://docs.nersc.gov/systems/perlmutter>`_ login or
-interactive node, load ``FastSpecFit`` on top of the standard DESI software stack::
+On a `NERSC`_ `Perlmutter
+<https://docs.nersc.gov/systems/perlmutter/architecture>`_ login or
+interactive node, load ``FastSpecFit`` on top of the standard DESI
+software stack::
 
   source /global/cfs/cdirs/desi/software/desi_environment.sh main
   module load fastspecfit/main
 
-To load a specific tagged version, replace ``main`` with the desired release::
+To load a specific tagged version, replace ``main`` with the desired
+release, for example::
 
-  source /global/cfs/cdirs/desi/software/desi_environment.sh 24.8
-  module load fastspecfit/2.5.2
+  source /global/cfs/cdirs/desi/software/desi_environment.sh 26.3
+  module load fastspecfit/3.2.1
 
 JupyterHub
 ~~~~~~~~~~
 
-To use ``FastSpecFit`` in `JupyterHub`_, install a Jupyter kernel once. For the
-``main`` branch::
+To use ``FastSpecFit`` in `JupyterHub`_, install its Jupyter kernel
+once. For the ``main`` branch, do::
 
   mkdir -p ${HOME}/.local/share/jupyter/kernels/fastspecfit-main
   wget -O ${HOME}/.local/share/jupyter/kernels/fastspecfit-main/kernel.json \
