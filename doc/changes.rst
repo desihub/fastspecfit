@@ -5,6 +5,13 @@ Change Log
 3.3.0 (not released yet)
 ------------------------
 
+* Overhaul documentation: replace ``sphinx-toolbox`` with ``sphinx-design``;
+  remove stale ``Sphinx<8.2`` pin; expand API docs to include
+  ``fastspecfit.emline_fit`` subpackage; rewrite ``install.rst`` with
+  simplified laptop setup, ``micromamba`` recommendation, and fleshed-out data
+  dependency descriptions; restructure ``running.rst`` around three audience
+  tiers; add new ``data.rst`` ("Working with FastSpecFit Data") and
+  ``tutorials.rst`` top-level pages [`PR #248`_].
 * Add integration tests for ``stackfit`` and ``fastqa``; fix ``stackfit``
   incorrectly requiring dust-map and photometry environment variables; fix
   ``fastqa`` incorrectly requiring ``DESI_SPECTRO_REDUX`` when
@@ -18,6 +25,7 @@ Change Log
 * Deconvolve the resolution matrix before fitting, as recommended
   by S. Koposov and update config files [`PR #244`_].
 
+.. _`PR #248`: https://github.com/desihub/fastspecfit/pull/248
 .. _`PR #247`: https://github.com/desihub/fastspecfit/pull/247
 .. _`PR #246`: https://github.com/desihub/fastspecfit/pull/246
 .. _`PR #245`: https://github.com/desihub/fastspecfit/pull/245
