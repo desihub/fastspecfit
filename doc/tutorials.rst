@@ -3,6 +3,15 @@
 Tutorials
 =========
 
+.. contents:: Contents
+    :depth: 2
+
+.. note::
+
+   The tutorials below are currently out of date and will not run without
+   modification against the current version of ``FastSpecFit``. Updated
+   notebooks will be provided in a future release.
+
 The following resources provide worked examples for common science tasks using
 ``FastSpecFit`` and the broader DESI data ecosystem.
 
