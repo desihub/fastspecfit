@@ -8,7 +8,7 @@ Installation & Setup
 
 ``FastSpecFit`` can be set up in two ways:
 
-- :ref:`At NERSC<nersc installation>` — for DESI collaborators using the shared software stack.
+- :ref:`At NERSC<nersc installation>` — for DESI collaborators, using the shared software stack.
 - :ref:`On a laptop<laptop installation>` — for interactive work or running on smaller datasets.
 
 .. _nersc installation:
@@ -24,7 +24,7 @@ software stack::
   source /global/cfs/cdirs/desi/software/desi_environment.sh main
   module load fastspecfit/main
 
-To load a specific tagged version, replace ``main`` with the desired
+To load a specific tagged versions, replace ``main`` with the desired
 release, for example::
 
   source /global/cfs/cdirs/desi/software/desi_environment.sh 26.3
@@ -33,14 +33,15 @@ release, for example::
 JupyterHub
 ~~~~~~~~~~
 
-To use ``FastSpecFit`` in `JupyterHub`_, install its Jupyter kernel
-once. For the ``main`` branch, do::
+To use ``FastSpecFit`` within NERSC's `JupyterHub`_, first install the
+appropriate Jupyter kernel (one time). Then, to access the ``main``
+branch::
 
   mkdir -p ${HOME}/.local/share/jupyter/kernels/fastspecfit-main
   wget -O ${HOME}/.local/share/jupyter/kernels/fastspecfit-main/kernel.json \
     https://raw.githubusercontent.com/desihub/fastspecfit/main/etc/jupyter-kernel.json
 
-Or, to always track the latest tagged release::
+Or, to use the latest tagged release::
 
   mkdir -p ${HOME}/.local/share/jupyter/kernels/fastspecfit-latest
   wget -O ${HOME}/.local/share/jupyter/kernels/fastspecfit-latest/kernel.json \
@@ -93,15 +94,16 @@ Install FastSpecFit
 Data Dependencies
 ~~~~~~~~~~~~~~~~~
 
-Running ``FastSpecFit`` on DESI spectra requires four additional data products,
-each pointed to by an environment variable.
+Running ``FastSpecFit`` on DESI data requires four additional data
+products, each pointed to by an environment variable.
 
 ``DESI_SPECTRO_REDUX``
-   Root directory of the DESI spectroscopic reduction outputs. The products
-   within are organized according to the `DESI data model`_; the `DESI data
-   organization`_ page describes the full on-disk layout. The DESI
-   `Early Data Release (EDR)`_ and `Data Release 1 (DR1)`_ are publicly
-   available.
+   Root directory of the DESI spectroscopic reduction outputs. The
+   DESI products are organized according to the `DESI data model`_;
+   the `DESI data organization`_ page describes the full on-disk
+   layout. The DESI `Early Data Release (EDR)`_ and `Data Release 1
+   (DR1)`_ are already publicly available, with Data Release 2 (DR2)
+   expected to be public in early 2027.
 
 ``DUST_DIR``
    Location of the `Schlegel, Finkbeiner, & Davis (1998)`_ dust reddening
