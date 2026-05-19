@@ -954,18 +954,9 @@ class EMFitTools(object):
 
                         # require amp > 0 (line not dropped) to compute the flux
                         if obsamps[line_amp] > TINY:
-                            # analytically integrated flux
-                            #flux = np.sqrt(2. * np.pi) * parameters[line_amp] * linezwave * linesigma0 / C_LIGHT
-                            # pixel-integrated model flux
-                            flux = line_fluxes[line_amp]
-                            #if np.isin(linename, ['OIII_5007', 'NII_6584', 'HALPHA', 'HBETA']):
-                            #    print(linename)
-                            #    print("observed amp:  ", obsamps[line_amp])
-                            #    print("model amp:     ", parameters[line_amp])
-                            #    print("sigma_kms:     ", values[line_sigma])
-                            #    print("FLUX-analytic: ", np.sqrt(2*np.pi) * parameters[line_amp] * linezwave * values[line_sigma] / C_LIGHT)
-                            #    print("FLUX-integral: ", flux)
-                            #    print("BOXFLUX:   ", boxflux)
+                            # intrinsic line flux: integral of the log-Gaussian A*exp(-(log lambda - mu)^2/(2*sigma^2))
+                            # = sqrt(2*pi) * A * sigma * lambda*, independent of the resolution matrix
+                            flux = np.sqrt(2. * np.pi) * parameters[line_amp] * linezwave * linesigma0 / C_LIGHT
 
                         # next, get the continuum level
                         borderindx = get_continuum_pixels(emlinewave_s, linezwave, linesigma_ang_window)
