@@ -17,27 +17,28 @@ SIGMA_G = 0.5  # Angstroms
 
 @pytest.fixture(scope='module')
 def grid():
-    """Uniform log-lambda bin grid spanning the DESI wavelength range."""
-    nbin = 5000
-    log_edges = np.linspace(np.log(3600.), np.log(9900.), nbin + 1)
-    log_centers = 0.5 * (log_edges[:-1] + log_edges[1:])
-    bin_widths = np.diff(np.exp(log_edges))  # pixel widths in Angstroms
-    return {'log_centers': log_centers, 'bin_widths': bin_widths, 'nbin': nbin}
+    """Linear-lambda grid matching the DESI wavelength spacing (0.8 Å/pixel)."""
+    dlambda = 0.8  # Angstroms, nominal DESI pixel scale
+    edges = np.arange(3600., 9825., dlambda)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    log_centers = np.log(centers)
+    bin_widths = np.full(len(centers), dlambda)
+    return {'log_centers': log_centers, 'bin_widths': bin_widths, 'nbin': len(centers)}
 
 
 @pytest.fixture(scope='module')
 def flux_grid():
-    """Compact log-lambda grid around Hα at z=0.1 with a DESI-like pixel scale."""
-    lam_center = 6563. * 1.1  # Hα observed at z=0.1
-    dloglam = 8e-5             # ~DESI pixel scale in log-lambda (~0.58 Å at 7200 Å)
+    """Linear-lambda grid around Hα at z=0.1 with DESI pixel scale (0.8 Å/pixel)."""
+    dlambda = 0.8  # Angstroms
+    lam_center = 6563. * 1.1  # Hα observed at z=0.1 (~7219 Å)
     nbin = 400
-    log_edges = np.linspace(np.log(lam_center) - (nbin / 2) * dloglam,
-                            np.log(lam_center) + (nbin / 2) * dloglam,
-                            nbin + 1)
-    log_centers = 0.5 * (log_edges[:-1] + log_edges[1:])
-    bin_widths = np.diff(np.exp(log_edges))
+    edges = lam_center + (np.arange(nbin + 1) - nbin / 2) * dlambda
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    log_centers = np.log(centers)
+    bin_widths = np.full(nbin, dlambda)
+    dloglam_center = dlambda / lam_center  # pixel width in log-lambda at line center
     return {'log_centers': log_centers, 'bin_widths': bin_widths,
-            'nbin': nbin, 'dloglam': dloglam}
+            'nbin': nbin, 'dloglam_center': dloglam_center}
 
 
 @pytest.fixture(scope='module')
@@ -347,7 +348,7 @@ class TestFluxRecovery:
 
         amp, rest_wave, redshift = 1.0, 6563., 0.1
         n_steps = 25
-        dloglam = flux_grid['dloglam']
+        dloglam = flux_grid['dloglam_center']
 
         for sigma_kms in [5., 15., 50.]:
             fluxes = []
