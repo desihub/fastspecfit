@@ -1,0 +1,417 @@
+\documentclass[12pt]{article}
+
+\usepackage{amsmath,amssymb}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{microtype}
+
+% ── notation shortcuts ─────────────────────────────────────────────────────────
+\newcommand{\lstar}{\lambda^{*}}
+\newcommand{\sG}{\sigma_{\mathrm{G}}}
+\newcommand{\sGl}{\sigma_{\mathrm{G},\ell}}   % sigma_G in log-lambda
+\newcommand{\seff}{\sigma_{\mathrm{eff}}}
+\newcommand{\C}{c}                             % speed of light
+\newcommand{\R}{\mathbf{R}}
+\newcommand{\W}{\mathbf{W}}
+\newcommand{\M}{\mathbf{M}}
+\newcommand{\inv}[1]{#1^{-1}}
+
+\title{FastSpecFit Emission-Line Model}
+\author{John Moustakas%
+  \thanks{Emission-line model derivations and implementation assisted by
+    Claude Code (Claude Sonnet 4.6, Anthropic).}}
+\date{\today}
+
+
+\begin{document}
+\maketitle
+%\tableofcontents
+%\bigskip
+
+\section{Introduction}
+
+This note documents the forward model used by \textsc{FastSpecFit} to
+fit emission lines in DESI galaxy spectra. The new model supersedes
+the earlier bin-integration approach developed by Jeremy Buhler
+(@jbuhler) in 2024 and used in FastSpecFit versions 3.0.0 through
+3.3.0, and reconciles it with the resolution-matrix deconvolution
+framework recommended by Sergey Koposov (@segasai).
+
+%The three topics covered are: (i)~the analytic pre-convolved Gaussian
+%profile that serves as the forward model, (ii)~how that profile is
+%coupled to the deconvolved DESI resolution matrix, and (iii)~the
+%closed-form Jacobian used by the nonlinear least-squares optimizer.
+
+
+\section{Intrinsic Emission-Line Profile}
+\label{sec:intrinsic}
+
+The intrinsic spectral profile of a single emission line is modeled as a
+log-Gaussian in observed wavelength,
+\begin{equation}
+  f(\lambda;\, A,\lstar,\sigma)
+  \;=\;
+  A \exp\!\left(-\frac{(\ln\lambda - \ln\lstar)^{2}}{2\sigma^{2}}\right),
+  \label{eq:intrinsic}
+\end{equation}
+where $A$ is the peak amplitude (in flux-density units, e.g.\
+$10^{-17}$\,erg\,s$^{-1}$\,cm$^{-2}$\,\AA$^{-1}$), $\lstar$ is the
+observed line center, and $\sigma$ is the intrinsic line width in
+log-$\lambda$ units (dimensionless).
+
+\paragraph{Line center.}
+The observed center is determined by the rest-frame wavelength
+$\lambda_{\mathrm{rest}}$, the spectroscopic redshift $z$ (fixed from
+Redrock), and a residual velocity shift $\Delta v$ (km\,s$^{-1}$):
+\begin{equation}
+  \lstar \;=\; \lambda_{\mathrm{rest}}\,\bigl(1 + z + \Delta v/\C\bigr)
+  \;\equiv\; \lambda_{\mathrm{rest}} \cdot \text{line\_shift}.
+  \label{eq:lstar}
+\end{equation}
+
+\paragraph{Line width.}
+The width $\sigma$ is related to the physical velocity dispersion
+$s$\,(km\,s$^{-1}$) by $\sigma = s/\C$.  For astrophysical lines
+$\sigma \lesssim 10^{-3}$, so the log-Gaussian is an excellent
+approximation to a Gaussian in linear wavelength.
+
+\paragraph{Integrated flux.}
+The total flux of the intrinsic profile is
+\begin{equation}
+  \Phi
+  \;=\; \int_0^{\infty} f(\lambda)\,d\lambda
+  \;=\; \sqrt{2\pi}\,A\,\lstar\,\sigma\,e^{\sigma^2/2}
+  \;\approx\; \sqrt{2\pi}\,A\,\lstar\,\sigma,
+  \label{eq:flux}
+\end{equation}
+where the correction factor $e^{\sigma^2/2} \approx 1 + \mathcal{O}(\sigma^2)$
+is negligible for any astrophysical line width.  In terms of the fitted
+parameters,
+\begin{equation}
+  \boxed{\Phi \;=\; \sqrt{2\pi}\,A\,\lstar\,s/\C.}
+  \label{eq:flux_phys}
+\end{equation}
+This result is independent of the pixel grid and of the instrumental
+resolution matrix; \textsc{FastSpecFit} reports $\Phi$ as the measured line
+flux.
+
+
+\section{The DESI Resolution Matrix}
+\label{sec:resolution}
+
+\paragraph{Extraction model.}
+DESI spectra are produced by an optimal extraction that encodes the
+wavelength-dependent instrumental line-spread function (LSF) in a sparse
+resolution matrix $\R$.  For an ideal (noiseless) spectrum, the extracted
+flux vector $\mathbf{d}$ and the true spectral flux vector $\mathbf{f}$
+(sampled at pixel centers) are related by
+\begin{equation}
+  \mathbf{d} \;=\; \R\,\mathbf{f}.
+\end{equation}
+$\R$ is stored in DESI FITS files in band (diagonal) format with
+$\sim$11 diagonals and is normalized so that each row sums to unity,
+preserving integrated flux.
+
+\paragraph{Deconvolved representation.}
+Rather than inverting $\R$ directly (which amplifies noise), the
+approach of Koposov pre-convolves the model with a reference Gaussian
+of width $\sG$ (the \emph{pre-convolution kernel}) and constructs a
+deconvolved resolution matrix $\W$ such that
+\begin{equation}
+  \mathbf{d} \;\approx\; \W\,\mathbf{h},
+  \label{eq:deconv}
+\end{equation}
+where $\mathbf{h}_j = (G_{\sG} * f)(\lambda_j)$ is the true spectrum
+pre-convolved with the reference Gaussian, evaluated at pixel center
+$\lambda_j$.  Concretely, let $\M$ be the design matrix of the reference
+Gaussian,
+\begin{equation}
+  M_{ij} \;=\; G\!\left(\lambda_i - \lambda_j;\, 0,\, \sG\right),
+\end{equation}
+which maps $\mathbf{f} \mapsto \mathbf{h} = \M\,\mathbf{f}$ approximately.
+Then $\mathbf{f} \approx \inv{\M}\,\mathbf{h}$ and
+\begin{equation}
+  \W \;=\; \R\,\inv{\M}.
+  \label{eq:W}
+\end{equation}
+\textsc{FastSpecFit} uses $\sG = \sigma_0 = 0.5$\,\AA\ (the constant
+\texttt{SIGMA0\_ANGSTROM} in \texttt{resolution.py}), which is chosen to be
+broad enough to regularize the inversion of $\M$ while remaining small
+compared to the DESI LSF.
+
+\paragraph{Forward-model strategy.}
+Given an analytic expression for $\mathbf{h}$, equation~\eqref{eq:deconv}
+provides the predicted extracted spectrum directly.  The problem reduces to
+computing the pre-convolved model
+$h_j = (G_{\sG} * f)(\lambda_j)$ analytically.
+
+
+\section{Pre-Convolved Forward Model}
+\label{sec:model}
+
+\subsection{Key approximation}
+\label{ssec:approx}
+
+In log-$\lambda$ coordinates $u = \ln\lambda$, the intrinsic profile
+\eqref{eq:intrinsic} is an exact Gaussian:
+\begin{equation}
+  f(u) \;=\; A\exp\!\left(-\frac{(u - u^*)^2}{2\sigma^2}\right),
+  \qquad u^* = \ln\lstar.
+\end{equation}
+The linear-space Gaussian kernel $G_{\sG}(\lambda)$ maps to log-$\lambda$
+space as
+\begin{equation}
+  G_{\sG}(\lambda) \;\longrightarrow\;
+  G\!\left(u - u^*;\, 0,\, \sGl\right)
+  \;+\; \mathcal{O}\!\left(\sGl^2\right),
+  \qquad
+  \sGl \;\equiv\; \sG/\lstar,
+  \label{eq:kernel_approx}
+\end{equation}
+where the approximation replaces the linear-space Gaussian with a
+log-space Gaussian of width $\sGl = \sG/\lstar$.  The relative error is
+$\mathcal{O}(\sGl) = \mathcal{O}(\sG/\lstar) \approx 7\times10^{-5}$ for
+DESI, and is negligible.
+
+\subsection{Convolved profile}
+\label{ssec:convolved}
+
+Using the approximation \eqref{eq:kernel_approx}, the convolution of two
+log-space Gaussians with widths $\sigma$ and $\sGl$ is itself a Gaussian
+with quadrature-summed width.  Defining the \emph{effective width}
+\begin{equation}
+  \seff \;=\; \sqrt{\sigma^2 + \sGl^2},
+  \label{eq:seff}
+\end{equation}
+the pre-convolved profile evaluates at pixel center $\lambda_j$ as
+\begin{equation}
+  \boxed{
+  F_j \;=\; A\,\frac{\sigma}{\seff}
+  \exp\!\left(-\frac{x_j^2}{2\seff^2}\right),
+  }
+  \label{eq:model}
+\end{equation}
+where $x_j = \ln\lambda_j - \ln\lstar$ is the log-$\lambda$ offset from
+the line center.  The amplitude factor $\sigma/\seff \leq 1$ accounts for
+the broadening: a narrower intrinsic line ($\sigma \ll \sGl$) is dominated
+by the pre-convolution and its peak is suppressed relative to a broad line.
+
+Equation~\eqref{eq:model} is evaluated only over pixels within
+$\pm N_\sigma\,\seff$ of the line center (with $N_\sigma = 5$ in
+\textsc{FastSpecFit}); pixels outside this range are set to zero.  The
+complete spectrum model is the sum of all line profiles plus the per-patch
+affine continuum pedestal.
+
+\subsection{Comparison to the earlier bin-integration approach}
+\label{ssec:comparison}
+
+The earlier formulation (Buhler 2024) computed a \emph{bin-integrated} flux
+\begin{equation}
+  F_j^{(\mathrm{old})}
+  \;=\; A\bigl[\Phi_\sigma(b_{j+1}) - \Phi_\sigma(b_j)\bigr],
+\end{equation}
+where $\Phi_\sigma$ is the CDF of the log-Gaussian and $b_j$,
+$b_{j+1}$ are the bin edges.  These values are exact per-bin averages
+of the intrinsic profile~\eqref{eq:intrinsic}.  However, $\W$ was
+constructed to accept the Gaussian-\emph{convolved} point values $F_j$
+(equation~\ref{eq:model}), not bin integrals.  Feeding
+$F_j^{(\mathrm{old})}$ into $\W$ therefore produces a systematic model
+error: for lines narrower than approximately one DESI pixel
+(${\sim}0.8$\,\AA), the mismatch between a bin integral and a
+convolved point value is position-dependent, causing flux biases of
+5\%--30\% depending on where the line center falls within the pixel.
+The Gaussian-point-evaluation model~\eqref{eq:model} removes this
+bias.
+
+
+\section{Analytic Jacobian}
+\label{sec:jacobian}
+
+The emission-line optimizer (\texttt{scipy.optimize.least\_squares}) requires
+the Jacobian of the \emph{pre-convolved} model $F_j$ with respect to the
+three per-line parameters $(A,\, \Delta v,\, s)$.  We define the shorthand
+\begin{align}
+  g_j &\;\equiv\; A\,\frac{\sigma}{\seff}\,
+       \exp\!\left(-\frac{x_j^2}{2\seff^2}\right)
+       \;=\; \text{amp\_eff}\times\text{gauss}, \\[4pt]
+  \iota &\;\equiv\; \seff^{-2}, \\[4pt]
+  \text{line\_shift} &\;\equiv\; 1 + z + \Delta v/\C.
+\end{align}
+The Jacobian rows for pixel $j$ are derived below; they are nonzero only
+within the support region $|x_j| < N_\sigma\,\seff$.
+
+\subsection{Amplitude: \texorpdfstring{$\partial F_j/\partial A$}{dF/dA}}
+
+The model is linear in $A$, and $\sigma$, $\seff$, $x_j$ are all independent
+of $A$:
+\begin{equation}
+  \frac{\partial F_j}{\partial A}
+  \;=\; \frac{\sigma}{\seff}
+        \exp\!\left(-\frac{x_j^2}{2\seff^2}\right)
+  \;=\; \frac{g_j}{A}.
+  \label{eq:dF_dA}
+\end{equation}
+
+\subsection{Velocity shift: \texorpdfstring{$\partial F_j/\partial \Delta v$}{dF/dv}}
+\label{ssec:dFdv}
+
+The dependence on $\Delta v$ enters through $\ln\lstar =
+\ln(\lambda_{\rm rest} \cdot \text{line\_shift})$, so
+\begin{equation}
+  \frac{\partial \ln\lstar}{\partial \Delta v}
+  \;=\; \frac{1}{\C\cdot\text{line\_shift}},
+  \qquad
+  \frac{\partial x_j}{\partial \Delta v}
+  \;=\; -\frac{1}{\C\cdot\text{line\_shift}}.
+  \label{eq:dlnl_dv}
+\end{equation}
+There is a secondary dependence through $\sGl = \sG/\lstar$, but its
+contribution to $\partial F_j/\partial \Delta v$ is of order
+$\sGl^2\,(1-x_j^2/\seff^2)/x_j \sim 10^{-5}$ relative to the primary term
+and is neglected.  The primary result is
+\begin{equation}
+  \frac{\partial F_j}{\partial \Delta v}
+  \;=\; \frac{\partial F_j}{\partial x_j}\cdot
+        \frac{\partial x_j}{\partial \Delta v}
+  \;=\; \frac{g_j\,x_j\,\iota}{\C\cdot\text{line\_shift}}.
+  \label{eq:dF_dv}
+\end{equation}
+
+%\noindent\textit{Note:} using $1/\C$ in place of
+%$1/(\C\cdot\text{line\_shift})$ introduces a systematic error of order $z$
+%at all redshifts (e.g.\ 10\% at $z=0.1$) and must be avoided.
+
+\subsection{Line width: \texorpdfstring{$\partial F_j/\partial s$}{dF/ds}}
+\label{ssec:dFds}
+
+With $\sigma = s/\C$, we need $\partial F_j/\partial s =
+(\partial F_j/\partial \sigma)/\C$.  Both the amplitude factor
+$\text{amp\_eff} = A\sigma/\seff$ and the exponent depend on $\sigma$.
+Using $\partial\seff/\partial\sigma = \sigma/\seff$:
+\begin{align}
+  \frac{\partial}{\partial\sigma}\!\left(\frac{A\sigma}{\seff}\right)
+  &\;=\;
+  \frac{A(\seff^2 - \sigma^2)}{\seff^3}
+  \;=\;
+  \frac{A\,\sGl^2}{\seff^3},
+  \\[6pt]
+  \frac{\partial}{\partial\sigma}\!
+  \left[\exp\!\left(-\frac{x_j^2}{2\seff^2}\right)\right]
+  &\;=\;
+  \exp\!\left(-\frac{x_j^2}{2\seff^2}\right)
+  \cdot\frac{x_j^2\,\sigma}{\seff^4}.
+\end{align}
+Combining and using $\sGl^2 = \seff^2 - \sigma^2$:
+\begin{align}
+  \frac{\partial F_j}{\partial\sigma}
+  &\;=\;
+  \frac{A}{\seff}\cdot\text{gauss}\cdot
+  \left(\frac{\sGl^2}{\seff^2} + \frac{\sigma^2 x_j^2}{\seff^4}\right)
+  \nonumber\\
+  &\;=\;
+  \frac{A}{\seff}\cdot\text{gauss}\cdot
+  \left[1 - \frac{\sigma^2}{\seff^2} + \frac{\sigma^2 x_j^2}{\seff^4}\right]
+  \nonumber\\
+  &\;=\;
+  \frac{A}{\seff}\cdot\text{gauss}\cdot
+  \Bigl[1 - \sigma^2\bigl(1 - x_j^2\iota\bigr)\iota\Bigr].
+\end{align}
+Dividing by $\C$:
+\begin{equation}
+  \boxed{
+  \frac{\partial F_j}{\partial s}
+  \;=\;
+  \frac{A}{\seff\,\C}\cdot\text{gauss}\cdot
+  \Bigl[1 - \sigma^2\bigl(1 - x_j^2\iota\bigr)\iota\Bigr].
+  }
+  \label{eq:dF_ds}
+\end{equation}
+
+\paragraph{Numerical stability at $\sigma\to 0$.}
+When $\sigma = 0$ (a line width fixed to zero), $\seff = \sGl \neq 0$ and
+equation~\eqref{eq:dF_ds} evaluates to
+\begin{equation}
+  \left.\frac{\partial F_j}{\partial s}\right|_{\sigma=0}
+  \;=\;
+  \frac{A}{\sGl\,\C}
+  \exp\!\left(-\frac{x_j^2}{2\sGl^2}\right),
+\end{equation}
+which is finite.
+
+%An earlier equivalent form of \eqref{eq:dF_ds}, $g_j(1/\sigma -
+%\sigma\cdots)/\C$, has an explicit $1/\sigma$ that diverges at
+%$\sigma=0$ and must \emph{not} be used.
+
+\subsection{Summary}
+
+Table~\ref{tab:jacobian} collects the three Jacobian entries.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.6}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Parameter & Symbol & $\partial F_j/\partial\,\text{param}$ \\
+\midrule
+Amplitude    & $A$   &
+  $g_j / A$
+  \\
+Velocity shift & $\Delta v$ (km\,s$^{-1}$) &
+  $g_j\,x_j\,\iota\;/\;(\C\cdot\text{line\_shift})$
+  \\
+Line width   & $s$ (km\,s$^{-1}$) &
+  $(A/\seff\C)\cdot\text{gauss}\cdot
+   [1 - \sigma^2(1-x_j^2\iota)\iota]$
+  \\
+\bottomrule
+\end{tabular}
+\caption{Jacobian of the pre-convolved model $F_j$ with respect to the
+  three per-line parameters. Here $\iota\equiv\seff^{-2}$,
+  $g_j = (A\sigma/\seff)\,e^{-x_j^2/(2\seff^2)}$, and
+  $\text{line\_shift}=1+z+v/\C$.}
+\label{tab:jacobian}
+\end{table}
+
+
+\section{Implementation Notes}
+\label{sec:impl}
+
+\paragraph{Effective width and pixel support.}
+The pre-convolution sets a floor on the effective line width:
+$\seff \geq \sGl = \sG/\lstar$, so even an unresolved line
+($\sigma\to 0$) occupies approximately $2N_\sigma\sGl/\Delta\!\ln\lambda$
+pixels, where $\Delta\!\ln\lambda \approx \Delta\lambda/\lambda$ is the
+pixel scale in log-$\lambda$.  For DESI ($\sG=0.5$\,\AA,
+$\Delta\lambda=0.8$\,\AA\ at $\lambda\sim6000$\,\AA), this floor is
+$\sGl/(\Delta\ln\lambda) \approx 0.5/0.8 \approx 0.6$\,pixel, so the
+pre-convolved profile always spans $\gtrsim 6$ pixels at $5\sigma$ truncation.
+This ensures the Riemann sum $\sum_j F_j\,\Delta\lambda_j$ recovers the
+analytic flux \eqref{eq:flux} to better than 2\%, independent of the
+sub-pixel position of the line center.
+
+\paragraph{Flux independence of resolution matrix.}
+The reported line flux $\Phi = \sqrt{2\pi}\,A\,\lstar\,s/\C$
+(equation~\ref{eq:flux_phys}) is the integral of the \emph{intrinsic}
+profile~\eqref{eq:intrinsic} before any convolution.  It is therefore
+independent of $\sG$, the pixel grid, and $\W$.  This is preferable to
+summing the model pixels $\sum_j (\W\mathbf{F})_j\,\Delta\lambda_j$, which
+depends on all of these quantities.
+
+\paragraph{Shared parameter constraints.}
+In \textsc{FastSpecFit}, lines within a kinematic group share a common $\Delta v$
+and $s$.  The Jacobian rows for those lines are assembled by the sparse
+\texttt{ParamsMapping} layer, which maps the physically constrained parameter
+vector to and from the per-line parameter array before calling
+the functions described here.
+
+
+\section*{Acknowledgments}
+
+The deconvolved-resolution-matrix framework follows the implementation
+by Sergey Koposov (rvspecfit) and the original bin-integration model
+is due to Buhler (2024). The reconciliation presented here, and the
+corrected Jacobian, were developed during \textsc{FastSpecFit}
+PR\,\#252.
+
+\end{document}
