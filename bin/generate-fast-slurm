@@ -17,16 +17,16 @@ that fastspecfit and desispec are importable and DESI_SPECTRO_REDUX is set.
 Examples
 --------
 # Print remaining-work summary only (no files written):
-python gen-slurm.py --specprod loa --njobs 4 --nodes 16 --mp 16 --plan
+generate-fast-slurm --specprod loa --njobs 4 --nodes 16 --mp 16 --plan
 
 # Generate 4 balanced .slurm files in the current directory:
-python gen-slurm.py --specprod loa --njobs 4 --nodes 16 --mp 16
+generate-fast-slurm --specprod loa --njobs 4 --nodes 16 --mp 16
 
 # Generate and immediately submit:
-python gen-slurm.py --specprod loa --njobs 4 --nodes 16 --mp 16 --submit
+generate-fast-slurm --specprod loa --njobs 4 --nodes 16 --mp 16 --submit
 
 # Override defaults for a fastphot run:
-python gen-slurm.py --specprod loa --stage fastphot --njobs 2 --nodes 32 --mp 16 \\
+generate-fast-slurm --specprod loa --stage fastphot --njobs 2 --nodes 32 --mp 16 \\
     --survey main --program dark,bright
 """
 
@@ -81,6 +81,20 @@ fi
 HEALPIX="{healpix_csv}"
 
 mpiscript=$(type -p mpi-fastspecfit)
+
+# Warm up Numba cache on a single rank before the parallel run.
+# Compiled artifacts go to $NUMBA_CACHE_DIR (shared Lustre), so all
+# subsequent ranks load from cache rather than recompiling.
+FIRST_HEALPIX=$(echo "$HEALPIX" | cut -d',' -f1)
+warmup_args="--specprod={specprod} --coadd-type={coadd_type}"
+warmup_args+=" --survey={survey} --program={program}"
+warmup_args+=" --healpix=$FIRST_HEALPIX"
+warmup_args+=" --mp=1 --ntargets=1 --nompi --nolog"
+warmup_args+=" --outdir-data=/tmp/fastspecfit-warmup --overwrite"
+{stage_flag_warmup}
+echo "Warming up Numba cache on one rank..."
+srun --nodes=1 --ntasks=1 --cpus-per-task=2 --cpu-bind=cores $mpiscript $warmup_args
+echo "Warm-up complete."
 
 args="--specprod={specprod}"
 args+=" --coadd-type={coadd_type}"
@@ -167,10 +181,13 @@ def generate_slurm(args, groups, group_totals, healpix_ids, ntargets):
     prefix = 'fastphot' if args.stage == 'fastphot' else 'fastspec'
     njobs = sum(1 for g in groups if g)
     stage_flag = ''
+    stage_flag_warmup = ''
     if args.stage == 'fastphot':
         stage_flag = 'args+=" --fastphot"'
+        stage_flag_warmup = 'warmup_args+=" --fastphot"'
     elif args.stage == 'makeqa':
         stage_flag = 'args+=" --makeqa"'
+        stage_flag_warmup = 'warmup_args+=" --makeqa"'
 
     env_script = os.path.abspath(args.env_script)
     outdir_data = os.path.expandvars(args.outdir_data)
@@ -208,6 +225,7 @@ def generate_slurm(args, groups, group_totals, healpix_ids, ntargets):
             outdir_data=outdir_data,
             healpix_csv=healpix_csv,
             stage_flag=stage_flag,
+            stage_flag_warmup=stage_flag_warmup,
         )
 
         slurm_file = os.path.join(args.outdir_scripts, f'{job_name}.slurm')
