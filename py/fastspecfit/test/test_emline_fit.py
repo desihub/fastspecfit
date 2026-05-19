@@ -8,9 +8,7 @@ import numpy as np
 import pytest
 
 from fastspecfit.util import C_LIGHT
-
-# DESI Gaussian pre-convolution width (σ_G); must match resolution.SIGMA0_ANGSTROM
-SIGMA_G = 0.5  # Angstroms
+from fastspecfit.resolution import SIGMA0_ANGSTROM as SIGMA_G
 
 
 # ── shared fixtures ───────────────────────────────────────────────────────────
