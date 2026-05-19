@@ -5,6 +5,14 @@ Change Log
 3.4.0 (not released yet)
 ------------------------
 
+* Production infrastructure overhaul: hoist ``MPPool`` creation out of the
+  per-file loop in ``mpi-fastspecfit`` (templates now loaded once per rank
+  rather than once per file); replace ``joblib.Parallel`` with ``MPPool`` for
+  ``--mp-per-file`` mode; auto-detect per-file vs per-object parallelism when
+  average targets per file is less than ``--mp``; add idempotency guard to
+  ``Singletons.initialize()``; fix ``--ignore-photometry`` bug in
+  ``build_cmdargs``; add ``bin/generate-fast-slurm`` for balanced Slurm job
+  generation; add ``etc/`` production run scripts and READMEs [`PR #253`_].
 * Fix position-dependent flux bias in emission-line fitting: replace the
   Buhler per-bin CDF integration forward model with Gaussian point evaluation
   matched to the Gaussian pre-convolution expected by the deconvolved resolution
@@ -19,6 +27,7 @@ Change Log
   Carlo emission-line refits from the nominal best-fit values; add
   ``bin/profile-fastspec`` profiling harness [`PR #251`_].
 
+.. _`PR #253`: https://github.com/desihub/fastspecfit/pull/253
 .. _`PR #252`: https://github.com/desihub/fastspecfit/pull/252
 .. _`PR #251`: https://github.com/desihub/fastspecfit/pull/251
 
