@@ -103,48 +103,46 @@ flux.
 \paragraph{Extraction model.}
 DESI spectra are produced by an optimal extraction that encodes the
 wavelength-dependent instrumental line-spread function (LSF) in a sparse
-resolution matrix $\R$.  For an ideal (noiseless) spectrum, the extracted
-flux vector $\mathbf{d}$ and the true spectral flux vector $\mathbf{f}$
-(sampled at pixel centers) are related by
+resolution matrix $\R$, stored in band (diagonal) format with ${\sim}11$
+diagonals and row-normalized to preserve integrated flux.  For an ideal
+continuous spectrum $f(\lambda)$, the extracted flux at pixel $i$ is the
+integral
 \begin{equation}
-  \mathbf{d} \;=\; \R\,\mathbf{f}.
+  d_i \;=\; \int_0^\infty K(\lambda_i,\lambda)\,f(\lambda)\,d\lambda,
+  \label{eq:continuous}
 \end{equation}
-$\R$ is stored in DESI FITS files in band (diagonal) format with
-$\sim$11 diagonals and is normalized so that each row sums to unity,
-preserving integrated flux.
+where $K(\lambda_i,\lambda)$ is the effective extraction kernel encoded by
+$\R$.  The familiar discrete relation $\mathbf{d} \approx \R\,\mathbf{f}$
+(with $\mathbf{f}$ evaluated at pixel centers) approximates $f$ as constant
+within each pixel; it is accurate for broad, slowly varying features but
+fails for unresolved emission lines.
 
-\paragraph{Deconvolved representation.}
-Rather than inverting $\R$ directly (which amplifies noise), the
-approach of Koposov pre-convolves the model with a reference Gaussian
-of width $\sG$ (the \emph{pre-convolution kernel}) and constructs a
-deconvolved resolution matrix $\W$ such that
+\paragraph{Pre-convolved representation.}
+A more accurate discretization rewrites \eqref{eq:continuous} in terms of
+the $\sG$-pre-convolved spectrum evaluated at pixel centers,
+$h_j = (G_{\sG}*f)(\lambda_j)$.  Defining the Gaussian design matrix
+$M_{ij} = G(\lambda_i - \lambda_j;\,0,\,\sG)$, so that
+$\mathbf{h} \approx \M\,\mathbf{f}$ and $\mathbf{f} \approx \inv{\M}\,\mathbf{h}$,
+gives
 \begin{equation}
   \mathbf{d} \;\approx\; \W\,\mathbf{h},
+  \qquad
+  \W \;=\; \R\,\inv{\M}.
   \label{eq:deconv}
 \end{equation}
-where $\mathbf{h}_j = (G_{\sG} * f)(\lambda_j)$ is the true spectrum
-pre-convolved with the reference Gaussian, evaluated at pixel center
-$\lambda_j$.  Concretely, let $\M$ be the design matrix of the reference
-Gaussian,
-\begin{equation}
-  M_{ij} \;=\; G\!\left(\lambda_i - \lambda_j;\, 0,\, \sG\right),
-\end{equation}
-which maps $\mathbf{f} \mapsto \mathbf{h} = \M\,\mathbf{f}$ approximately.
-Then $\mathbf{f} \approx \inv{\M}\,\mathbf{h}$ and
-\begin{equation}
-  \W \;=\; \R\,\inv{\M}.
-  \label{eq:W}
-\end{equation}
-\textsc{FastSpecFit} uses $\sG = \sigma_0 = 0.5$\,\AA\ (the constant
-\texttt{SIGMA0\_ANGSTROM} in \texttt{resolution.py}), which is chosen to be
-broad enough to regularize the inversion of $\M$ while remaining small
-compared to the DESI LSF.
+Because $h_j = \int G(\lambda_j - \lambda;\,0,\,\sG)\,f(\lambda)\,d\lambda$
+is a weighted integral of $f$ rather than a point evaluation, it more
+faithfully represents the continuous spectrum even for features as narrow as
+one pixel.  \textsc{FastSpecFit} uses $\sG = \sigma_0 = 0.5$\,\AA\ (the
+constant \texttt{SIGMA0\_ANGSTROM} in \texttt{resolution.py}), much smaller
+than the DESI LSF FWHM (${\sim}2$\,\AA), so that $h_j \approx f_j$ for
+broad features while providing an accurate discretization for narrow ones.
 
 \paragraph{Forward-model strategy.}
-Given an analytic expression for $\mathbf{h}$, equation~\eqref{eq:deconv}
-provides the predicted extracted spectrum directly.  The problem reduces to
-computing the pre-convolved model
-$h_j = (G_{\sG} * f)(\lambda_j)$ analytically.
+Given an analytic expression for $h_j = (G_{\sG}*f)(\lambda_j)$,
+equation~\eqref{eq:deconv} provides the predicted extracted spectrum
+directly, without numerical integration.  The problem reduces to evaluating
+the pre-convolved profile $\mathbf{h}$ analytically.
 
 
 \section{Pre-Convolved Forward Model}
