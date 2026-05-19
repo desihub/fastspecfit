@@ -68,9 +68,10 @@ def emline_model_jacobian(line_parameters,
         shifted_line     = line_wavelengths[j] * line_shift
         log_shifted_line = np.log(shifted_line)
 
-        sigma_G_log = sigma_G / shifted_line
-        sigma_eff   = np.sqrt(sigma**2 + sigma_G_log**2)
-        amp_eff     = amp * sigma / sigma_eff
+        sigma_G_log        = sigma_G / shifted_line
+        sigma_eff          = np.sqrt(sigma**2 + sigma_G_log**2)
+        amp_eff            = amp * sigma / sigma_eff
+        amp_over_sigma_eff = amp / sigma_eff  # finite even when sigma=0
 
         lo = np.searchsorted(log_obs_bin_centers,
                              log_shifted_line - MAX_SDEV * sigma_eff,
@@ -90,8 +91,9 @@ def emline_model_jacobian(line_parameters,
         inv_sigma_eff_sq   = 1.  / sigma_eff**2
 
         for i in range(lo, hi):
-            x = log_obs_bin_centers[i] - log_shifted_line
-            g = amp_eff * np.exp(-x**2 * inv_2_sigma_eff_sq)
+            x     = log_obs_bin_centers[i] - log_shifted_line
+            gauss = np.exp(-x**2 * inv_2_sigma_eff_sq)
+            g     = amp_eff * gauss
 
             # dF/d(amplitude)
             dda_vals[i - lo] = g / amp
@@ -100,10 +102,11 @@ def emline_model_jacobian(line_parameters,
             # so dx/d(vshift) = -1/C_LIGHT
             ddv_vals[i - lo] = g * x * inv_sigma_eff_sq / C_LIGHT
 
-            # dF/d(line_sigma): chain rule through sigma = line_sigma / C_LIGHT
-            # dF/dsigma = g * [1/sigma - sigma*(1 - x^2*inv_sigma_eff_sq)*inv_sigma_eff_sq]
-            dds_vals[i - lo] = g / C_LIGHT * \
-                (1. / sigma - sigma * (1. - x**2 * inv_sigma_eff_sq) * inv_sigma_eff_sq)
+            # dF/d(line_sigma): written as (amp/sigma_eff)*exp*(...) rather than
+            # g*(1/sigma - ...) to avoid 1/sigma -> inf when line_sigmas[j]=0;
+            # the two forms are algebraically identical for sigma > 0
+            dds_vals[i - lo] = amp_over_sigma_eff * gauss / C_LIGHT * \
+                (1. - sigma**2 * (1. - x**2 * inv_sigma_eff_sq) * inv_sigma_eff_sq)
 
         starts[j] = lo
         ends[j]   = hi

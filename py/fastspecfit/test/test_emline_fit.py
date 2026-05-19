@@ -279,6 +279,19 @@ class TestEmlineModelJacobian:
             assert np.allclose(analytic, fd, atol=1e-6, rtol=1e-3), \
                 f"Jacobian mismatch for parameter index {k}"
 
+    def test_zero_sigma_no_error(self, grid, single_line):
+        """Jacobian does not raise when line_sigma=0 (sigma derivative has a finite limit)."""
+        from fastspecfit.emline_fit.jacobian import emline_model_jacobian
+        lw, p = _line_arrays(single_line)
+        p = p.copy()
+        p[2] = 0.  # zero line width
+        endpts, dd = emline_model_jacobian(p, grid['log_centers'],
+                                           single_line['redshift'], lw, SIGMA_G, padding=0)
+        # sigma derivative row should be all finite (no NaN/inf)
+        nlines = len(lw)
+        s, e = endpts[2 * nlines]
+        assert np.all(np.isfinite(dd[2 * nlines, :e - s]))
+
 
 # ── flux recovery ─────────────────────────────────────────────────────────────
 
