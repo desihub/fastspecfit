@@ -71,11 +71,17 @@ class Singletons(object):
             ``False``.
 
         """
-        # adjust logging level if requested
         if log_verbose:
             log.setLevel(DEBUG)
 
-        # templates for continnuum fitting
+        key = (emlines_file, fphotofile, fastphot, fitstack, ignore_photometry,
+               template_file, template_version, template_imf,
+               vdisp_nominal, tuple(vdisp_bounds) if vdisp_bounds is not None else None)
+        if getattr(self, '_init_key', None) == key:
+            return
+        self._init_key = key
+
+        # templates for continuum fitting
         self.templates = Templates(template_file=template_file,
                                    template_version=template_version,
                                    imf=template_imf,
