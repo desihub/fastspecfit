@@ -30,6 +30,8 @@ Note: The main integration tests (`test_fastphot`, `test_fastspec`) download tem
 sphinx-build -W --keep-going -b html doc doc/_build/html
 ```
 
+Technical notes (LaTeX) are in `doc/technote/`. Build with `make` in that directory.
+
 ### Style check
 CI runs `flake8` with custom ignores defined in `pyproject.toml` under `[tool.flake8]`.
 
@@ -53,6 +55,7 @@ Defined in `pyproject.toml` and implemented in `py/fastspecfit/fastspecfit.py`:
 - `stackfit` — fit stacked/coadded spectra
 - `fastqa` — generate QA figures from output catalogs
 - `mpi-fastspecfit` (bin script) — MPI parallel execution across many files
+- `profile-fastspec` (bin script) — profiling tool for fastspec performance
 
 ## Architecture
 
@@ -82,11 +85,11 @@ This pattern avoids re-reading large files in multiprocessing workers.
 | `fastspecfit.py` | CLI parsing, top-level `fastspec`/`fastphot` drivers, per-object dispatch |
 | `continuum.py` | `ContinuumTools` class — stellar SED fitting against SPS templates with dust attenuation and velocity dispersion |
 | `emlines.py` | `EMFitTools` class — emission-line fitting orchestration |
-| `emline_fit/` | Numba-accelerated emission-line model, Jacobian, sparse representation, and parameter mapping |
+| `emline_fit/` | Numba-accelerated emission-line model (Gaussian point evaluation at pixel centers), Jacobian, sparse representation, and parameter mapping |
 | `io.py` | `DESISpectra` class for reading DESI spectra; output FITS writing |
 | `photometry.py` | `Photometry` class — filter curves (via speclite), photometric bands, dust reddening |
 | `templates.py` | `Templates` class — reads SPS template FITS files, manages FFT convolution caching for velocity dispersion broadening |
-| `resolution.py` | DESI resolution matrix handling; deconvolution using Koposov/rvspecfit approach |
+| `resolution.py` | DESI resolution matrix handling; deconvolution using Koposov/rvspecfit approach; defines `SIGMA0_ANGSTROM` pre-convolution Gaussian sigma |
 | `linetable.py` | Reads `data/emlines.ecsv` emission-line parameter table |
 | `igm.py` | `Inoue14` IGM attenuation (Ly-α forest) |
 | `cosmo.py` | Tabulated DESI fiducial cosmology interpolation |

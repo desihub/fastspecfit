@@ -5,6 +5,10 @@ This script queries the remaining work for a given specprod and stage by
 calling fastspecfit.mpi.plan(), divides the outstanding healpix pixels into
 N balanced jobs (by target count), and writes one .slurm file per job.
 
+For samplefile runs (--samplefile), use etc/fastspecfit-sample.sh instead.
+A samplefile job runs as a single mpi-fastspecfit invocation across as many
+nodes as needed; MPI distributes the healpix files across ranks automatically.
+
 Requirements
 ------------
 The DESI software environment must be sourced before running this script so
@@ -66,7 +70,13 @@ N={nodes}
 mp={mp}
 
 ntasks=$(( 128 * N / mp ))
-cpus_per_task=$(( mp * 2 ))
+if [[ $mp -gt 1 ]]; then
+    cpus_per_task=$(( mp * 2 ))
+    cpu_bind="none"
+else
+    cpus_per_task=2
+    cpu_bind="cores"
+fi
 
 HEALPIX="{healpix_csv}"
 
@@ -80,7 +90,7 @@ args+=" --mp=$mp"
 args+=" --outdir-data={outdir_data}"
 args+=" --healpix=$HEALPIX"
 {stage_flag}
-srun_args="--nodes=$N --ntasks=$ntasks --cpus-per-task=$cpus_per_task --cpu-bind=none"
+srun_args="--nodes=$N --ntasks=$ntasks --cpus-per-task=$cpus_per_task --cpu-bind=$cpu_bind"
 
 cmd="time srun $srun_args $mpiscript $args"
 echo "$cmd"
