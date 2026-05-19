@@ -684,3 +684,186 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
             _domerge(outfiles, mergefile=mergefile, outprefix=outprefix,
                      specprod=specprod, coadd_type=coadd_type, fastphot=fastphot,
                      split_hdu=split_hdu, nside_main=nside_main, mp=mp)
+
+
+# ---------------------------------------------------------------------------
+# build_cmdargs: originally in bin/mpi-fastspecfit, moved here so that the
+# per-file worker (_perfile_run) can call it from the fastspecfit.mpi module.
+# ---------------------------------------------------------------------------
+
+def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
+                  input_redshifts=False):
+    """Build the command-line argument string for fastspec, fastphot, or fastqa.
+
+    Parameters
+    ----------
+    args : :class:`argparse.Namespace`
+        Parsed command-line arguments.
+    redrockfile : :class:`str`
+        Path to the input redrock file (or QA output directory for ``--makeqa``).
+    outfile : :class:`str`
+        Path to the output FITS file (or input file for ``--makeqa``).
+    sample : :class:`astropy.table.Table` or None, optional
+        Optional target sample table with columns ``{SURVEY, PROGRAM, HEALPIX, TARGETID}``.
+    fastphot : :class:`bool`, optional
+        If ``True``, build arguments for ``fastphot`` instead of ``fastspec``.
+    input_redshifts : :class:`bool`, optional
+        If ``True``, include input redshifts from ``sample['Z']``.
+
+    Returns
+    -------
+    cmd : :class:`str`
+        Executable name (``'fastspec'``, ``'fastphot'``, or ``'fastqa'``).
+    cmdargs : :class:`str`
+        Command-line argument string.
+    logfile : :class:`str`
+        Path to the log file.
+
+    """
+    if args.makeqa:
+        cmd = 'fastqa'
+        cmdargs = f'{outfile} -o={redrockfile} --mp={args.mp}'
+    else:
+        cmd = 'fastphot' if fastphot else 'fastspec'
+        cmdargs = f'{redrockfile} -o={outfile} --mp={args.mp}'
+
+        if args.ignore_quasarnet:
+            cmdargs += ' --ignore-quasarnet'
+        if args.ignore_photometry:
+            cmdargs += ' --ignore-photometry'
+        if args.no_smooth_continuum:
+            cmdargs += ' --no-smooth-continuum'
+        if args.templates:
+            cmdargs += f' --templates={args.templates}'
+        if args.templateversion:
+            cmdargs += f' --templateversion={args.templateversion}'
+        if args.fphotodir:
+            cmdargs += f' --fphotodir={args.fphotodir}'
+        if args.fphotofile:
+            cmdargs += f' --fphotofile={args.fphotofile}'
+        if args.emlinesfile:
+            cmdargs += f' --emlinesfile={args.emlinesfile}'
+        if args.nmonte:
+            cmdargs += f' --nmonte={args.nmonte}'
+        if args.vdisp_nominal:
+            cmdargs += f' --vdisp-nominal={args.vdisp_nominal}'
+        if args.vdisp_bounds:
+            cmdargs += f' --vdisp-bounds {float(args.vdisp_bounds[0])} {float(args.vdisp_bounds[1])}'
+        if args.seed:
+            cmdargs += f' --seed={args.seed}'
+
+        if sample is not None:
+            _, survey, program, healpix = os.path.basename(redrockfile).split('-')
+            healpix = int(healpix.split('.')[0])
+            I = ((sample['SURVEY'] == survey) * (sample['PROGRAM'] == program) *
+                 (sample['HEALPIX'] == healpix))
+            targetids = ','.join(sample[I]['TARGETID'].astype(str))
+            cmdargs += f' --targetids={targetids}'
+            if input_redshifts:
+                inputz = ','.join(sample[I]['Z'].astype(str))
+                cmdargs += f' --input-redshifts={inputz}'
+        else:
+            if args.targetids is not None:
+                cmdargs += f' --targetids={args.targetids}'
+
+    if args.verbose:
+        cmdargs += ' --verbose'
+    if args.ntargets is not None:
+        cmdargs += f' --ntargets={args.ntargets}'
+    if args.firsttarget is not None:
+        cmdargs += f' --firsttarget={args.firsttarget}'
+
+    if args.makeqa:
+        logfile = os.path.join(redrockfile, os.path.basename(outfile).replace('.gz', '').replace('.fits', '.log'))
+    else:
+        logfile = outfile.replace('.gz', '').replace('.fits', '.log')
+
+    return cmd, cmdargs, logfile
+
+
+# ---------------------------------------------------------------------------
+# Per-file parallel worker state and functions (used by MPPool when
+# --mp-per-file is set).  Placing these in the fastspecfit.mpi module (rather
+# than in bin/mpi-fastspecfit) makes them picklable by fully-qualified name,
+# which is required when multiprocessing uses the 'spawn' start method.
+#
+# _perfile_init() is the pool initializer: called once per worker at startup.
+# _perfile_run()  is the per-task function: called once per healpix file.
+# ---------------------------------------------------------------------------
+
+_perfile_sample = None
+_perfile_rank = None
+_perfile_fastphot = False
+_perfile_input_redshifts = False
+
+
+def _perfile_init(init_sc_args, sample, rank, fastphot, input_redshifts):
+    """Pool initializer for --mp-per-file mode.
+
+    Loads sc_data once per worker process and stores per-run state in
+    module-level globals so that _perfile_run() can access them without
+    per-task pickling overhead.
+    """
+    global _perfile_sample, _perfile_rank, _perfile_fastphot, _perfile_input_redshifts
+    from fastspecfit.singlecopy import sc_data
+    sc_data.initialize(**init_sc_args)
+    _perfile_sample = sample
+    _perfile_rank = rank
+    _perfile_fastphot = fastphot
+    _perfile_input_redshifts = input_redshifts
+
+
+def _perfile_run(redrockfile, outfile, ntarget, args):
+    """Per-file worker task for --mp-per-file mode.
+
+    Reads worker state from module-level globals set by _perfile_init(),
+    builds per-file command args (forcing --mp=1 so no inner pool is
+    created), and calls fastspec/fastphot for this file.
+    """
+    import copy
+    import fastspecfit.mpi as _mpi
+    from desispec.parallel import stdouterr_redirected
+
+    if _mpi._perfile_fastphot:
+        from fastspecfit.fastspecfit import fastphot as fast
+    else:
+        from fastspecfit.fastspecfit import fastspec as fast
+
+    # Force mp=1: all parallelism is at the file level; no inner pool needed.
+    args_inner = copy.copy(args)
+    args_inner.mp = 1
+
+    cmd, cmdargs, logfile = build_cmdargs(
+        args_inner, redrockfile, outfile,
+        sample=_mpi._perfile_sample,
+        fastphot=_mpi._perfile_fastphot,
+        input_redshifts=_mpi._perfile_input_redshifts,
+    )
+
+    if _mpi._perfile_rank == 0:
+        log.info(f'Rank {_mpi._perfile_rank}: ntargets={ntarget}: {cmd} {cmdargs}')
+
+    if getattr(args, 'dry_run', False):
+        return
+
+    try:
+        t1 = time.time()
+        outdir = os.path.dirname(logfile)
+        if not os.path.isdir(outdir):
+            os.makedirs(outdir, exist_ok=True)
+
+        if getattr(args, 'nolog', False):
+            err = fast(args=cmdargs.split(), comm=None)
+        else:
+            with stdouterr_redirected(to=logfile, overwrite=args.overwrite, comm=None):
+                err = fast(args=cmdargs.split(), comm=None)
+
+        log.info(f'Rank {_mpi._perfile_rank} done in {(time.time() - t1)/60.:.2f} min')
+        if err != 0:
+            if not os.path.exists(outfile):
+                log.warning(f'Rank {_mpi._perfile_rank} missing {outfile}')
+                raise IOError
+    except:
+        log.warning(f'Rank {_mpi._perfile_rank} raised an exception')
+        import traceback
+        traceback.print_exc()
