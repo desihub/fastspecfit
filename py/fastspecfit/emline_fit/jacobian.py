@@ -98,9 +98,8 @@ def emline_model_jacobian(line_parameters,
             # dF/d(amplitude)
             dda_vals[i - lo] = g / amp
 
-            # dF/d(vshift): d(log_shifted_line)/d(vshift) = 1/C_LIGHT,
-            # so dx/d(vshift) = -1/C_LIGHT
-            ddv_vals[i - lo] = g * x * inv_sigma_eff_sq / C_LIGHT
+            # dF/d(vshift): d(log_shifted_line)/d(vshift) = 1/(C_LIGHT * line_shift)
+            ddv_vals[i - lo] = g * x * inv_sigma_eff_sq / (C_LIGHT * line_shift)
 
             # dF/d(line_sigma): written as (amp/sigma_eff)*exp*(...) rather than
             # g*(1/sigma - ...) to avoid 1/sigma -> inf when line_sigmas[j]=0;
