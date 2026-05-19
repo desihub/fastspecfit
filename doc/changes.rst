@@ -2,9 +2,16 @@
 Change Log
 ==========
 
-3.3.1 (not released yet)
+3.4.0 (not released yet)
 ------------------------
 
+* Fix position-dependent flux bias in emission-line fitting: replace the
+  Buhler per-bin CDF integration forward model with Gaussian point evaluation
+  matched to the Gaussian pre-convolution expected by the deconvolved resolution
+  matrix; switch reported line flux to the analytic formula
+  ``sqrt(2π)·A·λ*·σ/c``; update the Jacobian accordingly; remove dead
+  ``norm_cdf``/``norm_pdf`` code; extend unit tests with flux-recovery and
+  sub-pixel position-independence checks on a linear-lambda grid [`PR #252`_].
 * Performance optimizations: replace TRF continuum optimizer with Variable
   Projection (VARPRO) for all ``fit_vdisp=False`` cases; vectorize the VARPRO
   inner loop (batched phi construction, spectroscopy, and photometry); use loose
@@ -12,6 +19,7 @@ Change Log
   Carlo emission-line refits from the nominal best-fit values; add
   ``bin/profile-fastspec`` profiling harness [`PR #251`_].
 
+.. _`PR #252`: https://github.com/desihub/fastspecfit/pull/252
 .. _`PR #251`: https://github.com/desihub/fastspecfit/pull/251
 
 

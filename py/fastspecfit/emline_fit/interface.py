@@ -1,17 +1,11 @@
 import numpy as np
-from math import erf, erfc
 
 from numba import jit
 
+from fastspecfit.resolution import SIGMA0_ANGSTROM
+
 from .params_mapping import ParamsMapping
 from .sparse_rep import EMLineJacobian
-
-from .utils import (
-    MAX_SDEV,
-    norm_pdf,
-    norm_cdf,
-    max_buffer_width,
-)
 
 from .model import (
     emline_model,
@@ -86,8 +80,8 @@ class EMLine_Objective(object):
             self.nPatches = 0
             self.J_P = None
 
-        self.log_obs_bin_edges, self.ibin_widths = \
-            _prepare_bins(obs_bin_centers, camerapix)
+        self.log_obs_bin_centers = np.log(obs_bin_centers)
+        self.sigma_G = SIGMA0_ANGSTROM
 
         # temporary storage to prevent allocation in params_mapping
         # on every call to objective/jacobian
@@ -126,8 +120,8 @@ class EMLine_Objective(object):
         _build_model_core(line_parameters,
                           self.line_wavelengths,
                           self.redshift,
-                          self.log_obs_bin_edges,
-                          self.ibin_widths,
+                          self.log_obs_bin_centers,
+                          self.sigma_G,
                           self.resolution_matrices,
                           self.camerapix,
                           model_fluxes)
@@ -185,18 +179,12 @@ class EMLine_Objective(object):
         for icam, campix in enumerate(self.camerapix):
             s, e = campix
 
-            # Actual inverse bin widths are in ibin_widths[s+1:e+2].
-            # Setup guarantees that at least one more array entry
-            # exists to either side of this range, so we can pass
-            # those in as dummies.
-            ibw = self.ibin_widths[s:e+3]
-
             idealJac = \
                 emline_model_jacobian(line_parameters,
-                                      self.log_obs_bin_edges[s+icam:e+icam+1],
-                                      ibw,
+                                      self.log_obs_bin_centers[s:e],
                                       self.redshift,
                                       self.line_wavelengths,
+                                      self.sigma_G,
                                       self.resolution_matrices[icam].ndiag)
 
             # ignore any columns corresponding to fixed parameters
@@ -250,15 +238,15 @@ def build_model(redshift,
 
     """
 
-    log_obs_bin_edges, ibin_widths = _prepare_bins(obs_bin_centers, camerapix)
+    log_obs_bin_centers = np.log(obs_bin_centers)
 
     model_fluxes = np.empty_like(obs_bin_centers, dtype=obs_bin_centers.dtype)
 
     _build_model_core(line_parameters,
                       line_wavelengths,
                       redshift,
-                      log_obs_bin_edges,
-                      ibin_widths,
+                      log_obs_bin_centers,
+                      SIGMA0_ANGSTROM,
                       resolution_matrices,
                       camerapix,
                       model_fluxes)
@@ -540,32 +528,22 @@ def find_peak_amplitudes_and_fluxes(line_parameters,
 def _build_model_core(line_parameters,
                       line_wavelengths,
                       redshift,
-                      log_obs_bin_edges,
-                      ibin_widths,
+                      log_obs_bin_centers,
+                      sigma_G,
                       resolution_matrices,
                       camerapix,
                       model_fluxes):
     """Compute resolution-convolved combined model fluxes, writing into ``model_fluxes``."""
 
     for icam, campix in enumerate(camerapix):
-
-        # start and end for obs fluxes of camera icam
         s, e = campix
-
-        # Actual inverse bin widths are in ibin_widths[s+1:e+2].
-        # Setup guarantees that at least one more array entry
-        # exists to either side of this range, so we can pass
-        # those in as dummies.
-        ibw = ibin_widths[s:e+3]
 
         mf = emline_model(line_wavelengths,
                           line_parameters,
-                          log_obs_bin_edges[s+icam:e+icam+1],
+                          log_obs_bin_centers[s:e],
                           redshift,
-                          ibw)
+                          sigma_G)
 
-        # convolve model with resolution matrix and store in
-        # this camera's subrange of model_fluxes
         resolution_matrices[icam].dot(mf, model_fluxes[s:e])
 
 
@@ -578,34 +556,22 @@ def _build_multimodel_core(line_parameters,
                            consumer_fun):
     """Compute sparse per-line models for each camera and pass each to ``consumer_fun``."""
 
-    log_obs_bin_edges, ibin_widths = _prepare_bins(obs_bin_centers,
-                                                   camerapix)
+    log_obs_bin_centers = np.log(obs_bin_centers)
 
     for icam, campix in enumerate(camerapix):
-
-        # start and end for obs fluxes of camera icam
         s, e = campix
 
-        # Actual inverse bin widths are in ibin_widths[s+1:e+2].
-        # Setup guarantees that at least one more array entry
-        # exists to either side of this range, so we can pass
-        # those in as dummies.
-        ibw = ibin_widths[s:e+3]
-
-        # compute model waveform for each spectral line
         line_models = emline_perline_models(line_wavelengths,
                                             line_parameters,
-                                            log_obs_bin_edges[s+icam:e+icam+1],
+                                            log_obs_bin_centers[s:e],
                                             redshift,
-                                            ibw,
+                                            SIGMA0_ANGSTROM,
                                             resolution_matrices[icam].ndiag)
 
-        # convolve each line's waveform with resolution matrix
         endpts, M = mulWMJ(np.ones(e - s),
                            resolution_matrices[icam].rowdata(),
                            line_models)
 
-        # adjust endpoints to reflect camera range
         endpts += s
 
         consumer_fun((endpts, M))
@@ -709,54 +675,3 @@ def mulWMJ(w, M, Jsp):
     return (endpts, J)
 
 
-@jit(nopython=True, nogil=True, cache=True)
-def _prepare_bins(centers, camerapix):
-    """Convert observed bin centers to log bin edges and inverse bin widths.
-
-    Parameters
-    ----------
-    centers : :class:`numpy.ndarray`
-        Center wavelength of each observed wavelength bin.
-    camerapix : :class:`numpy.ndarray` of int
-        Start and end wavelength bin indices for each camera.
-
-    Returns
-    -------
-    log_obs_bin_edges : :class:`numpy.ndarray`
-        Natural log of each bin edge wavelength.  Edges are placed
-        halfway between adjacent centers, with extrapolation at the ends.
-        One extra edge per camera gap is included.
-    ibin_widths : :class:`numpy.ndarray`
-        Inverse bin widths, zero-padded by one entry on each end.
-
-    """
-
-    ncameras = camerapix.shape[0]
-    edges = np.empty(len(centers) + ncameras, dtype=centers.dtype)
-    ibin_widths = np.empty(len(centers) + 2,  dtype=centers.dtype)
-
-    for icam, campix in enumerate(camerapix):
-
-        s, e = campix
-        icenters = centers[s:e]
-
-        #- interior edges are just points half way between bin centers
-        int_edges = 0.5 * (icenters[:-1] + icenters[1:])
-
-        #- exterior edges are extrapolation of interior bin sizes
-        edge_l = icenters[ 0] - (icenters[ 1] - int_edges[ 0])
-        edge_r = icenters[-1] + (icenters[-1] - int_edges[-1])
-
-        edges[s + icam]              = edge_l
-        edges[s + icam + 1:e + icam] = int_edges
-        edges[e + icam]              = edge_r
-
-        # add 1 to indices i ibin_widths to skip dummy at 0
-        ibin_widths[s+1:e+1] = 1. / np.diff(edges[s+icam : e+icam+1])
-
-    # dummies before and after widths are needed
-    # for corner cases in edge -> bin computation
-    ibin_widths[0]  = 0.
-    ibin_widths[-1] = 0.
-
-    return (np.log(edges), ibin_widths)
