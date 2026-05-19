@@ -1,0 +1,80 @@
+Running a full specprod at NERSC
+================================
+
+Use this workflow to fit all (or a survey/program subset of) healpix pixels
+in a spectroscopic production (specprod).  Work is divided into balanced
+Slurm jobs by target count using generate-fast-slurm.
+
+Files used
+----------
+  etc/fastspecfit-env.sh      module loads and environment variables
+  bin/generate-fast-slurm     plan remaining work and generate .slurm files
+
+Step 1 — set up the environment
+--------------------------------
+On a login node or in an interactive session:
+
+  source etc/fastspecfit-env.sh [fastspecfit_version]
+
+Set OUTDIR_DATA if the default ($PSCRATCH/fastspecfit/data) is not suitable:
+
+  export OUTDIR_DATA=/path/to/output
+
+Step 2 — plan remaining work
+-----------------------------
+Query how many targets and healpix files are still unprocessed, and preview
+how they would be divided across N jobs:
+
+  generate-fast-slurm \
+      --specprod loa \
+      --survey main --program dark,bright \
+      --njobs 4 --nodes 32 --mp 16 \
+      --plan
+
+The --plan flag prints a summary without writing any files.  Adjust --njobs,
+--nodes, and --mp until the estimated wall times are acceptable.
+
+Step 3 — generate Slurm scripts
+---------------------------------
+Drop --plan to write one .slurm file per job:
+
+  generate-fast-slurm \
+      --specprod loa \
+      --survey main --program dark,bright \
+      --njobs 4 --nodes 32 --mp 16 \
+      --outdir-scripts ./slurm
+
+Each generated script includes a single-rank Numba warm-up step before the
+full srun, so no separate cache pre-population is required.
+
+For a fastphot run add --stage fastphot; for QA add --stage makeqa.
+
+Step 4 — submit
+----------------
+Either submit by hand:
+
+  sbatch slurm/fastspec-loa-job01.slurm
+  sbatch slurm/fastspec-loa-job02.slurm
+  ...
+
+or let generate-fast-slurm submit immediately:
+
+  generate-fast-slurm ... --submit
+
+Step 5 — merge output catalogs
+--------------------------------
+After all jobs complete, merge the per-healpix FITS files into survey-level
+catalogs:
+
+  mpi-fastspecfit --specprod loa \
+      --survey main --program dark \
+      --merge --outdir-data $OUTDIR_DATA
+
+Node / worker arithmetic (Perlmutter CPU, 128 physical cores per node)
+-----------------------------------------------------------------------
+  MPI ranks per node   = 128 / mp
+  Total MPI ranks      = 128 * nodes / mp
+  cpus-per-task        = mp * 2  (hyperthreading)
+  Effective workers    = 128 * nodes  (all cores busy)
+
+Empirical throughput: ~1.5 objects / min / physical core (fastspec).
