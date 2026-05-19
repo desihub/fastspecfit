@@ -341,6 +341,15 @@ def main():
     specprod_dir = None
     outdir_data = os.path.expanduser(os.path.expandvars(args.outdir_data))
 
+    # Must be set before MPI.Init(): forking after MPI initialization is unsafe.
+    # https://docs.nersc.gov/development/languages/python/parallel-python/#use-the-spawn-start-method
+    if args.mp > 1 and 'NERSC_HOST' in os.environ:
+        import multiprocessing
+        try:
+            multiprocessing.set_start_method('spawn')
+        except RuntimeError:
+            pass  # already set
+
     if args.nompi:
         comm = None
     else:
@@ -357,10 +366,6 @@ def main():
         rank = comm.rank
     else:
         rank = 0
-        # https://docs.nersc.gov/development/languages/python/parallel-python/#use-the-spawn-start-method
-        if args.mp > 1 and 'NERSC_HOST' in os.environ:
-            import multiprocessing
-            multiprocessing.set_start_method('spawn')
 
     # If an input samplefile is provided, read and broadcast it.
     if args.samplefile is None:
