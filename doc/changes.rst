@@ -2,7 +2,7 @@
 Change Log
 ==========
 
-3.3.1 (not released yet)
+3.4.0 (not released yet)
 ------------------------
 
 * Fix position-dependent flux bias in emission-line fitting: replace the
