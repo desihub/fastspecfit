@@ -17,6 +17,7 @@ except:
     C_LIGHT = 299792.458  # [km/s]
 
 FLUXNORM = 1e17  # flux normalization factor for all DESI spectra [erg/s/cm2/A]
+NMONTE_DEFAULT = 50
 
 TINY = np.nextafter(0, 1, dtype=np.float32)
 SQTINY = np.sqrt(TINY)
@@ -565,6 +566,22 @@ def _trapz_rebin(x, y, edges, ibw, out):
         results[i] = 0.5 * ibw[i] * a
 
     return results
+
+
+@jit(nopython=True, nogil=True, fastmath=True, cache=True)
+def _trapz_rebin_batch(x, Y, edges, ibw, out):
+    """Apply :func:`_trapz_rebin` to each row of ``Y`` (ntemplates × npix).
+
+    Parameters
+    ----------
+    x : :class:`numpy.ndarray`, shape (npix,)
+    Y : :class:`numpy.ndarray`, shape (ntemplates, npix)
+    edges, ibw : precomputed bin edges and inverse widths from :func:`trapz_rebin_pre`
+    out : :class:`numpy.ndarray`, shape (ntemplates, nbins)
+
+    """
+    for t in range(Y.shape[0]):
+        _trapz_rebin(x, Y[t], edges, ibw, out[t])
 
 
 @jit(nopython=True, nogil=True, cache=True)

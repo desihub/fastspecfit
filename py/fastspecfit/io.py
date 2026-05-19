@@ -1556,7 +1556,7 @@ def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_col
 def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
                       specprod=None, coadd_type=None, fphotofile=None,
                       template_file=None, emlinesfile=None, fastphot=False,
-                      inputz=False, inputseeds=None, nmonte=10, vdisp_nominal=VDISP_NOMINAL,
+                      inputz=False, inputseeds=None, nmonte=50, vdisp_nominal=VDISP_NOMINAL,
                       vdisp_bounds=VDISP_BOUNDS, seed=1, uncertainty_floor=0.01,
                       minsnr_balmer_broad=2.5, nside=None, no_smooth_continuum=False,
                       ignore_photometry=False, broadlinefit=True, use_quasarnet=True,

@@ -70,7 +70,8 @@ package-dir = {"" = "py"}
 script-files = [
     "bin/build-templates",
     "bin/get-cutouts",
-    "bin/mpi-fastspecfit"
+    "bin/mpi-fastspecfit",
+    "bin/profile-fastspec"
 ]
 
 [tool.setuptools.package-data]
