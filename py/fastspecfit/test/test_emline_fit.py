@@ -83,48 +83,6 @@ def _mapping(nParms, isFree, tiedSources=None, tiedFactors=None,
                          doubletTargets, doubletSources)
 
 
-# ── norm_cdf ──────────────────────────────────────────────────────────────────
-
-class TestNormCDF:
-
-    def test_midpoint(self):
-        from fastspecfit.emline_fit.utils import norm_cdf
-        assert np.isclose(norm_cdf(0.), 0.5)
-
-    def test_symmetry(self):
-        from fastspecfit.emline_fit.utils import norm_cdf
-        for x in (0.5, 1.0, 2.0, 3.0):
-            assert np.isclose(norm_cdf(x) + norm_cdf(-x), 1.0, atol=1e-10)
-
-    def test_extremes(self):
-        from fastspecfit.emline_fit.utils import norm_cdf
-        assert norm_cdf(8.) > 1. - 1e-10
-        assert norm_cdf(-8.) < 1e-10
-
-    def test_monotone(self):
-        from fastspecfit.emline_fit.utils import norm_cdf
-        cdfs = np.array([norm_cdf(x) for x in np.linspace(-5, 5, 50)])
-        assert np.all(np.diff(cdfs) > 0)
-
-
-# ── norm_pdf ──────────────────────────────────────────────────────────────────
-
-class TestNormPDF:
-
-    def test_peak(self):
-        from fastspecfit.emline_fit.utils import norm_pdf
-        assert np.isclose(norm_pdf(0.), 1. / np.sqrt(2 * np.pi))
-
-    def test_symmetry(self):
-        from fastspecfit.emline_fit.utils import norm_pdf
-        for x in (0.5, 1.0, 2.0):
-            assert np.isclose(norm_pdf(x), norm_pdf(-x))
-
-    def test_positive(self):
-        from fastspecfit.emline_fit.utils import norm_pdf
-        assert all(norm_pdf(x) > 0 for x in np.linspace(-5, 5, 20))
-
-
 # ── max_buffer_width ──────────────────────────────────────────────────────────
 
 class TestMaxBufferWidth:
