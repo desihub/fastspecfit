@@ -330,7 +330,8 @@ def main():
         else:
             sample = Table()
 
-        sample = comm.bcast(sample, root=0)
+        if comm:
+            sample = comm.bcast(sample, root=0)
 
     # Parse some of the inputs.
     if args.samplefile is None and args.coadd_type == 'healpix':
