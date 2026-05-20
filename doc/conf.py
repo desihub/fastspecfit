@@ -31,19 +31,16 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
-    'sphinx_toolbox.collapse',
+    'sphinx_design',
     'sphinx.ext.napoleon',
-    'sphinx_rtd_theme'
 ]
 
-# Configuration for intersphinx, copied from astropy.
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3/', None),
     'numpy': ('https://numpy.org/doc/stable/', None),
     'scipy': ('https://docs.scipy.org/doc/scipy/', None),
     'matplotlib': ('https://matplotlib.org/stable/', None),
     'astropy': ('https://docs.astropy.org/en/stable/', None),
-    'h5py': ('https://docs.h5py.org/en/latest/', None),
     'desiutil': ('https://desiutil.readthedocs.io/en/latest/', None),
     }
 
@@ -61,7 +58,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'fastspecfit'
-copyright = u'2019-2025, John Moustakas & the DESI Collaboration'
+copyright = u'John Moustakas & the DESI Collaboration'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -298,4 +295,3 @@ texinfo_documents = [
 
 # If true, do not generate a @detailmenu in the "Top" node's menu.
 #texinfo_no_detailmenu = False
-

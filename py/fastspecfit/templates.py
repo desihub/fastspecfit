@@ -18,6 +18,42 @@ VDISP_NOMINAL = 250. # [km/s]
 VDISP_BOUNDS = (75., 500.) # [km/s]
 
 class Templates(object):
+    """Stellar population synthesis templates for continuum fitting.
+
+    Reads SPS template spectra from a FITS file and pre-caches FFTs for
+    velocity-dispersion convolution up to :attr:`MAX_PRE_VDISP` km/s.
+
+    Parameters
+    ----------
+    template_file : :class:`str` or None, optional
+        Full path to the SPS template FITS file. Auto-detected from
+        ``FTEMPLATES_DIR`` when ``None``.
+    template_version : :class:`str` or None, optional
+        Template version string used to build the filename when
+        ``template_file`` is ``None``. Defaults to
+        :attr:`DEFAULT_TEMPLATEVERSION`.
+    imf : :class:`str` or None, optional
+        Initial mass function used to build the filename when
+        ``template_file`` is ``None``. Defaults to :attr:`DEFAULT_IMF`.
+    mintemplatewave : :class:`float` or None, optional
+        Minimum wavelength to load into memory (Angstroms). Uses the
+        minimum available wavelength when ``None``.
+    maxtemplatewave : :class:`float`, optional
+        Maximum wavelength to load into memory (Angstroms). Default is
+        400 000 Å.
+    vdisp_nominal : :class:`float`, optional
+        Nominal velocity dispersion in km/s used to pre-broaden the
+        templates. Default is :data:`VDISP_NOMINAL`.
+    vdisp_bounds : tuple of float, optional
+        ``(min, max)`` velocity dispersion bounds in km/s. Default is
+        :data:`VDISP_BOUNDS`.
+    fastphot : :class:`bool`, optional
+        If ``True``, load in photometry-only mode. Default is ``False``.
+    read_linefluxes : :class:`bool`, optional
+        If ``True``, also read the model emission-line flux arrays.
+        Default is ``False``.
+
+    """
 
     # SPS template constants (used by build-templates)
     # https://github.com/cconroy20/fsps/tree/master/SPECTRA/C3K#readme
@@ -36,25 +72,6 @@ class Templates(object):
     def __init__(self, template_file=None, template_version=None, imf=None,
                  mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=VDISP_NOMINAL,
                  vdisp_bounds=VDISP_BOUNDS, fastphot=False, read_linefluxes=False):
-        """"
-        Read the templates into a dictionary.
-
-        Parameters
-        ----------
-        template_file : :class:`str`
-            Full path to the templates to read. Defaults to the output of
-            :class:`get_templates_filename`.
-        template_version : :class:`str`
-            Version of the templates.
-        mapdir : :class:`str`, optional
-            Full path to the Milky Way dust maps.
-        mintemplatewave : :class:`float`, optional, defaults to None
-            Minimum template wavelength to read into memory. If ``None``, the minimum
-            available wavelength is used (around 100 Angstrom).
-        maxtemplatewave : :class:`float`, optional, defaults to 6e4
-            Maximum template wavelength to read into memory.
-
-        """
         self.init_ffts()
 
         if template_file is None:
@@ -161,16 +178,7 @@ class Templates(object):
 
 
     def init_ffts(self):
-        """
-        Use MKL's accelerated FFT backend in SciPy if available.
-        If other FFT libraries are acceptable, we can also
-        check for them here.
-
-        Set the appropriate convolution function to call
-        for non-cached convolutions in convolve_vdisp(),
-        based on what we believe to be fastest.
-
-        """
+        """Configure the FFT backend and set the convolution function."""
         import scipy.fft as sc_fft
         import scipy.signal as sc_sig
         from importlib.util import find_spec
@@ -187,28 +195,27 @@ class Templates(object):
 
     @staticmethod
     def get_templates_filename(template_version, imf):
-        """Get the templates filename.
-
-        """
+        """Build the SPS template filename from ``FTEMPLATES_DIR``, version, and IMF."""
         template_dir = os.path.expandvars(os.environ.get('FTEMPLATES_DIR'))
         template_file = os.path.join(template_dir, template_version, f'ftemplates-{imf}-{template_version}.fits')
         return template_file
 
 
     def convolve_vdisp_pre(self, templateflux):
-        """Given a 2D array of of one or more template fluxes, return a
-        preprocessing structure to accelerate future vdisp convolutions via the
-        FFT. This structure is unpacked in
-        ContinuumTools.build_stellar_continuum()
+        """Precompute FFT data to accelerate repeated velocity-dispersion convolutions.
 
         Parameters
         ----------
-        templateflux: :class:`np.ndarray`
-            [ntemplates x nwavelengths] array of templates
+        templateflux : :class:`numpy.ndarray`, shape (ntemplates, nwavelengths)
+            Array of template flux spectra.
 
         Returns
         -------
-        preprocessing structure
+        conv_pre : :class:`tuple`
+            ``(flux_lohi, ft_flux_mid, fft_len)`` where ``flux_lohi`` contains
+            the raw fluxes outside :attr:`PIXKMS_BOUNDS`, ``ft_flux_mid`` is
+            the FFT of the central wavelength range, and ``fft_len`` is the
+            padded FFT length.
 
         """
         import scipy.fft as sc_fft
@@ -238,21 +245,21 @@ class Templates(object):
 
     @staticmethod
     def conv_pre_select(conv_pre, rows):
-        """
-        Filter a set of preprocessing data for vdisp convolution
-        to use only the specified rows (templates)
+        """Select a subset of templates from a :meth:`convolve_vdisp_pre` result.
 
         Parameters
         ----------
-        conv_pre: :class:`tuple` or None
-            Preprocessing structure for vdisp convolution (may be None)
-        rows: :class:`int`
-            Which rows (templates) from the preprocessing
-            data should we keep?
+        conv_pre : :class:`tuple` or None
+            Preprocessing structure from :meth:`convolve_vdisp_pre`, or
+            ``None``.
+        rows : array-like of int
+            Indices of the templates to keep.
 
         Returns
         -------
-        Revised preprocessing data with only the selected rows
+        conv_pre_subset : :class:`tuple` or None
+            Preprocessing data restricted to the selected rows, or ``None``
+            if ``conv_pre`` is ``None``.
 
         """
         if conv_pre is None:
@@ -263,33 +270,29 @@ class Templates(object):
 
 
     def convolve_vdisp_from_pre(self, flux_lohi, ft_flux_mid, flux_len, fft_len, vdisp):
-        """
-        Convolve an array of fluxes with a velocity dispersion, using
-        precomputed Fourier transform information for the fluxes.  The
-        raw array is not passed as an argument; instead, it is decomposed
-        into a central region, for which we receive only the Fourier transform
-        in ft_flux_mid, and peripheral regions, for which we receive the raw fluxes
-        in flux_lohi.
+        """Convolve a pre-decomposed spectrum with a velocity dispersion.
+
+        Uses precomputed FFT data for the central wavelength range (from
+        :meth:`convolve_vdisp_pre`) and raw fluxes for the peripheral ranges.
 
         Parameters
         ----------
-        flux_lohi: :class:`np.ndarray` (float64)
-            1D array of fluxes for wavelengths outside the wavelength range
-            defined by self.pixkms_bounds.  Lower and upper ranges are
-            concatenated together.
-        ft_flux_mid: :class:`np.ndarray` (complex128)
-            FT of fluxes for range definded by self.pixkms_bounds
-        flux_len: :class:`int`
-            Total length of flux array to be returned
-        fft_len: :class:`int`
-            Length of the FFT for ft_flux_mid
-        vdisp: :class:`float64`
-            Velocity dispersion to convolve with fluxes
+        flux_lohi : :class:`numpy.ndarray`, shape (2*lo,)
+            Concatenated raw fluxes for wavelengths outside
+            :attr:`PIXKMS_BOUNDS`.
+        ft_flux_mid : :class:`numpy.ndarray` of complex
+            FFT of the central wavelength range.
+        flux_len : :class:`int`
+            Total length of the output flux array.
+        fft_len : :class:`int`
+            Padded FFT length used for ``ft_flux_mid``.
+        vdisp : :class:`float`
+            Velocity dispersion in km/s; must be ≤ :attr:`MAX_PRE_VDISP`.
 
         Returns
         -------
-        1D array of flux_len fluxes, equivalent to what would be
-        computed for the raw array of input fluxes by convolve_vdisp().
+        output : :class:`numpy.ndarray`, shape (flux_len,)
+            Convolved flux spectrum.
 
         """
 
@@ -323,22 +326,24 @@ class Templates(object):
 
 
     def convolve_vdisp(self, templateflux, vdisp):
-        """
-        Convolve one or more arrays of fluxes with a velocity dispersion.
+        """Convolve one or more template spectra with a velocity dispersion.
+
+        Only the wavelength range defined by :attr:`PIXKMS_BOUNDS` is
+        convolved; pixels outside that range are copied unchanged.
 
         Parameters
         ----------
-        templateflux: :class:`np.ndarray`
-           Either a 1D template array of fluxes, or a 2D array of size
-          [ntemplates x nfluxes] representing ntemplates fluxes
-        vdisp: :class:`float64`
-           Velocity dispersion to convolve with fluxes
+        templateflux : :class:`numpy.ndarray`
+            Either a 1D spectrum or a 2D array of shape
+            ``(ntemplates, nwavelengths)``.
+        vdisp : :class:`float`
+            Velocity dispersion in km/s.
 
         Returns
         -------
-        Array with convlution of template(s) with vdisp.  Only
-        fluxes in the range self.pixkms_bounds are convolved;
-        the rest are copied unchanged.
+        output : :class:`numpy.ndarray`
+            Convolved spectrum or array of spectra, same shape as
+            ``templateflux``.
 
         """
         from scipy.signal import oaconvolve
@@ -374,28 +379,14 @@ class Templates(object):
 
     @staticmethod
     def _gaussian_radius(sigma):
-        """
-        Compute the radius of a Gaussian filter with sttdev sigma.
-
-        Note: truncation removes very small tail values of Gaussian
-        to limit size of filter.
-
-        """
+        """Return the truncated radius (in pixels) of a Gaussian kernel with stddev ``sigma``."""
         truncate = 4.
         return int(truncate * sigma + 0.5)
 
 
     @staticmethod
     def _gaussian_kernel1d(sigma, radius, order=0):
-        """
-        Computes a 1-D Gaussian convolution kernel.
-
-        Borrowed from scipy.ndimage.  Width of kernel
-        is 2 * radius + 1.
-
-        order == k > 0 --> compute kth derivative of kernel
-
-        """
+        """Compute a 1-D Gaussian convolution kernel of width ``2*radius + 1``."""
         sigma2 = sigma * sigma
         x = np.arange(-radius, radius+1, dtype=np.float64)
         phi_x = np.exp(-0.5 / sigma2 * x ** 2)
@@ -423,21 +414,17 @@ class Templates(object):
 
     @staticmethod
     def klambda(wave):
-        """Construct the total-to-selective attenuation curve, k(lambda).
+        """Construct the total-to-selective dust attenuation curve k(lambda).
 
         Parameters
         ----------
-        wave : :class:`numpy.ndarray` [npix]
-            Input rest-frame wavelength array in Angstrom.
+        wave : :class:`numpy.ndarray`
+            Rest-frame wavelength array in Angstroms.
 
         Returns
         -------
-        :class:`numpy.ndarray` [npix]
-            Total-to-selective attenuation curve, k(lambda).
-
-        Notes
-        -----
-        ToDo: support more sophisticated dust models.
+        klambda : :class:`numpy.ndarray`
+            Total-to-selective attenuation curve, same shape as ``wave``.
 
         """
         dust_power = -0.7     # power-law slope

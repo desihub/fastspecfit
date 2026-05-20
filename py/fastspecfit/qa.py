@@ -112,7 +112,47 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
                init_vshift_uv=None, init_vshift_narrow=None,
                init_vshift_balmer=None, fastphot=False, fitstack=False,
                inputz=False, no_smooth_continuum=False, outdir=None, outprefix=None):
-    """Multiprocessing wrapper to generate QA for a single object.
+    """Generate a QA figure for a single object.
+
+    Prepares the spectrum data and then calls :func:`qa_fastspec` to produce
+    the figure.
+
+    Parameters
+    ----------
+    data : :class:`dict`
+        Spectral data dictionary for one object.
+    metadata : :class:`astropy.table.Row`
+        Metadata row for the object.
+    specphot : :class:`astropy.table.Row`
+        Spectrophotometric measurements row.
+    coadd_type : :class:`str`
+        Coadd type (e.g. ``'healpix'``).
+    fastfit : :class:`astropy.table.Row` or None, optional
+        Emission-line fit results; ``None`` for ``fastphot`` mode.
+    minspecwave : :class:`float`, optional
+        Minimum wavelength displayed in the spectral panel (Angstroms).
+    maxspecwave : :class:`float`, optional
+        Maximum wavelength displayed in the spectral panel (Angstroms).
+    minphotwave : :class:`float`, optional
+        Minimum wavelength displayed in the photometric panel (microns).
+    maxphotwave : :class:`float`, optional
+        Maximum wavelength displayed in the photometric panel (microns).
+    emline_snrmin : :class:`float`, optional
+        Minimum emission-line S/N for display. Default is 0.
+    nsmoothspec : :class:`int`, optional
+        Boxcar smoothing width for the displayed spectrum. Default is 1.
+    fastphot : :class:`bool`, optional
+        If ``True``, generate photometry-only QA. Default is ``False``.
+    fitstack : :class:`bool`, optional
+        If ``True``, process a stacked spectrum. Default is ``False``.
+    inputz : :class:`bool`, optional
+        If ``True``, use the input redshift. Default is ``False``.
+    no_smooth_continuum : :class:`bool`, optional
+        If ``True``, do not smooth the continuum model. Default is ``False``.
+    outdir : :class:`str` or None, optional
+        Output directory for the PNG figure.
+    outprefix : :class:`str` or None, optional
+        Optional filename prefix.
 
     """
     from fastspecfit.io import one_spectrum, one_stacked_spectrum
@@ -143,7 +183,50 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
                 phot_wavelims=(0.1, 35), fastphot=False, fitstack=False,
                 outprefix=None, no_smooth_continuum=False, emline_snrmin=0.0,
                 nsmoothspec=1, outdir=None, inputz=None):
-    """QA plot the emission-line spectrum and best-fitting model.
+    """Generate and write a QA figure for one fitted object.
+
+    Produces a multi-panel PNG showing the observed spectrum, best-fit
+    continuum and emission-line model, broadband photometry, and key derived
+    quantities.
+
+    Parameters
+    ----------
+    data : :class:`dict`
+        Spectral data dictionary for one object.
+    templates : :class:`fastspecfit.templates.Templates`
+        Stellar population synthesis templates.
+    metadata : :class:`astropy.table.Row`
+        Targeting and redshift metadata for the object.
+    specphot : :class:`astropy.table.Row`
+        Spectrophotometric measurements row.
+    fastspec : :class:`astropy.table.Row` or None, optional
+        Emission-line and continuum fit results; ``None`` for ``fastphot``
+        mode.
+    coadd_type : :class:`str`, optional
+        Coadd type (e.g. ``'healpix'``). Default is ``'healpix'``.
+    spec_wavelims : tuple of float, optional
+        ``(min, max)`` spectral wavelength range in Angstroms. Default is
+        ``(3550, 9900)``.
+    phot_wavelims : tuple of float, optional
+        ``(min, max)`` photometric wavelength range in microns. Default is
+        ``(0.1, 35)``.
+    fastphot : :class:`bool`, optional
+        If ``True``, generate photometry-only QA. Default is ``False``.
+    fitstack : :class:`bool`, optional
+        If ``True``, this is a stacked spectrum. Default is ``False``.
+    outprefix : :class:`str` or None, optional
+        Optional prefix for the output filename.
+    no_smooth_continuum : :class:`bool`, optional
+        If ``True``, do not smooth the continuum model. Default is ``False``.
+    emline_snrmin : :class:`float`, optional
+        Minimum emission-line S/N ratio for display. Default is 0.
+    nsmoothspec : :class:`int`, optional
+        Boxcar smoothing width applied to the displayed spectrum. Default is
+        1.
+    outdir : :class:`str` or None, optional
+        Output directory; defaults to the current directory.
+    inputz : :class:`bool` or None, optional
+        If ``True``, use the input redshift rather than the fitted one.
 
     """
     from urllib.request import urlretrieve
@@ -522,6 +605,8 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
             templates.flux_nolines, specphot['COEFF'],
             vdisp=specphot['VDISP'], conv_pre=templates.conv_pre_nolines,
             tauv=specphot['TAUV'])
+        if fitstack:
+            contmodel *= 1e-17 # FIXME!
 
         _desicontinuum = CTools.continuum_to_spectroscopy(contmodel, interp=True)
 
@@ -1313,9 +1398,7 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
 
 
 def parse(options=None):
-    """Parse input arguments.
-
-    """
+    """Parse input arguments for the ``fastqa`` command."""
     import sys, argparse
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -1369,7 +1452,14 @@ def parse(options=None):
     return args
 
 def fastqa(args=None, comm=None):
-    """Main module.
+    """Entry point for the ``fastqa`` CLI: read fitting results and generate QA figures.
+
+    Parameters
+    ----------
+    args : :class:`list` or None, optional
+        Command-line argument list; parsed from ``sys.argv`` when ``None``.
+    comm : MPI communicator or None, optional
+        MPI communicator for parallel execution.
 
     """
     import fitsio
@@ -1381,11 +1471,13 @@ def fastqa(args=None, comm=None):
         args = parse(args)
 
     if args.redux_dir is None:
-        if not 'DESI_SPECTRO_REDUX' in os.environ:
-            errmsg = "'DESI_SPECTRO_REDUX' environment variable or redux_dir must be set"
+        if args.redrockfiles is None and 'DESI_SPECTRO_REDUX' not in os.environ:
+            errmsg = ("'DESI_SPECTRO_REDUX' environment variable or --redux_dir must be "
+                      "set when --redrockfiles is not provided.")
             log.critical(errmsg)
             raise KeyError(errmsg)
-        args.redux_dir = os.path.expandvars(os.environ.get('DESI_SPECTRO_REDUX'))
+        if 'DESI_SPECTRO_REDUX' in os.environ:
+            args.redux_dir = os.path.expandvars(os.environ.get('DESI_SPECTRO_REDUX'))
     else:
         args.redux_dir = os.path.expandvars(args.redux_dir)
 
@@ -1471,7 +1563,7 @@ def fastqa(args=None, comm=None):
         'emlines_file':      args.emlinesfile,
         'fphotofile':        args.fphotofile,
         'fastphot':          fastphot,
-        'fitstack':          args.stackfit,
+        'fitstack':          coadd_type == 'stacked',
         'ignore_photometry': ignore_photometry,
         'template_file':     args.templates,
         'template_version':  args.templateversion,

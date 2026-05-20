@@ -18,6 +18,7 @@ except:
 
 FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
 MASSNORM = 1e10 # mass normalization factor
+NMONTE_DEFAULT = 50
 
 TINY = np.nextafter(0, 1, dtype=np.float32)
 SQTINY = np.sqrt(TINY)
@@ -25,15 +26,19 @@ F32MAX = np.finfo(np.float32).max
 
 
 class BoxedScalar(object):
-    """
-    A BoxedScalar is an item of an Numpy
-    structured scalar type that is initialized
-    to all zeros and can then be passed
-    around by reference.  Access the .value
-    field to unbox the scalar.
+    """A zero-initialized NumPy structured scalar that can be passed by reference.
+
+    Parameters
+    ----------
+    dtype : dtype-like
+        NumPy dtype of the scalar value.
+
+    Attributes
+    ----------
+    value : numpy scalar
+        The boxed value; access via ``.value`` to unbox.
 
     """
-
     def __init__(self, dtype):
         self.value = np.zeros(1, dtype=dtype)[0]
 
@@ -45,25 +50,22 @@ class BoxedScalar(object):
 
 
 class MPPool(object):
-    """
-    A Pool encapsulates paraallel execution with a
-    multiprocessing.Pool, falling back to sequential
-    execution in the current process if just one worker
-    is requested.
+    """Parallel execution pool that falls back to sequential for a single worker.
 
-    Unlike multiprocessing.Pool, our starmap() function
-    takes a list of keyword argument dictionaries,
-    rather than a list of positional arguments.
+    Unlike :class:`multiprocessing.Pool`, :meth:`starmap` accepts a list of
+    keyword-argument dictionaries rather than positional arguments.
+
+    Parameters
+    ----------
+    nworkers : :class:`int`
+        Number of worker processes. When 1, work runs in the current process.
+    initializer : callable or None, optional
+        Function to call in each worker subprocess at startup.
+    init_argdict : :class:`dict` or None, optional
+        Keyword arguments passed to ``initializer`` at startup.
 
     """
     def __init__(self, nworkers, initializer=None, init_argdict=None):
-        """
-        create a pool with nworkers workers, using the current
-        process if nworkers is 1.  If initiializer is not None,
-        apply this function to the arguments in keyword dictionary
-        init_argdict on startup in each each worker subprocess.
-
-        """
         initfunc = None if initializer is None else self.apply_to_dict
 
         # If multiprocessing, create a pool of worker processes and initialize
@@ -78,11 +80,7 @@ class MPPool(object):
 
 
     def starmap(self, func, argdicts):
-        """
-        apply function func to each of a list of inputs, represented
-        as a list of keyword argument dictionaries.
-
-        """
+        """Apply ``func`` to each keyword-argument dict in ``argdicts``."""
         # we cannot pickle a local function, so we must pass
         # both func and the argument dictionary to the subprocess
         # worker and have it apply one to the other.
@@ -97,10 +95,7 @@ class MPPool(object):
         return out
 
     def close(self):
-        """
-        close our multiprocess pool if we created one
-
-        """
+        """Close the multiprocessing pool if one was created."""
         if self.pool is not None:
             self.pool.close()
 
@@ -110,14 +105,10 @@ class MPPool(object):
 
 
 class ZWarningMask(object):
-    """
-    Mask bit definitions for zwarning.
-    Taken from Redrock/0.15.4
-    WARNING on the warnings: not all of these are implemented yet.
+    """Redrock ``ZWARN`` bitmask definitions (from Redrock 0.15.4).
 
-    #- TODO: Consider using something like desispec.maskbits to provide a more
-    #- convenient wrapper class (probably copy it here; don't make a dependency)
-    #- That class as-is would bring in a yaml dependency.
+    Not all flags are currently used by fastspecfit.
+
     """
     SKY               = 2**0  #- sky fiber
     LITTLE_COVERAGE   = 2**1  #- too little wavelength coverage
@@ -146,27 +137,25 @@ class ZWarningMask(object):
 
 
 def mwdust_transmission(ebv, filtername):
-    """Convert SFD E(B-V) value to dust transmission 0-1 given the bandpass.
+    """Convert SFD E(B-V) to Milky Way dust transmission in a given bandpass.
 
-    Args:
-        ebv (float or array-like): SFD E(B-V) value(s)
-        filtername (str): Filter name, e.g., 'decam2014-r'.
+    Parameters
+    ----------
+    ebv : :class:`float` or array-like
+        SFD E(B-V) reddening value(s).
+    filtername : :class:`str`
+        Filter name, e.g. ``'decam2014-r'``.
 
-    Returns:
-        Scalar or array (same as ebv input), Milky Way dust transmission 0-1.
+    Returns
+    -------
+    transmission : :class:`float` or :class:`numpy.ndarray`
+        Milky Way dust transmission (0–1), same shape as ``ebv``.
 
-    Note:
-
-        This function tabulates the total-to-selective extinction ratio,
-        k_X=A(X)/E(B-V) for many different filter bandpasses, X, where
-        A(X)=-2.5*log10(transmission in X band). And so given the ebv, it
-        returns mwdust_transmission=10**(-0.4*k_X*ebv).
-
-    Returns:
-        scalar, total extinction A(band) = -2.5*log10(transmission(band))
-
-    Notes:
-        Based on `desiutil.dust.mwdust_transmission`.
+    Notes
+    -----
+    Uses tabulated k_X = A(X)/E(B-V) values where
+    transmission = 10^{-0.4 * k_X * ebv}. Based on
+    ``desiutil.dust.mwdust_transmission``.
 
     """
     k_X = {
@@ -229,10 +218,20 @@ def mwdust_transmission(ebv, filtername):
 
 
 def var2ivar(var, sigma=False):
-    """Simple function to safely turn a (scalar, for now) variance into an
-    inverse variance.
+    """Safely convert a scalar variance (or standard deviation) to an inverse variance.
 
-    if sigma=True then assume that `var` is a standard deviation
+    Parameters
+    ----------
+    var : :class:`float`
+        Variance, or standard deviation when ``sigma=True``.
+    sigma : :class:`bool`, optional
+        If ``True``, treat ``var`` as a standard deviation. Default is
+        ``False``.
+
+    Returns
+    -------
+    ivar : :class:`float`
+        Inverse variance; 0 when ``var`` is too small to invert safely.
 
     """
     if sigma:
@@ -249,8 +248,27 @@ def var2ivar(var, sigma=False):
 
 
 def ivar2var(ivar, clip=1e-8, sigma=False, allmasked_ok=False):
-    """Safely convert an inverse variance to a variance. Note that we clip at 1e-3
-    by default, not zero.
+    """Safely convert an inverse variance array to variance (or sigma).
+
+    Parameters
+    ----------
+    ivar : :class:`numpy.ndarray`
+        Inverse variance array.
+    clip : :class:`float`, optional
+        Minimum ``ivar`` value treated as valid. Default is 1e-8.
+    sigma : :class:`bool`, optional
+        If ``True``, return the square root (i.e. standard deviation).
+        Default is ``False``.
+    allmasked_ok : :class:`bool`, optional
+        If ``True``, return zeros rather than raising when all pixels are
+        masked. Default is ``False``.
+
+    Returns
+    -------
+    var : :class:`numpy.ndarray`
+        Variance (or sigma) array; zero where ``ivar <= clip``.
+    goodmask : :class:`numpy.ndarray` of bool
+        ``True`` where ``ivar > clip``.
 
     """
     var = np.zeros_like(ivar)
@@ -272,7 +290,7 @@ def ivar2var(ivar, clip=1e-8, sigma=False, allmasked_ok=False):
 
 # currently unused - JDB
 def air2vac(airwave):
-    """http://www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion"""
+    """Convert an air wavelength in Angstroms to vacuum wavelength."""
     if airwave <= 0:
         raise ValueError('Input wavelength is not defined.')
     ss = 1e4 / airwave
@@ -281,19 +299,20 @@ def air2vac(airwave):
 
 
 def find_minima(x):
-    """Return indices of local minima of x, including edges.
+    """Return indices of local minima of ``x``, including edges.
 
-    The indices are sorted small to large.
+    Indices are sorted in ascending order of ``x`` value. Conservative with
+    repeated values: ``find_minima([1,1,1,2,2,2])`` returns ``[0,1,2,4,5]``.
 
-    Note:
-        this is somewhat conservative in the case of repeated values:
-        find_minima([1,1,1,2,2,2]) -> [0,1,2,4,5]
+    Parameters
+    ----------
+    x : array-like
+        Input data array.
 
-    Args:
-        x (array-like): The data array.
-
-    Returns:
-        (array): The indices.
+    Returns
+    -------
+    ii : :class:`numpy.ndarray` of int
+        Indices of local minima, sorted by ``x`` value (smallest first).
 
     """
     x = np.asarray(x)
@@ -305,16 +324,31 @@ def find_minima(x):
 
 
 def minfit(x, y, return_coeff=False):
-    """Fits y = y0 + ((x-x0)/xerr)**2
+    """Fit a parabola y = y0 + ((x - x0) / xerr)^2 to find the minimum.
 
-    See redrock.zwarning.ZWarningMask.BAD_MINFIT for zwarn failure flags
+    Parameters
+    ----------
+    x : array-like
+        x values.
+    y : array-like
+        y values.
+    return_coeff : :class:`bool`, optional
+        If ``True``, also return the raw polynomial coefficients ``(a, b,
+        c)``. Default is ``False``.
 
-    Args:
-        x (array): x values.
-        y (array): y values.
-
-    Returns:
-        (tuple):  (x0, xerr, y0, zwarn) where zwarn=0 is good fit.
+    Returns
+    -------
+    x0 : :class:`float`
+        x position of the parabola minimum (-1 on failure).
+    xerr : :class:`float`
+        Half-width of the parabola at unit height (-1 on failure).
+    y0 : :class:`float`
+        Minimum y value (-1 on failure).
+    zwarn : :class:`int`
+        Zero on success; :attr:`ZWarningMask.BAD_MINFIT` on failure.
+    coeff : :class:`tuple`, optional
+        Raw ``(a, b, c)`` polynomial coefficients; only present when
+        ``return_coeff=True``.
 
     """
     a, b, c = 0., 0., 0.
@@ -369,7 +403,7 @@ def minfit(x, y, return_coeff=False):
 #
 @jit(nopython=True, nogil=True, cache=True)
 def sigmaclip(c, low=3., high=3.):
-
+    """Iterative sigma-clipping; returns the clipped array and a boolean mask."""
     n  = len(c)
     mask = np.full(n, True, dtype=np.bool_)
 
@@ -406,18 +440,21 @@ def sigmaclip(c, low=3., high=3.):
 # than Numpy's standard version
 @jit(nopython=True, nogil=True, cache=True)
 def quantile(A, q):
+    """Compute quantile(s) ``q`` of array ``A`` (Numba-accelerated)."""
     return np.quantile(A, q)
 
 
 # Numba's median impl is also faster
 @jit(nopython=True, nogil=True, cache=True)
 def median(A):
+    """Compute the median of array ``A`` (Numba-accelerated)."""
     return np.median(A)
 
 
 # Open-coded Numba trapz is much faster than np.traz
 @jit(nopython=True, nogil=True, fastmath=True, cache=True)
 def trapz(y, x):
+    """Trapezoidal integration of ``y`` over ``x`` (Numba-accelerated)."""
     res = 0.
     for i in range(len(x) - 1):
         res += (x[i+1] - x[i]) * (y[i+1] + y[i])
@@ -425,31 +462,26 @@ def trapz(y, x):
 
 
 def trapz_rebin(src_x, src_y, bin_centers, out=None, pre=None):
-    """
-    Resample an signal src_y sampled at points src_x into
-    into a series of x-axis bins, in an area-conserving way
+    """Resample ``src_y`` into bins centered at ``bin_centers`` (area-conserving).
 
     Parameters
     ----------
-    src_y : :class:`numpy.ndarray` [npix]
-        Input signal
-    src_x : :class:`numpy.ndarray` [npix]
-        array of x coordinates corresponing to src_y
-    bin_centers : :class:`numpy.ndarray` [noutpix]
-        center x coordinates of output bins
-    out:  :class:`numpy.ndarray` or None
-        if not None, an array of correct size and type
-        that will receive the result of the computation.
-        If None, a new array will be allocated.
-    pre :
-        preprocessing data computed by trapz_rebin_pre(),
-        if available.  If not None, it must correspond
-        to the input bin_centers array.
+    src_x : :class:`numpy.ndarray`
+        x coordinates of the input signal.
+    src_y : :class:`numpy.ndarray`
+        Input signal sampled at ``src_x``.
+    bin_centers : :class:`numpy.ndarray`
+        Center x coordinates of the output bins.
+    out : :class:`numpy.ndarray` or None, optional
+        Pre-allocated output array; allocated if ``None``.
+    pre : :class:`tuple` or None, optional
+        Preprocessing data from :func:`trapz_rebin_pre`; computed from
+        ``bin_centers`` when ``None``.
 
     Returns
     -------
-    :class:`numpy.ndarray` [noutpix]
-        Resampled signal at centers of each bin
+    out : :class:`numpy.ndarray`
+        Resampled signal at the center of each output bin.
 
     """
     if pre == None:
@@ -461,21 +493,19 @@ def trapz_rebin(src_x, src_y, bin_centers, out=None, pre=None):
 
 
 def trapz_rebin_pre(bin_centers):
-    """
-    Perform preprocessing on the bin centers passed to trapz_rebin()
-    to avoid some computations each time it is called with these
-    same centers.
+    """Precompute bin edges and inverse widths for :func:`trapz_rebin`.
 
     Parameters
     ----------
-    bin_centers : :class:`numpy.ndarray` [npix]
-        array of bin centers for trapz_rebin()
+    bin_centers : :class:`numpy.ndarray`
+        Center x coordinates of the output bins.
 
     Returns
     -------
-    A preprocessing data structure that can be passed as the
-    'pre' argument of trapz_rebin whenever it is called with
-    the given bin_centers (for *any* src_x and src_y)
+    pre : :class:`tuple`
+        ``(edges, ibw)`` where ``edges`` are the bin edges and ``ibw`` is
+        the array of inverse bin widths. Pass as the ``pre`` argument to
+        :func:`trapz_rebin` to avoid recomputation.
 
     """
 
@@ -487,19 +517,7 @@ def trapz_rebin_pre(bin_centers):
 
 @jit(nopython=True, nogil=True, fastmath=True, cache=True)
 def _trapz_rebin(x, y, edges, ibw, out):
-    """
-    Trapezoidal rebinning
-
-    This implementation is optimized for compilation with Numba.  It
-    agrees with the earlier fastspecfit implementation to within around
-    1e-12 and is somewhat faster.  It also tolerates the first bin being
-    arbitrarily greater than the first x without performance loss. ibw is
-    the array of inverse bin widths.
-
-    We require, as did the original version of the code, that the values of x
-    extend strictly beyond the edges array in both directions.
-
-    """
+    """Numba-accelerated trapezoidal rebinning core."""
     # interpolated value of y at edge_x, which lies between x[j] and x[j+1]
     def y_at(edge_x, j): # j: largest j s.t. x[j] < edge_x
         return y[j] + (edge_x - x[j]) * (y[j+1] - y[j]) / (x[j+1] - x[j])
@@ -551,19 +569,35 @@ def _trapz_rebin(x, y, edges, ibw, out):
     return results
 
 
-@jit(nopython=True, nogil=True, cache=True)
-def centers2edges(centers):
-    """
-    Convert bin centers to bin edges, guessing at what you probably meant.
+@jit(nopython=True, nogil=True, fastmath=True, cache=True)
+def _trapz_rebin_batch(x, Y, edges, ibw, out):
+    """Apply :func:`_trapz_rebin` to each row of ``Y`` (ntemplates × npix).
 
     Parameters
     ----------
-    centers: :class:`numpy.ndarray`
-      bin centers
+    x : :class:`numpy.ndarray`, shape (npix,)
+    Y : :class:`numpy.ndarray`, shape (ntemplates, npix)
+    edges, ibw : precomputed bin edges and inverse widths from :func:`trapz_rebin_pre`
+    out : :class:`numpy.ndarray`, shape (ntemplates, nbins)
+
+    """
+    for t in range(Y.shape[0]):
+        _trapz_rebin(x, Y[t], edges, ibw, out[t])
+
+
+@jit(nopython=True, nogil=True, cache=True)
+def centers2edges(centers):
+    """Convert bin centers to bin edges by linear extrapolation at the boundaries.
+
+    Parameters
+    ----------
+    centers : :class:`numpy.ndarray`
+        Bin center coordinates.
 
     Returns
     -------
-    array: bin edges, length = len(centers) + 1
+    edges : :class:`numpy.ndarray`
+        Bin edge coordinates, length ``len(centers) + 1``.
 
     """
 
@@ -580,25 +614,23 @@ def centers2edges(centers):
 
 
 def radec2pix(nside, ra, dec):
-    '''Convert `ra`, `dec` to nested pixel number.
+    """Convert RA/Dec to HEALPix nested pixel numbers.
 
-    Args:
-        nside (int): HEALPix `nside`, ``2**k`` where 0 < k < 30.
-        ra (float or array): Right Accention in degrees.
-        dec (float or array): Declination in degrees.
+    Parameters
+    ----------
+    nside : :class:`int`
+        HEALPix ``nside`` parameter, must be ``2**k`` for 0 < k < 30.
+    ra : :class:`float` or array-like
+        Right ascension in degrees.
+    dec : :class:`float` or array-like
+        Declination in degrees.
 
-    Returns:
-        Array of integer pixel numbers using nested numbering scheme.
+    Returns
+    -------
+    pix : :class:`numpy.ndarray` of int
+        HEALPix pixel numbers in the nested scheme.
 
-    Notes:
-        This is syntactic sugar around::
-
-            hp.ang2pix(nside, ra, dec, lonlat=True, nest=True)
-
-        but also works with older versions of healpy that didn't have
-        `lonlat` yet.
-
-    '''
+    """
     import healpy as hp
     theta, phi = np.radians(90-dec), np.radians(ra)
     if np.isnan(np.sum(theta)) :

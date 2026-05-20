@@ -1,19 +1,11 @@
 import numpy as np
-from math import erf, erfc
 
 from numba import jit
 
-from fastspecfit.resolution import Resolution
+from fastspecfit.resolution import SIGMA0_ANGSTROM
 
 from .params_mapping import ParamsMapping
 from .sparse_rep import EMLineJacobian
-
-from .utils import (
-    MAX_SDEV,
-    norm_pdf,
-    norm_cdf,
-    max_buffer_width,
-)
 
 from .model import (
     emline_model,
@@ -27,8 +19,29 @@ from .jacobian import (
 
 
 class EMLine_Objective(object):
-    """
-    Objective function for emission-line fitting.
+    """Objective function for emission-line least-squares fitting.
+
+    Parameters
+    ----------
+    obs_bin_centers : :class:`numpy.ndarray`
+        Center wavelength of each observed wavelength bin.
+    obs_fluxes : :class:`numpy.ndarray`
+        Observed flux in each wavelength bin.
+    obs_weights : :class:`numpy.ndarray`
+        Weighting factors for each wavelength bin in the residual.
+    redshift : float
+        Redshift of the observed spectrum.
+    line_wavelengths : :class:`numpy.ndarray`
+        Nominal rest-frame wavelengths of all fitted lines in Angstroms.
+    resolution_matrices : tuple of :class:`fastspecfit.resolution.Resolution`
+        Resolution matrices for each camera.
+    camerapix : :class:`numpy.ndarray` of int
+        Start and end wavelength bin indices for each camera.
+    params_mapping : :class:`~fastspecfit.emline_fit.params_mapping.ParamsMapping`
+        Mapping from free to full line parameters.
+    continuum_patches : dict or None, optional
+        Patch pedestal parameters, or ``None`` if not used.
+
     """
 
     def __init__(self,
@@ -41,28 +54,6 @@ class EMLine_Objective(object):
                  camerapix,
                  params_mapping,
                  continuum_patches=None):
-        """
-        Parameters
-        ----------
-        obs_bin_centers : :class:`np.ndarray` [# obs wavelength bins]
-          Center wavelength of each observed wavelength bin.
-        obs_fluxes : :class:`np.ndarray` [# obs wavelength bins]
-          Observed flux in each wavelength bin.
-        obs_weights : :class:`np.ndarray` [# obs wavelength bins]
-          Weighting factors for each wavelength bin in residual.
-        redshift : :class:`np.float64`
-          Red shift of observed spectrum.
-        line_wavelengths : :class:`np.ndarray` [# lines]
-          Array of nominal wavelengths for all fitted lines.
-        resolution_matrices : tuple of :class:`fastspecfit.resolution.Resolution`
-          Resolution matrices for each camera.
-        params_mapping : :class:`.params_mapping.ParamsMapping`
-          Mapping from free to full parameters.
-        continuum_patches : patch dictionary or :None:
-          If using patch pedestals, a dictionary of patch parameters;
-          else None.
-
-        """
 
         self.dtype = obs_fluxes.dtype
 
@@ -89,8 +80,8 @@ class EMLine_Objective(object):
             self.nPatches = 0
             self.J_P = None
 
-        self.log_obs_bin_edges, self.ibin_widths = \
-            _prepare_bins(obs_bin_centers, camerapix)
+        self.log_obs_bin_centers = np.log(obs_bin_centers)
+        self.sigma_G = SIGMA0_ANGSTROM
 
         # temporary storage to prevent allocation in params_mapping
         # on every call to objective/jacobian
@@ -99,20 +90,17 @@ class EMLine_Objective(object):
 
 
     def objective(self, free_parameters):
-        """
-        Objective function for least-squares optimization.
-
-        Build the emline model as described above and compute the weighted
-        vector of residuals between the modeled fluxes and the observations.
+        """Compute the weighted residuals between the emission-line model and observations.
 
         Parameters
         ----------
-        free_parameters : :class:`np.ndarray`
-          Values of all free parameters.
+        free_parameters : :class:`numpy.ndarray`
+            Values of all free parameters.
 
         Returns
         -------
-        `np.ndarray` of residuals for each wavelength bin.
+        residuals : :class:`numpy.ndarray`
+            Weighted residuals for each wavelength bin.
 
         """
 
@@ -132,8 +120,8 @@ class EMLine_Objective(object):
         _build_model_core(line_parameters,
                           self.line_wavelengths,
                           self.redshift,
-                          self.log_obs_bin_edges,
-                          self.ibin_widths,
+                          self.log_obs_bin_centers,
+                          self.sigma_G,
                           self.resolution_matrices,
                           self.camerapix,
                           model_fluxes)
@@ -159,21 +147,17 @@ class EMLine_Objective(object):
 
 
     def jacobian(self, free_parameters):
-        """
-        Jacobian of objective function for emission line fitting
-        optimization. The result of the detailed calculation is converted
-        to a sparse matrix, since it is extremely sparse, to speed up
-        subsequent matrix-vector multiplies in the optimizer.
+        """Compute the sparse Jacobian of the objective function.
 
         Parameters
         ----------
-        free_parameters : :class:`np.ndarray`
-          Values of all free parameters.
+        free_parameters : :class:`numpy.ndarray`
+            Values of all free parameters.
 
         Returns
         -------
-        Sparse Jacobian at given parameter value as
-        defined in sparse_rep.py.
+        J : :class:`~fastspecfit.emline_fit.sparse_rep.EMLineJacobian`
+            Sparse Jacobian at the given parameter values.
 
         """
 
@@ -195,18 +179,12 @@ class EMLine_Objective(object):
         for icam, campix in enumerate(self.camerapix):
             s, e = campix
 
-            # Actual inverse bin widths are in ibin_widths[s+1:e+2].
-            # Setup guarantees that at least one more array entry
-            # exists to either side of this range, so we can pass
-            # those in as dummies.
-            ibw = self.ibin_widths[s:e+3]
-
             idealJac = \
                 emline_model_jacobian(line_parameters,
-                                      self.log_obs_bin_edges[s+icam:e+icam+1],
-                                      ibw,
+                                      self.log_obs_bin_centers[s:e],
                                       self.redshift,
                                       self.line_wavelengths,
+                                      self.sigma_G,
                                       self.resolution_matrices[icam].ndiag)
 
             # ignore any columns corresponding to fixed parameters
@@ -226,9 +204,6 @@ class EMLine_Objective(object):
         return J
 
 
-##################################################################################
-
-
 def build_model(redshift,
                 line_parameters,
                 line_wavelengths,
@@ -236,38 +211,42 @@ def build_model(redshift,
                 resolution_matrices,
                 camerapix,
                 continuum_patches=None):
-    """
-    Compatibility entry point to compute modeled fluxes.
+    """Compute the resolution-convolved emission-line model fluxes.
 
     Parameters
     ----------
-    redshift : :class:`np.float64`
-      Red shift of observed spectrum.
-    line_parameters : :class:`np.ndarray`
-      Array of all fitted line parameters.
-    line_wavelengths : :class:`np.ndarray` [# lines]
-      Array of nominal wavelengths for all fitted lines.
-    obs_bin_centers : :class:`np.ndarray` [# obs wavelength bins]
-      Center wavelength of each observed wavelength bin.
+    redshift : float
+        Redshift of the observed spectrum.
+    line_parameters : :class:`numpy.ndarray`
+        Concatenated array of amplitudes, velocity shifts, and sigmas for
+        all lines.
+    line_wavelengths : :class:`numpy.ndarray`
+        Nominal rest-frame wavelengths of all fitted lines in Angstroms.
+    obs_bin_centers : :class:`numpy.ndarray`
+        Center wavelength of each observed wavelength bin.
     resolution_matrices : tuple of :class:`fastspecfit.resolution.Resolution`
-      Resolution matrices for each camera.
-    camerapix : :class:`np.ndarray` of `int` [# cameras x 2]
-      Pixels corresponding to each camera in obs wavelength array.
-    continuum_patches : patch dictionary or :None:
-      If using patch pedestals, a dictionary of patch parameters;
-      else None.
+        Resolution matrices for each camera.
+    camerapix : :class:`numpy.ndarray` of int
+        Start and end wavelength bin indices for each camera.
+    continuum_patches : dict or None, optional
+        Patch pedestal parameters, or ``None`` if not used.
+
+    Returns
+    -------
+    model_fluxes : :class:`numpy.ndarray`
+        Modeled flux in each observed wavelength bin.
 
     """
 
-    log_obs_bin_edges, ibin_widths = _prepare_bins(obs_bin_centers, camerapix)
+    log_obs_bin_centers = np.log(obs_bin_centers)
 
     model_fluxes = np.empty_like(obs_bin_centers, dtype=obs_bin_centers.dtype)
 
     _build_model_core(line_parameters,
                       line_wavelengths,
                       redshift,
-                      log_obs_bin_edges,
-                      ibin_widths,
+                      log_obs_bin_centers,
+                      SIGMA0_ANGSTROM,
                       resolution_matrices,
                       camerapix,
                       model_fluxes)
@@ -288,10 +267,27 @@ def build_model(redshift,
 
 
 class MultiLines(object):
-    """
-    Construct models for each of a list of lines across one or
-    more cameras.  Return an object that lets caller obtain
-    a rendered model for each individual line as a sparse array.
+    """Per-line emission-line flux models across one or more cameras.
+
+    Builds and stores individual resolution-convolved line profiles so
+    that the caller can retrieve a sparse model for any single line.
+
+    Parameters
+    ----------
+    line_parameters : :class:`numpy.ndarray`
+        Concatenated array of amplitudes, velocity shifts, and sigmas for
+        all lines.
+    obs_bin_centers : :class:`numpy.ndarray`
+        Center wavelength of each observed wavelength bin.
+    redshift : float
+        Redshift of the observed spectrum.
+    line_wavelengths : :class:`numpy.ndarray`
+        Nominal rest-frame wavelengths of all fitted lines in Angstroms.
+    resolution_matrices : tuple of :class:`fastspecfit.resolution.Resolution`
+        Resolution matrices for each camera.
+    camerapix : :class:`numpy.ndarray` of int
+        Start and end wavelength bin indices for each camera.
+
     """
 
     def __init__(self,
@@ -301,32 +297,10 @@ class MultiLines(object):
                  line_wavelengths,
                  resolution_matrices,
                  camerapix):
-        """
-        Given fitted parameters for all emission lines, compute
-        models for each line for each camera.
-
-        Parameters
-        ----------
-        line_parameters : :class:`np.ndarray`
-          Array of all fitted line parameters.
-        obs_bin_centers : :class:`np.ndarray` [# obs wavelength bins]
-          Center wavelength of each observed wavelength bin.
-        redshift : :class:`np.float64`
-          Red shift of observed spectrum.
-        line_wavelengths : :class:`np.ndarray` [# lines]
-          Array of nominal wavelengths for all fitted lines.
-        resolution_matrices : tuple of :class:`fastspecfit.resolution.Resolution`
-          Resolution matrices for each camera.
-        camerapix : :class:`np.ndarray` of `int` [# cameras x 2]
-          Pixels corresponding to each camera in obs wavelength array.
-
-        """
 
         @jit(nopython=True, nogil=True, cache=True)
         def _suppress_negative_fluxes(endpts, M):
-            """
-            suppress negative fluxes arising from resolution matrix
-            """
+            """Clamp negative per-line fluxes to zero."""
             for i in range(M.shape[0]):
                 s, e = endpts[i]
                 for j in range(e-s):
@@ -334,6 +308,7 @@ class MultiLines(object):
 
         if resolution_matrices is None:
             # create trivial diagonal resolution matrices
+            from fastspecfit.resolution import Resolution
             rm = [ Resolution(np.ones((1, e - s))) for (s, e) in camerapix ]
             resolution_matrices = tuple(rm)
 
@@ -353,21 +328,20 @@ class MultiLines(object):
 
 
     def getLine(self, line):
-        """
-        Return a model for one emission line.
+        """Return the model for one emission line as a sparse array.
 
         Parameters
         ----------
-        line : :class:`int`
-          Index of line to return.
+        line : int
+            Index of the line to return.
 
         Returns
         -------
-        Sparse line model as tuple ((s, e), data), where the range
-        [s,e) in the combined bin array across all cameras (as in
-        obs_bin_centers) contains all bins with nonzero fluxes for
-        that line, and data is an array of length e - s that contains
-        the bin values.
+        range : tuple of int
+            ``(s, e)`` giving the half-open bin range ``[s, e)`` in the
+            combined observed wavelength array with nonzero flux.
+        data : :class:`numpy.ndarray`
+            Flux values for bins ``obs_bin_centers[s:e]``.
 
         """
 
@@ -418,40 +392,34 @@ def find_peak_amplitudes(line_parameters,
                          line_wavelengths,
                          resolution_matrices,
                          camerapix):
-    """
-    Given fitted parameters for all emission lines, report for
-    each line the largest flux that it contributes to any observed
-    bin.
+    """Return the maximum flux contributed by each line to any observed bin.
 
     Parameters
     ----------
-    parameters : :class:`np.ndarray`
-      Array of all fitted line parameters.
-    bin_data : :class:`tuple`
-      Preprocessed bin data in form returned by _prepare_bins
-    redshift : :class:`np.float64`
-      Red shift of observed spectrum.
-    line_wavelengths : :class:`np.ndarray` [# lines]
-      Array of nominal wavelengths for all fitted lines.
+    line_parameters : :class:`numpy.ndarray`
+        Concatenated array of amplitudes, velocity shifts, and sigmas for
+        all lines.
+    obs_bin_centers : :class:`numpy.ndarray`
+        Center wavelength of each observed wavelength bin.
+    redshift : float
+        Redshift of the observed spectrum.
+    line_wavelengths : :class:`numpy.ndarray`
+        Nominal rest-frame wavelengths of all fitted lines in Angstroms.
     resolution_matrices : tuple of :class:`fastspecfit.resolution.Resolution`
-      Resolution matrices for each camera.
-    camerapix : :class:`np.ndarray` of `int` [# cameras x 2]
-      Pixels corresponding to each camera in obs wavelength array.
+        Resolution matrices for each camera.
+    camerapix : :class:`numpy.ndarray` of int
+        Start and end wavelength bin indices for each camera.
 
     Returns
     -------
-    Array with maximum amplitude observed for each line.
+    max_amps : :class:`numpy.ndarray`
+        Maximum flux in any observed bin for each line.
 
     """
 
     @jit(nopython=True, nogil=True, cache=True)
     def _update_line_maxima(max_amps, line_models):
-        """
-        Given an array of line waveforms and an array of maximum
-        amplitudes observed for each line so far, if the waveform contains
-        a higher amplitude than the previous maximum, update the maximum
-        in place.
-        """
+        """Update per-line maximum amplitudes from a camera's line models."""
         endpts, vals = line_models
 
         # find the highest flux for each peak; if it's
@@ -475,61 +443,107 @@ def find_peak_amplitudes(line_parameters,
     return max_amps
 
 
-##########################################################################
+def find_peak_amplitudes_and_fluxes(line_parameters,
+                                    obs_bin_centers,
+                                    redshift,
+                                    line_wavelengths,
+                                    resolution_matrices,
+                                    camerapix):
+    """Return the peak amplitude and integrated flux for each emission line.
+
+    Parameters
+    ----------
+    line_parameters : :class:`numpy.ndarray`
+        Concatenated array of amplitudes, velocity shifts, and sigmas for
+        all lines.
+    obs_bin_centers : :class:`numpy.ndarray`
+        Center wavelength of each observed wavelength bin.
+    redshift : float
+        Redshift of the observed spectrum.
+    line_wavelengths : :class:`numpy.ndarray`
+        Nominal rest-frame wavelengths of all fitted lines in Angstroms.
+    resolution_matrices : tuple of :class:`fastspecfit.resolution.Resolution`
+        Resolution matrices for each camera.
+    camerapix : :class:`numpy.ndarray` of int
+        Start and end wavelength bin indices for each camera.
+
+    Returns
+    -------
+    max_amps : :class:`numpy.ndarray`
+        Maximum flux in any observed bin for each line.
+    line_fluxes : :class:`numpy.ndarray`
+        Wavelength-integrated flux of the convolved line profile for each line.
+
+    """
+    @jit(nopython=True, nogil=True, cache=True)
+    def _update_line_maxima_and_fluxes(max_amps, line_fluxes, line_models, wave_weight):
+        endpts, vals = line_models
+
+        for i in range(vals.shape[0]):
+            ps, pe = endpts[i]
+            if pe > ps:
+                max_amps[i] = np.maximum(max_amps[i], np.max(vals[i, :pe-ps]))
+                for k in range(pe - ps):
+                    line_fluxes[i] += vals[i, k] * wave_weight[ps + k]
+
+    nlines = len(line_wavelengths)
+    nbins  = len(obs_bin_centers)
+
+    # Build per-pixel integration weights accounting for wavelength overlap
+    wave_weight = np.empty(nbins)
+    for s, e in camerapix:
+        wave_weight[s:e] = np.gradient(obs_bin_centers[s:e])
+
+    # For each camera pair, find wavelength overlap and halve weights there.
+    for i, (s1, e1) in enumerate(camerapix):
+        for j, (s2, e2) in enumerate(camerapix):
+            if j <= i:
+                continue
+            wmin = max(obs_bin_centers[s1:e1].min(), obs_bin_centers[s2:e2].min())
+            wmax = min(obs_bin_centers[s1:e1].max(), obs_bin_centers[s2:e2].max())
+            if wmax > wmin:
+                mask1 = np.zeros(nbins, dtype=bool)
+                mask2 = np.zeros(nbins, dtype=bool)
+                mask1[s1:e1] = (obs_bin_centers[s1:e1] >= wmin) & \
+                               (obs_bin_centers[s1:e1] <= wmax)
+                mask2[s2:e2] = (obs_bin_centers[s2:e2] >= wmin) & \
+                               (obs_bin_centers[s2:e2] <= wmax)
+                wave_weight[mask1] /= 2.
+                wave_weight[mask2] /= 2.
+
+    max_amps    = np.zeros(nlines, dtype=line_parameters.dtype)
+    line_fluxes = np.zeros(nlines, dtype=line_parameters.dtype)
+
+    _build_multimodel_core(line_parameters,
+                           obs_bin_centers,
+                           redshift,
+                           line_wavelengths,
+                           resolution_matrices,
+                           camerapix,
+                           lambda m: _update_line_maxima_and_fluxes(max_amps, line_fluxes, m, wave_weight))
+
+    return max_amps, line_fluxes
 
 
 def _build_model_core(line_parameters,
                       line_wavelengths,
                       redshift,
-                      log_obs_bin_edges,
-                      ibin_widths,
+                      log_obs_bin_centers,
+                      sigma_G,
                       resolution_matrices,
                       camerapix,
                       model_fluxes):
-    """
-    Core loop for computing a combined model flux from a set of
-    spectral emission lines.
-
-    Parameters
-    ----------
-    line_parameters : :class:`np.ndarray`
-      Combined array of amplitudes, vshifts, and sigmas
-    line_wavelengths : :class:`np.ndarray` [# lines]
-      Array of nominal wavelengths for all fitted lines.
-    redshift : :class:`np.float64`
-      Red shift of observed spectrum.
-    log_obs_bin_edges : :class:`np.ndarray` [# obs wavelength bins + 1]
-      Natural logs of observed wavelength bin edges
-    ibin_widths : :class:`np.ndarray` [# obs wavelength bins]
-      Inverse widths of each observed wavelength bin.
-    resolution_matrices : tuple of :class:`fastspecfit.resolution.Resolution`
-      Resolution matrices for each camera.
-    camerapix : :class:`np.ndarray` of `int` [# cameras x 2]
-      Pixels corresponding to each camera in obs wavelength array.
-    model_fluxes : :class:`np.ndarray` [# obs wavelength bins] (output)
-      Returns computed model flux for each wavelength bin.
-
-    """
+    """Compute resolution-convolved combined model fluxes, writing into ``model_fluxes``."""
 
     for icam, campix in enumerate(camerapix):
-
-        # start and end for obs fluxes of camera icam
         s, e = campix
-
-        # Actual inverse bin widths are in ibin_widths[s+1:e+2].
-        # Setup guarantees that at least one more array entry
-        # exists to either side of this range, so we can pass
-        # those in as dummies.
-        ibw = ibin_widths[s:e+3]
 
         mf = emline_model(line_wavelengths,
                           line_parameters,
-                          log_obs_bin_edges[s+icam:e+icam+1],
+                          log_obs_bin_centers[s:e],
                           redshift,
-                          ibw)
+                          sigma_G)
 
-        # convolve model with resolution matrix and store in
-        # this camera's subrange of model_fluxes
         resolution_matrices[icam].dot(mf, model_fluxes[s:e])
 
 
@@ -540,59 +554,24 @@ def _build_multimodel_core(line_parameters,
                            resolution_matrices,
                            camerapix,
                            consumer_fun):
-    """
-    Core loop for computing array of individual line flux models sparsely
-    from a set of spectral emission lines.  Result is not returned but
-    passed to a consumer function supplied by the caller.
+    """Compute sparse per-line models for each camera and pass each to ``consumer_fun``."""
 
-    Parameters
-    ----------
-    line_parameters : :class:`np.ndarray`
-      Combined array of amplitudes, vshifts, and sigmas
-    obs_bin_centers : :class:`np.ndarray` [# obs wavelength bins]
-      Center wavelength of each observed wavelength bin.
-    redshift : :class:`np.float64`
-      Redshift of observed spectrum.
-    line_wavelengths : :class:`np.ndarray` [# lines]
-      Array of nominal wavelengths for all fitted lines.
-    resolution_matrices : tuple of :class:`fastspecfit.resolution.Resolution`
-      Resolution matrices for each camera.
-    camerapix : :class:`np.ndarray` of `int` [# cameras x 2]
-      Pixels corresponding to each camera in obs wavelength array.
-    consumer_fun :
-      Function to which we pass computed sparse array of line models
-      for each camera.
-
-    """
-
-    log_obs_bin_edges, ibin_widths = _prepare_bins(obs_bin_centers,
-                                                   camerapix)
+    log_obs_bin_centers = np.log(obs_bin_centers)
 
     for icam, campix in enumerate(camerapix):
-
-        # start and end for obs fluxes of camera icam
         s, e = campix
 
-        # Actual inverse bin widths are in ibin_widths[s+1:e+2].
-        # Setup guarantees that at least one more array entry
-        # exists to either side of this range, so we can pass
-        # those in as dummies.
-        ibw = ibin_widths[s:e+3]
-
-        # compute model waveform for each spectral line
         line_models = emline_perline_models(line_wavelengths,
                                             line_parameters,
-                                            log_obs_bin_edges[s+icam:e+icam+1],
+                                            log_obs_bin_centers[s:e],
                                             redshift,
-                                            ibw,
+                                            SIGMA0_ANGSTROM,
                                             resolution_matrices[icam].ndiag)
 
-        # convolve each line's waveform with resolution matrix
         endpts, M = mulWMJ(np.ones(e - s),
                            resolution_matrices[icam].rowdata(),
                            line_models)
 
-        # adjust endpoints to reflect camera range
         endpts += s
 
         consumer_fun((endpts, M))
@@ -605,27 +584,7 @@ def _add_patches(obs_bin_centers,
                  patch_pivotwaves,
                  slopes,
                  intercepts):
-    """
-    Add patch pedestals for patches with given endpts, slopes,
-    intercepts, and pivots to an array of model fluxes.
-
-    Parameters
-    ----------
-    obs_bin_centers : :class:`np.ndarray` [# obs wavelength bins]
-      Center wavelength of each obesrved bin.
-    model_fluxes : :class:`np.ndarray` [# obs wavelength bins] (output)
-      Fluxes computed from base emission line model.  Modified
-      by addition of patch pedestal contribution to each bin.
-    patch_endpts: :class:`np.ndarray` of `int` [2 * # patches]
-      Endpoint indices of each patch in wavelength bin array
-    patch_pivotwave: :class:`np.ndarray` [# patches]
-      Offset for each patch pedestal.
-    slopes : :class:`np.ndarray` [# patches]
-      Slope of each patch pedestal.
-    itercepts: :class:`np.ndarray` [# patches]
-      Intercept of each patch pedestal.
-
-    """
+    """Add affine patch pedestals to ``model_fluxes`` in-place."""
 
     # add patch pedestals to line model
     nPatches = len(slopes)
@@ -642,41 +601,34 @@ def _add_patches(obs_bin_centers,
                 slope * (obs_bin_centers[j] - pivotwave) + intercept
 
 
-###################################################################
-
-
 @jit(nopython=True, nogil=True, cache=True)
 def mulWMJ(w, M, Jsp):
-    """Compute the sparse matrix product P = WMJ, where
-    W is a diagonal weight matrix
-    M is a resolution matrix
-    J is a column-sparse matrix giving the nonzero
-      values in one contiguous range per column
+    """Compute the sparse matrix product ``P = W @ M @ J``.
+
+    ``W`` is a diagonal weight matrix, ``M`` is a resolution matrix, and
+    ``J`` is a column-sparse matrix with one contiguous nonzero range per
+    column.  The result is written back into ``Jsp`` in-place.
 
     Parameters
     ----------
-    w : :class:`np.ndarray` [# obs wavelength bins]
-      Diagonal of matrix W.
-    M : :class:`np.ndarray` [# obs wavelength bins x # diags]
-      Resolution matrix, represented in sparse ROW form
-      giving nonzero entries in each row.
-    Jsp : :class:`tuple`
-      column-sparse matrix (endpts, J), where endpts = (s,e)
-      gives a half-open range of indices [s, e) with values
-      for this column, and P[:e-s] contains these values.
+    w : :class:`numpy.ndarray`
+        Diagonal of the weight matrix ``W``.
+    M : :class:`numpy.ndarray`, shape (nbins, ndiag)
+        Resolution matrix in sparse row form.
+    Jsp : tuple
+        Column-sparse matrix ``(endpts, J)``, where ``endpts[j] = (s, e)``
+        gives the half-open nonzero range for column ``j`` and
+        ``J[j, :e-s]`` holds the values.
 
     Returns
     -------
-    Product WMJ in column-sparse form as tuple (endpts, P)
-    where endpts = (s,e) gives a half-open range of indices
-    [s, e) with values for this column, and P[:e-s] contains these
-    values.
+    result : tuple
+        Product ``W @ M @ J`` in the same column-sparse form as ``Jsp``.
 
-    Note
-    ----
-    We assume that the column-sparse input Jsp has enough space
-    allocated that we can overwrite each column of Jsp with the
-    corresponding column of P.
+    Notes
+    -----
+    The input ``Jsp`` must have sufficient padding so that each column of
+    ``J`` can be overwritten with the corresponding column of ``P``.
 
     """
     endpts, J = Jsp
@@ -723,58 +675,3 @@ def mulWMJ(w, M, Jsp):
     return (endpts, J)
 
 
-@jit(nopython=True, nogil=True, cache=True)
-def _prepare_bins(centers, camerapix):
-    """
-    Convert bin centers to the info needed by the optimizer,
-    returned as an opaque tuple.
-
-    Parameters
-    ----------
-    centers : :class:`np.ndarray` [# obs wavelength bins]
-      Center wavelength of each obs bin
-    camerapix : :class:`np.ndarray` of `int` [# cameras x 2]
-      pixels corresponding to each camera in obs wavelength array
-
-    Returns
-    -------
-    Tuple containing
-       - array of log bin edges.  Edges are placed halfway between centers,
-         with extrapolation at the ends.  We return the natural log of
-         each edge's wavelength, since that is what model and Jacobian
-          building need.
-      - array of inverse widths for each wavelength bin. The array is
-        zero-padded by one cell on the left and right to accomodate
-        edge-to-bin computations.
-
-    """
-
-    ncameras = camerapix.shape[0]
-    edges = np.empty(len(centers) + ncameras, dtype=centers.dtype)
-    ibin_widths = np.empty(len(centers) + 2,  dtype=centers.dtype)
-
-    for icam, campix in enumerate(camerapix):
-
-        s, e = campix
-        icenters = centers[s:e]
-
-        #- interior edges are just points half way between bin centers
-        int_edges = 0.5 * (icenters[:-1] + icenters[1:])
-
-        #- exterior edges are extrapolation of interior bin sizes
-        edge_l = icenters[ 0] - (icenters[ 1] - int_edges[ 0])
-        edge_r = icenters[-1] + (icenters[-1] - int_edges[-1])
-
-        edges[s + icam]              = edge_l
-        edges[s + icam + 1:e + icam] = int_edges
-        edges[e + icam]              = edge_r
-
-        # add 1 to indices i ibin_widths to skip dummy at 0
-        ibin_widths[s+1:e+1] = 1. / np.diff(edges[s+icam : e+icam+1])
-
-    # dummies before and after widths are needed
-    # for corner cases in edge -> bin computation
-    ibin_widths[0]  = 0.
-    ibin_widths[-1] = 0.
-
-    return (np.log(edges), ibin_widths)

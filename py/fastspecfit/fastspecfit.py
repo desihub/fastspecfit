@@ -12,11 +12,24 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data
-from fastspecfit.util import BoxedScalar, MPPool
+from fastspecfit.util import BoxedScalar, MPPool, NMONTE_DEFAULT
 from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
 
 def parse(options=None, rank=0):
     """Parse input arguments to fastspec and fastphot scripts.
+
+    Parameters
+    ----------
+    options : list of str or None, optional
+        Command-line argument strings. If ``None``, reads from ``sys.argv``.
+    rank : int, optional
+        MPI rank of the calling process, used to suppress log output on
+        non-zero ranks. Defaults to 0.
+
+    Returns
+    -------
+    args : :class:`argparse.Namespace`
+        Parsed command-line arguments.
 
     """
     import argparse, sys
@@ -33,7 +46,7 @@ def parse(options=None, rank=0):
     parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
     parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
     parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
-    parser.add_argument('--nmonte', type=int, default=10, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--nmonte', type=int, default=NMONTE_DEFAULT, help='Number of Monte Carlo realizations.')
     parser.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
     parser.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, help='Nominal (default) velocity dispersion in km/s.')
     parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
@@ -72,8 +85,57 @@ def parse(options=None, rank=0):
 def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=True,
                  fastphot=False, fitstack=False, constrain_age=False,
                  no_smooth_continuum=False, debug_plots=False, uncertainty_floor=0.01,
-                 minsnr_balmer_broad=2.5, nmonte=10, seed=1):
-    """Run :func:`fastspec` on a single object.
+                 minsnr_balmer_broad=2.5, nmonte=NMONTE_DEFAULT, seed=1):
+    """Fit the continuum and emission lines for a single DESI object.
+
+    Parameters
+    ----------
+    iobj : int
+        Index of the object in the input list, used for log messages.
+    data : dict
+        Per-object data dictionary from :class:`fastspecfit.io.DESISpectra`.
+    meta : :class:`astropy.table.Row`
+        Metadata row for this object.
+    fastfit_dtype : :class:`numpy.dtype`
+        NumPy dtype for the emission-line fitting output table.
+    specphot_dtype : :class:`numpy.dtype`
+        NumPy dtype for the spectrophotometric output table.
+    broadlinefit : bool, optional
+        Attempt to fit broad Balmer components. Defaults to ``True``.
+    fastphot : bool, optional
+        Fit broadband photometry only (no spectra). Defaults to ``False``.
+    fitstack : bool, optional
+        Treat input as stacked spectra. Defaults to ``False``.
+    constrain_age : bool, optional
+        Constrain the stellar population age during fitting. Defaults to
+        ``False``.
+    no_smooth_continuum : bool, optional
+        Skip smooth continuum fitting. Defaults to ``False``.
+    debug_plots : bool, optional
+        Write diagnostic QA plots to the working directory. Defaults to
+        ``False``.
+    uncertainty_floor : float, optional
+        Minimum fractional uncertainty added in quadrature to the formal
+        inverse variance spectrum. Defaults to 0.01.
+    minsnr_balmer_broad : float, optional
+        Minimum S/N required to adopt the broad Balmer component. Defaults
+        to 2.5.
+    nmonte : int, optional
+        Number of Monte Carlo realizations for uncertainty estimation.
+        Defaults to 10.
+    seed : int, optional
+        Random seed for Monte Carlo reproducibility. Defaults to 1.
+
+    Returns
+    -------
+    meta : :class:`astropy.table.Row`
+        Updated metadata row with observed photometry filled in.
+    specphot : :class:`numpy.ndarray`
+        Spectrophotometric output row.
+    fastfit : :class:`numpy.ndarray`
+        Emission-line fitting output row.
+    emmodel : :class:`astropy.table.Table` or None
+        Coadded model spectra table, or ``None`` if ``fastphot=True``.
 
     """
     from fastspecfit.io import one_spectrum, one_stacked_spectrum
@@ -107,8 +169,10 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
             meta[f'FLUX_IVAR_{band.upper()}'] = fluxivar[iband]
 
         if hasattr(phot, 'fiber_bands'):
-            fibertotflux = data['fiberphot']['nanomaggies']
+            fiberflux = data['fiberphot']['nanomaggies']
+            fibertotflux = data['fibertotphot']['nanomaggies']
             for iband, band in enumerate(phot.fiber_bands):
+                meta[f'FIBERFLUX_{band.upper()}'] = fiberflux[iband]
                 meta[f'FIBERTOTFLUX_{band.upper()}'] = fibertotflux[iband]
 
     # output structures
@@ -135,19 +199,27 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
 
 
 def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False):
-    """Main fastspec script.
-
-    This script is the engine to model one or more DESI spectra. It initializes
-    the :class:`FastFit` class, reads the data, fits each spectrum (with the
-    option of fitting in parallel), and writes out the results as a
-    multi-extension binary FITS table.
+    """Main fastspec engine: read, fit, and write results for one or more DESI spectra.
 
     Parameters
     ----------
-    args : :class:`argparse.Namespace` or ``None``
-        Required and optional arguments parsed via inputs to the command line.
-    comm : :class:`mpi4py.MPI.MPI.COMM_WORLD` or `None`
-        Intracommunicator used with MPI parallelism.
+    fastphot : bool, optional
+        Fit broadband photometry only (no spectra). Defaults to ``False``.
+    fitstack : bool, optional
+        Treat input as stacked spectra. Defaults to ``False``.
+    args : :class:`argparse.Namespace` or list of str or None, optional
+        Pre-parsed arguments or raw argument list. If ``None``, reads from
+        ``sys.argv``.
+    comm : :class:`mpi4py.MPI.Comm` or None, optional
+        MPI intracommunicator for parallel execution, or ``None`` for
+        single-process mode.
+    verbose : bool, optional
+        Enable verbose (debug-level) logging. Defaults to ``False``.
+
+    Returns
+    -------
+    int
+        Exit code (0 on success).
 
     """
     from astropy.table import vstack
@@ -162,13 +234,16 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args, rank=rank)
 
+    if fitstack:
+        args.ignore_photometry = True
+
     # check for mandatory environment variables
     envlist = []
-    if args.redux_dir is None:
+    if not fitstack and args.redux_dir is None:
         envlist += ['DESI_SPECTRO_REDUX']
-    if args.mapdir is None:
+    if not fitstack and args.mapdir is None:
         envlist += ['DUST_DIR']
-    if args.fphotodir is None:
+    if not fitstack and args.fphotodir is None:
         envlist += ['FPHOTO_DIR']
     if args.templates is None:
         envlist += ['FTEMPLATES_DIR']
@@ -177,9 +252,6 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             errmsg = f'Mandatory environment variable {env} missing.'
             log.critical(errmsg)
             raise KeyError(errmsg)
-
-    if fitstack:
-        args.ignore_photometry = True
 
     if verbose:
         args.verbose = True
@@ -383,33 +455,46 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
 
 def fastphot(args=None, comm=None, verbose=False):
-    """Main fastphot script.
-
-    This script is the engine to model the broadband photometry of one or more
-    DESI objects. It initializes the :class:`ContinuumFit` class, reads the
-    data, fits each object (with the option of fitting in parallel), and writes
-    out the results as a multi-extension binary FITS table.
+    """Main fastphot entry point: fit broadband photometry for DESI objects.
 
     Parameters
     ----------
-    args : :class:`argparse.Namespace` or ``None``
-        Required and optional arguments parsed via inputs to the command line.
-    comm : :class:`mpi4py.MPI.MPI.COMM_WORLD` or `None`
-        Intracommunicator used with MPI parallelism.
+    args : :class:`argparse.Namespace` or list of str or None, optional
+        Pre-parsed arguments or raw argument list. If ``None``, reads from
+        ``sys.argv``.
+    comm : :class:`mpi4py.MPI.Comm` or None, optional
+        MPI intracommunicator for parallel execution, or ``None`` for
+        single-process mode.
+    verbose : bool, optional
+        Enable verbose (debug-level) logging. Defaults to ``False``.
+
+    Returns
+    -------
+    int
+        Exit code (0 on success).
 
     """
     return fastspec(fastphot=True, args=args, comm=comm, verbose=verbose)
 
 
 def stackfit(args=None, comm=None, verbose=False):
-    """Wrapper script to fit (model) generic stacked spectra.
+    """Entry point to fit generic stacked DESI spectra.
 
     Parameters
     ----------
-    args : :class:`argparse.Namespace` or ``None``
-        Required and optional arguments parsed via inputs to the command line.
-    comm : :class:`mpi4py.MPI.MPI.COMM_WORLD` or `None`
-        Intracommunicator used with MPI parallelism.
+    args : :class:`argparse.Namespace` or list of str or None, optional
+        Pre-parsed arguments or raw argument list. If ``None``, reads from
+        ``sys.argv``.
+    comm : :class:`mpi4py.MPI.Comm` or None, optional
+        MPI intracommunicator for parallel execution, or ``None`` for
+        single-process mode.
+    verbose : bool, optional
+        Enable verbose (debug-level) logging. Defaults to ``False``.
+
+    Returns
+    -------
+    int
+        Exit code (0 on success).
 
     """
     return fastspec(fitstack=True, args=args, comm=comm, verbose=verbose)

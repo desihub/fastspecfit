@@ -2,12 +2,70 @@
 Change Log
 ==========
 
-3.2.1 (not released yet)
+3.4.0 (not released yet)
 ------------------------
 
+* Fix position-dependent flux bias in emission-line fitting: replace the
+  Buhler per-bin CDF integration forward model with Gaussian point evaluation
+  matched to the Gaussian pre-convolution expected by the deconvolved resolution
+  matrix; switch reported line flux to the analytic formula
+  ``sqrt(2π)·A·λ*·σ/c``; update the Jacobian accordingly; remove dead
+  ``norm_cdf``/``norm_pdf`` code; extend unit tests with flux-recovery and
+  sub-pixel position-independence checks on a linear-lambda grid [`PR #252`_].
+* Performance optimizations: replace TRF continuum optimizer with Variable
+  Projection (VARPRO) for all ``fit_vdisp=False`` cases; vectorize the VARPRO
+  inner loop (batched phi construction, spectroscopy, and photometry); use loose
+  convergence tolerances for Monte Carlo and chi2-scan fits; warm-start Monte
+  Carlo emission-line refits from the nominal best-fit values; add
+  ``bin/profile-fastspec`` profiling harness [`PR #251`_].
+
+.. _`PR #252`: https://github.com/desihub/fastspecfit/pull/252
+.. _`PR #251`: https://github.com/desihub/fastspecfit/pull/251
+
+
+
+3.3.0 (2026-05-18)
+------------------
+
+* Fix ``Inoue14.full_IGM`` returning all-ones when ``lobs`` is an integer
+  array; fix MW extinction correction not applied to ``FIBERFLUX`` and
+  ``FIBERTOTFLUX`` in the output metadata table; fix ``FIBERTOTFLUX`` writeback
+  in ``fastspec_one`` using wrong data source [`PR #249`_].
+* Overhaul documentation: replace ``sphinx-toolbox`` with ``sphinx-design``;
+  remove stale ``Sphinx<8.2`` pin; expand API docs to include
+  ``fastspecfit.emline_fit`` subpackage; rewrite ``install.rst`` with
+  simplified laptop setup, ``micromamba`` recommendation, and fleshed-out data
+  dependency descriptions; restructure ``running.rst`` around three audience
+  tiers; add new ``data.rst`` ("Working with FastSpecFit Data") and
+  ``tutorials.rst`` top-level pages [`PR #248`_].
+* Add integration tests for ``stackfit`` and ``fastqa``; fix ``stackfit``
+  incorrectly requiring dust-map and photometry environment variables; fix
+  ``fastqa`` incorrectly requiring ``DESI_SPECTRO_REDUX`` when
+  ``--redrockfiles`` is provided; fix ``fastqa`` ``KeyError: 'TARGETID'``
+  when running QA on stacked outputs by deriving the ``fitstack`` flag from
+  the file header rather than the ``--stackfit`` CLI argument [`PR #247`_].
+* Add unit tests for ``emline_fit``, ``resolution``, ``linemasker``, ``continuum``,
+  ``emlines``, and ``io`` modules; cache template download in CI; streamline
+  Python version matrix [`PR #246`_].
+* Rewrite all docstrings to uniform NumPy style for ReadTheDocs rendering [`PR #245`_].
+* Deconvolve the resolution matrix before fitting, as recommended
+  by S. Koposov and update config files [`PR #244`_].
+
+.. _`PR #249`: https://github.com/desihub/fastspecfit/pull/249
+.. _`PR #248`: https://github.com/desihub/fastspecfit/pull/248
+.. _`PR #247`: https://github.com/desihub/fastspecfit/pull/247
+.. _`PR #246`: https://github.com/desihub/fastspecfit/pull/246
+.. _`PR #245`: https://github.com/desihub/fastspecfit/pull/245
+.. _`PR #244`: https://github.com/desihub/fastspecfit/pull/244
+
+3.2.1 (2026-03-20)
+------------------
+
 * Add `vdisp-nominal` and `vdisp-bounds` optional inputs [`PR #231`_].
+* Remove `python<3.13` constraint [`PR #242`_].
 
 .. _`PR #231`: https://github.com/desihub/fastspecfit/pull/231
+.. _`PR #242`: https://github.com/desihub/fastspecfit/pull/242
 
 3.2.0 (2025-06-19)
 ------------------

@@ -1,6 +1,6 @@
 [project]
 name = "fastspecfit"
-version = "3.2.0"
+dynamic = ["version"]
 authors = [
     {name="John Moustakas", email="jmoustakas@siena.edu"},
 ]
@@ -21,18 +21,21 @@ dependencies = [
     "numpy",
     "astropy",
     "scipy",
+    "PyYAML",
     "healpy",
     "numba",
     "seaborn",
     "matplotlib",
     "fitsio",
     "speclite",
+    "desiutil",
+    "desitarget",
+    "desispec",
 ]
-requires-python = "<3.13"
 
 [project.optional-dependencies]
 test = [
-    "pytest"
+    "pytest",
 ]
 coverage = [
     "pytest-cov",
@@ -41,16 +44,18 @@ coverage = [
 ]
 doc = [
     "Sphinx",
-    "sphinx-toolbox",
+    "sphinx-design",
     "sphinx-rtd-theme",
-    "sphinxcontrib-napolean",
 ]
 
 [build-system]
-requires = ["setuptools",
-            "wheel"
-            ]
+requires = ["setuptools", "setuptools-scm", "wheel"]
 build-backend = 'setuptools.build_meta'
+
+[tool.setuptools_scm]
+version_file = "py/fastspecfit/_version.py"
+tag_regex = "^(?P<version>[0-9]+\\.[0-9]+\\.[0-9]+.*)$"
+local_scheme = "no-local-version"
 
 [project.scripts]
 fastspec = "fastspecfit.fastspecfit:fastspec"
@@ -65,7 +70,8 @@ package-dir = {"" = "py"}
 script-files = [
     "bin/build-templates",
     "bin/get-cutouts",
-    "bin/mpi-fastspecfit"
+    "bin/mpi-fastspecfit",
+    "bin/profile-fastspec"
 ]
 
 [tool.setuptools.package-data]
@@ -79,7 +85,6 @@ where = ["py"]
 exclude = [".github/*"]
 
 [tool.pytest.ini_options]
-# capture the nanomaggies units warning from astropy
 filterwarnings = [
     "ignore::astropy.units.UnitsWarning"
 ]

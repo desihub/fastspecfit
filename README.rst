@@ -48,7 +48,7 @@ U.S. Department of Energy, Office of Science, Office of High Energy Physics
 under Award Number DE-SC0020086.
 
 | John Moustakas
-| Siena College
+| Siena University
 
 .. _`DESI`: https://desi.lbl.gov
 .. _`FastSpecFit`: https://github.com/desihub/fastspecfit

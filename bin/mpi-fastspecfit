@@ -7,12 +7,37 @@ import os, time
 import numpy as np
 from astropy.table import Table
 
+from fastspecfit.util import NMONTE_DEFAULT
 from fastspecfit.logger import log
 
 
 def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
                   input_redshifts=False):
-    """Build the set of command-line arguments.
+    """Build the command-line argument string for fastspec, fastphot, or fastqa.
+
+    Parameters
+    ----------
+    args : :class:`argparse.Namespace`
+        Parsed command-line arguments.
+    redrockfile : :class:`str`
+        Path to the input redrock file (or QA output directory for ``--makeqa``).
+    outfile : :class:`str`
+        Path to the output FITS file (or input file for ``--makeqa``).
+    sample : :class:`astropy.table.Table` or None, optional
+        Optional target sample table with columns ``{SURVEY, PROGRAM, HEALPIX, TARGETID}``.
+    fastphot : :class:`bool`, optional
+        If ``True``, build arguments for ``fastphot`` instead of ``fastspec``.
+    input_redshifts : :class:`bool`, optional
+        If ``True``, include input redshifts from ``sample['Z']``.
+
+    Returns
+    -------
+    cmd : :class:`str`
+        Executable name (``'fastspec'``, ``'fastphot'``, or ``'fastqa'``).
+    cmdargs : :class:`str`
+        Command-line argument string.
+    logfile : :class:`str`
+        Path to the log file.
 
     """
     # With --makeqa the desired output directories are in the 'redrockfiles'.
@@ -88,7 +113,38 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
                     sample=None, input_redshifts=False, outdir_data='.', templates=None,
                     templateversion=None, fphotodir=None, fphotofile=None, emlinesfile=None,
                     mp_per_file=False):
-    """Main wrapper to run fastspec, fastphot, or fastqa.
+    """Run fastspec, fastphot, or fastqa across MPI ranks.
+
+    Parameters
+    ----------
+    args : :class:`argparse.Namespace`
+        Parsed command-line arguments.
+    comm : MPI communicator or None, optional
+        MPI communicator; uses a single process when ``None``.
+    fastphot : :class:`bool`, optional
+        If ``True``, run ``fastphot`` instead of ``fastspec``.
+    specprod_dir : :class:`str` or None, optional
+        Override path to the spectroscopic reduction directory.
+    makeqa : :class:`bool`, optional
+        If ``True``, generate QA figures instead of fitting.
+    sample : :class:`astropy.table.Table` or None, optional
+        Optional target sample table.
+    input_redshifts : :class:`bool`, optional
+        If ``True``, pass input redshifts from ``sample`` to the fitter.
+    outdir_data : :class:`str`, optional
+        Base output data directory.
+    templates : :class:`str` or None, optional
+        Full path to template file; auto-detected when ``None``.
+    templateversion : :class:`str` or None, optional
+        Template version string; auto-detected when ``None``.
+    fphotodir : :class:`str` or None, optional
+        Top-level photometry directory override.
+    fphotofile : :class:`str` or None, optional
+        Photometry configuration file override.
+    emlinesfile : :class:`str` or None, optional
+        Emission-line parameter file override.
+    mp_per_file : :class:`bool`, optional
+        If ``True``, use joblib to run multiple files in parallel.
 
     """
     import sys
@@ -192,7 +248,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             import traceback
             traceback.print_exc()
         return
-    
+
     # loop on each file
     if mp_per_file:
         from joblib import Parallel, delayed
@@ -203,7 +259,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         for redrockfile, outfile, ntarget in zip(redrockfiles, outfiles, ntargets):
             run_one_file(redrockfile, outfile, ntarget)
 
-        
+
     if rank == 0:
         log.debug(f'Rank {rank} is done')
 
@@ -219,11 +275,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
 
 
 def main():
-    """Main wrapper on fastphot and fastspec.
-
-    Currently only knows about SV1 observations.
-
-    """
+    """MPI entry point for fastspec, fastphot, and fastqa."""
     import argparse
     from fastspecfit.mpi import plan
     from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
@@ -242,7 +294,7 @@ def main():
     parser.add_argument('--samplefile', default=None, type=str, help='Full path to sample (FITS) file with {survey,program,healpix,targetid}.')
     parser.add_argument('--input-redshifts', action='store_true', help='Only used with --samplefile; if set, fit with redshift "Z" values.')
     parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
-    parser.add_argument('--nmonte', type=int, default=10, help='Number of Monte Carlo realizations.')
+    parser.add_argument('--nmonte', type=int, default=NMONTE_DEFAULT, help='Number of Monte Carlo realizations.')
     parser.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
     parser.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, help='Nominal (default) velocity dispersion in km/s.')
     parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')

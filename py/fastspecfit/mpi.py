@@ -22,6 +22,7 @@ def _get_ntargets_one(args):
 
 def get_ntargets_one(specfile, htmldir_root, outdir_root, coadd_type='healpix',
                      makeqa=False, overwrite=False, fastphot=False):
+    """Count the number of targets to process in a single output file."""
     if makeqa:
         if overwrite:
             ntargets = fitsio.FITS(specfile)[1].get_nrows()
@@ -46,6 +47,39 @@ def get_ntargets_one(specfile, htmldir_root, outdir_root, coadd_type='healpix',
 def findfiles(filedir, prefix='redrock', coadd_type=None, survey=None,
               program=None, healpix=None, tile=None, night=None,
               gzip=False, sample=None):
+    """Find all DESI spectral files matching the given selection criteria.
+
+    Parameters
+    ----------
+    filedir : :class:`str`
+        Root directory to search for files.
+    prefix : :class:`str`, optional
+        Filename prefix. Default is ``'redrock'``.
+    coadd_type : :class:`str` or None, optional
+        Coadd type: ``'healpix'``, ``'cumulative'``, ``'pernight'``, or
+        ``'perexp'``.
+    survey : :class:`str` or array-like of str, optional
+        DESI survey name(s), e.g. ``'main'``.
+    program : :class:`str` or array-like of str, optional
+        DESI program name(s), e.g. ``'dark'``.
+    healpix : array-like or None, optional
+        Specific HEALPix pixel(s) to include.
+    tile : array-like or None, optional
+        Specific tile ID(s) to include.
+    night : array-like or None, optional
+        Specific observing night(s) to include.
+    gzip : :class:`bool`, optional
+        If ``True``, look for ``.fits.gz`` files. Default is ``False``.
+    sample : :class:`astropy.table.Table` or None, optional
+        Input sample catalog; when provided, file paths are built directly
+        from ``SURVEY``, ``PROGRAM``, and ``HEALPIX`` columns.
+
+    Returns
+    -------
+    thesefiles : :class:`numpy.ndarray` of str
+        Sorted array of matching file paths.
+
+    """
     if gzip:
         fitssuffix = 'fits.gz'
     else:
@@ -134,10 +168,7 @@ def findfiles(filedir, prefix='redrock', coadd_type=None, survey=None,
 
 def plan_merge(outdir, outprefix, coadd_type, survey, program, healpix,
                tile, night, sample=None, gzip=False):
-    """Simple support routine to build the input and output filenames when
-    merging.
-
-    """
+    """Build the list of output files to be merged."""
     redrockfiles = None
     if sample is not None: # special case of an input catalog
         outfiles, _ = findfiles(outdir, prefix=outprefix, sample=sample)
@@ -151,10 +182,7 @@ def plan_merge(outdir, outprefix, coadd_type, survey, program, healpix,
 
 def plan_makeqa(outdir, htmldir, outprefix, coadd_type, survey, program,
                 healpix, tile, night, sample=None, gzip=False):
-    """Simple support routine to build the input and output filenames when
-    building QA.
-
-    """
+    """Build the list of output files and HTML directories for QA generation."""
     outfiles = findfiles(outdir, prefix=outprefix, coadd_type=coadd_type,
                          survey=survey, program=program, healpix=healpix,
                          tile=tile, night=night, gzip=gzip)
@@ -180,8 +208,58 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
          survey=None, program=None, healpix=None, tile=None, night=None,
          sample=None, outdir_data='.', mp=1, merge=False, makeqa=False,
          fastphot=False, overwrite=False):
-    """Function which determines what files have---and have not---been
-    processed.
+    """Determine which files still need to be processed.
+
+    Parameters
+    ----------
+    comm : MPI communicator or None, optional
+        MPI communicator for distributed execution. When ``None``, runs
+        single-process.
+    specprod : :class:`str` or None, optional
+        DESI spectroscopic production name (e.g. ``'iron'``).
+    specprod_dir : :class:`str` or None, optional
+        Override the standard specprod directory path.
+    coadd_type : :class:`str`, optional
+        Coadd type: ``'healpix'``, ``'cumulative'``, ``'pernight'``, or
+        ``'perexp'``. Default is ``'healpix'``.
+    survey : :class:`str` or array-like of str, optional
+        DESI survey name(s).
+    program : :class:`str` or array-like of str, optional
+        DESI program name(s).
+    healpix : array-like or None, optional
+        Specific HEALPix pixel(s) to process.
+    tile : array-like or None, optional
+        Specific tile ID(s) to process.
+    night : array-like or None, optional
+        Specific observing night(s) to process.
+    sample : :class:`astropy.table.Table` or None, optional
+        Input sample catalog; overrides file-system discovery.
+    outdir_data : :class:`str`, optional
+        Root output directory. Default is ``'.'``.
+    mp : :class:`int`, optional
+        Number of multiprocessing workers. Default is 1.
+    merge : :class:`bool`, optional
+        If ``True``, plan for catalog merging rather than fitting. Default is
+        ``False``.
+    makeqa : :class:`bool`, optional
+        If ``True``, plan for QA generation rather than fitting. Default is
+        ``False``.
+    fastphot : :class:`bool`, optional
+        If ``True``, use ``fastphot`` output filenames. Default is ``False``.
+    overwrite : :class:`bool`, optional
+        If ``True``, include files that already have output. Default is
+        ``False``.
+
+    Returns
+    -------
+    outdir : :class:`str`
+        Root output directory.
+    redrockfiles : :class:`list` or :class:`numpy.ndarray`
+        Input redrock files to process (or ``None``/``[]`` when merging/QA).
+    outfiles : :class:`list` or :class:`numpy.ndarray`
+        Corresponding output file paths.
+    ntargets : :class:`numpy.ndarray` or None
+        Number of targets per file; ``None`` when merging.
 
     """
     if comm:
@@ -365,6 +443,7 @@ def _read_to_merge_one(args):
 
 
 def read_to_merge_one(filename, fastphot):
+    """Read metadata, specphot, and fastfit tables from one output file."""
     info = fitsio.FITS(filename)
     meta = Table(info['METADATA'].read())
     specphot = Table(info['SPECPHOT'].read())
@@ -378,9 +457,7 @@ def read_to_merge_one(filename, fastphot):
 def _domerge(outfiles, outprefix=None, specprod=None, coadd_type=None,
              mergefile=None, fastphot=False, split_hdu=False,
              nside_main=None, mp=1):
-    """Support routine to merge a set of input files.
-
-    """
+    """Read and concatenate a set of per-healpix/tile output files into one catalog."""
     from astropy.table import vstack
     from desiutil.depend import getdep, hasdep
     from fastspecfit.io import write_fastspecfit
@@ -452,10 +529,57 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                       split_hdu=False, fastfiles_to_merge=None, merge_suffix=None,
                       mergedir=None, supermerge=False, overwrite=False, nside_main=None,
                       mp=1):
-    """Merge all the individual catalogs into a single large catalog. Runs only on
-    rank 0.
+    """Merge per-healpix or per-tile output catalogs into a single catalog.
 
-    supermerge - merge previously merged catalogs
+    Runs only on MPI rank 0. When ``supermerge=True``, merges previously
+    merged per-survey/program catalogs into one master file instead.
+
+    Parameters
+    ----------
+    specprod : :class:`str` or None, optional
+        DESI spectroscopic production name.
+    coadd_type : :class:`str` or None, optional
+        Coadd type: ``'healpix'``, ``'cumulative'``, ``'pernight'``, etc.
+    survey : :class:`str` or array-like of str, optional
+        DESI survey name(s).
+    program : :class:`str` or array-like of str, optional
+        DESI program name(s).
+    healpix : array-like or None, optional
+        Specific HEALPix pixel(s) to merge.
+    tile : array-like or None, optional
+        Specific tile ID(s) to merge.
+    night : array-like or None, optional
+        Specific observing night(s) to merge.
+    sample : :class:`astropy.table.Table` or None, optional
+        Input sample catalog; overrides file-system discovery.
+    outsuffix : :class:`str` or None, optional
+        Suffix for the merged output filename; defaults to ``specprod``.
+    fastphot : :class:`bool`, optional
+        If ``True``, merge ``fastphot`` output files. Default is ``False``.
+    specprod_dir : :class:`str` or None, optional
+        Override the standard specprod directory path.
+    outdir_data : :class:`str`, optional
+        Root output directory. Default is ``'.'``.
+    split_hdu : :class:`bool`, optional
+        If ``True``, write main-survey outputs as separate HDUs by
+        HEALPix nside. Default is ``False``.
+    fastfiles_to_merge : :class:`list` or None, optional
+        Explicit list of files to merge when ``supermerge=True``.
+    merge_suffix : :class:`str` or None, optional
+        Filename suffix for sample-based merges. Default is ``'sample'``.
+    mergedir : :class:`str` or None, optional
+        Directory for merged output files; defaults to
+        ``<outdir_data>/<specprod>/catalogs``.
+    supermerge : :class:`bool`, optional
+        If ``True``, merge previously merged per-survey/program catalogs
+        into one master file. Default is ``False``.
+    overwrite : :class:`bool`, optional
+        If ``True``, overwrite existing merged output files. Default is
+        ``False``.
+    nside_main : :class:`int` or None, optional
+        HEALPix nside for splitting main-survey output by healpixel.
+    mp : :class:`int`, optional
+        Number of multiprocessing workers. Default is 1.
 
     """
     import fitsio

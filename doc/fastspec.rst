@@ -36,7 +36,7 @@ EXTNAME = PRIMARY
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. collapse:: Required Header Keywords Table
+.. dropdown:: Required Header Keywords Table
     :open:
 
     .. rst-class:: keywords
@@ -73,7 +73,7 @@ Metadata associated with each object fitted.
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. collapse:: Required Header Keywords Table
+.. dropdown:: Required Header Keywords Table
     :open:
 
     .. rst-class:: keywords
@@ -177,7 +177,7 @@ Table with spectrophotometric quantities.
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. collapse:: Required Header Keywords Table
+.. dropdown:: Required Header Keywords Table
     :open:
 
     .. rst-class:: keywords
@@ -311,14 +311,14 @@ ABSMAG00_SYNTH_IVAR_TWOMASS_J      float32                      1 / mag2 Inverse
              LOGLNU_1500_IVAR      float32           1e+56 Hz2 s2 / erg2 Inverse variance in LOGLNU_1500.
                   LOGLNU_2800      float32            1e-28 erg / (Hz s) Monochromatic luminosity at 2800 A in the rest-frame.
              LOGLNU_2800_IVAR      float32           1e+56 Hz2 s2 / erg2 Inverse variance in LOGLNU_2800.
-                    LOGL_1450      float32                    1e-10 Lsun Integrated luminosity at 1450 A in the rest-frame.
-               LOGL_1450_IVAR      float32                 1e+20 / Lsun2 Inverse variance in LOGL_1450.
-                    LOGL_1700      float32                    1e-10 Lsun Integrated luminosity at 1700 A in the rest-frame.
-               LOGL_1700_IVAR      float32                 1e+20 / Lsun2 Inverse variance in LOGL_1700.
-                    LOGL_3000      float32                    1e-10 Lsun Integrated luminosity at 3000 A in the rest-frame.
-               LOGL_3000_IVAR      float32                 1e+20 / Lsun2 Inverse variance in LOGL_3000.
-                    LOGL_5100      float32                    1e-10 Lsun Integrated luminosity at 5100 A in the rest-frame.
-               LOGL_5100_IVAR      float32                 1e+20 / Lsun2 Inverse variance in LOGL_5100.
+                    LOGL_1450      float32                     1e10 Lsun Integrated luminosity at 1450 A in the rest-frame.
+               LOGL_1450_IVAR      float32                 1e-20 / Lsun2 Inverse variance in LOGL_1450.
+                    LOGL_1700      float32                     1e10 Lsun Integrated luminosity at 1700 A in the rest-frame.
+               LOGL_1700_IVAR      float32                 1e-20 / Lsun2 Inverse variance in LOGL_1700.
+                    LOGL_3000      float32                     1e10 Lsun Integrated luminosity at 3000 A in the rest-frame.
+               LOGL_3000_IVAR      float32                 1e-20 / Lsun2 Inverse variance in LOGL_3000.
+                    LOGL_5100      float32                     1e10 Lsun Integrated luminosity at 5100 A in the rest-frame.
+               LOGL_5100_IVAR      float32                 1e-20 / Lsun2 Inverse variance in LOGL_5100.
                FLYA_1215_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 1215.67 A in the rest-frame.
           FLYA_1215_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FLYA_1215_CONT.
                FOII_3727_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 3728.483 A in the rest-frame.
@@ -341,7 +341,7 @@ Table with spectral fitting results.
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. collapse:: Required Header Keywords Table
+.. dropdown:: Required Header Keywords Table
     :open:
 
     .. rst-class:: keywords
@@ -438,7 +438,7 @@ Best-fitting model spectra (corrected for Galactic extinction).
 Required Header Keywords
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. collapse:: Required Header Keywords Table
+.. dropdown:: Required Header Keywords Table
     :open:
 
     .. rst-class:: keywords

@@ -17,18 +17,16 @@ from logging import DEBUG
 from desiutil.log import get_logger
 
 def getFastspecLogger():
-    """
-    Create a logging object unique to the fastspec tools.
-    Configure it to send its log messages to stdout and to
-    format them identically to the DESIUtil defaults.
+    """Create a fastspecfit-specific logger that writes to stdout.
 
-    Note that every call to this function returns the *same*
-    log object, so will reset its properties including log level.
-    Hence, it should really only be called once at the start
-    of the program, as we do here, to create a singleton
-    log object.
+    Formats messages identically to DESIUtil defaults. Every call returns the
+    *same* log object and resets its level to INFO, so this should only be
+    called once at program startup.
 
-    Returns a log object with default level INFO.
+    Returns
+    -------
+    log : :class:`logging.Logger`
+        Logger named ``fastspec`` with level INFO.
 
     """
     import sys

@@ -17,13 +17,26 @@ import multiprocessing
 from glob import glob
 
 def _cutout_one(args):
+    """Multiprocessing wrapper for :func:`cutout_one`."""
     return cutout_one(*args)
 
 def cutout_one(jpegfile, ra, dec, dry_run, rank, iobj):
-    """
-    pixscale = 0.262
-    width = int(30 / pixscale)   # =114
-    height = int(width / 1.3) # =87 [3:2 aspect ratio]
+    """Retrieve a Legacy Survey image cutout for a single target.
+
+    Parameters
+    ----------
+    jpegfile : :class:`str`
+        Output JPEG file path.
+    ra : :class:`float`
+        Right ascension in degrees.
+    dec : :class:`float`
+        Declination in degrees.
+    dry_run : :class:`bool`
+        If ``True``, print the command without executing it.
+    rank : :class:`int`
+        MPI rank (for logging).
+    iobj : :class:`int`
+        Object index (for logging).
 
     """
     from cutout import cutout
@@ -53,9 +66,37 @@ def cutout_one(jpegfile, ra, dec, dry_run, rank, iobj):
             print(f'WARNING: Missing {jpegfile}')
 
 def _get_jpegfiles_one(args):
+    """Multiprocessing wrapper for :func:`get_jpegfiles_one`."""
     return get_jpegfiles_one(*args)
 
 def get_jpegfiles_one(fastspecfile, coadd_type, htmldir_root, overwrite, verbose):
+    """Get the list of JPEG cutout files for one fastspecfit output file.
+
+    Parameters
+    ----------
+    fastspecfile : :class:`str`
+        Path to a fastspecfit output FITS file.
+    coadd_type : :class:`str`
+        Coadd type (e.g., ``'healpix'``).
+    htmldir_root : :class:`str`
+        Root HTML output directory.
+    overwrite : :class:`bool`
+        If ``False``, skip existing JPEG files.
+    verbose : :class:`bool`
+        If ``True``, log skipped files.
+
+    Returns
+    -------
+    jpegfiles : :class:`numpy.ndarray`
+        Array of JPEG output file paths.
+    allra : :class:`numpy.ndarray`
+        Array of right ascension values in degrees.
+    alldec : :class:`numpy.ndarray`
+        Array of declination values in degrees.
+    count : :class:`int`
+        Number of JPEG files to generate.
+
+    """
     meta = fitsio.read(fastspecfile, 'METADATA', columns=['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID', 'RA', 'DEC'])
     htmldir = os.path.join(htmldir_root, meta['SURVEY'][0], meta['PROGRAM'][0], str(meta['HEALPIX'][0]//100), str(meta['HEALPIX'][0]))
     if not os.path.isdir(htmldir):
@@ -78,6 +119,23 @@ def get_jpegfiles_one(fastspecfile, coadd_type, htmldir_root, overwrite, verbose
 
 def get_cutout_filename(metadata, coadd_type, outprefix=None, htmldir=None):
     """Build the cutout filename.
+
+    Parameters
+    ----------
+    metadata : :class:`astropy.table.Table` or :class:`astropy.table.row.Row`
+        Metadata table or single row with target identifiers.
+    coadd_type : :class:`str`
+        Coadd type; one of ``'healpix'``, ``'cumulative'``, ``'pernight'``,
+        ``'perexp'``, or ``'custom'``.
+    outprefix : :class:`str` or None, optional
+        Filename prefix. Default is ``'fastspec'``.
+    htmldir : :class:`str` or None, optional
+        Output directory. Default is the current directory.
+
+    Returns
+    -------
+    jpegfile : :class:`numpy.ndarray`
+        Array of JPEG file path(s).
 
     """
     import astropy.table
@@ -121,19 +179,23 @@ def get_cutout_filename(metadata, coadd_type, outprefix=None, htmldir=None):
     return np.array(jpegfile)
 
 def weighted_partition(weights, n, groups_per_node=None):
-    '''
-    Partition `weights` into `n` groups with approximately same sum(weights)
+    """Partition items into groups with approximately equal total weight.
 
-    Args:
-        weights: array-like weights
-        n: number of groups
+    Parameters
+    ----------
+    weights : array-like
+        Weights to partition.
+    n : :class:`int`
+        Number of groups.
+    groups_per_node : :class:`int` or None, optional
+        If not ``None``, reorder groups to spread large items across nodes.
 
-    Returns list of lists of indices of weights for each group
+    Returns
+    -------
+    groups : :class:`list` of :class:`list`
+        List of ``n`` lists, each containing indices into ``weights``.
 
-    Notes:
-        compared to `dist_discrete_all`, this function allows non-contiguous
-        items to be grouped together which allows better balancing.
-    '''
+    """
     #- sumweights will track the sum of the weights that have been assigned
     #- to each group so far
     sumweights = np.zeros(n, dtype=float)
@@ -181,7 +243,7 @@ def weighted_partition(weights, n, groups_per_node=None):
 def plan(comm=None, specprod=None, coadd_type='healpix',
          survey=None, program=None, healpix=None, tile=None, night=None,
          outdir_data='.', outdir_html='.', mp=1, overwrite=False):
-
+    """Plan the cutout generation by discovering input files and partitioning work."""
     from astropy.table import Table
 
     t0 = time.time()
@@ -351,7 +413,7 @@ def plan(comm=None, specprod=None, coadd_type='healpix',
     return jpegfiles, allra, alldec, groups
 
 def do_cutouts(args, comm=None, outdir_data='.', outdir_html='.'):
-
+    """Execute the cutout generation across MPI ranks."""
     if comm is None:
         rank, size = 0, 1
     else:
@@ -405,9 +467,7 @@ def do_cutouts(args, comm=None, outdir_data='.', outdir_html='.'):
         print(f'All done at {time.asctime()}')
 
 def main():
-    """Main wrapper.
-
-    """
+    """Main wrapper."""
     import argparse
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)

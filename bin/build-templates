@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-'''Build a set of templates for use with FastSpecFit.
+"""Build a set of templates for use with FastSpecFit.
 
 time python bin/build-templates --version 0.0.1 --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates
 time python bin/build-templates --version=0.0.1 --templatedir=$DESI_ROOT/users/ioannis/fastspecfit/templates --logmets=-1.,0.,0.3
@@ -35,7 +35,7 @@ Notes
   R(lambda/dlambda)=7065 (=42 km/s) between 2750-9100 A:
   https://github.com/cconroy20/fsps/tree/master/SPECTRA/C3K#readme
 
-'''
+"""
 import os, time
 import numpy as np
 import numpy.ma as ma
@@ -53,7 +53,7 @@ from fastspecfit.templates import Templates
 
 
 def _qa_dustem_templates(dustwave, mduste, qpah, umin, gamma, png):
-
+    """QA plot comparing DL07 dust emission model against FSPS."""
     # check against FSPS using a simple (age-independent) Charlot & Fall
     # dust model
 
@@ -140,6 +140,24 @@ def _qa_dustem_templates(dustwave, mduste, qpah, umin, gamma, png):
 def build_dustem_templates(qpah=3.5, umin=1., gamma=0.01, png=None):
     """Build the DL07 dust emission templates.
 
+    Parameters
+    ----------
+    qpah : :class:`float`, optional
+        PAH fraction. Default is 3.5.
+    umin : :class:`float`, optional
+        Minimum radiation field strength. Default is 1.0.
+    gamma : :class:`float`, optional
+        Fraction of dust heated by PDRs. Default is 0.01.
+    png : :class:`str` or None, optional
+        If not ``None``, write a QA figure to this path.
+
+    Returns
+    -------
+    dustwave : :class:`numpy.ndarray`
+        Wavelength array in Angstroms.
+    mduste : :class:`numpy.ndarray`
+        Normalized dust emission spectrum.
+
     """
     # Umin and qpah parameter grids
     umin_grid = np.array([0.10, 0.15, 0.20, 0.30, 0.40, 0.50, 0.70, 0.80,
@@ -196,7 +214,21 @@ def build_dustem_templates(qpah=3.5, umin=1., gamma=0.01, png=None):
 
 
 def build_fe_templates(version='1.0', png=None):
-    """Build the Fe template.
+    """Build the Fe emission template.
+
+    Parameters
+    ----------
+    version : :class:`str`, optional
+        Template file version string. Default is ``'1.0'``.
+    png : :class:`str` or None, optional
+        If not ``None``, write a QA figure to this path.
+
+    Returns
+    -------
+    newwave : :class:`numpy.ndarray`
+        Wavelength array in Angstroms on a constant log-lambda grid.
+    newflux : :class:`numpy.ndarray`
+        Normalized Fe emission flux spectrum.
 
     """
     from scipy.ndimage import gaussian_filter1d
@@ -243,7 +275,21 @@ def build_fe_templates(version='1.0', png=None):
 
 
 def build_agn_templates(agntau=10., png=None):
-    """Build the AGN templates.
+    """Build the AGN (Nenkova+08 torus) template.
+
+    Parameters
+    ----------
+    agntau : :class:`float`, optional
+        AGN optical depth. Default is 10.0.
+    png : :class:`str` or None, optional
+        If not ``None``, write a QA figure to this path.
+
+    Returns
+    -------
+    agnwave : :class:`numpy.ndarray`
+        Wavelength array in Angstroms.
+    agnflux : :class:`numpy.ndarray`
+        Normalized AGN flux spectrum.
 
     """
     def _qa_agn_templates(agnwave, agnflux, agntau, agngrid=None, taugrid=None):
@@ -294,7 +340,7 @@ def build_agn_templates(agntau=10., png=None):
 
 def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
                          include_nebular=True):
-
+    """Build FSPS stellar population synthesis template spectra."""
     nsed = len(models)
 
     meta = Table()
@@ -398,9 +444,7 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
 
 def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
          agntau=10., test=False, version='1.0.0', templatedir=None):
-    """Build all the templates.
-
-    """
+    """Build all the templates."""
     # AGN + Fe template(s)
     fewave, feflux = build_fe_templates(version='1.0')#, png=os.path.join(templatedir, 'original', 'qa-fe.png'))
     agnwave, agnflux = build_agn_templates(agntau=agntau, png=os.path.join(templatedir, 'original', 'qa-agn.png'))

@@ -1,0 +1,5 @@
+# Dependencies for generating test data.
+# Install with: pip install -r requirements-testdata.txt
+# These packages are not on PyPI and cannot be listed in pyproject.toml.
+git+https://github.com/desihub/redrock.git
+git+https://github.com/desihub/desigal.git

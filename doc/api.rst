@@ -43,6 +43,9 @@ API
 .. automodule:: fastspecfit.qa
    :members:
 
+.. automodule:: fastspecfit.resolution
+   :members:
+
 .. automodule:: fastspecfit.singlecopy
    :members:
 
@@ -50,4 +53,25 @@ API
    :members:
 
 .. automodule:: fastspecfit.util
+   :members:
+
+.. automodule:: fastspecfit.emline_fit
+   :members:
+
+.. automodule:: fastspecfit.emline_fit.interface
+   :members:
+
+.. automodule:: fastspecfit.emline_fit.jacobian
+   :members:
+
+.. automodule:: fastspecfit.emline_fit.model
+   :members:
+
+.. automodule:: fastspecfit.emline_fit.params_mapping
+   :members:
+
+.. automodule:: fastspecfit.emline_fit.sparse_rep
+   :members:
+
+.. automodule:: fastspecfit.emline_fit.utils
    :members:

@@ -14,18 +14,15 @@ from fastspecfit.util import C_LIGHT, quantile, median
 
 
 class LineMasker(object):
-    """Compute spectral line mask for continuum estimation,
-       and to get initial guesses at emission line parameters
+    """Compute spectral line mask for continuum estimation and line parameter initialization.
+
+    Parameters
+    ----------
+    emline_table : :class:`astropy.table.Table`
+        Emission line table.
 
     """
     def __init__(self, emline_table):
-        """
-        Parameters
-        ----------
-        emline_table
-            Emission line table
-        """
-
         self.emline_table = emline_table
 
 
@@ -34,12 +31,49 @@ class LineMasker(object):
                             flux=None, linevshifts=None, patchMap=None, redshift=0.,
                             nsigma=2.5, minlinesigma=50., mincontpix=11,
                             get_contpix=True, get_snr=False):
-        """Support routine to determine the pixels potentially containing emission lines
-        and the corresponding (adjacent) continuum.
+        """Identify pixels containing emission lines and adjacent continuum.
 
-        linesigmas in km/s
-        minlinesigma in kms - minimum line-sigma for the purposes of masking
-        mincontpix - minimum number of continuum pixels per line
+        Parameters
+        ----------
+        wave : :class:`numpy.ndarray`
+            Observed-frame wavelength array in Angstroms.
+        ivar : :class:`numpy.ndarray`
+            Inverse variance array.
+        linetable : :class:`astropy.table.Table`
+            Emission line table with ``restwave`` and ``name`` columns.
+        linesigmas : :class:`numpy.ndarray`
+            Line widths in km/s for each entry in ``linetable``.
+        residuals : :class:`numpy.ndarray` or None, optional
+            Residual spectrum used for S/N estimation when ``get_snr=True``.
+        flux : :class:`numpy.ndarray` or None, optional
+            Observed flux array used for amplitude estimation when ``get_snr=True``.
+        linevshifts : :class:`numpy.ndarray` or None, optional
+            Velocity shifts in km/s for each line; defaults to zero.
+        patchMap : :class:`dict` or None, optional
+            Mapping from patch ID to ``(linenames, line_indices, full_indices)``
+            tuples. When provided, continuum pixels are grouped into patches.
+        redshift : :class:`float`, optional
+            Object redshift. Default is 0.
+        nsigma : :class:`float`, optional
+            Half-width of the line mask in units of the line sigma. Default is 2.5.
+        minlinesigma : :class:`float`, optional
+            Minimum line sigma in km/s used for masking. Default is 50.
+        mincontpix : :class:`int`, optional
+            Minimum number of continuum pixels per line or patch. Default is 11.
+        get_contpix : :class:`bool`, optional
+            If ``True``, also compute continuum pixel indices. Default is ``True``.
+        get_snr : :class:`bool`, optional
+            If ``True``, estimate the amplitude and S/N for each line. Default is
+            ``False``.
+
+        Returns
+        -------
+        pix : :class:`dict`
+            Dictionary with keys ``linepix`` and ``contpix`` (each mapping line
+            name to pixel index arrays). If ``get_snr=True``, also contains
+            ``clocal``, ``cnoise``, ``amp``, and ``snr`` per line. If
+            ``patchMap`` is provided, also contains ``patch_contpix``,
+            ``dropped``, ``merged``, and ``merged_from``.
 
         """
         def _get_linepix(zlinewave, sigma):
@@ -294,33 +328,43 @@ class LineMasker(object):
         resolution_matrix : :class:`list`
             List of :class:`fastspecfit.resolution.Resolution`
             objects, one per camera.
-        redshift : :class:`float`
-            Object redshift.
-        uniqueid : :class:`int`
-            Unique identification number.
-        initsigma_broad : :class:`float`
-            Initial guess of the broad-line emission-line width in km/s.
-        initsigma_narrow : :class:`float`
-            Like `initsigma_broad` but for the forbidden lines.
-        initsigma_balmer_broad : :class:`float`
-            Like `initsigma_broad` but for the broad Balmer lines.
-        initvshift_broad : :class:`float`
-            Initial guess of the broad-line velocity shift in km/s.
-        initvshift_narrow : :class:`float`
-            Like `initvshift_broad` but for the forbidden lines.
-        initvshift_balmer_broad : :class:`float`
-            Like `initvshift_broad` but for the broad Balmer lines.
-        minsnr_balmer_broad : :class:`float`
-            Minimum signal-to-noise ratio for identifying a significant broad
-            Balmer line.
-        niter : :class:`int`
-            Number of fit-in-patches iterations.
-        debug_plots : :class:`bool`
-            Optionally generate and write out various debugging plots.
+        redshift : :class:`float`, optional
+            Object redshift. Default is 0.
+        uniqueid : :class:`int`, optional
+            Unique identification number used in debug plot filenames.
+        minsnr_balmer_broad : :class:`float`, optional
+            Minimum S/N to accept a broad Balmer line detection. Default is 1.5.
+        minsnr_linemask : :class:`float`, optional
+            Minimum S/N to include a non-strong line in the final pixel mask.
+            Default is 3.5.
+        initsigma_broad : :class:`float` or None, optional
+            Initial broad-line width in km/s. Default is 3000.
+        initsigma_narrow : :class:`float` or None, optional
+            Initial narrow/forbidden-line width in km/s. Default is 150.
+        initsigma_balmer_broad : :class:`float` or None, optional
+            Initial broad Balmer-line width in km/s. Default is 1000.
+        initvshift_broad : :class:`float` or None, optional
+            Initial broad-line velocity shift in km/s. Default is 0.
+        initvshift_narrow : :class:`float` or None, optional
+            Initial narrow-line velocity shift in km/s. Default is 0.
+        initvshift_balmer_broad : :class:`float` or None, optional
+            Initial broad Balmer-line velocity shift in km/s. Default is 0.
+        niter : :class:`int`, optional
+            Number of fit-in-patches iterations. Default is 2.
+        nsigma_mask : :class:`float`, optional
+            Half-width of the final line mask in units of the line sigma.
+            Default is 5.
+        debug_plots : :class:`bool`, optional
+            If ``True``, write per-patch and per-line diagnostic PNG files.
+            Default is ``False``.
 
         Returns
         -------
-        :class:`dict` with line-masking arrays
+        out : :class:`dict`
+            Dictionary with fitted line-width and velocity-shift scalars for
+            broad, narrow, and broad-Balmer populations, a ``balmerbroad``
+            boolean flag, and ``coadd_linepix`` mapping each line name to its
+            pixel indices in the coadded spectrum.
 
         """
         from astropy.table import vstack
