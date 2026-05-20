@@ -90,8 +90,9 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
     # Auto-detect per-file parallelism: if the average number of targets per
     # file is less than mp, file-level parallelism keeps workers busier than
     # object-level parallelism would.  An explicit --mp-per-file flag overrides.
-    if not mp_per_file and args.mp > 1 and len(all_ntargets) > 0:
-        if rank == 0:
+    # Only rank 0 has a valid all_ntargets; broadcast the decision to others.
+    if not mp_per_file and args.mp > 1:
+        if rank == 0 and len(all_ntargets) > 0:
             avg = float(np.mean(all_ntargets))
             mp_per_file = avg < args.mp
             if mp_per_file:
