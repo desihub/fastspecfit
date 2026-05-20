@@ -23,7 +23,9 @@
 #   workers per node = (128 / mp) * mp = 128
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/fastspecfit-env.sh"
+if [[ -z "${FASTSPECFIT_ENV_LOADED}" ]]; then
+    source "${SCRIPT_DIR}/fastspecfit-env.sh"
+fi
 
 N=${1:?'N (nodes) is required'}
 mp=${2:?'mp (workers per rank) is required'}
