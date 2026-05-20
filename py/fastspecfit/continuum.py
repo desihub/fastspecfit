@@ -1393,7 +1393,6 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
         Object identifier used in log messages and debug plot filenames.
     nmonte : int, optional
         Number of Monte Carlo realizations for uncertainty estimation.
-        Defaults to 10.
     rng : :class:`numpy.random.Generator`, optional
         Random number generator for Monte Carlo draws.
     debug_plots : bool, optional
@@ -1660,7 +1659,6 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
         Initialized continuum-fitting tools for this object.
     nmonte : int, optional
         Number of Monte Carlo realizations for uncertainty estimation.
-        Defaults to 10.
     rng : :class:`numpy.random.Generator`, optional
         Random number generator for Monte Carlo draws.
     uniqueid : int or str, optional
