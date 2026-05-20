@@ -1246,72 +1246,59 @@ def build_stellar_continuum(coeff, tauv, redshift, templates, cosmo, igm,
                             vdisp=None, fluxnorm=FLUXNORM, massnorm=MASSNORM,
                             dust_emission=True):
 
-    """Build a stellar continuum model.
+    """Build a stellar continuum model from template coefficients.
+
+    This is a standalone version of :meth:`ContinuumTools.build_stellar_continuum`
+    intended for use outside of the main fitting pipeline (e.g., in notebooks).
+    It constructs the redshift, IGM, and luminosity-distance scaling factors
+    internally from the supplied cosmology and IGM objects.
 
     Parameters
     ----------
-    templateflux : :class:`numpy.ndarray` [ntemplates, npix]
-        Rest-frame, native-resolution template spectra corresponding to
-        `templatewave`.
-    templatecoeff : :class:`numpy.ndarray` [ntemplates]
-        Column vector of positive coefficients corresponding to each
-        template.
-    tauv : :class:`float`
+    coeff : :class:`numpy.ndarray` [ntemplates]
+        Non-negative template coefficients in units of
+        :data:`~fastspecfit.util.MASSNORM` solar masses.
+    tauv : float
         V-band optical depth, tau(V).
-    vdisp : :class:`float`
-        Velocity dispersion in km/s. If `None`, do not convolve to the
-        specified velocity dispersion (usually because `templateflux` has
-        already been smoothed to some nominal value).
-    conv_pre: :class:`tuple` or None
-        Optional preprocessing data to accelerate template convolution with vdisp
-        (may be present only if vdisp is not None).
-    dust_emission : :class:`bool`
-        Model impact of infrared dust emission spectrum. Energy-balance is used
-        to compute the normalization of this spectrum.
+    redshift : float
+        Object redshift.
+    templates : :class:`fastspecfit.templates.Templates`
+        Stellar population synthesis templates.
+    cosmo : :class:`fastspecfit.cosmo.TabulatedDESI`
+        Tabulated DESI fiducial cosmology, used to compute the luminosity
+        distance.
+    igm : :class:`fastspecfit.igm.Inoue14`
+        IGM attenuation model.
+    vdisp : float or None, optional
+        Velocity dispersion in km/s.  If ``None``, the raw (unbroadened)
+        ``templates.flux`` is used without any convolution.  To match the
+        default production behavior, pass ``vdisp=templates.vdisp_nominal``
+        (250 km/s).
+    fluxnorm : float, optional
+        Flux normalization factor in erg/s/cm²/Å.
+        Defaults to :data:`~fastspecfit.util.FLUXNORM` (10\ :sup:`17`).
+    massnorm : float, optional
+        Stellar mass normalization in solar masses.
+        Defaults to :data:`~fastspecfit.util.MASSNORM` (10\ :sup:`10`).
+    dust_emission : bool, optional
+        If ``True``, add the energy-balance infrared dust emission spectrum.
+        Defaults to ``True``.
 
     Returns
     -------
+    ztemplatewave : :class:`numpy.ndarray` [npix]
+        Observed-frame (redshifted) wavelength array in Angstroms.
     contmodel : :class:`numpy.ndarray` [npix]
-        Full-wavelength, native-resolution, observed-frame model spectrum.
+        Observed-frame continuum model in units of
+        10\ :sup:`-17` erg/s/cm²/Å per :data:`~fastspecfit.util.MASSNORM`
+        solar masses.
 
     """
-    #@jit(nopython=True, nogil=True, fastmath=True, cache=True)
-    def attenuate(M, A, zfactors, wave, dustflux):
-        ma = M[0] * A[0]
-        prev_d = M[0] - ma
-        M[0] = ma
-
-        lbol_diff = 0.
-        for i in range(len(M) - 1):
-            ma = M[i+1] * A[i+1]
-            d = M[i+1] - ma
-            M[i+1] = ma
-
-            lbol_diff += (wave[i+1] - wave[i]) * (d + prev_d)
-
-            prev_d  = d
-        lbol_diff *= 0.5
-
-        # final result is
-        # (M * (atten ** ebv) + lbol_diff * dustflux) * zfactors
-        for i in range(len(M)):
-            M[i] = (M[i] + lbol_diff * dustflux[i]) * zfactors[i]
-
-
-    #@jit(nopython=True, nogil=True, fastmath=True, cache=True)
-    def attenuate_nodust(M, A, zfactors):
-        for i in range(len(M)):
-            M[i] *= A[i] * zfactors[i]
-
-    def get_zfactors(igm, ztemplatewave, redshift, dluminosity):
-        T = igm.full_IGM(redshift, ztemplatewave)
-        T *= fluxnorm * massnorm * (10. / (1e6 * dluminosity))**2 / (1. + redshift)
-        return T
-
     # redshift-dependent factors
     ztemplatewave = templates.wave * (1. + redshift)
     dlum = cosmo.luminosity_distance(redshift)
-    zfactors = get_zfactors(igm, ztemplatewave, redshift, dlum)
+    zfactors = igm.full_IGM(redshift, ztemplatewave)
+    zfactors *= fluxnorm * massnorm * (10. / (1e6 * dlum))**2 / (1. + redshift)
 
     # Compute the weighted sum of the templates.
     contmodel = coeff.dot(templates.flux)
@@ -1326,10 +1313,10 @@ def build_stellar_continuum(coeff, tauv, redshift, templates, cosmo, igm,
     np.exp(A, out=A)
 
     if dust_emission:
-        attenuate(contmodel, A, zfactors, templates.wave,
-                  templates.dustflux)
+        ContinuumTools.attenuate(contmodel, A, zfactors, templates.wave,
+                                 templates.dustflux)
     else:
-        attenuate_nodust(contmodel, A, zfactors)
+        ContinuumTools.attenuate_nodust(contmodel, A, zfactors)
 
     return ztemplatewave, contmodel
 

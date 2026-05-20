@@ -168,6 +168,9 @@ class Photometry(object):
             Observed-frame (redshifted) model wavelength array in Angstroms.
         zmodelflux : :class:`numpy.ndarray`
             Observed-frame (redshifted) model spectrum in erg/s/cm2/A.
+        filters_out : :class:`speclite.filters.FilterSequence` or None, optional
+            Rest-frame output filter set used to synthesize absolute magnitudes.
+            Defaults to ``self.filters_out``.
 
         Returns
         -------
@@ -227,6 +230,13 @@ class Photometry(object):
         snrmin : :class:`float`, optional
             Minimum S/N in an observed bandpass for it to contribute to the
             K-correction. Default is 2.
+        filters_obs : :class:`speclite.filters.FilterSequence` or None, optional
+            Observed-frame filter set. Defaults to ``self.filters[photsys]``.
+        filters_out : :class:`speclite.filters.FilterSequence` or None, optional
+            Rest-frame output filter set. Defaults to ``self.filters_out``.
+        bands_to_fit : :class:`numpy.ndarray` or None, optional
+            Boolean or integer mask selecting which photometric bands are used
+            in the fit. Defaults to ``self.bands_to_fit``.
 
         Returns
         -------
