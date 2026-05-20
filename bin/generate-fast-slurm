@@ -89,7 +89,7 @@ FIRST_HEALPIX=$(echo "$HEALPIX" | cut -d',' -f1)
 warmup_args="--specprod={specprod} --coadd-type={coadd_type}"
 warmup_args+=" --survey={survey} --program={program}"
 warmup_args+=" --healpix=$FIRST_HEALPIX"
-warmup_args+=" --mp=1 --ntargets=1 --nompi --nolog"
+warmup_args+=" --mp=1 --ntargets=1 --nompi"
 warmup_args+=" --outdir-data=/tmp/fastspecfit-warmup --overwrite"
 {stage_flag_warmup}
 echo "Warming up Numba cache on one rank..."
