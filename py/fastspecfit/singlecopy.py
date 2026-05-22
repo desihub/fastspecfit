@@ -124,3 +124,21 @@ def _initialize_sc_data(**kwargs):
     worker, leaving the worker's own module-level ``sc_data`` uninitialized.
     """
     sc_data.initialize(**kwargs)
+
+
+def _initialize_sc_data_worker(**kwargs):
+    """Pool initializer for MPI production workers.
+
+    Like :func:`_initialize_sc_data` but suppresses INFO logging in workers
+    unless ``log_verbose=True`` was requested.  This keeps per-object progress
+    messages out of the Slurm log (where output from all MPI ranks is
+    interleaved) while still routing them to the per-healpix log file via the
+    parent process.  Interactive ``fastspec``/``fastphot`` runs use
+    :func:`_initialize_sc_data` instead and therefore keep full INFO logging
+    regardless of ``--mp``.
+    """
+    sc_data.initialize(**kwargs)
+    if not kwargs.get('log_verbose', False):
+        import logging
+        from fastspecfit.logger import log
+        log.setLevel(logging.WARNING)

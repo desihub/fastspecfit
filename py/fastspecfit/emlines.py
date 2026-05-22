@@ -691,7 +691,7 @@ class EMFitTools(object):
                     (f' for {self.uniqueid}' if self.uniqueid is not None else '')
                 log.critical(errmsg)
             elif fit_info.status == 0:
-                log.warning('optimizer failed to converge')
+                log.warning(f'optimizer failed to converge [{self.uniqueid}]')
 
             # This should never happen if our optimizer enforces its bounds
             if np.any((free_params < bounds[0]) | (free_params > bounds[1])):

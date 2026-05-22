@@ -501,7 +501,7 @@ class ContinuumTools(object):
 
         redshift = self.data['redshift']
         if redshift <= 0.0:
-            log.warning('Input redshift not defined, zero, or negative!')
+            log.warning(f'Input redshift not defined, zero, or negative [{self.data["uniqueid"]}].')
             return lums, cfluxes
 
         templatewave = self.templates.wave
@@ -1016,8 +1016,12 @@ class ContinuumTools(object):
                 return np.inf
             return np.sum((Psi @ coeff - b) ** 2)
 
-        result = minimize_scalar(objective, bounds=tauv_bounds, method='bounded',
-                                 options={'xatol': 1e-4})
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=RuntimeWarning,
+                                    module='scipy.optimize')
+            result = minimize_scalar(objective, bounds=tauv_bounds, method='bounded',
+                                     options={'xatol': 1e-4})
         tauv = result.x
 
         # One explicit final solve at the optimum so that coeff, phi, and
@@ -1435,7 +1439,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
                 synthspec=False)
 
             if np.all(coeff == 0.):
-                log.warning('Continuum coefficients are all zero.')
+                log.warning(f'Continuum coefficients are all zero [{uniqueid}].')
                 sedmodel = np.zeros(templates.npix)
                 sedmodel_nolines = np.zeros(templates.npix)
                 dn4000_model = 0.
@@ -1865,8 +1869,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
         log.info('Skipping aperture correction since no bands were fit.')
     else:
         if np.all(coeff == 0.):
-            log.warning('Unable to estimate aperture correction because ' + \
-                        'continuum coefficients are all zero; adopting 1.0.')
+            log.warning(f'Unable to estimate aperture correction because continuum '
+                        f'coefficients are all zero [{data["uniqueid"]}]; adopting 1.0.')
         else:
             sedflam = CTools.continuum_to_photometry(
                 contmodel, filters=phot.synth_filters[data['photsys']])
@@ -1883,7 +1887,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
                 median_apercorr = median(apercorrs[I])
 
                 if median_apercorr <= 0.:
-                    log.warning('Aperture correction not well-defined; adopting 1.0.')
+                    log.warning(f'Aperture correction not well-defined [{data["uniqueid"]}]; adopting 1.0.')
                     median_apercorr = 1.
                 else:
                     log.info(f'Median aperture correction {median_apercorr:.3f} ' + \
@@ -1902,7 +1906,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
             synthphot=True, synthspec=True)
 
         if np.all(coeff == 0.):
-            log.warning('Continuum coefficients are all zero.')
+            log.warning(f'Continuum coefficients are all zero [{data["uniqueid"]}].')
             sedmodel = np.zeros(templates.npix)
             sedmodel_nolines = np.zeros(templates.npix)
             desimodel_nolines = np.zeros(len(specflux))
@@ -2025,7 +2029,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
 
     redshift = data['redshift']
     if redshift <= 0.:
-        log.warning('Input redshift not defined, zero, or negative!')
+        log.warning(f'Input redshift not defined, zero, or negative [{data["uniqueid"]}].')
 
     if fitstack:
         FLUXNORM = 1.
@@ -2041,7 +2045,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
         lambda_eff = data['photometry']['lambda_eff'].value
         opt = ((lambda_eff > 3e3) & (lambda_eff < 1e4))
         if np.all(objflamivar[opt] == 0.):
-            log.warning('All optical bands are masked; masking all photometry.')
+            log.warning(f'All optical bands are masked; masking all photometry [{data["uniqueid"]}].')
             objflamivar[:] = 0.
 
     # Instantiate the continuum tools class.

@@ -53,7 +53,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
     from desispec.parallel import stdouterr_redirected, weighted_partition
     from fastspecfit.mpi import plan, build_cmdargs, _perfile_init, _perfile_run
     from fastspecfit.util import MPPool
-    from fastspecfit.singlecopy import sc_data, _initialize_sc_data
+    from fastspecfit.singlecopy import sc_data, _initialize_sc_data_worker
     from fastspecfit.fastspecfit import make_init_sc_args
 
     if comm:
@@ -127,7 +127,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
     shared_pool = None
     if not makeqa and not mp_per_file:
         sc_data.initialize(**init_sc_args)
-        shared_pool = MPPool(args.mp, initializer=_initialize_sc_data,
+        shared_pool = MPPool(args.mp, initializer=_initialize_sc_data_worker,
                              init_argdict=init_sc_args)
 
     def run_one_file(redrockfile, outfile, ntarget):
