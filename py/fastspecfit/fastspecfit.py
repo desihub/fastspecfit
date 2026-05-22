@@ -459,7 +459,11 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         if comm is None and _own_pool:
             mp_pool.close()
 
-        log.info(fsftime('fit_all', time.time()-t0, context=f'nobj={ntargets}'))
+        _elapsed = time.time() - t0
+        _ncore = max(args.mp, 1)
+        _per_obj = _elapsed / _ncore / ntargets
+        log.info(fsftime('fit_all', _elapsed,
+                         context=f'nobj={ntargets},{_per_obj:.2f}s/obj/core'))
 
         write_fastspecfit(
             meta, specphot, fastfit, modelspectra=modelspectra,
