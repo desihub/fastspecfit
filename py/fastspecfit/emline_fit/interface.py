@@ -386,6 +386,32 @@ class MultiLines(object):
             return (s, e), data
 
 
+@jit(nopython=True, nogil=True, cache=True)
+def _update_line_maxima(max_amps, line_models):
+    """Update per-line maximum amplitudes from a camera's line models."""
+    endpts, vals = line_models
+
+    # find the highest flux for each peak; if it's
+    # bigger than any seen so far, update global max
+    for i in range(vals.shape[0]):
+        ps, pe = endpts[i]
+        if pe > ps:
+            max_amps[i] = np.maximum(max_amps[i],
+                                     np.max(vals[i,:pe-ps]))
+
+
+@jit(nopython=True, nogil=True, cache=True)
+def _update_line_maxima_and_fluxes(max_amps, line_fluxes, line_models, wave_weight):
+    endpts, vals = line_models
+
+    for i in range(vals.shape[0]):
+        ps, pe = endpts[i]
+        if pe > ps:
+            max_amps[i] = np.maximum(max_amps[i], np.max(vals[i, :pe-ps]))
+            for k in range(pe - ps):
+                line_fluxes[i] += vals[i, k] * wave_weight[ps + k]
+
+
 def find_peak_amplitudes(line_parameters,
                          obs_bin_centers,
                          redshift,
@@ -416,20 +442,6 @@ def find_peak_amplitudes(line_parameters,
         Maximum flux in any observed bin for each line.
 
     """
-
-    @jit(nopython=True, nogil=True, cache=True)
-    def _update_line_maxima(max_amps, line_models):
-        """Update per-line maximum amplitudes from a camera's line models."""
-        endpts, vals = line_models
-
-        # find the highest flux for each peak; if it's
-        # bigger than any seen so far, update global max
-        for i in range(vals.shape[0]):
-            ps, pe = endpts[i]
-            if pe > ps:
-                max_amps[i] = np.maximum(max_amps[i],
-                                         np.max(vals[i,:pe-ps]))
-
     max_amps = np.zeros_like(line_wavelengths, dtype=line_parameters.dtype)
 
     _build_multimodel_core(line_parameters,
@@ -475,17 +487,6 @@ def find_peak_amplitudes_and_fluxes(line_parameters,
         Wavelength-integrated flux of the convolved line profile for each line.
 
     """
-    @jit(nopython=True, nogil=True, cache=True)
-    def _update_line_maxima_and_fluxes(max_amps, line_fluxes, line_models, wave_weight):
-        endpts, vals = line_models
-
-        for i in range(vals.shape[0]):
-            ps, pe = endpts[i]
-            if pe > ps:
-                max_amps[i] = np.maximum(max_amps[i], np.max(vals[i, :pe-ps]))
-                for k in range(pe - ps):
-                    line_fluxes[i] += vals[i, k] * wave_weight[ps + k]
-
     nlines = len(line_wavelengths)
     nbins  = len(obs_bin_centers)
 

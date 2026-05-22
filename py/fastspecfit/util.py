@@ -98,6 +98,7 @@ class MPPool(object):
         """Close the multiprocessing pool if one was created."""
         if self.pool is not None:
             self.pool.close()
+            self.pool.join()
 
     @staticmethod
     def apply_to_dict(f, argdict):

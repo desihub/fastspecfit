@@ -15,6 +15,40 @@ from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import BoxedScalar, MPPool, NMONTE_DEFAULT
 from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
 
+def make_init_sc_args(args, fastphot=False, fitstack=False):
+    """Build the sc_data.initialize() kwargs from a parsed args Namespace.
+
+    Parameters
+    ----------
+    args : :class:`argparse.Namespace`
+        Parsed command-line arguments (from :func:`parse` or from
+        ``mpi-fastspecfit``).
+    fastphot : bool, optional
+        Passed through to :meth:`~fastspecfit.singlecopy.Singletons.initialize`.
+    fitstack : bool, optional
+        Passed through to :meth:`~fastspecfit.singlecopy.Singletons.initialize`.
+
+    Returns
+    -------
+    dict
+        Keyword arguments suitable for ``sc_data.initialize(**...)``.
+
+    """
+    return {
+        'emlines_file':      getattr(args, 'emlinesfile', None),
+        'fphotofile':        getattr(args, 'fphotofile', None),
+        'fastphot':          fastphot,
+        'fitstack':          fitstack,
+        'ignore_photometry': getattr(args, 'ignore_photometry', False),
+        'template_file':     getattr(args, 'templates', None),
+        'template_version':  getattr(args, 'templateversion', None),
+        'template_imf':      getattr(args, 'imf', None),
+        'log_verbose':       getattr(args, 'verbose', False),
+        'vdisp_nominal':     getattr(args, 'vdisp_nominal', VDISP_NOMINAL),
+        'vdisp_bounds':      getattr(args, 'vdisp_bounds', VDISP_BOUNDS),
+    }
+
+
 def parse(options=None, rank=0):
     """Parse input arguments to fastspec and fastphot scripts.
 
@@ -197,7 +231,7 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
     return meta, specphot.value, fastfit.value, emmodel
 
 
-def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False):
+def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False, mp_pool=None):
     """Main fastspec engine: read, fit, and write results for one or more DESI spectra.
 
     Parameters
@@ -274,29 +308,16 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
                 log.critical(errmsg)
                 raise ValueError(errmsg)
 
-    # initialize single-copy objects im main process
-    init_sc_args = {
-        'emlines_file':      args.emlinesfile,
-        'fphotofile':        args.fphotofile,
-        'fastphot':          fastphot,
-        'fitstack':          fitstack,
-        'ignore_photometry': args.ignore_photometry,
-        'template_file':     args.templates,
-        'template_version':  args.templateversion,
-        'template_imf':      args.imf,
-        'log_verbose':       args.verbose,
-        'vdisp_nominal':     args.vdisp_nominal,
-        'vdisp_bounds':      args.vdisp_bounds,
-    }
-
+    init_sc_args = make_init_sc_args(args, fastphot=fastphot, fitstack=fitstack)
     sc_data.initialize(**init_sc_args)
 
+    _own_pool = False
     if rank == 0:
         t0 = time.time()
-        # use multiprocessing
-        if comm is None:
+        if comm is None and mp_pool is None:
             mp_pool = MPPool(args.mp, initializer=sc_data.initialize,
                              init_argdict=init_sc_args)
+            _own_pool = True
 
         log.debug(f'Caching took {time.time()-t0:.5f} seconds.')
 
@@ -427,8 +448,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             fastfit = create_output_table(out[2], meta, fastfit_units, fitstack=fitstack)
             modelspectra = vstack(out[3], join_type='exact', metadata_conflicts='error')
 
-        # If using multiprocessing, close the pool.
-        if comm is None:
+        if comm is None and _own_pool:
             mp_pool.close()
 
         log.info(f'Fitting {ntargets} object(s) took {time.time()-t0:.2f} seconds.')
@@ -453,7 +473,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         return 0
 
 
-def fastphot(args=None, comm=None, verbose=False):
+def fastphot(args=None, comm=None, verbose=False, mp_pool=None):
     """Main fastphot entry point: fit broadband photometry for DESI objects.
 
     Parameters
@@ -466,6 +486,9 @@ def fastphot(args=None, comm=None, verbose=False):
         single-process mode.
     verbose : bool, optional
         Enable verbose (debug-level) logging. Defaults to ``False``.
+    mp_pool : :class:`fastspecfit.util.MPPool` or None, optional
+        Pre-created worker pool to reuse; a new pool is created and closed
+        when ``None``.
 
     Returns
     -------
@@ -473,7 +496,7 @@ def fastphot(args=None, comm=None, verbose=False):
         Exit code (0 on success).
 
     """
-    return fastspec(fastphot=True, args=args, comm=comm, verbose=verbose)
+    return fastspec(fastphot=True, args=args, comm=comm, verbose=verbose, mp_pool=mp_pool)
 
 
 def stackfit(args=None, comm=None, verbose=False):
@@ -496,4 +519,4 @@ def stackfit(args=None, comm=None, verbose=False):
         Exit code (0 on success).
 
     """
-    return fastspec(fitstack=True, args=args, comm=comm, verbose=verbose)
+    return fastspec(fitstack=True, args=args, comm=comm, verbose=verbose, mp_pool=None)

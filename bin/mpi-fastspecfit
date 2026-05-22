@@ -11,104 +11,6 @@ from fastspecfit.util import NMONTE_DEFAULT
 from fastspecfit.logger import log
 
 
-def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
-                  input_redshifts=False):
-    """Build the command-line argument string for fastspec, fastphot, or fastqa.
-
-    Parameters
-    ----------
-    args : :class:`argparse.Namespace`
-        Parsed command-line arguments.
-    redrockfile : :class:`str`
-        Path to the input redrock file (or QA output directory for ``--makeqa``).
-    outfile : :class:`str`
-        Path to the output FITS file (or input file for ``--makeqa``).
-    sample : :class:`astropy.table.Table` or None, optional
-        Optional target sample table with columns ``{SURVEY, PROGRAM, HEALPIX, TARGETID}``.
-    fastphot : :class:`bool`, optional
-        If ``True``, build arguments for ``fastphot`` instead of ``fastspec``.
-    input_redshifts : :class:`bool`, optional
-        If ``True``, include input redshifts from ``sample['Z']``.
-
-    Returns
-    -------
-    cmd : :class:`str`
-        Executable name (``'fastspec'``, ``'fastphot'``, or ``'fastqa'``).
-    cmdargs : :class:`str`
-        Command-line argument string.
-    logfile : :class:`str`
-        Path to the log file.
-
-    """
-    # With --makeqa the desired output directories are in the 'redrockfiles'.
-    if args.makeqa:
-        cmd = 'fastqa'
-        cmdargs = f'{outfile} -o={redrockfile} --mp={args.mp}'
-    else:
-        if fastphot:
-            cmd = 'fastphot'
-        else:
-            cmd = 'fastspec'
-        cmdargs = f'{redrockfile} -o={outfile} --mp={args.mp}'
-
-        if args.ignore_quasarnet:
-            cmdargs += ' --ignore-quasarnet'
-        if args.ignore_quasarnet:
-            cmdargs += ' --ignore-photometry'
-        if args.no_smooth_continuum:
-            cmdargs += ' --no-smooth-continuum'
-        if args.templates:
-            cmdargs += f' --templates={args.templates}'
-        if args.templateversion:
-            cmdargs += f' --templateversion={args.templateversion}'
-        if args.fphotodir:
-            cmdargs += f' --fphotodir={args.fphotodir}'
-        if args.fphotofile:
-            cmdargs += f' --fphotofile={args.fphotofile}'
-        if args.emlinesfile:
-            cmdargs += f' --emlinesfile={args.emlinesfile}'
-        if args.nmonte:
-            cmdargs += f' --nmonte={args.nmonte}'
-        if args.vdisp_nominal:
-            cmdargs += f' --vdisp-nominal={args.vdisp_nominal}'
-        if args.vdisp_bounds:
-            cmdargs += f' --vdisp-bounds {float(args.vdisp_bounds[0])} {float(args.vdisp_bounds[1])}'
-        if args.seed:
-            cmdargs += f' --seed={args.seed}'
-
-    if args.verbose:
-        cmdargs += ' --verbose'
-    if args.ntargets is not None:
-        cmdargs += f' --ntargets={args.ntargets}'
-    if args.firsttarget is not None:
-        cmdargs += f' --firsttarget={args.firsttarget}'
-
-    if sample is not None:
-        # assume healpix coadds; find the targetids to process -- fragile
-        _, survey, program, healpix = os.path.basename(redrockfile).split('-')
-        healpix = int(healpix.split('.')[0])
-        I = (sample['SURVEY'] == survey) * (sample['PROGRAM'] == program) * (sample['HEALPIX'] == healpix)
-        targetids = ','.join(sample[I]['TARGETID'].astype(str))
-        cmdargs += f' --targetids={targetids}'
-        if input_redshifts:
-            inputz = ','.join(sample[I]['Z'].astype(str))
-            cmdargs += f' --input-redshifts={inputz}'
-    else:
-        if args.targetids is not None:
-            cmdargs += f' --targetids={args.targetids}'
-
-    if args.makeqa:
-        logfile = os.path.join(redrockfile, os.path.basename(outfile).replace('.gz', '').replace('.fits', '.log'))
-    else:
-        logfile = outfile.replace('.gz', '').replace('.fits', '.log')
-
-    #if args.makeqa and args.plan:
-    #    log.info(f'Still need to make {np.sum(ntargets)} QA figure(s) across {len(groups)} input file(s)')
-    #    return
-
-    return cmd, cmdargs, logfile
-
-
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False,
                     sample=None, input_redshifts=False, outdir_data='.', templates=None,
                     templateversion=None, fphotodir=None, fphotofile=None, emlinesfile=None,
@@ -144,12 +46,15 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
     emlinesfile : :class:`str` or None, optional
         Emission-line parameter file override.
     mp_per_file : :class:`bool`, optional
-        If ``True``, use joblib to run multiple files in parallel.
+        If ``True``, run multiple files in parallel (one file per worker).
 
     """
     import sys
     from desispec.parallel import stdouterr_redirected, weighted_partition
-    from fastspecfit.mpi import plan
+    from fastspecfit.mpi import plan, build_cmdargs, _perfile_init, _perfile_run
+    from fastspecfit.util import MPPool
+    from fastspecfit.singlecopy import sc_data
+    from fastspecfit.fastspecfit import make_init_sc_args
 
     if comm:
         rank = comm.rank
@@ -182,6 +87,19 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
     if alldone:
         return
 
+    # Auto-detect per-file parallelism: if the average number of targets per
+    # file is less than mp, file-level parallelism keeps workers busier than
+    # object-level parallelism would.  An explicit --mp-per-file flag overrides.
+    # Only rank 0 has a valid all_ntargets; broadcast the decision to others.
+    if not mp_per_file and args.mp > 1:
+        if rank == 0 and len(all_ntargets) > 0:
+            avg = float(np.mean(all_ntargets))
+            mp_per_file = avg < args.mp
+            if mp_per_file:
+                log.info(f'Auto-selected per-file parallelism (avg {avg:.1f} targets/file < mp={args.mp})')
+        if comm:
+            mp_per_file = comm.bcast(mp_per_file, root=0)
+
     if comm:
         if rank == 0:
             groups = weighted_partition(all_ntargets, size)
@@ -204,6 +122,13 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         outfiles = all_outfiles
         ntargets = all_ntargets
 
+    init_sc_args = make_init_sc_args(args, fastphot=fastphot)
+
+    shared_pool = None
+    if not makeqa and not mp_per_file:
+        sc_data.initialize(**init_sc_args)
+        shared_pool = MPPool(args.mp, initializer=sc_data.initialize,
+                             init_argdict=init_sc_args)
 
     def run_one_file(redrockfile, outfile, ntarget):
         if rank == 0:
@@ -232,11 +157,14 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             if not os.path.isdir(outdir):
                 os.makedirs(outdir, exist_ok=True)
 
+            fast_kwargs = {'args': cmdargs.split(), 'comm': None}
+            if not args.makeqa and shared_pool is not None:
+                fast_kwargs['mp_pool'] = shared_pool
             if args.nolog:
-                err = fast(args=cmdargs.split(), comm=None)
+                err = fast(**fast_kwargs)
             else:
                 with stdouterr_redirected(to=logfile, overwrite=args.overwrite, comm=None):
-                    err = fast(args=cmdargs.split(), comm=None)
+                    err = fast(**fast_kwargs)
 
             log.info(f'Rank {rank} done in {(time.time() - t1)/60.:.2f} min')
             if err != 0:
@@ -251,13 +179,20 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
 
     # loop on each file
     if mp_per_file:
-        from joblib import Parallel, delayed
-        n_jobs = args.mp
-        args.mp = 1
-        Parallel(n_jobs=n_jobs)(delayed(run_one_file)(redrockfile, outfile, ntarget) for redrockfile, outfile, ntarget in zip(redrockfiles, outfiles, ntargets))
+        pool_init = dict(init_sc_args=init_sc_args, sample=sample, rank=rank,
+                         fastphot=fastphot, input_redshifts=input_redshifts)
+        perfile_pool = MPPool(args.mp, initializer=_perfile_init, init_argdict=pool_init)
+        if args.mp <= 1:
+            _perfile_init(**pool_init)
+        task_args = [{'redrockfile': r, 'outfile': o, 'ntarget': n, 'args': args}
+                     for r, o, n in zip(redrockfiles, outfiles, ntargets)]
+        perfile_pool.starmap(_perfile_run, task_args)
+        perfile_pool.close()
     else:
         for redrockfile, outfile, ntarget in zip(redrockfiles, outfiles, ntargets):
             run_one_file(redrockfile, outfile, ntarget)
+        if shared_pool is not None:
+            shared_pool.close()
 
 
     if rank == 0:
@@ -341,6 +276,15 @@ def main():
     specprod_dir = None
     outdir_data = os.path.expanduser(os.path.expandvars(args.outdir_data))
 
+    # Must be set before MPI.Init(): forking after MPI initialization is unsafe.
+    # https://docs.nersc.gov/development/languages/python/parallel-python/#use-the-spawn-start-method
+    if args.mp > 1 and 'NERSC_HOST' in os.environ:
+        import multiprocessing
+        try:
+            multiprocessing.set_start_method('spawn')
+        except RuntimeError:
+            pass  # already set
+
     if args.nompi:
         comm = None
     else:
@@ -357,10 +301,6 @@ def main():
         rank = comm.rank
     else:
         rank = 0
-        # https://docs.nersc.gov/development/languages/python/parallel-python/#use-the-spawn-start-method
-        if args.mp > 1 and 'NERSC_HOST' in os.environ:
-            import multiprocessing
-            multiprocessing.set_start_method('spawn')
 
     # If an input samplefile is provided, read and broadcast it.
     if args.samplefile is None:
@@ -391,7 +331,8 @@ def main():
         else:
             sample = Table()
 
-        sample = comm.bcast(sample, root=0)
+        if comm:
+            sample = comm.bcast(sample, root=0)
 
     # Parse some of the inputs.
     if args.samplefile is None and args.coadd_type == 'healpix':
