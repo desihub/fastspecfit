@@ -193,8 +193,16 @@ def estimate_walltime(ntargets_total, nodes, mp, qos, padding=1.5):
 def generate_slurm(args, groups, group_totals, healpix_ids, ntargets):
     os.makedirs(args.outdir_scripts, exist_ok=True)
 
-    prefix = 'fastphot' if args.stage == 'fastphot' else 'fastspec'
+    if args.stage == 'fastphot':
+        prefix = 'fastphot'
+    elif args.stage == 'makeqa':
+        prefix = 'fastspec-qa'
+    else:
+        prefix = 'fastspec'
+
     njobs = sum(1 for g in groups if g)
+    idx_width = max(2, len(str(njobs)))
+
     stage_flag = ''
     stage_flag_warmup = ''
     if args.stage == 'fastphot':
@@ -218,7 +226,12 @@ def generate_slurm(args, groups, group_totals, healpix_ids, ntargets):
         healpix_csv = ','.join(str(h) for h in sorted(group_healpix))
 
         walltime = args.time or estimate_walltime(int(total), args.nodes, args.mp, args.qos)
-        job_name = f'{prefix}-{args.specprod}-job{job_index:02d}'
+        job_name = f'{prefix}-{args.specprod}-job{job_index:0{idx_width}d}'
+
+        slurm_file = os.path.join(args.outdir_scripts, f'{job_name}.slurm')
+        if os.path.exists(slurm_file):
+            print(f'  WARNING: {slurm_file} already exists — skipping (delete it first to regenerate).')
+            continue
 
         content = _SLURM_TEMPLATE.format(
             account=args.account,
@@ -243,7 +256,6 @@ def generate_slurm(args, groups, group_totals, healpix_ids, ntargets):
             stage_flag_warmup=stage_flag_warmup,
         )
 
-        slurm_file = os.path.join(args.outdir_scripts, f'{job_name}.slurm')
         with open(slurm_file, 'w') as fh:
             fh.write(content)
         print(f'  {slurm_file}  ({len(group)} healpix, {int(total):,d} targets, walltime={walltime})')
@@ -297,8 +309,9 @@ def main():
     fastphot = args.stage == 'fastphot'
     outdir_data = os.path.expandvars(args.outdir_data)
 
+    healpix_msg = f', healpix={args.healpix}' if args.healpix else ''
     print(f'Querying remaining work: specprod={args.specprod}, stage={args.stage}, '
-          f'survey={args.survey}, program={args.program} ...')
+          f'survey={args.survey}, program={args.program}{healpix_msg} ...')
     _, healpix_ids, ntargets = query_remaining(
         specprod=args.specprod, coadd_type=args.coadd_type,
         survey=args.survey, program=args.program,
@@ -330,11 +343,12 @@ def main():
     # Print balance summary
     nonempty = [(g, t) for g, t in zip(groups, group_totals) if g]
     totals = [t for _, t in nonempty]
+    idx_width = max(2, len(str(njobs)))
     print(f'\nPartition across {njobs} job(s)  '
           f'[imbalance: {max(totals)/max(min(totals), 1):.2f}x]:')
     for i, (g, t) in enumerate(nonempty, 1):
         est = args.time or estimate_walltime(int(t), args.nodes, args.mp, args.qos)
-        print(f'  Job {i:02d}: {len(g):5,d} healpix  {int(t):9,d} targets  est. walltime {est}')
+        print(f'  Job {i:0{idx_width}d}: {len(g):5,d} healpix  {int(t):9,d} targets  est. walltime {est}')
 
     if args.plan:
         return
@@ -348,7 +362,18 @@ def main():
         for f in slurm_files:
             result = subprocess.run(['sbatch', f], capture_output=True, text=True)
             if result.returncode == 0:
-                print(f'  {f}  →  {result.stdout.strip()}')
+                msg = result.stdout.strip()
+                print(f'  {f}  →  {msg}')
+                # Rename to embed the SLURM job ID, e.g. fastspec-loa-job01-12345678.slurm
+                tokens = msg.split()
+                if tokens and tokens[-1].isdigit():
+                    jobid = tokens[-1]
+                    new_f = f.replace('.slurm', f'-{jobid}.slurm')
+                    try:
+                        os.rename(f, new_f)
+                        print(f'    renamed → {new_f}')
+                    except OSError as e:
+                        print(f'    WARNING: could not rename {f}: {e}')
             else:
                 print(f'  FAILED {f}: {result.stderr.strip()}')
 
