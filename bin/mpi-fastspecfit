@@ -7,7 +7,7 @@ import os, time
 import numpy as np
 from astropy.table import Table
 
-from fastspecfit.util import NMONTE_DEFAULT
+from fastspecfit.util import NMONTE_DEFAULT, fsftime
 from fastspecfit.logger import log
 
 
@@ -71,7 +71,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         makeqa=args.makeqa, mp=args.mp, fastphot=fastphot,
         outdir_data=outdir_data, overwrite=args.overwrite, sample=sample)
     if rank == 0:
-        log.info(f'Planning took {time.time() - t0:.2f} sec')
+        log.info(fsftime('plan', time.time()-t0))
         # If no work is left to do, let the other ranks know so they can return
         # politely.
         if len(all_redrockfiles) == 0:
@@ -166,7 +166,8 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
                 with stdouterr_redirected(to=logfile, overwrite=args.overwrite, comm=None):
                     err = fast(**fast_kwargs)
 
-            log.info(f'Rank {rank} done in {(time.time() - t1)/60.:.2f} min')
+            log.info(fsftime('process_file', time.time()-t1,
+                             context=f'rank={rank}'))
             if err != 0:
                 if not os.path.exists(outfile):
                     log.warning(f'Rank {rank} missing {outfile}')

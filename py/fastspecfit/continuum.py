@@ -14,7 +14,7 @@ from fastspecfit.templates import Templates, VDISP_NOMINAL, VDISP_BOUNDS
 from fastspecfit.util import (
     C_LIGHT, TINY, F32MAX, FLUXNORM, MASSNORM, NMONTE_DEFAULT,
     quantile, median, var2ivar, trapz_rebin, trapz_rebin_pre,
-    _trapz_rebin_batch)
+    _trapz_rebin_batch, fsftime)
 
 
 class ContinuumTools(object):
@@ -1454,9 +1454,8 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
                 resid, ncoeff=len(coeff), vdisp_fitted=False,
                 ndof_phot=ndof_phot)
 
-        dt = time.time()-t0
-        log.info(f'Fitting {nage} models took {dt:.2f} seconds ' + \
-                 f'[rchi2_phot={rchi2_phot:.1f}, ndof={ndof_phot:.0f}].')
+        log.info(fsftime('fit_fastphot', time.time()-t0,
+                         context=f'nage={nage}, rchi2_phot={rchi2_phot:.1f}, ndof={ndof_phot:.0f}'))
 
         # Monte Carlo to get tauv_ivar and coeff_monte.
         if nmonte > 0:
@@ -1849,7 +1848,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
                     plt.close()
                     log.info(f'Wrote {pngfile}')
 
-        log.debug(f'Estimating the velocity dispersion took {time.time()-t0:.2f} seconds.')
+        log.debug(fsftime('vdisp_fit', time.time()-t0))
 
     # Next, estimate the aperture correction.
     apercorrs = np.ones(len(phot.synth_bands))
@@ -1929,9 +1928,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
         resid, ncoeff=nage, vdisp_fitted=False, split=len(specflux),
         ndof_spec=ndof_cont, ndof_phot=ndof_phot)
 
-    log.debug(f'Fitting {nage} models took {time.time()-t0:.2f} seconds ' + \
-              f'[rchi2_cont={rchi2_cont:.1f}, ndof={ndof_cont:.0f}; ' + \
-              f'rchi2_phot={rchi2_phot:.1f}, ndof={ndof_phot:.0f}].')
+    log.debug(fsftime('fit_fastspec', time.time()-t0,
+                      context=f'nage={nage}, rchi2_cont={rchi2_cont:.1f}, ndof_cont={ndof_cont:.0f}, '
+                              f'rchi2_phot={rchi2_phot:.1f}, ndof_phot={ndof_phot:.0f}'))
 
     if specflux_monte is not None:
         res = [do_fit_full(*args) for args in zip(objflam_monte, specflux_monte)]
@@ -1982,7 +1981,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
             if np.count_nonzero(I) > 3: # require three good pixels to compute the mean
                 smoothstats[icam] = median(smoothcontinuum[ss:ee][I] / specflux[ss:ee][I])
 
-    log.debug(f'Deriving the smooth continuum took {time.time()-t0:.2f} seconds.')
+    log.debug(fsftime('smooth_continuum', time.time()-t0))
 
     return (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
             tauv, tauv_monte, tauv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar,
@@ -2284,7 +2283,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             msg.append(f'{label}={val:.2f}{var_msg}{units}')
         log.info(' '.join(msg))
 
-    log.debug(f'Continuum-fitting took {time.time()-tall:.2f} seconds.')
+    log.debug(fsftime('continuum_specfit', time.time()-tall))
 
     if fastphot:
         return sedmodel, None, None, None

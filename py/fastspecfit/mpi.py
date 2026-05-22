@@ -14,6 +14,7 @@ from astropy.table import Table, vstack
 
 from fastspecfit.io import get_qa_filename
 from fastspecfit.logger import log
+from fastspecfit.util import fsftime
 
 
 def _get_ntargets_one(args):
@@ -479,12 +480,10 @@ def _domerge(outfiles, outprefix=None, specprod=None, coadd_type=None,
         fastfit = vstack(out[2])
     del out
 
+    _ctx = f'nobj={len(meta):,d}, nfiles={len(outfiles)}'
     if outprefix:
-        log.info(f'Merging {len(meta):,d} objects from {len(outfiles)} {outprefix} ' + \
-                 f'files took {(time.time()-t0)/60.:.2f} min.')
-    else:
-        log.info(f'Merging {len(meta):,d} objects from {len(outfiles)} ' + \
-                 f'files took {(time.time()-t0)/60.:.2f} min.')
+        _ctx += f', prefix={outprefix}'
+    log.info(fsftime('merge_catalogs', time.time()-t0, context=_ctx))
 
     hdr = fitsio.read_header(outfiles[0])
 
@@ -858,7 +857,8 @@ def _perfile_run(redrockfile, outfile, ntarget, args):
             with stdouterr_redirected(to=logfile, overwrite=args.overwrite, comm=None):
                 err = fast(args=cmdargs.split(), comm=None)
 
-        log.info(f'Rank {_mpi._perfile_rank} done in {(time.time() - t1)/60.:.2f} min')
+        log.info(fsftime('process_file', time.time()-t1,
+                         context=f'rank={_mpi._perfile_rank}'))
         if err != 0:
             if not os.path.exists(outfile):
                 log.warning(f'Rank {_mpi._perfile_rank} missing {outfile}')

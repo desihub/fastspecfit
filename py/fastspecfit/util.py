@@ -5,6 +5,8 @@ fastspecfit.util
 General utilities.
 
 """
+import re
+import datetime
 import numpy as np
 from numba import jit
 
@@ -23,6 +25,74 @@ NMONTE_DEFAULT = 50
 TINY = np.nextafter(0, 1, dtype=np.float32)
 SQTINY = np.sqrt(TINY)
 F32MAX = np.finfo(np.float32).max
+
+
+def fsftime(operation, duration, context=None):
+    """Return a standardized, parseable timing message string.
+
+    Durations under 60 seconds are reported in seconds; longer durations
+    are reported in minutes. Use :func:`parse_fsftime` to parse these
+    messages back out of log files.
+
+    Parameters
+    ----------
+    operation : :class:`str`
+        Short name of the pipeline stage being timed, e.g.
+        ``'continuum_specfit'`` or ``'write_fastspecfit'``.
+    duration : :class:`float`
+        Elapsed wall time in seconds.
+    context : :class:`str` or None, optional
+        Optional comma-separated key=value context string appended in
+        square brackets, e.g. ``'targetid=39627739988231708'``.
+
+    Returns
+    -------
+    :class:`str`
+        Formatted timing string ready to pass to a logger.
+
+    Examples
+    --------
+    >>> log.info(fsftime('continuum_specfit', 3.45, context='targetid=12345'))
+    fsftime 3.45 sec for continuum_specfit [targetid=12345] at 2026-...
+    >>> log.info(fsftime('fit_all', 125.3, context='nobj=500'))
+    fsftime 2.09 min for fit_all [nobj=500] at 2026-...
+
+    """
+    time_str = f'{duration:.2f} sec' if duration < 60. else f'{duration/60.:.2f} min'
+    timestamp = datetime.datetime.now().isoformat(timespec='milliseconds')
+    if context:
+        return f'fsftime {time_str} for {operation} [{context}] at {timestamp}'
+    return f'fsftime {time_str} for {operation} at {timestamp}'
+
+
+_fsftime_re = re.compile(
+    r'.*fsftime ([\d.]+) (sec|min) for (\S+)(?:\s+\[([^\]]*)\])? at ([\d\-T:.]+)')
+
+
+def parse_fsftime(line):
+    """Parse a line for an fsftime timing message produced by :func:`fsftime`.
+
+    Parameters
+    ----------
+    line : :class:`str`
+        Log line to parse.
+
+    Returns
+    -------
+    :class:`dict` or None
+        Dict with keys ``operation`` (:class:`str`), ``duration_sec``
+        (:class:`float`), ``context`` (:class:`str` or None), and
+        ``timestamp`` (:class:`str`); or ``None`` if the line does not
+        contain an fsftime message.
+
+    """
+    m = _fsftime_re.match(line)
+    if m is None:
+        return None
+    value, unit, operation, context, timestamp = m.groups()
+    duration_sec = float(value) * (60. if unit == 'min' else 1.)
+    return dict(operation=operation, duration_sec=duration_sec,
+                context=context, timestamp=timestamp)
 
 
 class BoxedScalar(object):

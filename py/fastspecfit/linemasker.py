@@ -10,7 +10,7 @@ import numpy as np
 from astropy.table import Table
 
 from fastspecfit.logger import log
-from fastspecfit.util import C_LIGHT, quantile, median
+from fastspecfit.util import C_LIGHT, quantile, median, fsftime
 
 
 class LineMasker(object):
@@ -588,7 +588,8 @@ class LineMasker(object):
             log.debug(f'Broad: S/N={maxsnr_broad:.1f}, (sigma,dv)=({linesigma_broad:.0f},{linevshift_broad:.0f}) km/s; ' + \
                       f'Narrow: S/N={maxsnr_narrow:.1f}, ({linesigma_narrow:.0f},{linevshift_narrow:.0f}) km/s; '+ \
                       f'Balmer Broad: S/N={maxsnr_balmer_broad:.1f}, ({linesigma_balmer_broad:.0f},{linevshift_balmer_broad:.0f}) km/s.')
-            log.debug(f'Fitting {modelname} with patches ({niter} iterations) took {time.time()-t0:.4f} seconds.')
+            log.debug(fsftime('linemasker_patches', time.time()-t0,
+                              context=f'model={modelname}, niter={niter}'))
 
             # optionally build a QA figure
             if debug_plots:

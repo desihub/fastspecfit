@@ -15,7 +15,7 @@ from astropy.table import Table
 from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
 from fastspecfit.util import (C_LIGHT, TINY, SQTINY, F32MAX,
-                              FLUXNORM, var2ivar)
+                              FLUXNORM, var2ivar, fsftime)
 from fastspecfit.emline_fit import (EMLine_Objective,
     EMLine_MultiLines, EMLine_find_peak_amplitudes_and_fluxes,
     EMLine_build_model, EMLine_ParamsMapping)
@@ -1640,8 +1640,9 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
         emlinewave, emlineflux, emlineivar, weights, redshift,
         resolution_matrix, camerapix, debug=False)
 
-    log.debug(f'Line-fitting {data["uniqueid"]} with no broad lines and {nfree_nobroad} free parameters took ' + \
-              f'{time.time()-t0:.4f} seconds [niter={linemodel_nobroad.meta["nfev"]}, rchi2={chi2_nobroad:.4f}].')
+    log.debug(fsftime('linefit_nobroad', time.time()-t0,
+                      context=f'targetid={data["uniqueid"]}, nfree={nfree_nobroad}, '
+                              f'niter={linemodel_nobroad.meta["nfev"]}, rchi2={chi2_nobroad:.4f}'))
 
     # Now try to improve the chi2 by adding broad Balmer lines.  Save the preferred line modela and stats
     if broadlinefit and data['balmerbroad']:
@@ -1653,8 +1654,9 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
             emlinewave, emlineflux, emlineivar, weights, redshift,
             resolution_matrix, camerapix, debug=False)
 
-        log.debug(f'Line-fitting {data["uniqueid"]} with broad lines and {nfree_broad} free parameters took ' + \
-                  f'{time.time()-t0:.4f} seconds [niter={linemodel_broad.meta["nfev"]}, rchi2={chi2_broad:.4f}].')
+        log.debug(fsftime('linefit_broad', time.time()-t0,
+                          context=f'targetid={data["uniqueid"]}, nfree={nfree_broad}, '
+                                  f'niter={linemodel_broad.meta["nfev"]}, rchi2={chi2_broad:.4f}'))
 
         adopt_broad, delta_linechi2_balmer, delta_linendof_balmer = \
             test_broad_model(EMFit,
@@ -1832,7 +1834,7 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                 plt.close()
                 log.info(f'Wrote {pngfile}')
 
-    log.debug(f'Emission-line fitting took {time.time()-tall:.2f} seconds.')
+    log.debug(fsftime('emline_specfit', time.time()-tall))
 
     if debug_plots:
         for name in fastfit.value.dtype.names:
