@@ -104,7 +104,7 @@ FIRST_HEALPIX=$(echo "$HEALPIX" | cut -d',' -f1)
 warmup_args="--specprod={specprod} --coadd-type={coadd_type}"
 warmup_args+=" --survey={survey} --program={program}"
 warmup_args+=" --healpix=$FIRST_HEALPIX"
-warmup_args+=" --mp=1 --ntargets=1 --nompi"
+warmup_args+=" --mp=1 --ntargets=1 --nmonte=0 --nompi"
 warmup_args+=" --outdir-data=/tmp/fastspecfit-warmup --overwrite"
 {stage_flag_warmup}
 echo "Warming up Numba cache on one rank..."
@@ -134,16 +134,22 @@ fi
 """
 
 
-def query_remaining(specprod, coadd_type, survey, program, fastphot, outdir_data, mp=1):
+def query_remaining(specprod, coadd_type, survey, program, fastphot, healpix,
+                    outdir_data, mp=1):
     """Return (redrockfiles, healpix_ids, ntargets) for files not yet processed."""
     from fastspecfit.mpi import plan
+
+    healpix = healpix.split(',') if healpix else None
+    survey = survey.split(',') if survey else None
+    program = program.split(',') if program else None
 
     _, redrockfiles, _, ntargets = plan(
         comm=None,
         specprod=specprod,
         coadd_type=coadd_type,
-        survey=survey.split(','),
-        program=program.split(','),
+        survey=survey,
+        program=program,
+        healpix=healpix,
         outdir_data=outdir_data,
         mp=mp,
         fastphot=fastphot,
@@ -314,7 +320,7 @@ def main():
           f'survey={args.survey}, program={args.program}{healpix_msg} ...')
     _, healpix_ids, ntargets = query_remaining(
         specprod=args.specprod, coadd_type=args.coadd_type,
-        survey=args.survey, program=args.program,
+        survey=args.survey, program=args.program, healpix=args.healpix,
         fastphot=fastphot, outdir_data=outdir_data)
 
     if args.healpix is not None:

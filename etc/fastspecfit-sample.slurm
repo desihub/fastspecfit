@@ -48,7 +48,7 @@ srun --nodes=1 --ntasks=1 --cpus-per-task=2 --cpu-bind=cores \
     $mpiscript \
     --specprod=${specprod} --coadd-type=healpix \
     --survey=${wu_survey} --program=${wu_program} --healpix=${wu_healpix} \
-    --mp=1 --ntargets=1 --nompi \
+    --mp=1 --ntargets=1 --nmonte=0 --nompi \
     --outdir-data=/tmp/fastspecfit-warmup --overwrite
 echo "Warm-up complete."
 
