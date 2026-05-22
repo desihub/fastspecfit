@@ -16,19 +16,21 @@ Installation & Setup
 NERSC Installation
 ------------------
 
-On a `NERSC`_ `Perlmutter
-<https://docs.nersc.gov/systems/perlmutter/architecture>`_ login or
-interactive node, load ``FastSpecFit`` on top of the standard DESI
-software stack::
+To run ``FastSpecFit`` at `NERSC`_, first request an interactive CPU node::
+
+  salloc -N 1 -C cpu -A desi -t 01:00:00 --qos interactive
+
+
+Then, load the package on top of the standard DESI software stack::
 
   source /global/cfs/cdirs/desi/software/desi_environment.sh main
   module load fastspecfit/main
 
-To load a specific tagged versions, replace ``main`` with the desired
+To load specific tagged versions, replace ``main`` with the desired
 release, for example::
 
   source /global/cfs/cdirs/desi/software/desi_environment.sh 26.3
-  module load fastspecfit/3.2.1
+  module load fastspecfit/3.4.0
 
 JupyterHub
 ~~~~~~~~~~
