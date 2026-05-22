@@ -1485,8 +1485,9 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
             (tauv_monte, coeff_monte, sedmodel_monte, sedmodel_nolines_monte,
              dn4000_model_monte, _) = tuple(zip(*res))
 
-            tauv_ivar = var2ivar(np.var(tauv_monte))
-            dn4000_model_ivar = var2ivar(np.var(dn4000_model_monte))
+            with np.errstate(invalid='ignore'):
+                tauv_ivar = var2ivar(np.nanvar(tauv_monte))
+                dn4000_model_ivar = var2ivar(np.nanvar(dn4000_model_monte))
 
             msg = []
             for label, units, val, val_ivar in zip(
@@ -1803,14 +1804,15 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
                 res = [do_fit_vdisp(sf) for sf in specflux_monte]
                 (tauv_monte, vdisp_monte, _, age_monte, _) = tuple(zip(*res))
 
-                vdisp_ivar = var2ivar(np.var(vdisp_monte))
+                with np.errstate(invalid='ignore'):
+                    vdisp_ivar = var2ivar(np.nanvar(vdisp_monte))
 
                 if debug_plots and vdisp_ivar > 0.:
                     from fastspecfit.qa import _corner_plot
 
-                    tauv_sigma = np.std(tauv_monte)
-                    age_sigma = np.std(age_monte)
-                    vdisp_sigma = np.std(vdisp_monte)
+                    tauv_sigma = np.nanstd(tauv_monte)
+                    age_sigma = np.nanstd(age_monte)
+                    vdisp_sigma = np.nanstd(vdisp_monte)
 
                     truths = [vdisp, tauv, age]
                     sigmas = [vdisp_sigma, tauv_sigma, age_sigma]
@@ -1926,8 +1928,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
 
         continuummodel_monte = np.vstack(desimodel_nolines_monte)
 
-        tauv_ivar = var2ivar(np.var(tauv_monte))
-        dn4000_model_ivar = var2ivar(np.var(dn4000_model_monte))
+        with np.errstate(invalid='ignore'):
+            tauv_ivar = var2ivar(np.nanvar(tauv_monte))
+            dn4000_model_ivar = var2ivar(np.nanvar(dn4000_model_monte))
     else:
         coeff_monte = None
         tauv_monte = None

@@ -466,7 +466,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
         _elapsed = time.time() - t0
         _ncore = max(args.mp, 1)
-        _per_obj = _elapsed * _ncore / ntargets
+        _per_obj = _elapsed * min(ntargets, _ncore) / ntargets
         log.info(fsftime('fit_all', _elapsed,
                          context=f'nobj={ntargets},{_per_obj:.2f}s/obj/core'))
 
