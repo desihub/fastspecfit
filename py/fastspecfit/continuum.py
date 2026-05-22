@@ -1010,7 +1010,10 @@ class ContinuumTools(object):
 
         def objective(tauv):
             _fill(tauv)
-            coeff, _ = nnls(Psi, b)
+            try:
+                coeff, _ = nnls(Psi, b)
+            except RuntimeError:
+                return np.inf
             return np.sum((Psi @ coeff - b) ** 2)
 
         result = minimize_scalar(objective, bounds=tauv_bounds, method='bounded',
@@ -1021,7 +1024,11 @@ class ContinuumTools(object):
         # the residuals are mutually consistent regardless of Brent's
         # internal bracketing order.
         _fill(tauv)
-        coeff, _ = nnls(Psi, b)
+        try:
+            coeff, _ = nnls(Psi, b)
+        except RuntimeError:
+            log.warning(f'nnls did not converge [{self.data["uniqueid"]}]; adopting zero coefficients.')
+            coeff = np.zeros(ntemplates)
 
         self.optimizer_saved_contmodel = coeff @ phi
         resid = Psi @ coeff - b
