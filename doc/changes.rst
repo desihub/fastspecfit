@@ -5,7 +5,20 @@ Change Log
 3.4.0 (not released yet)
 ------------------------
 
-*
+* Production logging and robustness fixes: replace ``desiutil`` logger with a
+  custom ``getFastspecLogger()`` and ``_DynamicStdoutHandler`` that follows
+  ``stdouterr_redirected`` without being reset by DESI library code; add
+  ``_initialize_sc_data_worker()`` to suppress per-object INFO in SLURM logs
+  while preserving them interactively; fix spawn-mode ``sc_data``
+  ``AttributeError`` by using a module-level pool initializer; fix
+  ``mpi-fastspecfit`` always reporting SUCCESS when workers fail; add output
+  basename and ``uniqueid`` to WARNING messages for traceability; report
+  per-object per-core CPU timing in ``fit_all`` log; replace ``corner``
+  dependency with a self-contained ``_corner_plot()`` in ``qa.py``; replace
+  dump-all-columns debug print with a curated column subset; suppress repeated
+  zero-coefficient WARNING (was firing once per Monte Carlo realization); fix
+  ``RuntimeWarning`` from ``log10(0)`` in ``_get_sps_properties`` and
+  photometry absmag/kcorr calculations [`PR #254`_].
 
 3.4.0 (2026-05-21)
 ------------------
@@ -35,6 +48,7 @@ Change Log
   tutorial notebooks to latest code API; add
   ``doc/technote/continuum-modeling.tex`` technote [`PR #232`_].
 
+.. _`PR #254`: https://github.com/desihub/fastspecfit/pull/254
 .. _`PR #253`: https://github.com/desihub/fastspecfit/pull/253
 .. _`PR #252`: https://github.com/desihub/fastspecfit/pull/252
 .. _`PR #251`: https://github.com/desihub/fastspecfit/pull/251
