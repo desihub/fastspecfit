@@ -1,4 +1,4 @@
-TEX = emline-model
+TEX = emline-model continuum-modeling
 PDFS = $(TEX:%=%.pdf)
 
 LATEXMK = latexmk

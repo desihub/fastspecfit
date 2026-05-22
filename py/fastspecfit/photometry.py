@@ -154,7 +154,8 @@ class Photometry(object):
             self.bands_to_fit *= [False]
 
 
-    def synth_absmag(self, redshift, dmod, zmodelwave, zmodelflux):
+    def synth_absmag(self, redshift, dmod, zmodelwave, zmodelflux,
+                     filters_out=None):
         """Synthesize absolute magnitudes from the best-fitting SED.
 
         Parameters
@@ -167,6 +168,9 @@ class Photometry(object):
             Observed-frame (redshifted) model wavelength array in Angstroms.
         zmodelflux : :class:`numpy.ndarray`
             Observed-frame (redshifted) model spectrum in erg/s/cm2/A.
+        filters_out : :class:`speclite.filters.FilterSequence` or None, optional
+            Rest-frame output filter set used to synthesize absolute magnitudes.
+            Defaults to ``self.filters_out``.
 
         Returns
         -------
@@ -176,16 +180,19 @@ class Photometry(object):
             Synthesized rest-frame photometry in maggies.
 
         """
+        if filters_out is None:
+            filters_out = self.filters_out
+
         if redshift <= 0.:
             log.warning('Input redshift not defined, zero, or negative!')
-            nabs = len(self.absmag_filters)
+            nabs = len(filters_out)
             synth_absmag = np.zeros(nabs, dtype='f8')
             synth_maggies_rest = np.zeros(nabs, dtype='f8')
             return synth_absmag, synth_maggies_rest
 
         # Multiply by (1+z) to convert the best-fitting model to the "rest frame".
         synth_maggies_rest = self.get_ab_maggies_unchecked(
-            self.filters_out, zmodelflux * (1. + redshift) / FLUXNORM,
+            filters_out, zmodelflux * (1. + redshift) / FLUXNORM,
             zmodelwave / (1. + redshift))
         synth_absmag = -2.5 * np.log10(synth_maggies_rest) - dmod
 
@@ -194,7 +201,8 @@ class Photometry(object):
 
     def kcorr_and_absmag(self, nanomaggies, ivar_nanomaggies, redshift, dmod,
                          photsys, zmodelwave, zmodelflux, synth_absmag,
-                         synth_maggies_rest, snrmin=2.):
+                         synth_maggies_rest, snrmin=2., filters_obs=None,
+                         filters_out=None, bands_to_fit=None):
         """Compute K-corrected rest-frame photometry.
 
         Parameters
@@ -222,6 +230,13 @@ class Photometry(object):
         snrmin : :class:`float`, optional
             Minimum S/N in an observed bandpass for it to contribute to the
             K-correction. Default is 2.
+        filters_obs : :class:`speclite.filters.FilterSequence` or None, optional
+            Observed-frame filter set. Defaults to ``self.filters[photsys]``.
+        filters_out : :class:`speclite.filters.FilterSequence` or None, optional
+            Rest-frame output filter set. Defaults to ``self.filters_out``.
+        bands_to_fit : :class:`numpy.ndarray` or None, optional
+            Boolean or integer mask selecting which photometric bands are used
+            in the fit. Defaults to ``self.bands_to_fit``.
 
         Returns
         -------
@@ -246,7 +261,14 @@ class Photometry(object):
         ``synth_absmag``.
 
         """
-        nabs = len(self.absmag_filters)
+        if filters_obs is None:
+            filters_obs = self.filters[photsys]
+        if filters_out is None:
+            filters_out = self.filters_out
+        if bands_to_fit is None:
+            bands_to_fit = self.bands_to_fit
+
+        nabs = len(filters_out)
         if redshift <= 0.:
             log.warning('Input redshift not defined, zero, or negative!')
             kcorr = np.zeros(nabs, dtype='f8')
@@ -256,13 +278,12 @@ class Photometry(object):
             return kcorr, absmag, ivarabsmag, synth_maggies_obs
 
         maggies = nanomaggies * 1e-9
-        ivarmaggies = (ivar_nanomaggies / 1e-9**2) * self.bands_to_fit
+        ivarmaggies = (ivar_nanomaggies / 1e-9**2) * bands_to_fit
 
         # Input bandpasses, observed frame; maggies and synth_maggies_obs
         # should be very close.
-        filters_obs = self.filters[photsys]
         lambda_obs = filters_obs.effective_wavelengths.value
-        lambda_out = self.filters_out.effective_wavelengths.value
+        lambda_out = filters_out.effective_wavelengths.value
 
         # Synthesize observed-frame photometry (should be close to maggies).
         synth_maggies_obs = self.get_ab_maggies_unchecked(

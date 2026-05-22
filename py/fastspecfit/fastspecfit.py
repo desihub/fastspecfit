@@ -156,7 +156,6 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
         to 2.5.
     nmonte : int, optional
         Number of Monte Carlo realizations for uncertainty estimation.
-        Defaults to 10.
     seed : int, optional
         Random seed for Monte Carlo reproducibility. Defaults to 1.
 
