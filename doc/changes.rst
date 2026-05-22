@@ -2,7 +2,7 @@
 Change Log
 ==========
 
-3.4.0 (not released yet)
+3.4.1 (not released yet)
 ------------------------
 
 * Production logging and robustness fixes: replace ``desiutil`` logger with a
@@ -19,6 +19,8 @@ Change Log
   zero-coefficient WARNING (was firing once per Monte Carlo realization); fix
   ``RuntimeWarning`` from ``log10(0)`` in ``_get_sps_properties`` and
   photometry absmag/kcorr calculations [`PR #254`_].
+
+.. _`PR #254`: https://github.com/desihub/fastspecfit/pull/254
 
 3.4.0 (2026-05-21)
 ------------------
@@ -48,7 +50,6 @@ Change Log
   tutorial notebooks to latest code API; add
   ``doc/technote/continuum-modeling.tex`` technote [`PR #232`_].
 
-.. _`PR #254`: https://github.com/desihub/fastspecfit/pull/254
 .. _`PR #253`: https://github.com/desihub/fastspecfit/pull/253
 .. _`PR #252`: https://github.com/desihub/fastspecfit/pull/252
 .. _`PR #251`: https://github.com/desihub/fastspecfit/pull/251
