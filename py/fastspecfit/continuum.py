@@ -1432,6 +1432,8 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
         objflamistd = np.sqrt(objflamivar)
 
         t0 = time.time()
+        _warned_zero_coeff_fp = [False]
+
         def do_fit(objflam):
             tauv, _, coeff, resid = CTools.fit_stellar_continuum(
                 templates.flux_nomvdisp[agekeep, :], fit_vdisp=False,
@@ -1439,7 +1441,9 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
                 synthspec=False)
 
             if np.all(coeff == 0.):
-                log.warning(f'Continuum coefficients are all zero [{uniqueid}].')
+                if not _warned_zero_coeff_fp[0]:
+                    log.warning(f'Continuum coefficients are all zero [{uniqueid}].')
+                    _warned_zero_coeff_fp[0] = True
                 sedmodel = np.zeros(templates.npix)
                 sedmodel_nolines = np.zeros(templates.npix)
                 dn4000_model = 0.
@@ -1864,6 +1868,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
     # fixed and the bounds on tauv relaxed.
     t0 = time.time()
 
+    _warned_zero_coeff = [False]
+
     def do_fit_full(objflam, specflux):
         tauv, _, coeff, resid = CTools.fit_stellar_continuum(
             input_templateflux, fit_vdisp=False, conv_pre=None,
@@ -1873,7 +1879,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
             synthphot=True, synthspec=True)
 
         if np.all(coeff == 0.):
-            log.warning(f'Continuum coefficients are all zero [{_uid(data)}].')
+            if not _warned_zero_coeff[0]:
+                log.warning(f'Continuum coefficients are all zero [{_uid(data)}].')
+                _warned_zero_coeff[0] = True
             sedmodel = np.zeros(templates.npix)
             sedmodel_nolines = np.zeros(templates.npix)
             desimodel_nolines = np.zeros(len(specflux))
@@ -2155,11 +2163,14 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             mstars = tinfo['mstar'] # [current mass in stars, Msun]
             masstot = coeff.dot(mstars)
             coefftot = np.sum(coeff)
-            logmstar = np.log10(CTools.massnorm * masstot)
-            zzsun = np.log10(coeff.dot(mstars * 10.**tinfo['zzsun']) / masstot) # mass-weighted
-            age = coeff.dot(tinfo['age']) / coefftot / 1e9           # luminosity-weighted [Gyr]
-            #age = coeff.dot(mstars * tinfo['age']) / masstot / 1e9  # mass-weighted [Gyr]
-            sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])          # [Msun/yr]
+            if masstot > 0. and coefftot > 0.:
+                logmstar = np.log10(CTools.massnorm * masstot)
+                zzsun = np.log10(coeff.dot(mstars * 10.**tinfo['zzsun']) / masstot) # mass-weighted
+                age = coeff.dot(tinfo['age']) / coefftot / 1e9           # luminosity-weighted [Gyr]
+                #age = coeff.dot(mstars * tinfo['age']) / masstot / 1e9  # mass-weighted [Gyr]
+                sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])          # [Msun/yr]
+            else:
+                logmstar, zzsun, age, sfr = 0., 0., 0., 0.
             return age, zzsun, logmstar, sfr
 
         age, zzsun, logmstar, sfr = _get_sps_properties(coeff)

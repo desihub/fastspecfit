@@ -194,7 +194,8 @@ class Photometry(object):
         synth_maggies_rest = self.get_ab_maggies_unchecked(
             filters_out, zmodelflux * (1. + redshift) / FLUXNORM,
             zmodelwave / (1. + redshift))
-        synth_absmag = -2.5 * np.log10(synth_maggies_rest) - dmod
+        with np.errstate(divide='ignore', invalid='ignore'):
+            synth_absmag = -2.5 * np.log10(synth_maggies_rest) - dmod
 
         return synth_absmag, synth_maggies_rest
 
@@ -295,7 +296,8 @@ class Photometry(object):
             lambdadist = np.abs(lambda_obs / (1. + redshift) - lambda_out[jj])
             oband[jj] = np.argmin(lambdadist + (maggies * np.sqrt(ivarmaggies) < snrmin) * 1e10)
 
-        kcorr = + 2.5 * np.log10(synth_maggies_rest / synth_maggies_obs[oband])
+        with np.errstate(divide='ignore', invalid='ignore'):
+            kcorr = + 2.5 * np.log10(synth_maggies_rest / synth_maggies_obs[oband])
 
         # m_R = M_Q + DM(z) + K_QR(z) or
         # M_Q = m_R - DM(z) - K_QR(z)
