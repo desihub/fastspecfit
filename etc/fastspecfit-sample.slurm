@@ -29,8 +29,8 @@ specprod=loa            # spectroscopic production
 samplefile=${PSCRATCH}/fastspecfit/samples/my-sample.fits
 stage=fastspec          # fastspec or fastphot
 input_redshifts=''      # set to 'true' to use redshifts from samplefile Z column
-
-export OUTDIR_DATA=${PSCRATCH}/fastspecfit/data
+# OUTDIR_DATA is set by fastspecfit-env.sh; override here if needed:
+#export OUTDIR_DATA=/path/to/custom/output
 # ---------------------------------------------------------------------------
 
 mpiscript=$(type -p mpi-fastspecfit)

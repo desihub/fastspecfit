@@ -38,14 +38,29 @@ import numpy as np
 _ACCOUNT   = 'desi'
 _QOS       = 'regular'
 _MAIL_USER = 'jmoustakas@siena.edu'
-_OUTDIR    = os.path.expandvars('$PSCRATCH/fastspecfit/data')
-_ENV_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fastspecfit-env.sh')
+
+# Pick up OUTDIR_DATA from the environment (set by fastspecfit-env.sh) or fall
+# back to the standard PSCRATCH location.
+_OUTDIR = os.environ.get('OUTDIR_DATA') or os.path.expandvars('$PSCRATCH/fastspecfit/data')
+
+def _default_env_script():
+    # Prefer a locally-edited copy in the current working directory (the normal
+    # production workflow copies etc/fastspecfit-env.sh to $OUTDIR_DATA and edits it there).
+    cwd_copy = os.path.join(os.getcwd(), 'fastspecfit-env.sh')
+    if os.path.isfile(cwd_copy):
+        return cwd_copy
+    # Fall back to the copy shipped with the source tree (useful during development).
+    return os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        'etc', 'fastspecfit-env.sh')
+
+_ENV_SCRIPT = _default_env_script()
 
 # Maximum wall-clock hours allowed for the chosen QOS (used when --time is not given).
 _MAX_HOURS = {'regular': 12, 'debug': 0.5, 'premium': 24}
 
-# Empirical throughput: objects per minute per physical core (conservative).
-_OBJ_PER_MIN_PER_CORE = 1.5
+# Empirical throughput: ~4 seconds per object per physical core.
+_OBJ_PER_MIN_PER_CORE = 15.0
 
 # ---------------------------------------------------------------------------
 
@@ -250,6 +265,8 @@ def main():
                         choices=['healpix', 'cumulative', 'pernight', 'perexp'])
     parser.add_argument('--survey', default='main', help='Comma-separated survey names.')
     parser.add_argument('--program', default='dark,bright', help='Comma-separated program names.')
+    parser.add_argument('--healpix', default=None,
+                        help='Comma-separated healpix IDs to restrict to (useful for testing).')
 
     # Job sizing
     parser.add_argument('--njobs', type=int, default=1, help='Number of Slurm jobs to generate.')
@@ -286,6 +303,15 @@ def main():
         specprod=args.specprod, coadd_type=args.coadd_type,
         survey=args.survey, program=args.program,
         fastphot=fastphot, outdir_data=outdir_data)
+
+    if args.healpix is not None:
+        requested = set(int(h) for h in args.healpix.split(','))
+        mask = np.array([h in requested for h in healpix_ids])
+        if not np.any(mask):
+            print(f'Warning: none of the requested healpix IDs found in remaining work.')
+            return
+        healpix_ids = healpix_ids[mask]
+        ntargets = ntargets[mask]
 
     n_files = len(healpix_ids)
     n_targets = int(np.sum(ntargets)) if n_files > 0 else 0

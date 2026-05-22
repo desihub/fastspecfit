@@ -36,6 +36,10 @@ export DUST_DIR=/dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
 export FPHOTO_DIR=/dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9
 export FTEMPLATES_DIR=/dvs_ro/cfs/cdirs/desi/public/external/templates/fastspecfit
 
+# Output data directory. Override this variable before sourcing this script if
+# the default location is not suitable (e.g. export OUTDIR_DATA=/path/to/output).
+export OUTDIR_DATA=${OUTDIR_DATA:-${PSCRATCH}/fastspecfit/data}
+
 # Shared Numba JIT cache: all MPI ranks and spawned workers read compiled
 # artifacts from this directory.  Using $PSCRATCH ensures it is user-writable
 # and visible from every compute node.  The .slurm job templates include a
@@ -50,5 +54,6 @@ echo "DUST_DIR=${DUST_DIR}"
 echo "FPHOTO_DIR=${FPHOTO_DIR}"
 echo "FTEMPLATES_DIR=${FTEMPLATES_DIR}"
 echo "NUMBA_CACHE_DIR=${NUMBA_CACHE_DIR}"
+echo "OUTDIR_DATA=${OUTDIR_DATA}"
 
 export FASTSPECFIT_ENV_LOADED=1

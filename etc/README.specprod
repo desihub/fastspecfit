@@ -7,18 +7,27 @@ Slurm jobs by target count using generate-fast-slurm.
 
 Files used
 ----------
-  etc/fastspecfit-env.sh      module loads and environment variables
+  etc/fastspecfit-env.sh      module loads, environment variables, and OUTDIR_DATA
   bin/generate-fast-slurm     plan remaining work and generate .slurm files
 
 Step 1 — set up the environment
 --------------------------------
-On a login node or in an interactive session:
+Copy the environment script to your working directory and edit it as needed
+(module versions, OUTDIR_DATA, etc.):
 
-  source etc/fastspecfit-env.sh [fastspecfit_version]
+  cp etc/fastspecfit-env.sh .
+  $EDITOR fastspecfit-env.sh      # adjust versions and paths
 
-Set OUTDIR_DATA if the default ($PSCRATCH/fastspecfit/data) is not suitable:
+OUTDIR_DATA defaults to $PSCRATCH/fastspecfit/data.  To use a different
+location, either edit it directly in fastspecfit-env.sh or export it before
+sourcing:
 
-  export OUTDIR_DATA=/path/to/output
+  export OUTDIR_DATA=/path/to/output   # optional override
+  source fastspecfit-env.sh [fastspecfit_version]
+
+generate-fast-slurm will pick up OUTDIR_DATA automatically from the
+environment, and the generated .slurm scripts will source fastspecfit-env.sh
+from the same directory (CWD is checked first, then etc/ as a fallback).
 
 Step 2 — plan remaining work
 -----------------------------
@@ -33,6 +42,16 @@ how they would be divided across N jobs:
 
 The --plan flag prints a summary without writing any files.  Adjust --njobs,
 --nodes, and --mp until the estimated wall times are acceptable.
+
+To test with one or a handful of healpix pixels before committing to a full
+run, use --healpix:
+
+  generate-fast-slurm \
+      --specprod loa \
+      --survey main --program dark \
+      --njobs 1 --nodes 1 --mp 16 \
+      --healpix 1234,5678 \
+      --plan
 
 Step 3 — generate Slurm scripts
 ---------------------------------
@@ -77,4 +96,4 @@ Node / worker arithmetic (Perlmutter CPU, 128 physical cores per node)
   cpus-per-task        = mp * 2  (hyperthreading)
   Effective workers    = 128 * nodes  (all cores busy)
 
-Empirical throughput: ~1.5 objects / min / physical core (fastspec).
+Empirical throughput: ~4 seconds per object per physical core (~15 objects/min/core).
