@@ -314,7 +314,9 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
                 raise ValueError(errmsg)
 
     init_sc_args = make_init_sc_args(args, fastphot=fastphot, fitstack=fitstack)
+    t0 = time.time()
     sc_data.initialize(**init_sc_args)
+    log.info(fsftime('sc_data_init', time.time()-t0))
 
     _own_pool = False
     if rank == 0:
@@ -324,8 +326,8 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
                              init_argdict=init_sc_args)
             _own_pool = True
 
-        log.info(fsftime('init_workers', time.time()-t0,
-                         context=f'nworkers={args.mp}'))
+        log.debug(fsftime('init_workers', time.time()-t0,
+                          context=f'nworkers={args.mp}'))
 
         log.info(f'Cached stellar templates {sc_data.templates.file}')
         log.info(f'Cached emission-line table {sc_data.emlines.file}')
