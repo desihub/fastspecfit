@@ -1246,7 +1246,7 @@ def build_stellar_continuum(coeff, tauv, redshift, templates, cosmo, igm,
                             vdisp=None, fluxnorm=FLUXNORM, massnorm=MASSNORM,
                             dust_emission=True):
 
-    """Build a stellar continuum model from template coefficients.
+    r"""Build a stellar continuum model from template coefficients.
 
     This is a standalone version of :meth:`ContinuumTools.build_stellar_continuum`
     intended for use outside of the main fitting pipeline (e.g., in notebooks).
