@@ -5,6 +5,11 @@ Change Log
 3.4.0 (not released yet)
 ------------------------
 
+*
+
+3.4.0 (2026-05-21)
+------------------
+
 * Production infrastructure overhaul: hoist ``MPPool`` creation out of the
   per-file loop in ``mpi-fastspecfit`` (templates now loaded once per rank
   rather than once per file); replace ``joblib.Parallel`` with ``MPPool`` for
