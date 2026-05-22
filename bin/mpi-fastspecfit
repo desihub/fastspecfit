@@ -53,7 +53,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
     from desispec.parallel import stdouterr_redirected, weighted_partition
     from fastspecfit.mpi import plan, build_cmdargs, _perfile_init, _perfile_run
     from fastspecfit.util import MPPool
-    from fastspecfit.singlecopy import sc_data
+    from fastspecfit.singlecopy import sc_data, _initialize_sc_data
     from fastspecfit.fastspecfit import make_init_sc_args
 
     if comm:
@@ -127,7 +127,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
     shared_pool = None
     if not makeqa and not mp_per_file:
         sc_data.initialize(**init_sc_args)
-        shared_pool = MPPool(args.mp, initializer=sc_data.initialize,
+        shared_pool = MPPool(args.mp, initializer=_initialize_sc_data,
                              init_argdict=init_sc_args)
 
     def run_one_file(redrockfile, outfile, ntarget):
@@ -149,7 +149,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             log.info(f'Rank {rank}: ntargets={ntarget}: {cmd} {cmdargs}')
 
         if args.dry_run:
-            return
+            return True
 
         try:
             t1 = time.time()
@@ -176,7 +176,8 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             log.warning(f'Rank {rank} raised an exception')
             import traceback
             traceback.print_exc()
-        return
+            return False
+        return True
 
     # loop on each file
     if mp_per_file:
@@ -190,11 +191,12 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         perfile_pool.starmap(_perfile_run, task_args)
         perfile_pool.close()
     else:
+        nfailed = 0
         for redrockfile, outfile, ntarget in zip(redrockfiles, outfiles, ntargets):
-            run_one_file(redrockfile, outfile, ntarget)
+            if not run_one_file(redrockfile, outfile, ntarget):
+                nfailed += 1
         if shared_pool is not None:
             shared_pool.close()
-
 
     if rank == 0:
         log.debug(f'Rank {rank} is done')
@@ -207,7 +209,13 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
             if not os.path.exists(outfile):
                 log.warning(f'Missing {outfile}')
 
+        if not mp_per_file and nfailed > 0:
+            log.warning(f'{nfailed}/{len(redrockfiles)} file(s) failed on rank {rank}.')
         log.info(f'All done at {time.asctime()}')
+
+    if not mp_per_file and nfailed > 0:
+        return nfailed
+    return 0
 
 
 def main():
@@ -397,6 +405,7 @@ def main():
         return
 
 
+    nfailed = 0
     if args.plan:
         plan(comm=comm, specprod=args.specprod, specprod_dir=specprod_dir,
              coadd_type=args.coadd_type, survey=args.survey, program=args.program,
@@ -412,11 +421,11 @@ def main():
             profiler = cProfile.Profile()
             profiler.enable()
 
-        run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
-                        makeqa=args.makeqa, outdir_data=outdir_data, sample=sample,
-                        input_redshifts=args.input_redshifts, templates=args.templates,
-                        templateversion=args.templateversion, fphotodir=args.fphotodir,
-                        fphotofile=args.fphotofile, emlinesfile=args.emlinesfile, mp_per_file=args.mp_per_file)
+        nfailed = run_fastspecfit(args, comm=comm, fastphot=args.fastphot, specprod_dir=specprod_dir,
+                                  makeqa=args.makeqa, outdir_data=outdir_data, sample=sample,
+                                  input_redshifts=args.input_redshifts, templates=args.templates,
+                                  templateversion=args.templateversion, fphotodir=args.fphotodir,
+                                  fphotofile=args.fphotofile, emlinesfile=args.emlinesfile, mp_per_file=args.mp_per_file)
 
         if args.profile:
             profiler.disable()
@@ -433,6 +442,9 @@ def main():
 
     if comm:
         MPI.Finalize()
+
+    import sys
+    sys.exit(1 if nfailed else 0)
 
 
 if __name__ == '__main__':

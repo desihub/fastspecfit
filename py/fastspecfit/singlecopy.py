@@ -112,3 +112,15 @@ class Singletons(object):
 
 # global structure with single-copy data, initially empty
 sc_data = Singletons()
+
+
+def _initialize_sc_data(**kwargs):
+    """Pool initializer: initialize the per-process sc_data singleton.
+
+    This must be a module-level function so that multiprocessing (spawn mode)
+    pickles it by reference rather than by value.  A bound method such as
+    ``sc_data.initialize`` would be pickled together with the parent's fully
+    initialized ``sc_data`` object and then called on that pickled copy in the
+    worker, leaving the worker's own module-level ``sc_data`` uninitialized.
+    """
+    sc_data.initialize(**kwargs)

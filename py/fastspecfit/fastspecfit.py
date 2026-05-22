@@ -11,7 +11,7 @@ import numpy as np
 from astropy.table import Table
 
 from fastspecfit.logger import log
-from fastspecfit.singlecopy import sc_data
+from fastspecfit.singlecopy import sc_data, _initialize_sc_data
 from fastspecfit.util import BoxedScalar, MPPool, NMONTE_DEFAULT, fsftime
 from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
 
@@ -322,7 +322,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
     if rank == 0:
         t0 = time.time()
         if comm is None and mp_pool is None:
-            mp_pool = MPPool(args.mp, initializer=sc_data.initialize,
+            mp_pool = MPPool(args.mp, initializer=_initialize_sc_data,
                              init_argdict=init_sc_args)
             _own_pool = True
 
