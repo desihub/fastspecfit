@@ -386,6 +386,11 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             seeds = [1] * ntargets
 
         nobj = len(meta)
+        if args.outfile:
+            _outbase = os.path.basename(args.outfile).replace('.fits.gz', '').replace('.fits', '')
+            for d in data:
+                d['uniqueid'] = f'{d["uniqueid"]},{_outbase}'
+
         fitargs = [{
             'iobj':                iobj,
             'data':                data[iobj],
