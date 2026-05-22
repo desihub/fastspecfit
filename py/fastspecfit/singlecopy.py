@@ -5,6 +5,7 @@ fastspecfit.singlecopy
 Single-copy (per process) data structures read from files.
 
 """
+import logging
 from fastspecfit.cosmo import TabulatedDESI
 from fastspecfit.igm import Inoue14
 from fastspecfit.photometry import Photometry
@@ -139,6 +140,4 @@ def _initialize_sc_data_worker(**kwargs):
     """
     sc_data.initialize(**kwargs)
     if not kwargs.get('log_verbose', False):
-        import logging
-        from fastspecfit.logger import log
         log.setLevel(logging.WARNING)
