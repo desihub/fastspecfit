@@ -12,9 +12,9 @@ from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates, VDISP_NOMINAL, VDISP_BOUNDS
 from fastspecfit.util import (
-    C_LIGHT, TINY, F32MAX, quantile, median, var2ivar,
-    trapz_rebin, trapz_rebin_pre, _trapz_rebin_batch,
-    NMONTE_DEFAULT)
+    C_LIGHT, TINY, F32MAX, FLUXNORM, MASSNORM, NMONTE_DEFAULT,
+    quantile, median, var2ivar, trapz_rebin, trapz_rebin_pre,
+    _trapz_rebin_batch)
 
 
 class ContinuumTools(object):
@@ -76,7 +76,7 @@ class ContinuumTools(object):
     def __init__(self, data, templates, phot, igm, tauv_guess=0.1,
                  vdisp_guess=VDISP_NOMINAL, tauv_bounds=(0., 2.),
                  vdisp_bounds=VDISP_BOUNDS, vdisp_nbin=5,
-                 fluxnorm=1e17, massnorm=1e10, fastphot=False,
+                 fluxnorm=FLUXNORM, massnorm=MASSNORM, fastphot=False,
                  constrain_age=False):
 
         self.phot = phot
@@ -1242,6 +1242,85 @@ class ContinuumTools(object):
         return rchi2_spec, rchi2_phot, rchi2_tot
 
 
+def build_stellar_continuum(coeff, tauv, redshift, templates, cosmo, igm,
+                            vdisp=None, fluxnorm=FLUXNORM, massnorm=MASSNORM,
+                            dust_emission=True):
+
+    """Build a stellar continuum model from template coefficients.
+
+    This is a standalone version of :meth:`ContinuumTools.build_stellar_continuum`
+    intended for use outside of the main fitting pipeline (e.g., in notebooks).
+    It constructs the redshift, IGM, and luminosity-distance scaling factors
+    internally from the supplied cosmology and IGM objects.
+
+    Parameters
+    ----------
+    coeff : :class:`numpy.ndarray` [ntemplates]
+        Non-negative template coefficients in units of
+        :data:`~fastspecfit.util.MASSNORM` solar masses.
+    tauv : float
+        V-band optical depth, tau(V).
+    redshift : float
+        Object redshift.
+    templates : :class:`fastspecfit.templates.Templates`
+        Stellar population synthesis templates.
+    cosmo : :class:`fastspecfit.cosmo.TabulatedDESI`
+        Tabulated DESI fiducial cosmology, used to compute the luminosity
+        distance.
+    igm : :class:`fastspecfit.igm.Inoue14`
+        IGM attenuation model.
+    vdisp : float or None, optional
+        Velocity dispersion in km/s.  If ``None``, the raw (unbroadened)
+        ``templates.flux`` is used without any convolution.  To match the
+        default production behavior, pass ``vdisp=templates.vdisp_nominal``
+        (250 km/s).
+    fluxnorm : float, optional
+        Flux normalization factor in erg/s/cm²/Å.
+        Defaults to :data:`~fastspecfit.util.FLUXNORM` (10\ :sup:`17`).
+    massnorm : float, optional
+        Stellar mass normalization in solar masses.
+        Defaults to :data:`~fastspecfit.util.MASSNORM` (10\ :sup:`10`).
+    dust_emission : bool, optional
+        If ``True``, add the energy-balance infrared dust emission spectrum.
+        Defaults to ``True``.
+
+    Returns
+    -------
+    ztemplatewave : :class:`numpy.ndarray` [npix]
+        Observed-frame (redshifted) wavelength array in Angstroms.
+    contmodel : :class:`numpy.ndarray` [npix]
+        Observed-frame continuum model in units of
+        10\ :sup:`-17` erg/s/cm²/Å per :data:`~fastspecfit.util.MASSNORM`
+        solar masses.
+
+    """
+    # redshift-dependent factors
+    ztemplatewave = templates.wave * (1. + redshift)
+    dlum = cosmo.luminosity_distance(redshift)
+    zfactors = igm.full_IGM(redshift, ztemplatewave)
+    zfactors *= fluxnorm * massnorm * (10. / (1e6 * dlum))**2 / (1. + redshift)
+
+    # Compute the weighted sum of the templates.
+    contmodel = coeff.dot(templates.flux)
+
+    # Optionally convolve to the desired velocity dispersion.
+    if vdisp is not None:
+        contmodel = templates.convolve_vdisp(contmodel, vdisp)
+
+    # Do this part in Numpy because it is very slow in Numba unless
+    # accelerated transcendentals are available via, e.g., Intel SVML.
+    A = -tauv * templates.dust_klambda
+    np.exp(A, out=A)
+
+    if dust_emission:
+        ContinuumTools.attenuate(contmodel, A, zfactors, templates.wave,
+                                 templates.dustflux)
+    else:
+        ContinuumTools.attenuate_nodust(contmodel, A, zfactors)
+
+    return ztemplatewave, contmodel
+
+
 def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4800.), fit_restrange=(3800., 6000.)):
     """Determine whether the spectrum has sufficient coverage to fit velocity dispersion.
 
@@ -1301,7 +1380,6 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
         Object identifier used in log messages and debug plot filenames.
     nmonte : int, optional
         Number of Monte Carlo realizations for uncertainty estimation.
-        Defaults to 10.
     rng : :class:`numpy.random.Generator`, optional
         Random number generator for Monte Carlo draws.
     debug_plots : bool, optional
@@ -1568,7 +1646,6 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
         Initialized continuum-fitting tools for this object.
     nmonte : int, optional
         Number of Monte Carlo realizations for uncertainty estimation.
-        Defaults to 10.
     rng : :class:`numpy.random.Generator`, optional
         Random number generator for Monte Carlo draws.
     uniqueid : int or str, optional
