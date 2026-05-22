@@ -538,9 +538,6 @@ def _build_spectral_models(CTools, EMFit, data, fastspec, specphot, templates,
         templates.flux_nolines, specphot['COEFF'],
         vdisp=specphot['VDISP'], conv_pre=templates.conv_pre_nolines,
         tauv=specphot['TAUV'])
-    if fitstack:
-        contmodel *= 1e-17  # FIXME!
-
     _desicontinuum = CTools.continuum_to_spectroscopy(contmodel, interp=True)
     desicontinuum = [_desicontinuum[campix[0]:campix[1]] / apercorr
                      for campix in data['camerapix']]
@@ -876,7 +873,8 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
     cosmo = sc_data.cosmology
     templates = sc_data.templates
 
-    CTools = ContinuumTools(data, templates, phot, igm, fastphot=fastphot)
+    CTools = ContinuumTools(data, templates, phot, igm, fastphot=fastphot,
+                            fluxnorm=1. if fitstack else FLUXNORM)
     if not fastphot:
         EMFit = EMFitTools(emline_table=sc_data.emlines.table)
 
