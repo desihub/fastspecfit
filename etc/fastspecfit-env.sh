@@ -28,6 +28,7 @@ module swap speclite/${SPECLITE_VERSION}
 echo "Loading FastSpecFit/${FASTSPECFIT_VERSION}"
 module load fastspecfit/${FASTSPECFIT_VERSION}
 # To use a development install instead:
+#echo "Loading local check-out of FastSpecFit"
 #export PYTHONPATH=/dvs_or/common/software/desi/users/ioannis/fastspecfit/py:$PYTHONPATH
 #export PATH=/dvs_or/common/software/desi/users/ioannis/fastspecfit/bin:$PATH
 
