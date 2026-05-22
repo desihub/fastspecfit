@@ -14,7 +14,7 @@ from fastspecfit.templates import Templates, VDISP_NOMINAL, VDISP_BOUNDS
 from fastspecfit.util import (
     C_LIGHT, TINY, F32MAX, FLUXNORM, MASSNORM, NMONTE_DEFAULT,
     quantile, median, var2ivar, trapz_rebin, trapz_rebin_pre,
-    _trapz_rebin_batch, fsftime)
+    _trapz_rebin_batch, fsftime, _uid)
 
 
 class ContinuumTools(object):
@@ -501,7 +501,7 @@ class ContinuumTools(object):
 
         redshift = self.data['redshift']
         if redshift <= 0.0:
-            log.warning(f'Input redshift not defined, zero, or negative [{self.data["uniqueid"]}].')
+            log.warning(f'Input redshift not defined, zero, or negative [{_uid(self.data)}].')
             return lums, cfluxes
 
         templatewave = self.templates.wave
@@ -1031,7 +1031,7 @@ class ContinuumTools(object):
         try:
             coeff, _ = nnls(Psi, b)
         except RuntimeError:
-            log.warning(f'nnls did not converge [{self.data["uniqueid"]}]; adopting zero coefficients.')
+            log.warning(f'nnls did not converge [{_uid(self.data)}]; adopting zero coefficients.')
             coeff = np.zeros(ntemplates)
 
         self.optimizer_saved_contmodel = coeff @ phi
@@ -1802,62 +1802,29 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
                 vdisp_ivar = var2ivar(np.var(vdisp_monte))
 
                 if debug_plots and vdisp_ivar > 0.:
-                    import matplotlib.pyplot as plt
-                    import corner as cn
-                    import seaborn as sns
-
-                    pngfile = f'qa-vdisp-{uniqueid}.png'
-
-                    sns.set(context='talk', style='ticks', font_scale=0.6)
-                    colors = sns.color_palette()
-
-                    dkw = {'color': colors[1], 'ms': 10, 'alpha': 0.75, 'mec': 'k'}
-                    hkw = {'fill': True, 'alpha': 0.75, 'color': 'gray',
-                           'align': 'left', 'edgecolor': 'k'}
-                    ndim = 3
+                    from fastspecfit.qa import _corner_plot
 
                     tauv_sigma = np.std(tauv_monte)
                     age_sigma = np.std(age_monte)
                     vdisp_sigma = np.std(vdisp_monte)
 
-                    plotdata = np.vstack((vdisp_monte, tauv_monte, age_monte)).T
                     truths = [vdisp, tauv, age]
-                    labels = [r'$\sigma_{star}$ (km/s)', r'$\tau_{V}$', 'Age (Gyr)']
-                    titles = [r'$\sigma_{star}$='+f'{vdisp:.0f}'+r'$\pm$'+f'{vdisp_sigma:.0f} km/s',
-                              r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
-                              f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr']
+                    sigmas = [vdisp_sigma, tauv_sigma, age_sigma]
                     sig = [max(5.*vdisp_sigma, 3.), max(5.*tauv_sigma, 0.005), max(5.*age_sigma, 0.005)]
-                    ranges = ((vdisp-sig[0], vdisp+sig[0]), (tauv-sig[1], tauv+sig[1]), (age-sig[2], age+sig[2]))
-
-                    bins = nmonte // 3
-                    if bins < 10:
-                        bins = 10
-                    fig = cn.corner(plotdata, bins=bins, smooth=None, plot_density=False,
-                                    plot_contours=False, range=ranges,
-                                    data_kwargs=dkw, hist_kwargs=hkw, labels=labels)
-                    ax = np.array(fig.axes).reshape((ndim, ndim))
-                    for ii, mlval, sig in zip(range(ndim), (vdisp, tauv, age), (vdisp_sigma, tauv_sigma, age_sigma)):
-                        ax[ii, ii].axvline(mlval, color=colors[0], lw=2, ls='-')
-                        ax[ii, ii].axvline(mlval+sig, color=colors[0], lw=1, ls='--')
-                        ax[ii, ii].axvline(mlval-sig, color=colors[0], lw=1, ls='--')
-                        ax[ii, ii].set_title(titles[ii])
-                        if ii == 0:
-                            ax[ii, ii].set_ylabel('Number of\nRealizations')
-                        else:
-                            xx = ax[ii, ii].twinx()
-                            xx.set_yticklabels([])
-                            xx.set_ylabel('Number of\nRealizations')
-                            xx.tick_params(right=False)
-                    for yi in range(ndim):
-                        for xi in range(yi):
-                            ax[yi, xi].axvline(truths[xi], color=colors[0], lw=1, ls='-', alpha=0.75)
-                            ax[yi, xi].axhline(truths[yi], color=colors[0], lw=1, ls='-', alpha=0.75)
-                    fig.suptitle(f'Velocity Dispersion: {uniqueid}')
-
-                    fig.subplots_adjust(left=0.13, right=0.9, bottom=0.13, top=0.91, wspace=0.14, hspace=0.14)
-                    fig.savefig(pngfile)#, bbox_inches='tight')
-                    plt.close()
-                    log.info(f'Wrote {pngfile}')
+                    _corner_plot(
+                        plotdata=np.vstack((vdisp_monte, tauv_monte, age_monte)).T,
+                        bins=max(nmonte // 3, 10),
+                        ranges=[(v-s, v+s) for v, s in zip(truths, sig)],
+                        labels=[r'$\sigma_{star}$ (km/s)', r'$\tau_{V}$', 'Age (Gyr)'],
+                        titles=[r'$\sigma_{star}$='+f'{vdisp:.0f}'+r'$\pm$'+f'{vdisp_sigma:.0f} km/s',
+                                r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
+                                f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr'],
+                        truths=truths, sigmas=sigmas,
+                        suptitle=f'Velocity Dispersion: {uniqueid}',
+                        pngfile=f'qa-vdisp-{uniqueid}.png',
+                        subplots_adjust=dict(left=0.13, right=0.9, bottom=0.13,
+                                             top=0.91, wspace=0.14, hspace=0.14),
+                    )
 
         log.debug(fsftime('vdisp_fit', time.time()-t0))
 
@@ -1887,7 +1854,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
                 median_apercorr = median(apercorrs[I])
 
                 if median_apercorr <= 0.:
-                    log.warning(f'Aperture correction not well-defined [{data["uniqueid"]}]; adopting 1.0.')
+                    log.warning(f'Aperture correction not well-defined [{_uid(data)}]; adopting 1.0.')
                     median_apercorr = 1.
                 else:
                     log.info(f'Median aperture correction {median_apercorr:.3f} ' + \
@@ -1906,7 +1873,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
             synthphot=True, synthspec=True)
 
         if np.all(coeff == 0.):
-            log.warning(f'Continuum coefficients are all zero [{data["uniqueid"]}].')
+            log.warning(f'Continuum coefficients are all zero [{_uid(data)}].')
             sedmodel = np.zeros(templates.npix)
             sedmodel_nolines = np.zeros(templates.npix)
             desimodel_nolines = np.zeros(len(specflux))
@@ -2029,7 +1996,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
 
     redshift = data['redshift']
     if redshift <= 0.:
-        log.warning(f'Input redshift not defined, zero, or negative [{data["uniqueid"]}].')
+        log.warning(f'Input redshift not defined, zero, or negative [{_uid(data)}].')
 
     if fitstack:
         FLUXNORM = 1.
@@ -2045,7 +2012,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
         lambda_eff = data['photometry']['lambda_eff'].value
         opt = ((lambda_eff > 3e3) & (lambda_eff < 1e4))
         if np.all(objflamivar[opt] == 0.):
-            log.warning(f'All optical bands are masked; masking all photometry [{data["uniqueid"]}].')
+            log.warning(f'All optical bands are masked; masking all photometry [{_uid(data)}].')
             objflamivar[:] = 0.
 
     # Instantiate the continuum tools class.
@@ -2215,19 +2182,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
 
             # optional debugging plot
             if debug_plots:
-                import matplotlib.pyplot as plt
-                import corner as cn
-                import seaborn as sns
-
-                pngfile = f'qa-sps-properties-{data["uniqueid"]}.png'
-
-                sns.set(context='talk', style='ticks', font_scale=0.6)
-                colors = sns.color_palette()
-
-                dkw = {'color': colors[1], 'ms': 10, 'alpha': 0.75, 'mec': 'k'}
-                hkw = {'fill': True, 'alpha': 0.75, 'color': 'gray',
-                       'align': 'left', 'edgecolor': 'k'}
-                ndim = 5
+                from fastspecfit.qa import _corner_plot
 
                 zzsun_sigma = np.std(zzsun_monte)
                 tauv_sigma = np.std(tauv_monte)
@@ -2235,49 +2190,29 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                 logmstar_sigma = np.std(logmstar_monte)
                 age_sigma = np.std(age_monte)
 
-                plotdata = np.vstack((zzsun_monte, tauv_monte, sfr_monte, logmstar_monte, age_monte)).T
                 truths = [zzsun, tauv, sfr, logmstar, age]
-                labels = [r'$Z/Z_{\odot}$', r'$\tau_{V}$', r'SFR ($M_{\odot}/\mathrm{yr}$)',
-                          '\n'+r'$\log_{10}(M/M_{\odot})$', 'Age (Gyr)']
-                titles = [r'$Z/Z_{\odot}$='+f'{zzsun:.1f}'+r'$\pm$'+f'{zzsun_sigma:.1f}',
-                          r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
-                          r'SFR='+f'{sfr:.1f}'+r'$\pm$'+f'{sfr_sigma:.1f}'+r' $M_{\odot}/\mathrm{yr}$',
-                          r'$\log_{10}(M/M_{\odot})$='+f'{logmstar:.2f}'+r'$\pm$'+f'{logmstar_sigma:.2f}',
-                          f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr']
+                sigmas = [zzsun_sigma, tauv_sigma, sfr_sigma, logmstar_sigma, age_sigma]
                 sig = [max(5.*zzsun_sigma, 0.1), max(5.*tauv_sigma, 0.005), max(5.*sfr_sigma, 3),
                        max(5.*logmstar_sigma, 0.1), max(5.*age_sigma, 0.005)]
-                ranges = [(prop-sig1, prop+sig1) for prop, sig1 in zip([zzsun, tauv, sfr, logmstar, age], sig)]
-
-                bins = nmonte // 3
-                if bins < 10:
-                    bins = 10
-                fig = cn.corner(plotdata, bins=bins, smooth=None, plot_density=False,
-                                plot_contours=False, range=ranges,
-                                data_kwargs=dkw, hist_kwargs=hkw, labels=labels)
-                ax = np.array(fig.axes).reshape((ndim, ndim))
-                for ii, mlval, sig in zip(range(ndim), (zzsun, tauv, sfr, logmstar, age),
-                                          (zzsun_sigma, tauv_sigma, sfr_sigma, logmstar_sigma, age_sigma)):
-                    ax[ii, ii].axvline(mlval, color=colors[0], lw=2, ls='-')
-                    ax[ii, ii].axvline(mlval+sig, color=colors[0], lw=1, ls='--')
-                    ax[ii, ii].axvline(mlval-sig, color=colors[0], lw=1, ls='--')
-                    ax[ii, ii].set_title(titles[ii])
-                    if ii == 0:
-                        ax[ii, ii].set_ylabel('Number of\nRealizations')
-                    else:
-                        xx = ax[ii, ii].twinx()
-                        xx.set_yticklabels([])
-                        xx.set_ylabel('Number of\nRealizations')
-                        xx.tick_params(right=False)
-                for yi in range(ndim):
-                    for xi in range(yi):
-                        ax[yi, xi].axvline(truths[xi], color=colors[0], lw=1, ls='-', alpha=0.75)
-                        ax[yi, xi].axhline(truths[yi], color=colors[0], lw=1, ls='-', alpha=0.75)
-                fig.suptitle(f'SPS Properties: {data["uniqueid"]}')
-
-                fig.subplots_adjust(left=0.1, right=0.92, bottom=0.1, top=0.95, wspace=0.14, hspace=0.14)
-                fig.savefig(pngfile)#, bbox_inches='tight')
-                plt.close()
-                log.info(f'Wrote {pngfile}')
+                _corner_plot(
+                    plotdata=np.vstack((zzsun_monte, tauv_monte, sfr_monte,
+                                        logmstar_monte, age_monte)).T,
+                    bins=max(nmonte // 3, 10),
+                    ranges=[(v-s, v+s) for v, s in zip(truths, sig)],
+                    labels=[r'$Z/Z_{\odot}$', r'$\tau_{V}$',
+                            r'SFR ($M_{\odot}/\mathrm{yr}$)',
+                            '\n'+r'$\log_{10}(M/M_{\odot})$', 'Age (Gyr)'],
+                    titles=[r'$Z/Z_{\odot}$='+f'{zzsun:.1f}'+r'$\pm$'+f'{zzsun_sigma:.1f}',
+                            r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
+                            r'SFR='+f'{sfr:.1f}'+r'$\pm$'+f'{sfr_sigma:.1f}'+r' $M_{\odot}/\mathrm{yr}$',
+                            r'$\log_{10}(M/M_{\odot})$='+f'{logmstar:.2f}'+r'$\pm$'+f'{logmstar_sigma:.2f}',
+                            f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr'],
+                    truths=truths, sigmas=sigmas,
+                    suptitle=f'SPS Properties: {data["uniqueid"]}',
+                    pngfile=f'qa-sps-properties-{data["uniqueid"]}.png',
+                    subplots_adjust=dict(left=0.1, right=0.92, bottom=0.1,
+                                         top=0.95, wspace=0.14, hspace=0.14),
+                )
 
 
         msg = []

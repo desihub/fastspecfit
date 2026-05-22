@@ -389,7 +389,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         if args.outfile:
             _outbase = os.path.basename(args.outfile).replace('.fits.gz', '').replace('.fits', '')
             for d in data:
-                d['uniqueid'] = f'{d["uniqueid"]},{_outbase}'
+                d['outfile_base'] = _outbase
 
         fitargs = [{
             'iobj':                iobj,

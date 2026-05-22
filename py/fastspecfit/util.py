@@ -69,6 +69,17 @@ _fsftime_re = re.compile(
     r'.*fsftime ([\d.]+) (sec|min) for (\S+)(?:\s+\[([^\]]*)\])? at ([\d\-T:.]+)')
 
 
+def _uid(data):
+    """Return a log-friendly uniqueid that includes the output basename when set.
+
+    Use in warning/error messages so SLURM logs can be linked back to a
+    specific healpix output file without changing plot filenames.
+    """
+    uid = data['uniqueid']
+    base = data.get('outfile_base')
+    return f'{uid},{base}' if base else str(uid)
+
+
 def parse_fsftime(line):
     """Parse a line for an fsftime timing message produced by :func:`fsftime`.
 

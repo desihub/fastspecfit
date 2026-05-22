@@ -12,6 +12,95 @@ from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import MPPool
 
 
+def _corner_plot(plotdata, bins, ranges, labels, titles, truths, sigmas,
+                 suptitle, pngfile, subplots_adjust=None):
+    """Minimal corner-style N×N plot: histograms on the diagonal, scatter on the lower triangle.
+
+    Parameters
+    ----------
+    plotdata : array_like, shape (nsamples, ndim)
+        Monte Carlo samples, one column per parameter.
+    bins : int
+        Number of histogram bins.
+    ranges : list of (lo, hi) tuples
+        Axis limits for each parameter.
+    labels : list of str
+        Axis labels, one per parameter.
+    titles : list of str
+        Titles shown above each diagonal histogram (typically best-fit ± sigma).
+    truths : list of float
+        Best-fit values; drawn as solid vertical/horizontal lines.
+    sigmas : list of float
+        1σ uncertainties; drawn as dashed lines on diagonal histograms.
+    suptitle : str
+        Figure suptitle.
+    pngfile : str
+        Output PNG filename.
+    subplots_adjust : dict or None, optional
+        Keyword arguments forwarded to ``fig.subplots_adjust``; if ``None``
+        ``tight_layout`` is called instead.
+    """
+    import matplotlib.pyplot as plt
+
+    ndim = plotdata.shape[1]
+    figsize = max(3 * ndim, 6)
+    fig, axes = plt.subplots(ndim, ndim, figsize=(figsize, figsize))
+    ax = np.array(axes).reshape((ndim, ndim))
+
+    for yi in range(ndim):
+        for xi in range(ndim):
+            a = ax[yi, xi]
+            if xi > yi:
+                a.set_visible(False)
+                continue
+
+            lo_x, hi_x = ranges[xi]
+            lo_y, hi_y = ranges[yi]
+
+            if xi == yi:
+                a.hist(plotdata[:, xi], bins=bins, range=(lo_x, hi_x),
+                       color='gray', alpha=0.75, edgecolor='k')
+                a.axvline(truths[xi], color='C0', lw=2, ls='-')
+                a.axvline(truths[xi] + sigmas[xi], color='C0', lw=1, ls='--')
+                a.axvline(truths[xi] - sigmas[xi], color='C0', lw=1, ls='--')
+                a.set_title(titles[xi], fontsize=8)
+                a.set_xlim(lo_x, hi_x)
+                if xi == 0:
+                    a.set_ylabel('Number of\nRealizations')
+                else:
+                    twin = a.twinx()
+                    twin.set_yticklabels([])
+                    twin.set_ylabel('Number of\nRealizations')
+                    twin.tick_params(right=False)
+                    a.tick_params(labelleft=False)
+            else:
+                a.scatter(plotdata[:, xi], plotdata[:, yi],
+                          color='C1', s=10, alpha=0.75,
+                          edgecolors='k', linewidths=0.5)
+                a.axvline(truths[xi], color='C0', lw=1, ls='-', alpha=0.75)
+                a.axhline(truths[yi], color='C0', lw=1, ls='-', alpha=0.75)
+                a.set_xlim(lo_x, hi_x)
+                a.set_ylim(lo_y, hi_y)
+                if xi == 0:
+                    a.set_ylabel(labels[yi])
+                else:
+                    a.tick_params(labelleft=False)
+
+            if yi == ndim - 1:
+                a.set_xlabel(labels[xi])
+            else:
+                a.tick_params(labelbottom=False)
+
+    fig.suptitle(suptitle)
+    if subplots_adjust:
+        fig.subplots_adjust(**subplots_adjust)
+    else:
+        fig.tight_layout()
+    fig.savefig(pngfile)
+    plt.close()
+    log.info(f'Wrote {pngfile}')
+
+
 def format_niceline(line):
     """Simple function to nicely format the name of a line."""
     match line:
