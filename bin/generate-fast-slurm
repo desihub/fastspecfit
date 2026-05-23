@@ -59,8 +59,8 @@ _ENV_SCRIPT = _default_env_script()
 # Maximum wall-clock hours allowed for the chosen QOS (used when --time is not given).
 _MAX_HOURS = {'regular': 12, 'debug': 0.5, 'premium': 24}
 
-# Empirical throughput: ~4 seconds per object per physical core.
-_OBJ_PER_MIN_PER_CORE = 15.0
+# Empirical throughput: ~11 s/obj/core measured on loa (sv3, --mp=16).
+_OBJ_PER_MIN_PER_CORE = 5.5
 
 # ---------------------------------------------------------------------------
 

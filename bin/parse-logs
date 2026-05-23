@@ -86,16 +86,21 @@ def main():
                     p10=np.percentile(a, 10), p90=np.percentile(a, 90),
                     mn=np.min(a), mx=np.max(a))
 
-    def _fmt(v, as_rate=False):
-        if as_rate:
-            return f'{v:.2f} s'
+    def _fmt_time(v):
         return f'{v/60:.2f} min' if v >= 60 else f'{v:.2f} s'
 
+    def _fmt_rate(v):
+        return f'{v:.2f} s'
+
+    def _fmt_count(v):
+        return f'{v:,.0f}'
+
     rows = [
-        ('fit_all',           _stats([r.get('fit_all_sec') for r in records]),  False),
-        ('s/obj/core',        _stats([r.get('per_obj_sec') for r in records]),  True),
-        ('read_spectra',      _stats([r.get('read_sec')    for r in records]),  False),
-        ('write_fastspecfit', _stats([r.get('write_sec')   for r in records]),  False),
+        ('nobj (per file)',    _stats([r.get('nobj')        for r in records]), _fmt_count),
+        ('fit_all',           _stats([r.get('fit_all_sec') for r in records]),  _fmt_time),
+        ('s/obj/core',        _stats([r.get('per_obj_sec') for r in records]),  _fmt_rate),
+        ('read_spectra',      _stats([r.get('read_sec')    for r in records]),  _fmt_time),
+        ('write_fastspecfit', _stats([r.get('write_sec')   for r in records]),  _fmt_time),
     ]
 
     skip_msg = f', {n_skipped} skipped' if n_skipped else ''
@@ -107,10 +112,10 @@ def main():
     print(hdr)
     print('-' * len(hdr))
 
-    for label, stats, as_rate in rows:
+    for label, stats, fmt_fn in rows:
         if stats is None:
             continue
-        cols = [_fmt(stats[k], as_rate) for k in ('mean', 'median', 'p10', 'p90', 'mn', 'mx')]
+        cols = [fmt_fn(stats[k]) for k in ('mean', 'median', 'p10', 'p90', 'mn', 'mx')]
         print(f'{label:<22}  {stats["n"]:>5}  {cols[0]:>10}  {cols[1]:>10}  {cols[2]:>10}  {cols[3]:>10}  {cols[4]:>10}  {cols[5]:>10}')
 
     print()
