@@ -6,4 +6,7 @@ Tools for fast stellar continuum, emission-line, and broadband photometric
 modeling.
 
 """
-from ._version import __version__
+try:
+    from ._version import __version__
+except ImportError:
+    __version__ = 'unknown'

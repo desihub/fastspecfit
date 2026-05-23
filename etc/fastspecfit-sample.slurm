@@ -4,7 +4,7 @@
 #SBATCH --constraint=cpu
 #SBATCH --mail-user=jmoustakas@siena.edu
 #SBATCH --mail-type=ALL
-#SBATCH --nodes=16
+#SBATCH --nodes=1
 #SBATCH --time=04:00:00
 #SBATCH --job-name=fastspec-loa-sample
 #SBATCH --output=fastspec-loa-sample-%j.log
@@ -16,14 +16,10 @@
 SCRIPT_DIR=${SLURM_SUBMIT_DIR}
 source "${SCRIPT_DIR}/fastspecfit-env.sh"
 
-# To use a local checkout instead of the module, uncomment and edit:
-#export PYTHONPATH=/path/to/fastspecfit/py:$PYTHONPATH
-#export PATH=/path/to/fastspecfit/bin:$PATH
-
 # ---------------------------------------------------------------------------
 # Edit the variables below before submitting.
 # ---------------------------------------------------------------------------
-N=16                    # number of nodes (must match --nodes above)
+N=1                     # number of nodes (must match --nodes above)
 mp=16                   # multiprocessing workers per MPI rank
 specprod=loa            # spectroscopic production
 samplefile=${PSCRATCH}/fastspecfit/samples/my-sample.fits

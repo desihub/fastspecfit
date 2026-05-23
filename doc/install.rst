@@ -32,6 +32,21 @@ release, for example::
   source /global/cfs/cdirs/desi/software/desi_environment.sh 26.3
   module load fastspecfit/3.4.0
 
+Development Checkout
+~~~~~~~~~~~~~~~~~~~~
+
+To work with a local git clone of ``FastSpecFit`` at NERSC, first load the
+DESI software stack as above (without loading the ``fastspecfit`` module), then
+run the following **once** after cloning or after each ``git pull``::
+
+  pip install --no-deps -e /path/to/fastspecfit
+
+This registers the CLI entry points (``fastspec``, ``fastphot``, etc.) in the
+active conda environment and generates the ``_version.py`` file that records the
+correct package version in output file headers. The ``--no-deps`` flag skips
+reinstalling dependencies already provided by the DESI software stack. There is
+no need to set ``PYTHONPATH`` manually.
+
 JupyterHub
 ~~~~~~~~~~
 

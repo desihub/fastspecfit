@@ -27,10 +27,10 @@ module swap speclite/${SPECLITE_VERSION}
 
 echo "Loading FastSpecFit/${FASTSPECFIT_VERSION}"
 module load fastspecfit/${FASTSPECFIT_VERSION}
-# To use a development install instead:
-#echo "Loading local check-out of FastSpecFit"
-#export PYTHONPATH=/dvs_ro/common/software/desi/users/ioannis/fastspecfit/py:$PYTHONPATH
-#export PATH=/dvs_ro/common/software/desi/users/ioannis/fastspecfit/bin:$PATH
+# To use a development checkout instead, run once after cloning or after each
+# git pull (this generates _version.py and registers CLI entry points):
+#   pip install --no-deps -e /dvs_ro/common/software/desi/users/ioannis/fastspecfit
+# Then comment out the "module load fastspecfit" line above.
 
 export DESI_SPECTRO_REDUX=/dvs_ro/cfs/cdirs/desi/spectro/redux
 export DUST_DIR=/dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
