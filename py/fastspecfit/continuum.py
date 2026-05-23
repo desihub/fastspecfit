@@ -1842,8 +1842,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
         log.info('Skipping aperture correction since no bands were fit.')
     else:
         if np.all(coeff == 0.):
-            log.warning(f'Unable to estimate aperture correction because continuum '
-                        f'coefficients are all zero [{data["uniqueid"]}]; adopting 1.0.')
+            #log.warning(f'Unable to estimate aperture correction because continuum '
+            #            f'coefficients are all zero [{data["uniqueid"]}]; adopting 1.0.')
+            pass
         else:
             sedflam = CTools.continuum_to_photometry(
                 contmodel, filters=phot.synth_filters[data['photsys']])
@@ -1944,7 +1945,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
 
     dn4000, dn4000_ivar = Photometry.get_dn4000(
         specwave, specflux, flam_ivar=specivar_nolinemask,
-        redshift=redshift, rest=False)
+        redshift=redshift, rest=False, uniqueid=_uid(data))
 
     # Get the smooth continuum.
     t0 = time.time()

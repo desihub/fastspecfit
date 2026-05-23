@@ -14,7 +14,7 @@ from astropy.table import Table
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data
 from fastspecfit.photometry import Photometry
-from fastspecfit.util import FLUXNORM, ZWarningMask, fsftime
+from fastspecfit.util import FLUXNORM, ZWarningMask, fsftime, _uid
 from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
 
 
@@ -172,7 +172,7 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
         for icam, camera in enumerate(specdata['cameras']):
             # Check whether the camera is fully masked.
             if np.sum(specdata['ivar0'][icam]) == 0:
-                log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
+                log.warning(f'Dropping fully masked camera {camera} [{_uid(specdata)}].')
             else:
                 ivar = specdata['ivar0'][icam]
                 mask = specdata['mask0'][icam].astype(bool)
@@ -186,7 +186,7 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
                 ivar[mask] = 0.
 
                 if np.all(ivar == 0.):
-                    log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
+                    log.warning(f'Dropping fully masked camera {camera} [{_uid(specdata)}].')
                 else:
                     res = specdata['res0'][icam]
                     ## interpolate over pixels where the resolution matrix is masked
@@ -348,7 +348,7 @@ def one_stacked_spectrum(specdata, meta, synthphot=True, debug_plots=False):
     for icam, camera in enumerate(specdata['cameras']):
         # Check whether the camera is fully masked.
         if np.sum(specdata['ivar0'][icam]) == 0:
-            log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
+            log.warning(f'Dropping fully masked camera {camera} [{_uid(specdata)}].')
         else:
             ivar = specdata['ivar0'][icam]
             mask = specdata['mask0'][icam]
@@ -362,7 +362,7 @@ def one_stacked_spectrum(specdata, meta, synthphot=True, debug_plots=False):
             ivar[mask] = 0.
 
             if np.all(ivar == 0.):
-                log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
+                log.warning(f'Dropping fully masked camera {camera} [{_uid(specdata)}].')
             else:
                 cameras.append(camera)
                 npixpercamera.append(len(specdata['wave0'][icam])) # number of pixels in this camera

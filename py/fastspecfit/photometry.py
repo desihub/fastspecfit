@@ -601,7 +601,7 @@ class Photometry(object):
 
 
     @staticmethod
-    def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
+    def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True, uniqueid=''):
         """Compute the Dn(4000) spectral break index and its inverse variance.
 
         Parameters
@@ -665,7 +665,6 @@ class Photometry(object):
             if np.sum(I) == 0:
                 return 0., 0.
             if np.sum(J) / np.sum(I) < 0.9:
-                log.warning('More than 10% of pixels in Dn(4000) definition are masked.')
                 return 0., 0.
             wave = wave[J]
             flux = flux[J]
@@ -697,7 +696,8 @@ class Photometry(object):
             return dn4000, dn4000_ivar
 
         if denom == 0. or numer == 0.:
-            log.warning('DN(4000) is ill-defined or could not be computed.')
+            if uniqueid:
+                log.warning(f'Dn(4000) could not be computed [{uniqueid}].')
             return dn4000, dn4000_ivar
 
         dn4000 = (blufactor / redfactor) * numer / denom

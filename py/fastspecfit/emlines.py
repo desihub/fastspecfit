@@ -1772,7 +1772,8 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
         flux_out_nolines = data['coadd_flux'] - emlineflux_out
 
         dn4000_nolines, _ = Photometry.get_dn4000(wave_out, flux_out_nolines,
-                                                  redshift=redshift, rest=False)
+                                                  redshift=redshift, rest=False,
+                                                  uniqueid=_uid(data))
         log.info(f'Dn(4000)={dn4000_nolines:.3f} in the emission-line subtracted spectrum.')
         specphot['DN4000'] = dn4000_nolines
 
