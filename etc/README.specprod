@@ -85,11 +85,11 @@ Step 4a — review runtimes (optional)
 After jobs complete, parse the log files to review per-healpix timing
 statistics and check for unexpected failures:
 
-  parse-logs $OUTDIR_DATA/loa
+  parse-fast-logs $OUTDIR_DATA/loa
 
 Use --pattern to restrict to a specific production or stage, e.g.:
 
-  parse-logs $OUTDIR_DATA/loa --pattern "fastspec-loa-*.log"
+  parse-fast-logs $OUTDIR_DATA/loa --pattern "fastspec-loa-*.log"
 
 The output reports per-file object counts and mean/median/P10/P90 timing for
 fitting, I/O, and per-object throughput.  These numbers are useful for
