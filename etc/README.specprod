@@ -7,21 +7,30 @@ Slurm jobs by target count using generate-fast-slurm.
 
 Files used
 ----------
-  etc/fastspecfit-env.sh      module loads and environment variables
+  etc/fastspecfit-env.sh      module loads, environment variables, and OUTDIR_DATA
   bin/generate-fast-slurm     plan remaining work and generate .slurm files
 
 Step 1 — set up the environment
---------------------------------
-On a login node or in an interactive session:
+-------------------------------
+Copy the environment script to your working directory and edit it as needed
+(module versions, OUTDIR_DATA, etc.):
 
-  source etc/fastspecfit-env.sh [fastspecfit_version]
+  cp etc/fastspecfit-env.sh .
+  $EDITOR fastspecfit-env.sh      # adjust versions and paths
 
-Set OUTDIR_DATA if the default ($PSCRATCH/fastspecfit/data) is not suitable:
+OUTDIR_DATA defaults to $PSCRATCH/fastspecfit/data.  To use a different
+location, either edit it directly in fastspecfit-env.sh or export it before
+sourcing:
 
-  export OUTDIR_DATA=/path/to/output
+  export OUTDIR_DATA=/path/to/output   # optional override
+  source fastspecfit-env.sh [fastspecfit_version]
+
+generate-fast-slurm will pick up OUTDIR_DATA automatically from the
+environment, and the generated .slurm scripts will source fastspecfit-env.sh
+from the same directory (CWD is checked first, then etc/ as a fallback).
 
 Step 2 — plan remaining work
------------------------------
+----------------------------
 Query how many targets and healpix files are still unprocessed, and preview
 how they would be divided across N jobs:
 
@@ -34,8 +43,18 @@ how they would be divided across N jobs:
 The --plan flag prints a summary without writing any files.  Adjust --njobs,
 --nodes, and --mp until the estimated wall times are acceptable.
 
+To test with one or a handful of healpix pixels before committing to a full
+run, use --healpix:
+
+  generate-fast-slurm \
+      --specprod loa \
+      --survey main --program dark \
+      --njobs 1 --nodes 1 --mp 16 \
+      --healpix 1234,5678 \
+      --plan
+
 Step 3 — generate Slurm scripts
----------------------------------
+-------------------------------
 Drop --plan to write one .slurm file per job:
 
   generate-fast-slurm \
@@ -50,7 +69,7 @@ full srun, so no separate cache pre-population is required.
 For a fastphot run add --stage fastphot; for QA add --stage makeqa.
 
 Step 4 — submit
-----------------
+---------------
 Either submit by hand:
 
   sbatch slurm/fastspec-loa-job01.slurm
@@ -61,8 +80,23 @@ or let generate-fast-slurm submit immediately:
 
   generate-fast-slurm ... --submit
 
+Step 4a — review runtimes (optional)
+------------------------------------
+After jobs complete, parse the log files to review per-healpix timing
+statistics and check for unexpected failures:
+
+  parse-logs $OUTDIR_DATA/loa
+
+Use --pattern to restrict to a specific production or stage, e.g.:
+
+  parse-logs $OUTDIR_DATA/loa --pattern "fastspec-loa-*.log"
+
+The output reports per-file object counts and mean/median/P10/P90 timing for
+fitting, I/O, and per-object throughput.  These numbers are useful for
+diagnosing slow healpix pixels and refining node/time estimates for future runs.
+
 Step 5 — merge output catalogs
---------------------------------
+------------------------------
 After all jobs complete, merge the per-healpix FITS files into survey-level
 catalogs:
 
@@ -71,10 +105,13 @@ catalogs:
       --merge --outdir-data $OUTDIR_DATA
 
 Node / worker arithmetic (Perlmutter CPU, 128 physical cores per node)
------------------------------------------------------------------------
+----------------------------------------------------------------------
   MPI ranks per node   = 128 / mp
   Total MPI ranks      = 128 * nodes / mp
   cpus-per-task        = mp * 2  (hyperthreading)
   Effective workers    = 128 * nodes  (all cores busy)
 
-Empirical throughput: ~1.5 objects / min / physical core (fastspec).
+Empirical throughput (loa, sv3, --mp=16):
+  dark targets:   ~8 s/obj/core  (~10 obj/min/core)
+  bright targets: ~11 s/obj/core (~5 obj/min/core)
+  2:1 dark:bright mix: ~8 obj/min/core (~680 node-hours for 38M objects)

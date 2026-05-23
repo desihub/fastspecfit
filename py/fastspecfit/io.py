@@ -14,7 +14,7 @@ from astropy.table import Table
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data
 from fastspecfit.photometry import Photometry
-from fastspecfit.util import FLUXNORM, ZWarningMask
+from fastspecfit.util import FLUXNORM, ZWarningMask, fsftime, _uid
 from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
 
 
@@ -172,7 +172,7 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
         for icam, camera in enumerate(specdata['cameras']):
             # Check whether the camera is fully masked.
             if np.sum(specdata['ivar0'][icam]) == 0:
-                log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
+                log.warning(f'Dropping fully masked camera {camera} [{_uid(specdata)}].')
             else:
                 ivar = specdata['ivar0'][icam]
                 mask = specdata['mask0'][icam].astype(bool)
@@ -186,7 +186,7 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
                 ivar[mask] = 0.
 
                 if np.all(ivar == 0.):
-                    log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
+                    log.warning(f'Dropping fully masked camera {camera} [{_uid(specdata)}].')
                 else:
                     res = specdata['res0'][icam]
                     ## interpolate over pixels where the resolution matrix is masked
@@ -348,7 +348,7 @@ def one_stacked_spectrum(specdata, meta, synthphot=True, debug_plots=False):
     for icam, camera in enumerate(specdata['cameras']):
         # Check whether the camera is fully masked.
         if np.sum(specdata['ivar0'][icam]) == 0:
-            log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
+            log.warning(f'Dropping fully masked camera {camera} [{_uid(specdata)}].')
         else:
             ivar = specdata['ivar0'][icam]
             mask = specdata['mask0'][icam]
@@ -362,7 +362,7 @@ def one_stacked_spectrum(specdata, meta, synthphot=True, debug_plots=False):
             ivar[mask] = 0.
 
             if np.all(ivar == 0.):
-                log.warning(f'Dropping fully masked camera {camera} [{specdata["uniqueid"]}].')
+                log.warning(f'Dropping fully masked camera {camera} [{_uid(specdata)}].')
             else:
                 cameras.append(camera)
                 npixpercamera.append(len(specdata['wave0'][icam])) # number of pixels in this camera
@@ -946,12 +946,8 @@ class DESISpectra(object):
         metas = self._gather_photometry(specprod=specprod, alltiles=alltiles)
         self.meta = metas # update
         #log.info(f'Gathered photometric metadata in {time.time()-t1:.2f} seconds.')
-        if len(redrockfiles) > 1:
-            log.debug(f'Gathered spectrophotometric metadata for {len(redrockfiles)} unique ' + \
-                      f'redrockfiles in {time.time()-t0:.2f} seconds.')
-        else:
-            log.debug(f'Gathered spectrophotometric metadata for {len(redrockfiles)} unique ' + \
-                      f'redrockfile in {time.time()-t0:.2f} seconds.')
+        log.debug(fsftime('gather_metadata', time.time()-t0,
+                          context=f'nfiles={len(redrockfiles)}'))
 
 
     @staticmethod
@@ -1134,7 +1130,7 @@ class DESISpectra(object):
                 t0 = time.time()
                 coadd_spec = coadd_cameras(spec)
                 os.environ['DESI_LOGLEVEL'] = 'info'
-                log.debug(f'Coadding across cameras took {time.time()-t0:.2f} seconds.')
+                log.debug(fsftime('coadd_cameras', time.time()-t0))
 
                 # unpack the desispec.spectra.Spectra objects into simple arrays
                 cams = spec.bands
@@ -1165,6 +1161,9 @@ class DESISpectra(object):
             allmeta.append(meta)
 
         allmeta = vstack(allmeta)
+
+        log.info(fsftime('read_spectra', time.time()-t0,
+                         context=f'nobj={len(allmeta)}, nfiles={len(self.specfiles)}'))
 
         return alldata, allmeta
 
@@ -1715,8 +1714,8 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         write(hdus, tmpfile, outfile)
 
 
-    if verbose:
-        log.debug(f'Writing out took {time.time()-t0:.2f} seconds.')
+    log.info(fsftime('write_fastspecfit', time.time()-t0,
+                     context=f'file={os.path.basename(outfile)}'))
 
 
 def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,

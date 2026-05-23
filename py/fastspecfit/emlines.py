@@ -15,7 +15,7 @@ from astropy.table import Table
 from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
 from fastspecfit.util import (C_LIGHT, TINY, SQTINY, F32MAX,
-                              FLUXNORM, var2ivar)
+                              FLUXNORM, var2ivar, fsftime, _uid)
 from fastspecfit.emline_fit import (EMLine_Objective,
     EMLine_MultiLines, EMLine_find_peak_amplitudes_and_fluxes,
     EMLine_build_model, EMLine_ParamsMapping)
@@ -45,10 +45,12 @@ class EMFitTools(object):
 
     """
 
-    def __init__(self, emline_table, uniqueid=None, stronglines=False):
+    def __init__(self, emline_table, uniqueid=None, outfile_base='',
+                 stronglines=False):
 
         self.line_table = emline_table
         self.uniqueid = uniqueid
+        self.outfile_base = outfile_base
 
         # restrict to just strong lines and assign to patches
         if stronglines:
@@ -691,7 +693,8 @@ class EMFitTools(object):
                     (f' for {self.uniqueid}' if self.uniqueid is not None else '')
                 log.critical(errmsg)
             elif fit_info.status == 0:
-                log.warning('optimizer failed to converge')
+                _loguid = f'{self.uniqueid},{self.outfile_base}' if self.outfile_base else str(self.uniqueid)
+                log.warning(f'optimizer failed to converge [{_loguid}]')
 
             # This should never happen if our optimizer enforces its bounds
             if np.any((free_params < bounds[0]) | (free_params > bounds[1])):
@@ -1570,7 +1573,8 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
 
     tall = time.time()
 
-    EMFit = EMFitTools(emline_table, uniqueid=data['uniqueid'])
+    EMFit = EMFitTools(emline_table, uniqueid=data['uniqueid'],
+                       outfile_base=data.get('outfile_base', ''))
 
     redshift = data['redshift']
     camerapix = data['camerapix']
@@ -1640,8 +1644,9 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
         emlinewave, emlineflux, emlineivar, weights, redshift,
         resolution_matrix, camerapix, debug=False)
 
-    log.debug(f'Line-fitting {data["uniqueid"]} with no broad lines and {nfree_nobroad} free parameters took ' + \
-              f'{time.time()-t0:.4f} seconds [niter={linemodel_nobroad.meta["nfev"]}, rchi2={chi2_nobroad:.4f}].')
+    log.debug(fsftime('linefit_nobroad', time.time()-t0,
+                      context=f'targetid={data["uniqueid"]}, nfree={nfree_nobroad}, '
+                              f'niter={linemodel_nobroad.meta["nfev"]}, rchi2={chi2_nobroad:.4f}'))
 
     # Now try to improve the chi2 by adding broad Balmer lines.  Save the preferred line modela and stats
     if broadlinefit and data['balmerbroad']:
@@ -1653,8 +1658,9 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
             emlinewave, emlineflux, emlineivar, weights, redshift,
             resolution_matrix, camerapix, debug=False)
 
-        log.debug(f'Line-fitting {data["uniqueid"]} with broad lines and {nfree_broad} free parameters took ' + \
-                  f'{time.time()-t0:.4f} seconds [niter={linemodel_broad.meta["nfev"]}, rchi2={chi2_broad:.4f}].')
+        log.debug(fsftime('linefit_broad', time.time()-t0,
+                          context=f'targetid={data["uniqueid"]}, nfree={nfree_broad}, '
+                                  f'niter={linemodel_broad.meta["nfev"]}, rchi2={chi2_broad:.4f}'))
 
         adopt_broad, delta_linechi2_balmer, delta_linendof_balmer = \
             test_broad_model(EMFit,
@@ -1766,7 +1772,8 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
         flux_out_nolines = data['coadd_flux'] - emlineflux_out
 
         dn4000_nolines, _ = Photometry.get_dn4000(wave_out, flux_out_nolines,
-                                                  redshift=redshift, rest=False)
+                                                  redshift=redshift, rest=False,
+                                                  uniqueid=_uid(data))
         log.info(f'Dn(4000)={dn4000_nolines:.3f} in the emission-line subtracted spectrum.')
         specphot['DN4000'] = dn4000_nolines
 
@@ -1832,13 +1839,36 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                 plt.close()
                 log.info(f'Wrote {pngfile}')
 
-    log.debug(f'Emission-line fitting took {time.time()-tall:.2f} seconds.')
+    log.debug(fsftime('emline_specfit', time.time()-tall))
 
     if debug_plots:
-        for name in fastfit.value.dtype.names:
-            print(name, fastfit[name])
-        print()
-        for name in specphot.value.dtype.names:
-            print(name, specphot[name])
+        _fastfit_cols = [
+            'RCHI2_LINE',
+            'NARROW_Z', 'NARROW_ZRMS', 'BROAD_Z', 'BROAD_ZRMS',
+            'OII_DOUBLET_RATIO',
+            'OII_3726_FLUX', 'OII_3726_FLUX_IVAR',
+            'HBETA_FLUX', 'HBETA_FLUX_IVAR',
+            'OIII_5007_FLUX', 'OIII_5007_FLUX_IVAR',
+            'NII_6584_FLUX', 'NII_6584_FLUX_IVAR',
+            'HALPHA_FLUX', 'HALPHA_FLUX_IVAR',
+            'HALPHA_BROAD_FLUX', 'HALPHA_BROAD_FLUX_IVAR',
+            'SII_6731_FLUX', 'SII_6731_FLUX_IVAR',
+        ]
+        _specphot_cols = [
+            'RCHI2', 'RCHI2_CONT', 'RCHI2_PHOT',
+            'VDISP', 'VDISP_IVAR',
+            'AGE', 'ZZSUN', 'LOGMSTAR', 'SFR', 'AV',
+            'DN4000', 'DN4000_OBS', 'DN4000_MODEL',
+        ]
+        _fnames = fastfit.value.dtype.names
+        _snames = specphot.value.dtype.names
+        print(f'--- fastfit [{data["uniqueid"]}] ---')
+        for name in _fastfit_cols:
+            if name in _fnames:
+                print(f'  {name}: {fastfit[name]}')
+        print(f'--- specphot [{data["uniqueid"]}] ---')
+        for name in _specphot_cols:
+            if name in _snames:
+                print(f'  {name}: {specphot[name]}')
 
     return spectra_out

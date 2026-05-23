@@ -29,8 +29,8 @@ specprod=loa            # spectroscopic production
 samplefile=${PSCRATCH}/fastspecfit/samples/my-sample.fits
 stage=fastspec          # fastspec or fastphot
 input_redshifts=''      # set to 'true' to use redshifts from samplefile Z column
-
-export OUTDIR_DATA=${PSCRATCH}/fastspecfit/data
+# OUTDIR_DATA is set by fastspecfit-env.sh; override here if needed:
+#export OUTDIR_DATA=/path/to/custom/output
 # ---------------------------------------------------------------------------
 
 mpiscript=$(type -p mpi-fastspecfit)
@@ -48,7 +48,7 @@ srun --nodes=1 --ntasks=1 --cpus-per-task=2 --cpu-bind=cores \
     $mpiscript \
     --specprod=${specprod} --coadd-type=healpix \
     --survey=${wu_survey} --program=${wu_program} --healpix=${wu_healpix} \
-    --mp=1 --ntargets=1 --nompi \
+    --mp=1 --ntargets=1 --nmonte=0 --nompi \
     --outdir-data=/tmp/fastspecfit-warmup --overwrite
 echo "Warm-up complete."
 

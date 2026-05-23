@@ -1,39 +1,121 @@
 #!/usr/bin/env python
 
-"""Build a set of templates for use with FastSpecFit.
+"""Build stellar population synthesis (SPS) template files for FastSpecFit.
 
-time python bin/build-templates --version 0.0.1 --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates
-time python bin/build-templates --version=0.0.1 --templatedir=$DESI_ROOT/users/ioannis/fastspecfit/templates --logmets=-1.,0.,0.3
+This script generates the ``ftemplates-{imf}-{version}.fits`` files that
+FastSpecFit uses to model galaxy stellar continua, nebular emission, dust
+emission, AGN torus emission, and UV iron emission. Running it requires
+``python-fsps`` (and a compiled FSPS library) installed in the active
+environment — see the Notes section for setup instructions.
 
-* Chabrier IMF
-* MIST isochrones
-* C3K_a stellar library
-* 5 variable-width age bins between 30 Myr and 13.7 Gyr with constant star
-  formation within each age bin
+Usage
+-----
+::
+
+  time python bin/build-templates --version 2.0.0 \\
+      --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates
+
+  time python bin/build-templates --version 2.0.0 \\
+      --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates \\
+      --logmets=-1.,0.,0.3
+
+Input Files
+-----------
+The script expects the following raw data files under
+``<templatedir>/original/``:
+
+- ``DL07_MW3.1_{00,10,20,30,40,50,60}.dat`` — Draine & Li (2007) dust
+  emission grids (Table 3 of https://arxiv.org/pdf/astro-ph/0608003).
+- ``fetemplates-1.0.fits`` — Vestergaard & Wilkes (2001) UV Fe emission
+  template (``VW01ALT`` extension).
+- ``Nenkova08_y010_torusg_n10_q2.0.dat`` — Nenkova et al. (2008) clumpy
+  AGN torus model grid.
+
+Stellar Population Model
+------------------------
+Stellar spectra are computed with ``python-fsps`` using:
+
+- Chabrier (2003) IMF (default; Salpeter and Kroupa also supported via
+  ``--imf``)
+- MIST isochrones
+- C3K_a stellar spectral library (R ~ 3000 at 2750-9100 A)
+- Tabular SFH: 5 variable-width age bins from 30 Myr to 13.7 Gyr with
+  constant star formation within each bin, following the Prospector
+  ``adjust_continuity_agebins`` prescription
+- ``zcontinuous=1`` (metallicity interpolated in log space)
+- Two passes per metallicity grid point: one with nebular emission
+  (``nebemlineinspec=True``) and one without, so the pure line
+  contribution can be isolated as ``LINEFLUX = FLUX - FLUX_nolines``
+
+Output FITS Extensions
+----------------------
+The output ``ftemplates-{imf}-{version}.fits`` file contains the
+following extensions (in order):
+
+``FLUX`` (Primary HDU, float64 [nwave x nmodel])
+    Stellar continuum plus nebular emission in units of
+    erg/s/cm2/Angstrom at 10 pc per solar mass formed.
+
+``LINEFLUX`` (float64 [nwave x nmodel])
+    Isolated nebular emission (``FLUX`` minus the continuum-only pass).
+
+``DUSTFLUX`` (float64 [nwave])
+    Draine & Li (2007) dust emission spectrum interpolated onto the
+    ``WAVE`` grid and normalized to unit bolometric luminosity.
+    Header keywords: ``QPAH``, ``UMIN``, ``GAMMA``.
+
+``WAVE`` (float64 [nwave])
+    Vacuum wavelength array in Angstroms. Sampled at constant
+    log-lambda (``PIXKMS`` km/s pixels) within ``PIXKMS_BOUNDS``;
+    native FSPS spacing outside that range.
+
+``METADATA`` (table, nmodel rows)
+    Per-template age (Gyr), Z/Zsun, stellar mass, and SFR.
+
+``AGNFLUX`` (float64 [nagnwave])
+    Nenkova et al. (2008) clumpy AGN torus spectrum normalized to unit
+    bolometric luminosity. Header keyword: ``AGNTAU``.
+
+``AGNWAVE`` (float64 [nagnwave])
+    Vacuum wavelength array for the AGN torus spectrum in Angstroms.
+
+``FEFLUX`` (float64 [nfewave])
+    Vestergaard & Wilkes (2001) UV Fe emission template resampled onto
+    a constant log-lambda grid at ``AGN_PIXKMS`` km/s per pixel and
+    normalized to the median flux.
+
+``FEWAVE`` (float64 [nfewave])
+    Vacuum wavelength array for the Fe emission template in Angstroms.
+
+``LINEFLUXES`` (float64 [nlines x nmodel])
+    Per-template FSPS emission-line luminosities in
+    erg/s/cm2/Angstrom at 10 pc per solar mass formed.
+
+``LINEWAVES`` (float64 [nlines])
+    Vacuum wavelengths of the FSPS emission lines in Angstroms.
 
 Notes
 -----
+* To switch stellar libraries (e.g., MILES vs. C3K_a), edit
+  ``$SPS_HOME/src/sps_vars.f90`` and reinstall ``python-fsps`` from
+  scratch in a clean environment::
 
-* Figure 3 in Leja et al. 2017 nicely shows the effect of various free
-  parameters on the resulting SED.
+    micromamba create -y -n fsps python
+    micromamba activate fsps
+    cd $HOME/code
+    git clone --recursive https://github.com/dfm/python-fsps.git
+    export SPS_HOME=$HOME/code/python-fsps/src/fsps/libfsps
+    cd python-fsps
+    python -m pip install . --no-cache-dir --force-reinstall
+    cd
+    python -c "import fsps; sp = fsps.StellarPopulation(); print(sp.libraries)"
 
-* To use different stellar libraries (e.g., MILES vs C3K), in a clean terminal
-  make sure you've git-updated a local checkout of the python-fsps and that
-  $SPS_HOME/src/sps_vars.f90 has been edited correctly and then:
-
-  micromamba create -y -n fsps python
-  micromamba activate fsps
-  cd $HOME/code
-  git clone --recursive https://github.com/dfm/python-fsps.git
-  export SPS_HOME=$HOME/code/python-fsps/src/fsps/libfsps
-  cd python-fsps
-  python -m pip install . --no-cache-dir --force-reinstall
-  cd
-  python -c "import fsps; sp = fsps.StellarPopulation(); print(sp.libraries)"
-
-* The resolution of the C3K_a models is R(lambda/FWHM)=3000 or
-  R(lambda/dlambda)=7065 (=42 km/s) between 2750-9100 A:
+* The C3K_a library has resolution R(lambda/FWHM) = 3000, equivalently
+  R(lambda/dlambda) = 7065 (42 km/s), over 2750-9100 A:
   https://github.com/cconroy20/fsps/tree/master/SPECTRA/C3K#readme
+
+* Figure 3 of Leja et al. (2017) illustrates how the various free SPS
+  parameters affect the resulting SED.
 
 """
 import os, time
@@ -340,7 +422,54 @@ def build_agn_templates(agntau=10., png=None):
 
 def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
                          include_nebular=True):
-    """Build FSPS stellar population synthesis template spectra."""
+    """Build FSPS stellar population synthesis template spectra.
+
+    For each entry in ``models``, sets up a tabular star formation history
+    with constant SFR over the corresponding age bin, calls
+    ``python-fsps`` to compute the spectrum, and resamples the result onto
+    a hybrid wavelength grid that is constant log-lambda (velocity) within
+    ``Templates.PIXKMS_BOUNDS`` and native FSPS spacing outside that range.
+    Called twice by ``main`` — once with and once without nebular emission —
+    so that the pure line contribution can be isolated.
+
+    Parameters
+    ----------
+    models : :class:`numpy.ndarray`
+        Structured array with fields ``logmet`` (log10 Z/Zsun, float32)
+        and ``logage`` (log10 mean age in yr, float32), one entry per
+        model spectrum.
+    logages : :class:`numpy.ndarray`
+        Unique log10(age/yr) values, one per age bin. Used to look up
+        which bin each model belongs to.
+    agebins : :class:`numpy.ndarray` or None, optional
+        Age bin edges of shape (nages, 2) in Gyr. Each row gives the
+        [start, end] of one constant-SFR interval.
+    imf : :class:`str`, optional
+        Initial mass function passed to ``python-fsps``. One of
+        ``'chabrier'`` (default), ``'salpeter'``, or ``'kroupa'``.
+    include_nebular : :class:`bool`, optional
+        If ``True`` (default), include nebular line and continuum emission
+        in the output spectra.
+
+    Returns
+    -------
+    meta : :class:`astropy.table.Table`
+        Per-model metadata with columns ``age`` (Gyr), ``zzsun``
+        (Z/Zsun), ``mstar`` (surviving stellar mass fraction), and
+        ``sfr`` (star formation rate at the time of observation).
+    newwave : :class:`numpy.ndarray`
+        Vacuum wavelength array in Angstroms on the hybrid grid.
+    fluxes : :class:`numpy.ndarray`
+        Model spectra of shape (nwave, nmodel) in units of
+        erg/s/cm2/Angstrom at 10 pc per solar mass formed.
+    linewaves : :class:`numpy.ndarray`
+        Vacuum wavelengths of the FSPS nebular emission lines in
+        Angstroms.
+    linefluxes : :class:`numpy.ndarray`
+        Per-model emission-line luminosities of shape (nlines, nmodel)
+        in units of erg/s/cm2/Angstrom at 10 pc per solar mass formed.
+
+    """
     nsed = len(models)
 
     meta = Table()
@@ -444,7 +573,45 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
 
 def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
          agntau=10., test=False, version='1.0.0', templatedir=None):
-    """Build all the templates."""
+    """Build all templates and write the output FITS file.
+
+    Orchestrates calls to :func:`build_fsps_templates` (twice — with and
+    without nebular emission), :func:`build_dustem_templates`,
+    :func:`build_agn_templates`, and :func:`build_fe_templates`, then
+    assembles the results into a single multi-extension FITS file at
+    ``<templatedir>/<version>/ftemplates-{imf}-{version}.fits``.
+
+    Parameters
+    ----------
+    imf : :class:`str`, optional
+        Initial mass function. One of ``'chabrier'`` (default),
+        ``'salpeter'``, or ``'kroupa'``.
+    logmets : :class:`list` of :class:`float`, optional
+        log10(Z/Zsun) metallicity grid values. Default is ``[0.0]``
+        (solar metallicity only). The production templates use
+        ``[-1.0, 0.0, 0.3]``.
+    qpah : :class:`float`, optional
+        Draine & Li (2007) PAH mass fraction parameter. Default is 1.0.
+    umin : :class:`float`, optional
+        Draine & Li (2007) minimum interstellar radiation field strength.
+        Default is 1.0.
+    gamma : :class:`float`, optional
+        Draine & Li (2007) fraction of dust heated by PDRs (power-law
+        radiation field component). Default is 0.01.
+    agntau : :class:`float`, optional
+        Nenkova et al. (2008) AGN torus optical depth. Default is 10.0.
+    test : :class:`bool`, optional
+        If ``True``, override ``logmets`` with ``[0.0]`` for a quick
+        single-metallicity test run. Default is ``False``.
+    version : :class:`str`, optional
+        Version string embedded in the output filename and FITS header,
+        e.g. ``'2.0.0'``. Default is ``'1.0.0'``.
+    templatedir : :class:`str` or None, optional
+        Root template directory. Raw input files are read from
+        ``<templatedir>/original/`` and the output FITS file is written
+        to ``<templatedir>/<version>/``.
+
+    """
     # AGN + Fe template(s)
     fewave, feflux = build_fe_templates(version='1.0')#, png=os.path.join(templatedir, 'original', 'qa-fe.png'))
     agnwave, agnflux = build_agn_templates(agntau=agntau, png=os.path.join(templatedir, 'original', 'qa-agn.png'))

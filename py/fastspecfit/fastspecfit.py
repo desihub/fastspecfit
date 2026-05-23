@@ -11,8 +11,8 @@ import numpy as np
 from astropy.table import Table
 
 from fastspecfit.logger import log
-from fastspecfit.singlecopy import sc_data
-from fastspecfit.util import BoxedScalar, MPPool, NMONTE_DEFAULT
+from fastspecfit.singlecopy import sc_data, _initialize_sc_data
+from fastspecfit.util import BoxedScalar, MPPool, NMONTE_DEFAULT, fsftime
 from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
 
 def make_init_sc_args(args, fastphot=False, fitstack=False):
@@ -180,6 +180,8 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
     emline_table = sc_data.emlines.table
     templates = sc_data.templates
 
+    t0 = time.time()
+
     if fastphot:
         log.info(f'Continuum fitting object {iobj} [{phot.uniqueid_col.lower()} ' + \
                  f'{data["uniqueid"]}, seed {seed}, z={data["redshift"]:.6f}].')
@@ -227,6 +229,9 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
                                  minsnr_balmer_broad=minsnr_balmer_broad,
                                  debug_plots=debug_plots, specflux_monte=specflux_monte,
                                  continuummodel_monte=continuummodel_monte)
+
+    log.info(fsftime('fastspec_one', time.time()-t0,
+                     context=f'{phot.uniqueid_col.lower()}={data["uniqueid"]}'))
 
     return meta, specphot.value, fastfit.value, emmodel
 
@@ -309,17 +314,20 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
                 raise ValueError(errmsg)
 
     init_sc_args = make_init_sc_args(args, fastphot=fastphot, fitstack=fitstack)
+    t0 = time.time()
     sc_data.initialize(**init_sc_args)
+    log.info(fsftime('sc_data_init', time.time()-t0))
 
     _own_pool = False
     if rank == 0:
         t0 = time.time()
         if comm is None and mp_pool is None:
-            mp_pool = MPPool(args.mp, initializer=sc_data.initialize,
+            mp_pool = MPPool(args.mp, initializer=_initialize_sc_data,
                              init_argdict=init_sc_args)
             _own_pool = True
 
-        log.debug(f'Caching took {time.time()-t0:.5f} seconds.')
+        log.debug(fsftime('init_workers', time.time()-t0,
+                          context=f'nworkers={args.mp}'))
 
         log.info(f'Cached stellar templates {sc_data.templates.file}')
         log.info(f'Cached emission-line table {sc_data.emlines.file}')
@@ -378,6 +386,11 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             seeds = [1] * ntargets
 
         nobj = len(meta)
+        if args.outfile:
+            _outbase = os.path.basename(args.outfile).replace('.fits.gz', '').replace('.fits', '')
+            for d in data:
+                d['outfile_base'] = _outbase
+
         fitargs = [{
             'iobj':                iobj,
             'data':                data[iobj],
@@ -419,8 +432,8 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         out = []
         for fitarg_onerank in fitargs_onerank:
             out.append(fastspec_one(**fitarg_onerank))
-        log.info(f'Rank {rank}: done fitting {len(out):,d} objects in ' + \
-                 f'{(time.time()-t1) / 60.:.2f} minutes.')
+        log.info(fsftime('fit_rank', time.time()-t1,
+                         context=f'rank={rank}, nobj={len(out):,d}'))
 
         if rank > 0:
             #log.debug(f'Rank {rank} sending data on {len(out)} objects to rank 0.')
@@ -451,7 +464,11 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         if comm is None and _own_pool:
             mp_pool.close()
 
-        log.info(f'Fitting {ntargets} object(s) took {time.time()-t0:.2f} seconds.')
+        _elapsed = time.time() - t0
+        _ncore = max(args.mp, 1)
+        _per_obj = _elapsed * min(ntargets, _ncore) / ntargets
+        log.info(fsftime('fit_all', _elapsed,
+                         context=f'nobj={ntargets},{_per_obj:.2f}s/obj/core'))
 
         write_fastspecfit(
             meta, specphot, fastfit, modelspectra=modelspectra,

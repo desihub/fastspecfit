@@ -5,6 +5,7 @@ fastspecfit.singlecopy
 Single-copy (per process) data structures read from files.
 
 """
+import logging
 from fastspecfit.cosmo import TabulatedDESI
 from fastspecfit.igm import Inoue14
 from fastspecfit.photometry import Photometry
@@ -112,3 +113,31 @@ class Singletons(object):
 
 # global structure with single-copy data, initially empty
 sc_data = Singletons()
+
+
+def _initialize_sc_data(**kwargs):
+    """Pool initializer: initialize the per-process sc_data singleton.
+
+    This must be a module-level function so that multiprocessing (spawn mode)
+    pickles it by reference rather than by value.  A bound method such as
+    ``sc_data.initialize`` would be pickled together with the parent's fully
+    initialized ``sc_data`` object and then called on that pickled copy in the
+    worker, leaving the worker's own module-level ``sc_data`` uninitialized.
+    """
+    sc_data.initialize(**kwargs)
+
+
+def _initialize_sc_data_worker(**kwargs):
+    """Pool initializer for MPI production workers.
+
+    Like :func:`_initialize_sc_data` but suppresses INFO logging in workers
+    unless ``log_verbose=True`` was requested.  This keeps per-object progress
+    messages out of the Slurm log (where output from all MPI ranks is
+    interleaved) while still routing them to the per-healpix log file via the
+    parent process.  Interactive ``fastspec``/``fastphot`` runs use
+    :func:`_initialize_sc_data` instead and therefore keep full INFO logging
+    regardless of ``--mp``.
+    """
+    sc_data.initialize(**kwargs)
+    if not kwargs.get('log_verbose', False):
+        log.setLevel(logging.WARNING)

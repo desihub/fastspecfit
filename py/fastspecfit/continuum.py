@@ -14,7 +14,7 @@ from fastspecfit.templates import Templates, VDISP_NOMINAL, VDISP_BOUNDS
 from fastspecfit.util import (
     C_LIGHT, TINY, F32MAX, FLUXNORM, MASSNORM, NMONTE_DEFAULT,
     quantile, median, var2ivar, trapz_rebin, trapz_rebin_pre,
-    _trapz_rebin_batch)
+    _trapz_rebin_batch, fsftime, _uid)
 
 
 class ContinuumTools(object):
@@ -501,7 +501,7 @@ class ContinuumTools(object):
 
         redshift = self.data['redshift']
         if redshift <= 0.0:
-            log.warning('Input redshift not defined, zero, or negative!')
+            log.warning(f'Input redshift not defined, zero, or negative [{_uid(self.data)}].')
             return lums, cfluxes
 
         templatewave = self.templates.wave
@@ -1010,18 +1010,29 @@ class ContinuumTools(object):
 
         def objective(tauv):
             _fill(tauv)
-            coeff, _ = nnls(Psi, b)
+            try:
+                coeff, _ = nnls(Psi, b)
+            except RuntimeError:
+                return np.inf
             return np.sum((Psi @ coeff - b) ** 2)
 
-        result = minimize_scalar(objective, bounds=tauv_bounds, method='bounded',
-                                 options={'xatol': 1e-4})
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=RuntimeWarning,
+                                    module='scipy.optimize')
+            result = minimize_scalar(objective, bounds=tauv_bounds, method='bounded',
+                                     options={'xatol': 1e-4})
         tauv = result.x
 
         # One explicit final solve at the optimum so that coeff, phi, and
         # the residuals are mutually consistent regardless of Brent's
         # internal bracketing order.
         _fill(tauv)
-        coeff, _ = nnls(Psi, b)
+        try:
+            coeff, _ = nnls(Psi, b)
+        except RuntimeError:
+            log.warning(f'nnls did not converge [{_uid(self.data)}]; adopting zero coefficients.')
+            coeff = np.zeros(ntemplates)
 
         self.optimizer_saved_contmodel = coeff @ phi
         resid = Psi @ coeff - b
@@ -1246,7 +1257,7 @@ def build_stellar_continuum(coeff, tauv, redshift, templates, cosmo, igm,
                             vdisp=None, fluxnorm=FLUXNORM, massnorm=MASSNORM,
                             dust_emission=True):
 
-    """Build a stellar continuum model from template coefficients.
+    r"""Build a stellar continuum model from template coefficients.
 
     This is a standalone version of :meth:`ContinuumTools.build_stellar_continuum`
     intended for use outside of the main fitting pipeline (e.g., in notebooks).
@@ -1421,6 +1432,8 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
         objflamistd = np.sqrt(objflamivar)
 
         t0 = time.time()
+        _warned_zero_coeff_fp = [False]
+
         def do_fit(objflam):
             tauv, _, coeff, resid = CTools.fit_stellar_continuum(
                 templates.flux_nomvdisp[agekeep, :], fit_vdisp=False,
@@ -1428,7 +1441,9 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
                 synthspec=False)
 
             if np.all(coeff == 0.):
-                log.warning('Continuum coefficients are all zero.')
+                if not _warned_zero_coeff_fp[0]:
+                    log.warning(f'Continuum coefficients are all zero [{uniqueid}].')
+                    _warned_zero_coeff_fp[0] = True
                 sedmodel = np.zeros(templates.npix)
                 sedmodel_nolines = np.zeros(templates.npix)
                 dn4000_model = 0.
@@ -1454,9 +1469,8 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
                 resid, ncoeff=len(coeff), vdisp_fitted=False,
                 ndof_phot=ndof_phot)
 
-        dt = time.time()-t0
-        log.info(f'Fitting {nage} models took {dt:.2f} seconds ' + \
-                 f'[rchi2_phot={rchi2_phot:.1f}, ndof={ndof_phot:.0f}].')
+        log.info(fsftime('fit_fastphot', time.time()-t0,
+                         context=f'nage={nage}, rchi2_phot={rchi2_phot:.1f}, ndof={ndof_phot:.0f}'))
 
         # Monte Carlo to get tauv_ivar and coeff_monte.
         if nmonte > 0:
@@ -1471,8 +1485,9 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
             (tauv_monte, coeff_monte, sedmodel_monte, sedmodel_nolines_monte,
              dn4000_model_monte, _) = tuple(zip(*res))
 
-            tauv_ivar = var2ivar(np.var(tauv_monte))
-            dn4000_model_ivar = var2ivar(np.var(dn4000_model_monte))
+            with np.errstate(invalid='ignore'):
+                tauv_ivar = var2ivar(np.nanvar(tauv_monte))
+                dn4000_model_ivar = var2ivar(np.nanvar(dn4000_model_monte))
 
             msg = []
             for label, units, val, val_ivar in zip(
@@ -1789,67 +1804,35 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
                 res = [do_fit_vdisp(sf) for sf in specflux_monte]
                 (tauv_monte, vdisp_monte, _, age_monte, _) = tuple(zip(*res))
 
-                vdisp_ivar = var2ivar(np.var(vdisp_monte))
+                with np.errstate(invalid='ignore'):
+                    vdisp_ivar = var2ivar(np.nanvar(vdisp_monte))
 
                 if debug_plots and vdisp_ivar > 0.:
-                    import matplotlib.pyplot as plt
-                    import corner as cn
-                    import seaborn as sns
+                    from fastspecfit.qa import _corner_plot
 
-                    pngfile = f'qa-vdisp-{uniqueid}.png'
+                    tauv_sigma = np.nanstd(tauv_monte)
+                    age_sigma = np.nanstd(age_monte)
+                    vdisp_sigma = np.nanstd(vdisp_monte)
 
-                    sns.set(context='talk', style='ticks', font_scale=0.6)
-                    colors = sns.color_palette()
-
-                    dkw = {'color': colors[1], 'ms': 10, 'alpha': 0.75, 'mec': 'k'}
-                    hkw = {'fill': True, 'alpha': 0.75, 'color': 'gray',
-                           'align': 'left', 'edgecolor': 'k'}
-                    ndim = 3
-
-                    tauv_sigma = np.std(tauv_monte)
-                    age_sigma = np.std(age_monte)
-                    vdisp_sigma = np.std(vdisp_monte)
-
-                    plotdata = np.vstack((vdisp_monte, tauv_monte, age_monte)).T
                     truths = [vdisp, tauv, age]
-                    labels = [r'$\sigma_{star}$ (km/s)', r'$\tau_{V}$', 'Age (Gyr)']
-                    titles = [r'$\sigma_{star}$='+f'{vdisp:.0f}'+r'$\pm$'+f'{vdisp_sigma:.0f} km/s',
-                              r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
-                              f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr']
+                    sigmas = [vdisp_sigma, tauv_sigma, age_sigma]
                     sig = [max(5.*vdisp_sigma, 3.), max(5.*tauv_sigma, 0.005), max(5.*age_sigma, 0.005)]
-                    ranges = ((vdisp-sig[0], vdisp+sig[0]), (tauv-sig[1], tauv+sig[1]), (age-sig[2], age+sig[2]))
+                    _corner_plot(
+                        plotdata=np.vstack((vdisp_monte, tauv_monte, age_monte)).T,
+                        bins=max(nmonte // 3, 10),
+                        ranges=[(v-s, v+s) for v, s in zip(truths, sig)],
+                        labels=[r'$\sigma_{star}$ (km/s)', r'$\tau_{V}$', 'Age (Gyr)'],
+                        titles=[r'$\sigma_{star}$='+f'{vdisp:.0f}'+r'$\pm$'+f'{vdisp_sigma:.0f} km/s',
+                                r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
+                                f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr'],
+                        truths=truths, sigmas=sigmas,
+                        suptitle=f'Velocity Dispersion: {uniqueid}',
+                        pngfile=f'qa-vdisp-{uniqueid}.png',
+                        subplots_adjust=dict(left=0.13, right=0.9, bottom=0.13,
+                                             top=0.91, wspace=0.14, hspace=0.14),
+                    )
 
-                    bins = nmonte // 3
-                    if bins < 10:
-                        bins = 10
-                    fig = cn.corner(plotdata, bins=bins, smooth=None, plot_density=False,
-                                    plot_contours=False, range=ranges,
-                                    data_kwargs=dkw, hist_kwargs=hkw, labels=labels)
-                    ax = np.array(fig.axes).reshape((ndim, ndim))
-                    for ii, mlval, sig in zip(range(ndim), (vdisp, tauv, age), (vdisp_sigma, tauv_sigma, age_sigma)):
-                        ax[ii, ii].axvline(mlval, color=colors[0], lw=2, ls='-')
-                        ax[ii, ii].axvline(mlval+sig, color=colors[0], lw=1, ls='--')
-                        ax[ii, ii].axvline(mlval-sig, color=colors[0], lw=1, ls='--')
-                        ax[ii, ii].set_title(titles[ii])
-                        if ii == 0:
-                            ax[ii, ii].set_ylabel('Number of\nRealizations')
-                        else:
-                            xx = ax[ii, ii].twinx()
-                            xx.set_yticklabels([])
-                            xx.set_ylabel('Number of\nRealizations')
-                            xx.tick_params(right=False)
-                    for yi in range(ndim):
-                        for xi in range(yi):
-                            ax[yi, xi].axvline(truths[xi], color=colors[0], lw=1, ls='-', alpha=0.75)
-                            ax[yi, xi].axhline(truths[yi], color=colors[0], lw=1, ls='-', alpha=0.75)
-                    fig.suptitle(f'Velocity Dispersion: {uniqueid}')
-
-                    fig.subplots_adjust(left=0.13, right=0.9, bottom=0.13, top=0.91, wspace=0.14, hspace=0.14)
-                    fig.savefig(pngfile)#, bbox_inches='tight')
-                    plt.close()
-                    log.info(f'Wrote {pngfile}')
-
-        log.debug(f'Estimating the velocity dispersion took {time.time()-t0:.2f} seconds.')
+        log.debug(fsftime('vdisp_fit', time.time()-t0))
 
     # Next, estimate the aperture correction.
     apercorrs = np.ones(len(phot.synth_bands))
@@ -1859,8 +1842,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
         log.info('Skipping aperture correction since no bands were fit.')
     else:
         if np.all(coeff == 0.):
-            log.warning('Unable to estimate aperture correction because ' + \
-                        'continuum coefficients are all zero; adopting 1.0.')
+            #log.warning(f'Unable to estimate aperture correction because continuum '
+            #            f'coefficients are all zero [{data["uniqueid"]}]; adopting 1.0.')
+            pass
         else:
             sedflam = CTools.continuum_to_photometry(
                 contmodel, filters=phot.synth_filters[data['photsys']])
@@ -1877,7 +1861,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
                 median_apercorr = median(apercorrs[I])
 
                 if median_apercorr <= 0.:
-                    log.warning('Aperture correction not well-defined; adopting 1.0.')
+                    log.warning(f'Aperture correction not well-defined [{_uid(data)}]; adopting 1.0.')
                     median_apercorr = 1.
                 else:
                     log.info(f'Median aperture correction {median_apercorr:.3f} ' + \
@@ -1886,6 +1870,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
     # Now do the full spectrophotometric fit with the velocity dispersion
     # fixed and the bounds on tauv relaxed.
     t0 = time.time()
+
+    _warned_zero_coeff = [False]
 
     def do_fit_full(objflam, specflux):
         tauv, _, coeff, resid = CTools.fit_stellar_continuum(
@@ -1896,7 +1882,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
             synthphot=True, synthspec=True)
 
         if np.all(coeff == 0.):
-            log.warning('Continuum coefficients are all zero.')
+            if not _warned_zero_coeff[0]:
+                log.warning(f'Continuum coefficients are all zero [{_uid(data)}].')
+                _warned_zero_coeff[0] = True
             sedmodel = np.zeros(templates.npix)
             sedmodel_nolines = np.zeros(templates.npix)
             desimodel_nolines = np.zeros(len(specflux))
@@ -1929,9 +1917,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
         resid, ncoeff=nage, vdisp_fitted=False, split=len(specflux),
         ndof_spec=ndof_cont, ndof_phot=ndof_phot)
 
-    log.debug(f'Fitting {nage} models took {time.time()-t0:.2f} seconds ' + \
-              f'[rchi2_cont={rchi2_cont:.1f}, ndof={ndof_cont:.0f}; ' + \
-              f'rchi2_phot={rchi2_phot:.1f}, ndof={ndof_phot:.0f}].')
+    log.debug(fsftime('fit_fastspec', time.time()-t0,
+                      context=f'nage={nage}, rchi2_cont={rchi2_cont:.1f}, ndof_cont={ndof_cont:.0f}, '
+                              f'rchi2_phot={rchi2_phot:.1f}, ndof_phot={ndof_phot:.0f}'))
 
     if specflux_monte is not None:
         res = [do_fit_full(*args) for args in zip(objflam_monte, specflux_monte)]
@@ -1941,8 +1929,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
 
         continuummodel_monte = np.vstack(desimodel_nolines_monte)
 
-        tauv_ivar = var2ivar(np.var(tauv_monte))
-        dn4000_model_ivar = var2ivar(np.var(dn4000_model_monte))
+        with np.errstate(invalid='ignore'):
+            tauv_ivar = var2ivar(np.nanvar(tauv_monte))
+            dn4000_model_ivar = var2ivar(np.nanvar(dn4000_model_monte))
     else:
         coeff_monte = None
         tauv_monte = None
@@ -1956,7 +1945,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
 
     dn4000, dn4000_ivar = Photometry.get_dn4000(
         specwave, specflux, flam_ivar=specivar_nolinemask,
-        redshift=redshift, rest=False)
+        redshift=redshift, rest=False, uniqueid=_uid(data))
 
     # Get the smooth continuum.
     t0 = time.time()
@@ -1982,7 +1971,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
             if np.count_nonzero(I) > 3: # require three good pixels to compute the mean
                 smoothstats[icam] = median(smoothcontinuum[ss:ee][I] / specflux[ss:ee][I])
 
-    log.debug(f'Deriving the smooth continuum took {time.time()-t0:.2f} seconds.')
+    log.debug(fsftime('smooth_continuum', time.time()-t0))
 
     return (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
             tauv, tauv_monte, tauv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar,
@@ -2019,7 +2008,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
 
     redshift = data['redshift']
     if redshift <= 0.:
-        log.warning('Input redshift not defined, zero, or negative!')
+        log.warning(f'Input redshift not defined, zero, or negative [{_uid(data)}].')
 
     if fitstack:
         FLUXNORM = 1.
@@ -2035,7 +2024,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
         lambda_eff = data['photometry']['lambda_eff'].value
         opt = ((lambda_eff > 3e3) & (lambda_eff < 1e4))
         if np.all(objflamivar[opt] == 0.):
-            log.warning('All optical bands are masked; masking all photometry.')
+            log.warning(f'All optical bands are masked; masking all photometry [{_uid(data)}].')
             objflamivar[:] = 0.
 
     # Instantiate the continuum tools class.
@@ -2155,19 +2144,22 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             res = [do_kcorr(sm, snm, False) for sm, snm in zip(sedmodel_monte, sedmodel_nolines_monte)]
             (synth_absmag_monte, _, _, _, _, _, lums_monte, cfluxes_monte) = tuple(zip(*res))
 
-            synth_absmag_var = np.var(synth_absmag_monte, axis=0)
+            with np.errstate(invalid='ignore'):
+                synth_absmag_var = np.var(synth_absmag_monte, axis=0)
             for band, shift, var in zip(phot.absmag_bands, phot.band_shift, synth_absmag_var):
                 if var > TINY:
                     band = band.upper()
                     shift = int(10*shift)
                     specphot[f'ABSMAG{shift:02d}_SYNTH_IVAR_{band}'] = 1. / var
 
-            lums_var = np.var(lums_monte, axis=0)
+            with np.errstate(invalid='ignore'):
+                lums_var = np.var(lums_monte, axis=0)
             for lumkey, var in zip(lumskeys, lums_var):
                 if var > TINY:
                     specphot[f'{lumkey}_IVAR'] = 1. / var
 
-            cfluxes_var = np.var(cfluxes_monte, axis=0)
+            with np.errstate(invalid='ignore'):
+                cfluxes_var = np.var(cfluxes_monte, axis=0)
             for cfluxkey, var in zip(cfluxeskeys, cfluxes_var):
                 if var > TINY:
                     specphot[f'{cfluxkey}_IVAR'] = 1. / var
@@ -2178,11 +2170,14 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             mstars = tinfo['mstar'] # [current mass in stars, Msun]
             masstot = coeff.dot(mstars)
             coefftot = np.sum(coeff)
-            logmstar = np.log10(CTools.massnorm * masstot)
-            zzsun = np.log10(coeff.dot(mstars * 10.**tinfo['zzsun']) / masstot) # mass-weighted
-            age = coeff.dot(tinfo['age']) / coefftot / 1e9           # luminosity-weighted [Gyr]
-            #age = coeff.dot(mstars * tinfo['age']) / masstot / 1e9  # mass-weighted [Gyr]
-            sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])          # [Msun/yr]
+            if masstot > 0. and coefftot > 0.:
+                logmstar = np.log10(CTools.massnorm * masstot)
+                zzsun = np.log10(coeff.dot(mstars * 10.**tinfo['zzsun']) / masstot) # mass-weighted
+                age = coeff.dot(tinfo['age']) / coefftot / 1e9           # luminosity-weighted [Gyr]
+                #age = coeff.dot(mstars * tinfo['age']) / masstot / 1e9  # mass-weighted [Gyr]
+                sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])          # [Msun/yr]
+            else:
+                logmstar, zzsun, age, sfr = 0., 0., 0., 0.
             return age, zzsun, logmstar, sfr
 
         age, zzsun, logmstar, sfr = _get_sps_properties(coeff)
@@ -2199,75 +2194,44 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
 
             for val_monte, col in zip([age_monte, zzsun_monte, logmstar_monte, sfr_monte],
                                       ['AGE_IVAR', 'ZZSUN_IVAR', 'LOGMSTAR_IVAR', 'SFR_IVAR']):
-                val_ivar = var2ivar(np.var(val_monte))
+                with np.errstate(invalid='ignore'):
+                    val_ivar = var2ivar(np.nanvar(val_monte))
                 if val_ivar < F32MAX:
                     specphot[col] = val_ivar
 
             # optional debugging plot
             if debug_plots:
-                import matplotlib.pyplot as plt
-                import corner as cn
-                import seaborn as sns
+                from fastspecfit.qa import _corner_plot
 
-                pngfile = f'qa-sps-properties-{data["uniqueid"]}.png'
+                zzsun_sigma = np.nanstd(zzsun_monte)
+                tauv_sigma = np.nanstd(tauv_monte)
+                sfr_sigma = np.nanstd(sfr_monte)
+                logmstar_sigma = np.nanstd(logmstar_monte)
+                age_sigma = np.nanstd(age_monte)
 
-                sns.set(context='talk', style='ticks', font_scale=0.6)
-                colors = sns.color_palette()
-
-                dkw = {'color': colors[1], 'ms': 10, 'alpha': 0.75, 'mec': 'k'}
-                hkw = {'fill': True, 'alpha': 0.75, 'color': 'gray',
-                       'align': 'left', 'edgecolor': 'k'}
-                ndim = 5
-
-                zzsun_sigma = np.std(zzsun_monte)
-                tauv_sigma = np.std(tauv_monte)
-                sfr_sigma = np.std(sfr_monte)
-                logmstar_sigma = np.std(logmstar_monte)
-                age_sigma = np.std(age_monte)
-
-                plotdata = np.vstack((zzsun_monte, tauv_monte, sfr_monte, logmstar_monte, age_monte)).T
                 truths = [zzsun, tauv, sfr, logmstar, age]
-                labels = [r'$Z/Z_{\odot}$', r'$\tau_{V}$', r'SFR ($M_{\odot}/\mathrm{yr}$)',
-                          '\n'+r'$\log_{10}(M/M_{\odot})$', 'Age (Gyr)']
-                titles = [r'$Z/Z_{\odot}$='+f'{zzsun:.1f}'+r'$\pm$'+f'{zzsun_sigma:.1f}',
-                          r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
-                          r'SFR='+f'{sfr:.1f}'+r'$\pm$'+f'{sfr_sigma:.1f}'+r' $M_{\odot}/\mathrm{yr}$',
-                          r'$\log_{10}(M/M_{\odot})$='+f'{logmstar:.2f}'+r'$\pm$'+f'{logmstar_sigma:.2f}',
-                          f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr']
+                sigmas = [zzsun_sigma, tauv_sigma, sfr_sigma, logmstar_sigma, age_sigma]
                 sig = [max(5.*zzsun_sigma, 0.1), max(5.*tauv_sigma, 0.005), max(5.*sfr_sigma, 3),
                        max(5.*logmstar_sigma, 0.1), max(5.*age_sigma, 0.005)]
-                ranges = [(prop-sig1, prop+sig1) for prop, sig1 in zip([zzsun, tauv, sfr, logmstar, age], sig)]
-
-                bins = nmonte // 3
-                if bins < 10:
-                    bins = 10
-                fig = cn.corner(plotdata, bins=bins, smooth=None, plot_density=False,
-                                plot_contours=False, range=ranges,
-                                data_kwargs=dkw, hist_kwargs=hkw, labels=labels)
-                ax = np.array(fig.axes).reshape((ndim, ndim))
-                for ii, mlval, sig in zip(range(ndim), (zzsun, tauv, sfr, logmstar, age),
-                                          (zzsun_sigma, tauv_sigma, sfr_sigma, logmstar_sigma, age_sigma)):
-                    ax[ii, ii].axvline(mlval, color=colors[0], lw=2, ls='-')
-                    ax[ii, ii].axvline(mlval+sig, color=colors[0], lw=1, ls='--')
-                    ax[ii, ii].axvline(mlval-sig, color=colors[0], lw=1, ls='--')
-                    ax[ii, ii].set_title(titles[ii])
-                    if ii == 0:
-                        ax[ii, ii].set_ylabel('Number of\nRealizations')
-                    else:
-                        xx = ax[ii, ii].twinx()
-                        xx.set_yticklabels([])
-                        xx.set_ylabel('Number of\nRealizations')
-                        xx.tick_params(right=False)
-                for yi in range(ndim):
-                    for xi in range(yi):
-                        ax[yi, xi].axvline(truths[xi], color=colors[0], lw=1, ls='-', alpha=0.75)
-                        ax[yi, xi].axhline(truths[yi], color=colors[0], lw=1, ls='-', alpha=0.75)
-                fig.suptitle(f'SPS Properties: {data["uniqueid"]}')
-
-                fig.subplots_adjust(left=0.1, right=0.92, bottom=0.1, top=0.95, wspace=0.14, hspace=0.14)
-                fig.savefig(pngfile)#, bbox_inches='tight')
-                plt.close()
-                log.info(f'Wrote {pngfile}')
+                _corner_plot(
+                    plotdata=np.vstack((zzsun_monte, tauv_monte, sfr_monte,
+                                        logmstar_monte, age_monte)).T,
+                    bins=max(nmonte // 3, 10),
+                    ranges=[(v-s, v+s) for v, s in zip(truths, sig)],
+                    labels=[r'$Z/Z_{\odot}$', r'$\tau_{V}$',
+                            r'SFR ($M_{\odot}/\mathrm{yr}$)',
+                            '\n'+r'$\log_{10}(M/M_{\odot})$', 'Age (Gyr)'],
+                    titles=[r'$Z/Z_{\odot}$='+f'{zzsun:.1f}'+r'$\pm$'+f'{zzsun_sigma:.1f}',
+                            r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
+                            r'SFR='+f'{sfr:.1f}'+r'$\pm$'+f'{sfr_sigma:.1f}'+r' $M_{\odot}/\mathrm{yr}$',
+                            r'$\log_{10}(M/M_{\odot})$='+f'{logmstar:.2f}'+r'$\pm$'+f'{logmstar_sigma:.2f}',
+                            f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr'],
+                    truths=truths, sigmas=sigmas,
+                    suptitle=f'SPS Properties: {data["uniqueid"]}',
+                    pngfile=f'qa-sps-properties-{data["uniqueid"]}.png',
+                    subplots_adjust=dict(left=0.1, right=0.92, bottom=0.1,
+                                         top=0.95, wspace=0.14, hspace=0.14),
+                )
 
 
         msg = []
@@ -2284,7 +2248,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             msg.append(f'{label}={val:.2f}{var_msg}{units}')
         log.info(' '.join(msg))
 
-    log.debug(f'Continuum-fitting took {time.time()-tall:.2f} seconds.')
+    log.debug(fsftime('continuum_specfit', time.time()-tall))
 
     if fastphot:
         return sedmodel, None, None, None

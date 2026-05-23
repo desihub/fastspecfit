@@ -194,7 +194,8 @@ class Photometry(object):
         synth_maggies_rest = self.get_ab_maggies_unchecked(
             filters_out, zmodelflux * (1. + redshift) / FLUXNORM,
             zmodelwave / (1. + redshift))
-        synth_absmag = -2.5 * np.log10(synth_maggies_rest) - dmod
+        with np.errstate(divide='ignore', invalid='ignore'):
+            synth_absmag = -2.5 * np.log10(synth_maggies_rest) - dmod
 
         return synth_absmag, synth_maggies_rest
 
@@ -295,7 +296,8 @@ class Photometry(object):
             lambdadist = np.abs(lambda_obs / (1. + redshift) - lambda_out[jj])
             oband[jj] = np.argmin(lambdadist + (maggies * np.sqrt(ivarmaggies) < snrmin) * 1e10)
 
-        kcorr = + 2.5 * np.log10(synth_maggies_rest / synth_maggies_obs[oband])
+        with np.errstate(divide='ignore', invalid='ignore'):
+            kcorr = + 2.5 * np.log10(synth_maggies_rest / synth_maggies_obs[oband])
 
         # m_R = M_Q + DM(z) + K_QR(z) or
         # M_Q = m_R - DM(z) - K_QR(z)
@@ -599,7 +601,7 @@ class Photometry(object):
 
 
     @staticmethod
-    def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True):
+    def get_dn4000(wave, flam, flam_ivar=None, redshift=None, rest=True, uniqueid=''):
         """Compute the Dn(4000) spectral break index and its inverse variance.
 
         Parameters
@@ -663,7 +665,6 @@ class Photometry(object):
             if np.sum(I) == 0:
                 return 0., 0.
             if np.sum(J) / np.sum(I) < 0.9:
-                log.warning('More than 10% of pixels in Dn(4000) definition are masked.')
                 return 0., 0.
             wave = wave[J]
             flux = flux[J]
@@ -695,7 +696,8 @@ class Photometry(object):
             return dn4000, dn4000_ivar
 
         if denom == 0. or numer == 0.:
-            log.warning('DN(4000) is ill-defined or could not be computed.')
+            if uniqueid:
+                log.warning(f'Dn(4000) could not be computed [{uniqueid}].')
             return dn4000, dn4000_ivar
 
         dn4000 = (blufactor / redfactor) * numer / denom

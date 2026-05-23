@@ -26,7 +26,7 @@ Add a Z (float64) column if you want to supply input redshifts and will pass
 --input-redshifts.
 
 Step 1 — set up the environment
---------------------------------
+-------------------------------
 On a login node or in an interactive session:
 
   source etc/fastspecfit-env.sh [fastspecfit_version]
@@ -36,7 +36,7 @@ Set OUTDIR_DATA if the default ($PSCRATCH/fastspecfit/data) is not suitable:
   export OUTDIR_DATA=/path/to/output
 
 Step 2 — estimate resources
------------------------------
+---------------------------
 Count how many unique healpix pixels the sample touches and how many targets
 each contains — this determines MPI rank utilization:
 
@@ -53,7 +53,7 @@ each contains — this determines MPI rank utilization:
   (each worker handles one healpix file); otherwise workers share each file.
 
 Step 3 — edit the Slurm template
-----------------------------------
+--------------------------------
 Copy and edit etc/fastspecfit-sample.slurm:
 
   cp etc/fastspecfit-sample.slurm ./fastspec-loa-mysample.slurm
@@ -72,11 +72,26 @@ The script includes a single-rank Numba warm-up step before the full srun,
 so no separate cache pre-population is required.
 
 Step 4 — submit
-----------------
+---------------
   sbatch fastspec-loa-mysample.slurm
 
+Step 4a — review runtimes (optional)
+------------------------------------
+After jobs complete, parse the log files to review per-healpix timing
+statistics and check for unexpected failures:
+
+  parse-logs $OUTDIR_DATA/loa
+
+Use --pattern to restrict to a specific production or stage, e.g.:
+
+  parse-logs $OUTDIR_DATA/loa --pattern "fastspec-loa-*.log"
+
+The output reports per-file object counts and mean/median/P10/P90 timing for
+fitting, I/O, and per-object throughput.  These numbers are useful for
+diagnosing slow healpix pixels and refining node/time estimates for future runs.
+
 Step 5 — merge output
------------------------
+---------------------
 After the job completes, merge the per-healpix output files:
 
   mpi-fastspecfit --specprod loa \
@@ -85,10 +100,12 @@ After the job completes, merge the per-healpix output files:
       --outdir-data $OUTDIR_DATA
 
 Node / worker arithmetic (Perlmutter CPU, 128 physical cores per node)
------------------------------------------------------------------------
+----------------------------------------------------------------------
   MPI ranks per node   = 128 / mp
   Total MPI ranks      = 128 * nodes / mp
   cpus-per-task        = mp * 2  (hyperthreading)
   Effective workers    = 128 * nodes  (all cores busy)
 
-Empirical throughput: ~1.5 objects / min / physical core (fastspec).
+Empirical throughput (loa, sv3, --mp=16):
+  dark targets:   ~8 s/obj/core  (~10 obj/min/core)
+  bright targets: ~11 s/obj/core (~5 obj/min/core)
