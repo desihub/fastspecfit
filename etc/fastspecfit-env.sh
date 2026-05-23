@@ -29,8 +29,8 @@ echo "Loading FastSpecFit/${FASTSPECFIT_VERSION}"
 module load fastspecfit/${FASTSPECFIT_VERSION}
 # To use a development install instead:
 #echo "Loading local check-out of FastSpecFit"
-#export PYTHONPATH=/dvs_or/common/software/desi/users/ioannis/fastspecfit/py:$PYTHONPATH
-#export PATH=/dvs_or/common/software/desi/users/ioannis/fastspecfit/bin:$PATH
+#export PYTHONPATH=/dvs_ro/common/software/desi/users/ioannis/fastspecfit/py:$PYTHONPATH
+#export PATH=/dvs_ro/common/software/desi/users/ioannis/fastspecfit/bin:$PATH
 
 export DESI_SPECTRO_REDUX=/dvs_ro/cfs/cdirs/desi/spectro/redux
 export DUST_DIR=/dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1

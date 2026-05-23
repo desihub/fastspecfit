@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """
 Parse fastspecfit log files and report timing statistics.
+
 """
 import re
 import sys

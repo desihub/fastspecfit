@@ -59,8 +59,11 @@ _ENV_SCRIPT = _default_env_script()
 # Maximum wall-clock hours allowed for the chosen QOS (used when --time is not given).
 _MAX_HOURS = {'regular': 12, 'debug': 0.5, 'premium': 24}
 
-# Empirical throughput: ~11 s/obj/core measured on loa (sv3, --mp=16).
-_OBJ_PER_MIN_PER_CORE = 5.5
+# Empirical throughput from loa benchmarks (sv3, --mp=16):
+#   dark:   ~8 s/obj/core  (~10 obj/min/core)
+#   bright: ~11 s/obj/core (~5 obj/min/core)
+# Value below is weighted for a 2:1 dark:bright mix.
+_OBJ_PER_MIN_PER_CORE = 8.0
 
 # ---------------------------------------------------------------------------
 
@@ -281,8 +284,8 @@ def main():
     parser.add_argument('--stage', default='fastspec', choices=['fastspec', 'fastphot', 'makeqa'])
     parser.add_argument('--coadd-type', default='healpix',
                         choices=['healpix', 'cumulative', 'pernight', 'perexp'])
-    parser.add_argument('--survey', default='main', help='Comma-separated survey names.')
-    parser.add_argument('--program', default='dark,bright', help='Comma-separated program names.')
+    parser.add_argument('--survey', default='main,special,cmx,sv1,sv2,sv3', help='Comma-separated survey names.')
+    parser.add_argument('--program', default='dark,bright,other,backup', help='Comma-separated program names.')
     parser.add_argument('--healpix', default=None,
                         help='Comma-separated healpix IDs to restrict to (useful for testing).')
 
