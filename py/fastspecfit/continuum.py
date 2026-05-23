@@ -2143,19 +2143,22 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             res = [do_kcorr(sm, snm, False) for sm, snm in zip(sedmodel_monte, sedmodel_nolines_monte)]
             (synth_absmag_monte, _, _, _, _, _, lums_monte, cfluxes_monte) = tuple(zip(*res))
 
-            synth_absmag_var = np.var(synth_absmag_monte, axis=0)
+            with np.errstate(invalid='ignore'):
+                synth_absmag_var = np.var(synth_absmag_monte, axis=0)
             for band, shift, var in zip(phot.absmag_bands, phot.band_shift, synth_absmag_var):
                 if var > TINY:
                     band = band.upper()
                     shift = int(10*shift)
                     specphot[f'ABSMAG{shift:02d}_SYNTH_IVAR_{band}'] = 1. / var
 
-            lums_var = np.var(lums_monte, axis=0)
+            with np.errstate(invalid='ignore'):
+                lums_var = np.var(lums_monte, axis=0)
             for lumkey, var in zip(lumskeys, lums_var):
                 if var > TINY:
                     specphot[f'{lumkey}_IVAR'] = 1. / var
 
-            cfluxes_var = np.var(cfluxes_monte, axis=0)
+            with np.errstate(invalid='ignore'):
+                cfluxes_var = np.var(cfluxes_monte, axis=0)
             for cfluxkey, var in zip(cfluxeskeys, cfluxes_var):
                 if var > TINY:
                     specphot[f'{cfluxkey}_IVAR'] = 1. / var
@@ -2190,7 +2193,8 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
 
             for val_monte, col in zip([age_monte, zzsun_monte, logmstar_monte, sfr_monte],
                                       ['AGE_IVAR', 'ZZSUN_IVAR', 'LOGMSTAR_IVAR', 'SFR_IVAR']):
-                val_ivar = var2ivar(np.var(val_monte))
+                with np.errstate(invalid='ignore'):
+                    val_ivar = var2ivar(np.nanvar(val_monte))
                 if val_ivar < F32MAX:
                     specphot[col] = val_ivar
 
@@ -2198,11 +2202,11 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             if debug_plots:
                 from fastspecfit.qa import _corner_plot
 
-                zzsun_sigma = np.std(zzsun_monte)
-                tauv_sigma = np.std(tauv_monte)
-                sfr_sigma = np.std(sfr_monte)
-                logmstar_sigma = np.std(logmstar_monte)
-                age_sigma = np.std(age_monte)
+                zzsun_sigma = np.nanstd(zzsun_monte)
+                tauv_sigma = np.nanstd(tauv_monte)
+                sfr_sigma = np.nanstd(sfr_monte)
+                logmstar_sigma = np.nanstd(logmstar_monte)
+                age_sigma = np.nanstd(age_monte)
 
                 truths = [zzsun, tauv, sfr, logmstar, age]
                 sigmas = [zzsun_sigma, tauv_sigma, sfr_sigma, logmstar_sigma, age_sigma]
