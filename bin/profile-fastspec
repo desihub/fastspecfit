@@ -77,6 +77,12 @@ def parse_args(argv=None):
                    help='Number of top cProfile entries to print (default: 30).')
     p.add_argument('--redrockfile', default=None,
                    help='Path to a real Redrock file.  Overrides the bundled test spectrum.')
+    p.add_argument('--targetids', type=int, nargs='+', default=None,
+                   help='One or more TARGETIDs to fit.')
+    p.add_argument('--firsttarget', type=int, default=0,
+                   help='Index of first target in the redrock file (default: 0).')
+    p.add_argument('--ntargets', type=int, default=None,
+                   help='Number of targets to fit (default: all).')
     p.add_argument('--outdir', default=None,
                    help='Directory for output FITS and .prof files.  Defaults to a temp dir.')
     args = p.parse_args(argv)
@@ -184,7 +190,7 @@ def phase_init(sc_data, init_args, timer):
     timer.mark('sc_data.initialize (templates + JIT warmup)')
 
 
-def phase_io(paths, mode, timer):
+def phase_io(paths, mode, timer, targetids=None, firsttarget=0, ntargets=None):
     from fastspecfit.io import DESISpectra, get_output_dtype
     from fastspecfit.singlecopy import sc_data
 
@@ -208,12 +214,14 @@ def phase_io(paths, mode, timer):
     else:
         Spec.gather_metadata(
             [str(paths['redrockfile'])],
-            firsttarget=0,
+            targetids=targetids,
+            firsttarget=firsttarget,
+            ntargets=ntargets,
             redrockfile_prefix='redrock-',
             specfile_prefix='coadd-',
             qnfile_prefix='qso_qn-',
             use_quasarnet=False,
-            specprod_dir=str(paths['specproddir']),
+            specprod_dir=str(paths['specproddir']) if paths['specproddir'] else None,
         )
         data, meta = Spec.read(sc_data.photometry, fastphot=fastphot, fastqso=fastqso)
 
@@ -292,6 +300,7 @@ def main(argv=None):
     if args.redrockfile:
         paths['redrockfile'] = pathlib.Path(args.redrockfile)
         paths['redux_dir']   = None
+        paths['specproddir'] = None
         paths['fphotodir']   = None
         paths['mapdir']      = None
 
@@ -306,7 +315,10 @@ def main(argv=None):
     phase_init(sc_data, init_args, timer)
 
     # Phase 2: I/O
-    Spec, data, meta = phase_io(paths, mode, timer)
+    Spec, data, meta = phase_io(paths, mode, timer,
+                                targetids=args.targetids,
+                                firsttarget=args.firsttarget,
+                                ntargets=args.ntargets)
     fitargs = build_fitargs(Spec, data, meta, mode, args.nmonte)
     nobj    = len(fitargs)
 
