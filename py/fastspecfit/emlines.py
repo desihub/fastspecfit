@@ -1767,8 +1767,8 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
         specflux_out = continuum_out + emlineflux_out
         synthphot_spectrum(phot, data, specphot, wave_out, specflux_out)
 
-    # measure DN(4000) without the emission lines
-    if specphot['DN4000_IVAR'] > 0.:
+    # measure DN(4000) without the emission lines (not applicable for QSO mode)
+    if not fastqso and specphot['DN4000_IVAR'] > 0.:
         flux_out_nolines = data['coadd_flux'] - emlineflux_out
 
         dn4000_nolines, _ = Photometry.get_dn4000(wave_out, flux_out_nolines,
