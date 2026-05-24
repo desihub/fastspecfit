@@ -2013,10 +2013,11 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
     tuple
         ``(pl_slope, pl_slope_ivar, pl_amplitude, pl_amplitude_ivar,
         fe_vdisp, fe_vdisp_ivar, fe_amplitude, fe_amplitude_ivar,
-        torus_amplitude, torus_amplitude_ivar,
+        tauv, tauv_ivar, torus_amplitude, torus_amplitude_ivar,
         rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
-        qsomodel, qsomodel_noline, desimodel, smoothcontinuum, smoothstats,
-        specflux_monte, qsomodel_monte, qsomodel_noline_monte, desimodel_monte)``
+        sedmodel, sedmodel_nolines, continuummodel,
+        smoothcontinuum, smoothstats, specflux_monte,
+        sedmodel_monte, sedmodel_nolines_monte, continuummodel_monte)``
 
     Notes
     -----
@@ -2027,13 +2028,28 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
       observed flux at 1450 Å rest-frame in units of 10^{-17} erg/s/cm²/Å.
     - UV Fe emission: the Vestergaard & Wilkes (2001) template convolved to
       velocity dispersion σ_Fe, resampled to the template wavelength grid.
-    - IR AGN torus: the Nenkova+08 template contributing only to photometry
-      (λ > 1 μm); its amplitude A_torus absorbs all torus normalization.
+    - IR AGN torus: the Nenkova+08 template; its amplitude A_torus is derived
+      from energy balance (absorbed UV/optical luminosity re-emitted in the IR).
 
-    The best-fit (α, σ_Fe) are found by a spectral-only chi2 grid scan.
-    The amplitudes (A_PL, A_Fe, A_torus) are solved by non-negative least
-    squares (NNLS) using the joint spectro+photometric objective at the
-    best grid point.
+    Fitting proceeds in four steps:
+
+    1. σ_Fe is determined by a chi2 grid scan restricted to the Fe-template
+       wavelength window (1075–3090 Å rest), with two nuisance power-law columns
+       marginalizing over the continuum.  The minimum is refined with a 1D
+       parabola fit in log-σ space.
+    2. The aperture correction is estimated from the ratio of broadband
+       photometry to a dust-free spectral model at α=1.5.
+    3. α and τ_V are optimized jointly via VARPRO: an outer grid on α (11 points
+       over [−0.5, 3.0]) with an inner Brent scalar minimization over τ_V ∈ [0, 5].
+       For each (α, τ_V) evaluation, dust attenuation and energy-balance torus
+       emission are applied via :meth:`ContinuumTools.attenuate`, and (A_PL, A_Fe)
+       are solved by NNLS on the joint spectro+photometric system.
+    4. A final NNLS solve at (α_best, τ_V,best) yields the model arrays and the
+       torus amplitude from energy balance.
+
+    All parameter uncertainties are estimated by Monte Carlo: the full four-step
+    pipeline is repeated for ``nmonte`` noise realizations drawn from the spectral
+    and photometric inverse variances.
 
     """
     import warnings

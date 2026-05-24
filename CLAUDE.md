@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-FastSpecFit performs fast spectral energy distribution (SED) modeling and emission-line fitting of [DESI](https://desi.lbl.gov) galaxy spectra and broadband photometry. It is a production astronomy pipeline used by DESI collaborators to generate value-added catalogs.
+FastSpecFit performs fast spectral energy distribution (SED) modeling and emission-line fitting of [DESI](https://desi.lbl.gov) galaxy and QSO/AGN spectra and broadband photometry. It is a production astronomy pipeline used by DESI collaborators to generate value-added catalogs.
 
 ## Commands
 
@@ -52,10 +52,11 @@ Defined in `pyproject.toml` and implemented in `py/fastspecfit/fastspecfit.py`:
 
 - `fastspec` — full spectrophotometric fitting (continuum + emission lines)
 - `fastphot` — photometry-only continuum fitting
+- `fastqso` — QSO/AGN spectrophotometric fitting (power law + UV Fe + IR torus)
 - `stackfit` — fit stacked/coadded spectra
 - `fastqa` — generate QA figures from output catalogs
 - `mpi-fastspecfit` (bin script) — MPI parallel execution across many files
-- `profile-fastspec` (bin script) — profiling tool for fastspec performance
+- `profile-fastspec` (bin script) — profiling tool; supports `--mode fastqso`
 
 ## Architecture
 
@@ -65,7 +66,9 @@ Defined in `pyproject.toml` and implemented in `py/fastspecfit/fastspecfit.py`:
 2. **`fastspec_one()`** in `fastspecfit.py` — processes a single object:
    - Calls `continuum_specfit()` to fit the stellar continuum and photometry
    - Calls `emline_specfit()` to fit emission lines on the residual spectrum
-3. **Output**: Multi-extension FITS with `METADATA`, `SPECPHOT`, `FASTSPEC`, and `MODELS` HDUs
+3. **Output**: Multi-extension FITS with `METADATA`, `SPECPHOT`, `FASTSPEC`/`FASTQSO`, and `MODELS` HDUs
+
+**`fastqso` mode** (`continuum.qso_continuum_fastspec`): fits QSOs/AGN with a three-component model — power law (F_λ ∝ (λ/1450Å)^(α−2) with IGM), UV Fe emission (Vestergaard & Wilkes 2001 template), and IR AGN torus (Nenkova+08, amplitude from energy balance). Dust attenuation uses a steeper power-law extinction curve (slope −1.2 vs. −0.7 for galaxies). Parameters: PL_SLOPE (α), PL_AMPLITUDE, FE_VDISP (σ_Fe), FE_AMPLITUDE, TAUV (τ_V), TORUS_AMPLITUDE. Fitting uses VARPRO: outer grid on α, inner Brent minimization on τ_V, NNLS for amplitudes; all uncertainties from Monte Carlo.
 
 ### Single-Copy Global State (`singlecopy.py`)
 
