@@ -2254,7 +2254,7 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
             fe_att_phot[itauv] = CTools.continuum_to_photometry(M)
 
         chi2_2d = np.full((len(alpha_grid), len(tauv_grid)), np.inf)
-        b_spec = specflux_in * specistd / median_apercorr
+        b_spec = specflux_in * specistd
         b_phot = objflam_in * objflamistd
         b_2d = np.concatenate([b_spec, b_phot])
 
@@ -2317,7 +2317,7 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
         A_final[:nspec, 1] = fe_spec_final * specistd / median_apercorr
         A_final[nspec:, 0] = pl_phot_final * objflamistd
         A_final[nspec:, 1] = fe_phot_final * objflamistd
-        b_final = np.concatenate([specflux_in * specistd / median_apercorr,
+        b_final = np.concatenate([specflux_in * specistd,
                                   objflam_in * objflamistd])
         try:
             coeff_final, _ = nnls(A_final, b_final)
@@ -2371,16 +2371,16 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
     rchi2_cont = chi2_spec / max(ndof_cont - nfree, 1)
     rchi2_phot = chi2_phot / max(ndof_phot - nfree, 1)
 
-    log.info(fsftime('qso_fit', time.time()-t0,
-                     context=f'alpha={alpha_best:.2f}, tauv={tauv_best:.3f}, '
-                             f'sigma_fe={sigma_fe_best:.0f} km/s, '
-                             f'rchi2_cont={rchi2_cont:.1f}, rchi2_phot={rchi2_phot:.1f}'))
-    log.info(f'A_PL={A_PL:.3g} (10^-17 erg/s/cm2/A at 1450 A), '
-             f'A_Fe={A_Fe:.3g}, A_torus={A_torus:.3g}')
+    log.debug(fsftime('qso_fit', time.time()-t0,
+                      context=f'alpha={alpha_best:.2f}, tauv={tauv_best:.3f}, '
+                              f'sigma_fe={sigma_fe_best:.0f} km/s, '
+                              f'rchi2_cont={rchi2_cont:.1f}, rchi2_phot={rchi2_phot:.1f}'))
+    log.debug(f'A_PL={A_PL:.3g} (10^-17 erg/s/cm2/A at 1450 A), '
+              f'A_Fe={A_Fe:.3g}, A_torus={A_torus:.3g}')
 
     if median_apercorr != 1.:
-        log.info(f'Median aperture correction {median_apercorr:.3f} '
-                 f'[{np.min(apercorrs):.3f}-{np.max(apercorrs):.3f}].')
+        log.debug(f'Median aperture correction {median_apercorr:.3f} '
+                  f'[{np.min(apercorrs):.3f}-{np.max(apercorrs):.3f}].')
 
     # --- Monte Carlo for all parameter uncertainties ---
     if specflux_monte is not None:
@@ -2769,8 +2769,21 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             log.info(' '.join(msg))
 
         if fastqso:
-            log.info(f'PL_SLOPE={pl_slope:.2f}, PL_AMPLITUDE={pl_amplitude:.3g}, '
-                     f'FE_VDISP={fe_vdisp:.0f} km/s, FE_AMPLITUDE={fe_amplitude:.3g}')
+            def _fmt(val, ivar, spec):
+                err = f'+/-{1./np.sqrt(ivar):{spec}}' if ivar > 0. else ''
+                return f'{val:{spec}}{err}'
+            log.info(
+                f'pl_slope={_fmt(pl_slope, pl_slope_ivar, ".2f")}, '
+                f'pl_amplitude={_fmt(pl_amplitude, pl_amplitude_ivar, ".3g")} '
+                f'(10^-17 erg/s/cm2/A at 1450 A), '
+                f'torus_amplitude={_fmt(torus_amplitude, torus_amplitude_ivar, ".3g")}')
+            log.info(
+                f'fe_vdisp={_fmt(fe_vdisp, fe_vdisp_ivar, ".0f")} km/s, '
+                f'fe_amplitude={_fmt(fe_amplitude, fe_amplitude_ivar, ".3g")}, '
+                f'tauv={_fmt(tauv, tauv_ivar, ".3f")}')
+            if median_apercorr != 1.:
+                log.info(f'Median aperture correction {median_apercorr:.3f} '
+                         f'[{np.min(apercorrs):.3f}-{np.max(apercorrs):.3f}].')
 
     log.debug(fsftime('continuum_specfit', time.time()-tall))
 
