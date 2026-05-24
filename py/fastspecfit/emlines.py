@@ -1520,7 +1520,7 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                    phot, emline_table, minsnr_balmer_broad=2.5,
                    minsigma_balmer_broad=250., continuummodel_monte=None,
                    specflux_monte=None, synthphot=True, broadlinefit=True,
-                   debug_plots=False):
+                   fastqso=False, debug_plots=False):
     """Fit emission lines in a continuum-subtracted DESI spectrum.
 
     Parameters

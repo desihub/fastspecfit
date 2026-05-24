@@ -60,6 +60,7 @@ local_scheme = "no-local-version"
 [project.scripts]
 fastspec = "fastspecfit.fastspecfit:fastspec"
 fastphot = "fastspecfit.fastspecfit:fastphot"
+fastqso = "fastspecfit.fastspecfit:fastqso"
 stackfit = "fastspecfit.fastspecfit:stackfit"
 fastqa = "fastspecfit.qa:fastqa"
 

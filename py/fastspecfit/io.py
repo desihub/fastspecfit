@@ -1555,11 +1555,12 @@ def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_col
 def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
                       specprod=None, coadd_type=None, fphotofile=None,
                       template_file=None, emlinesfile=None, fastphot=False,
-                      inputz=False, inputseeds=None, nmonte=50, vdisp_nominal=VDISP_NOMINAL,
-                      vdisp_bounds=VDISP_BOUNDS, seed=1, uncertainty_floor=0.01,
-                      minsnr_balmer_broad=2.5, nside=None, no_smooth_continuum=False,
-                      ignore_photometry=False, broadlinefit=True, use_quasarnet=True,
-                      constrain_age=False, split_hdu=False, verbose=True):
+                      fastqso=False, inputz=False, inputseeds=None, nmonte=50,
+                      vdisp_nominal=VDISP_NOMINAL, vdisp_bounds=VDISP_BOUNDS,
+                      seed=1, uncertainty_floor=0.01, minsnr_balmer_broad=2.5,
+                      nside=None, no_smooth_continuum=False, ignore_photometry=False,
+                      broadlinefit=True, use_quasarnet=True, constrain_age=False,
+                      split_hdu=False, verbose=True):
     """Write fastspecfit results to a multi-extension FITS file."""
     import gzip, shutil
     from astropy.io import fits
@@ -1589,6 +1590,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         primhdr.append(('COADDTYP', (coadd_type, 'spectral coadd type')))
     primhdr.append(('INPUTZ', (inputz is True, 'input redshifts provided')))
     primhdr.append(('INPUTS', (inputseeds is True, 'input seeds provided')))
+    primhdr.append(('FASTQSO', (fastqso is True, 'QSO fitting mode')))
     primhdr.append(('CONSAGE', (constrain_age is True, 'constrain SPS ages')))
     primhdr.append(('USEQNET', (use_quasarnet is True, 'use QuasarNet redshifts')))
     primhdr.append(('NMONTE', (nmonte, 'number of Monte Carlo realizations')))
@@ -1619,7 +1621,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
     meta.meta['EXTNAME'] = 'METADATA'
     specphot.meta['EXTNAME'] = 'SPECPHOT'
     if fastfit is not None:
-        fastfit.meta['EXTNAME'] = 'FASTSPEC'
+        fastfit.meta['EXTNAME'] = 'FASTQSO' if fastqso else 'FASTSPEC'
 
     hdu_primary = fits.PrimaryHDU(None, primhdr)
 
@@ -1906,7 +1908,7 @@ def select(metadata, specphot, fastfit=None, coadd_type='healpix',
 
 
 def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
-                     specphot=False, fastphot=False, fitstack=False):
+                     specphot=False, fastphot=False, fitstack=False, fastqso=False):
     """Build the NumPy dtype for one fastspecfit output data record.
 
     Parameters
@@ -1929,6 +1931,10 @@ def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
     fitstack : bool, optional
         If ``True``, omit per-object spectroscopic fields. Defaults to
         ``False``.
+    fastqso : bool, optional
+        If ``True``, build the QSO-fitting dtype: replaces stellar
+        continuum parameters (VDISP, LOGMSTAR, etc.) with power-law and
+        Fe-template parameters. Defaults to ``False``.
 
     Returns
     -------
@@ -1965,27 +1971,41 @@ def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
             add_field('RCHI2_CONT', dtype='f4') # rchi2 fitting just to the continuum (spec+phot)
         add_field('RCHI2_PHOT', dtype='f4') # rchi2 fitting just to the photometry
 
-        add_field('VDISP', dtype='f4', unit=u.kilometer/u.second)
-        if not fastphot:
-            add_field('VDISP_IVAR', dtype='f4', unit=u.second**2/u.kilometer**2)
-        add_field('TAUV', dtype='f4')
-        add_field('TAUV_IVAR', dtype='f4')
-        add_field('AGE', dtype='f4', unit=u.Gyr)
-        add_field('AGE_IVAR', dtype='f4', unit=1/u.Gyr**2)
-        add_field('ZZSUN', dtype='f4')
-        add_field('ZZSUN_IVAR', dtype='f4')
-        add_field('LOGMSTAR', dtype='f4', unit=u.solMass)
-        add_field('LOGMSTAR_IVAR', dtype='f4', unit=1/u.solMass**2)
-        add_field('SFR', dtype='f4', unit=u.solMass/u.year)
-        add_field('SFR_IVAR', dtype='f4', unit=u.year**2/u.solMass**2)
-        #add_field('FAGN', dtype='f4')
+        if fastqso:
+            add_field('PL_SLOPE', dtype='f4')
+            add_field('PL_SLOPE_IVAR', dtype='f4')
+            add_field('PL_AMPLITUDE', dtype='f4',
+                      unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
+            add_field('PL_AMPLITUDE_IVAR', dtype='f4',
+                      unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
+            add_field('FE_VDISP', dtype='f4', unit=u.kilometer/u.second)
+            add_field('FE_VDISP_IVAR', dtype='f4', unit=u.second**2/u.kilometer**2)
+            add_field('FE_AMPLITUDE', dtype='f4',
+                      unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
+            add_field('FE_AMPLITUDE_IVAR', dtype='f4',
+                      unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
+        else:
+            add_field('VDISP', dtype='f4', unit=u.kilometer/u.second)
+            if not fastphot:
+                add_field('VDISP_IVAR', dtype='f4', unit=u.second**2/u.kilometer**2)
+            add_field('TAUV', dtype='f4')
+            add_field('TAUV_IVAR', dtype='f4')
+            add_field('AGE', dtype='f4', unit=u.Gyr)
+            add_field('AGE_IVAR', dtype='f4', unit=1/u.Gyr**2)
+            add_field('ZZSUN', dtype='f4')
+            add_field('ZZSUN_IVAR', dtype='f4')
+            add_field('LOGMSTAR', dtype='f4', unit=u.solMass)
+            add_field('LOGMSTAR_IVAR', dtype='f4', unit=1/u.solMass**2)
+            add_field('SFR', dtype='f4', unit=u.solMass/u.year)
+            add_field('SFR_IVAR', dtype='f4', unit=u.year**2/u.solMass**2)
+            #add_field('FAGN', dtype='f4')
 
-        if not fastphot:
-            add_field('DN4000', dtype='f4')
-            add_field('DN4000_OBS', dtype='f4')
-            add_field('DN4000_IVAR', dtype='f4')
-        add_field('DN4000_MODEL', dtype='f4')
-        add_field('DN4000_MODEL_IVAR', dtype='f4')
+            if not fastphot:
+                add_field('DN4000', dtype='f4')
+                add_field('DN4000_OBS', dtype='f4')
+                add_field('DN4000_IVAR', dtype='f4')
+            add_field('DN4000_MODEL', dtype='f4')
+            add_field('DN4000_MODEL_IVAR', dtype='f4')
 
         if not fastphot:
             # observed-frame photometry synthesized from the spectra

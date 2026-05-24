@@ -152,19 +152,18 @@ class Templates(object):
             iragnflux = iragnflux[trim:]
             iragnwave = iragnwave[trim:]
 
-            feflux = T['FEFLUX'].read()
-            fewave = T['FEWAVE'].read()
+            self.feflux = T['FEFLUX'].read()
+            self.fewave = T['FEWAVE'].read()
 
             febounds = np.searchsorted(templatewave, Templates.AGN_PIXKMS_BOUNDS, 'left')
             irbounds = np.searchsorted(templatewave, iragnwave[0], 'left')
 
-            agnwave = np.hstack((templatewave[:febounds[0]], fewave,
-                                 templatewave[febounds[1]:irbounds],
-                                 iragnwave))
-            #self.agnwave = agnwave
-
-            #agnhdr = T['AGNFLUX'].read_header()
-            #self.agntau   = agnhdr['AGNTAU']
+            # AGN continuum wavelength vector: UV stellar range, Fe template
+            # range, gap between Fe and IR torus, then IR torus range.
+            self.agnwave = np.hstack((templatewave[:febounds[0]], self.fewave,
+                                      templatewave[febounds[1]:irbounds],
+                                      iragnwave))
+            self.agnflux = iragnflux
         else:
             errmsg = f'Templates file {template_file} missing mandatory extensions DUSTFLUX and AGNFLUX.'
             log.critical(errmsg)
