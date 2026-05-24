@@ -222,7 +222,7 @@ def phase_io(paths, mode, timer, targetids=None, firsttarget=0, ntargets=None):
             use_quasarnet=False,
             specprod_dir=str(paths['specproddir']) if paths['specproddir'] else None,
         )
-        data, meta = Spec.read(sc_data.photometry, fastphot=fastphot, fastqso=fastqso)
+        data, meta = Spec.read(sc_data.photometry, fastphot=fastphot)
 
     timer.mark(f'DESISpectra I/O ({len(meta)} object(s))')
     return Spec, data, meta
