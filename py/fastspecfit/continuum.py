@@ -2013,6 +2013,7 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
     tuple
         ``(pl_slope, pl_slope_ivar, pl_amplitude, pl_amplitude_ivar,
         fe_vdisp, fe_vdisp_ivar, fe_amplitude, fe_amplitude_ivar,
+        torus_amplitude, torus_amplitude_ivar,
         rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
         qsomodel, qsomodel_noline, desimodel, smoothcontinuum, smoothstats,
         specflux_monte, qsomodel_monte, qsomodel_noline_monte, desimodel_monte)``
@@ -2271,20 +2272,23 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
         coeff_monte, qsomodel_monte, qsomodel_noline_monte, desimodel_monte_list = \
             tuple(zip(*mc_results))
 
-        pl_amplitude_monte = [c[0] for c in coeff_monte]
-        fe_amplitude_monte = [c[1] for c in coeff_monte]
+        pl_amplitude_monte    = [c[0] for c in coeff_monte]
+        fe_amplitude_monte    = [c[1] for c in coeff_monte]
+        torus_amplitude_monte = [c[2] for c in coeff_monte]
 
         with np.errstate(invalid='ignore'):
-            pl_amplitude_ivar = var2ivar(np.nanvar(pl_amplitude_monte))
-            fe_amplitude_ivar = var2ivar(np.nanvar(fe_amplitude_monte))
+            pl_amplitude_ivar    = var2ivar(np.nanvar(pl_amplitude_monte))
+            fe_amplitude_ivar    = var2ivar(np.nanvar(fe_amplitude_monte))
+            torus_amplitude_ivar = var2ivar(np.nanvar(torus_amplitude_monte))
 
         desimodel_monte = np.vstack(desimodel_monte_list)
     else:
         qsomodel_monte = None
         qsomodel_noline_monte = None
         desimodel_monte = None
-        pl_amplitude_ivar = 0.
-        fe_amplitude_ivar = 0.
+        pl_amplitude_ivar    = 0.
+        fe_amplitude_ivar    = 0.
+        torus_amplitude_ivar = 0.
 
     # --- Smooth continuum on the spectral residual ---
     t0 = time.time()
@@ -2316,6 +2320,7 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
             A_PL, pl_amplitude_ivar,
             fe_vdisp_best, 0.,
             A_Fe, fe_amplitude_ivar,
+            A_torus, torus_amplitude_ivar,
             rchi2_cont, rchi2_phot,
             median_apercorr, apercorrs,
             qsomodel, qsomodel_noline,
@@ -2398,6 +2403,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
          pl_amplitude, pl_amplitude_ivar,
          fe_vdisp, fe_vdisp_ivar,
          fe_amplitude, fe_amplitude_ivar,
+         torus_amplitude, torus_amplitude_ivar,
          rchi2_cont, rchi2_phot,
          median_apercorr, apercorrs,
          sedmodel, sedmodel_nolines,
@@ -2457,6 +2463,8 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
         specphot['FE_VDISP_IVAR'] = fe_vdisp_ivar
         specphot['FE_AMPLITUDE'] = fe_amplitude
         specphot['FE_AMPLITUDE_IVAR'] = fe_amplitude_ivar
+        specphot['TORUS_AMPLITUDE'] = torus_amplitude
+        specphot['TORUS_AMPLITUDE_IVAR'] = torus_amplitude_ivar
     else:
         specphot['COEFF'][CTools.agekeep] = coeff
         specphot['VDISP'] = vdisp  # * u.kilometer/u.second

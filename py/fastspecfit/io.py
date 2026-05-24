@@ -1500,6 +1500,8 @@ def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_col
         Coadd type string from the file header.
     fastphot : bool or None
         ``True`` if the file was produced in fastphot (photometry-only) mode.
+    fastqso : bool or None
+        ``True`` if the file was produced in fastqso (QSO) mode.
     models : :class:`numpy.ndarray` or None
         Model spectra array (only included in the return tuple when
         ``read_models=True``).
@@ -1510,8 +1512,19 @@ def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_col
         meta = Table(F['METADATA'].read(rows=rows, columns=metadata_columns))
         specphot = Table(F['SPECPHOT'].read(rows=rows, columns=specphot_columns))
 
-        if 'FASTSPEC' in F:
+        if 'FASTQSO' in F:
             fastphot = False
+            fastqso = True
+            fastfit = Table(F['FASTQSO'].read(rows=rows, columns=fastspec_columns))
+            if read_models:
+                models = F['MODELS'].read()
+                if rows is not None:
+                    models = models[rows, :, :]
+            else:
+                models = None
+        elif 'FASTSPEC' in F:
+            fastphot = False
+            fastqso = False
             fastfit = Table(F['FASTSPEC'].read(rows=rows, columns=fastspec_columns))
             if read_models:
                 models = F['MODELS'].read()
@@ -1521,6 +1534,7 @@ def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_col
                 models = None
         else:
             fastphot = True
+            fastqso = False
             fastfit = None
             models = None
 
@@ -1540,16 +1554,16 @@ def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_col
             coadd_type = 'healpix' # hack??
 
         if read_models:
-            return meta, specphot, fastfit, coadd_type, fastphot, models
+            return meta, specphot, fastfit, coadd_type, fastphot, fastqso, models
         else:
-            return meta, specphot, fastfit, coadd_type, fastphot
+            return meta, specphot, fastfit, coadd_type, fastphot, fastqso
 
     else:
         log.warning(f'File {fastfitfile} not found.')
         if read_models:
-            return [None]*6
+            return [None]*7
         else:
-            return [None]*5
+            return [None]*6
 
 
 def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
@@ -1983,6 +1997,10 @@ def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
             add_field('FE_AMPLITUDE', dtype='f4',
                       unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
             add_field('FE_AMPLITUDE_IVAR', dtype='f4',
+                      unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
+            add_field('TORUS_AMPLITUDE', dtype='f4',
+                      unit=10**(-17)*u.erg/(u.second*u.cm**2*u.Angstrom))
+            add_field('TORUS_AMPLITUDE_IVAR', dtype='f4',
                       unit=10**34*u.second**2*u.cm**4*u.Angstrom**2/u.erg**2)
         else:
             add_field('VDISP', dtype='f4', unit=u.kilometer/u.second)
