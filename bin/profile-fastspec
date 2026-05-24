@@ -143,7 +143,6 @@ def build_init_args(paths, templates, mode):
         'emlines_file':      None,
         'fphotofile':        None,
         'fastphot':          (mode == 'fastphot'),
-        'fastqso':           (mode == 'fastqso'),
         'fitstack':          (mode == 'stackfit'),
         'ignore_photometry': (mode == 'stackfit'),
         'template_file':     templates,
