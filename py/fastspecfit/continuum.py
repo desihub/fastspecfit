@@ -673,6 +673,41 @@ class ContinuumTools(object):
             M[i] *= A[i] * zfactors[i]
 
 
+    @staticmethod
+    @jit(nopython=True, nogil=True, fastmath=True, cache=True)
+    def _nnls2(A, b):
+        """Exact NNLS for a 2-column matrix, solved analytically without scipy overhead."""
+        AtA = A.T @ A
+        Atb = A.T @ b
+        bTb = float(b.dot(b))
+        det = AtA[0, 0] * AtA[1, 1] - AtA[0, 1] ** 2
+        if det > 0.:
+            c0 = (AtA[1, 1] * Atb[0] - AtA[0, 1] * Atb[1]) / det
+            c1 = (AtA[0, 0] * Atb[1] - AtA[0, 1] * Atb[0]) / det
+            if c0 >= 0. and c1 >= 0.:
+                result = np.empty(2)
+                result[0] = c0
+                result[1] = c1
+                return result
+        c_best = np.zeros(2)
+        best = bTb
+        if AtA[1, 1] > 0.:
+            c1 = Atb[1] / AtA[1, 1]
+            if c1 > 0.:
+                val = bTb - Atb[1] * c1
+                if val < best:
+                    best = val
+                    c_best[0] = 0.
+                    c_best[1] = c1
+        if AtA[0, 0] > 0.:
+            c0 = Atb[0] / AtA[0, 0]
+            if c0 > 0.:
+                if bTb - Atb[0] * c0 < best:
+                    c_best[0] = c0
+                    c_best[1] = 0.
+        return c_best
+
+
     def build_stellar_continuum(self, templateflux, templatecoeff,
                                 tauv, vdisp=None, conv_pre=None,
                                 dust_emission=True):
@@ -2224,10 +2259,7 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
         if np.any(phot.bands_to_fit):
             A_pre = np.column_stack([pl_spec_aper * specistd, fe_spec_best * specistd])
             b_pre = specflux_in * specistd
-            try:
-                coeff_pre, _ = nnls(A_pre, b_pre)
-            except RuntimeError:
-                coeff_pre = np.zeros(2)
+            coeff_pre = ContinuumTools._nnls2(A_pre, b_pre)
 
             if not np.all(coeff_pre == 0.):
                 qsomodel_pre = coeff_pre[0] * pl_tmpl_aper + coeff_pre[1] * fe_tmpl
@@ -2263,10 +2295,7 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
             Psi[:nspec, 1] = CTools.continuum_to_spectroscopy(fe_att) * specistd / median_apercorr
             Psi[nspec:, 0] = CTools.continuum_to_photometry(pl_att) * objflamistd
             Psi[nspec:, 1] = CTools.continuum_to_photometry(fe_att) * objflamistd
-            try:
-                c, _ = nnls(Psi, b_combined)
-            except RuntimeError:
-                return np.inf
+            c = ContinuumTools._nnls2(Psi, b_combined)
             r = Psi @ c - b_combined
             return float(r.dot(r))
 
@@ -2303,10 +2332,7 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
         Psi[:nspec, 1] = CTools.continuum_to_spectroscopy(fe_att_final) * specistd / median_apercorr
         Psi[nspec:, 0] = CTools.continuum_to_photometry(pl_att_final) * objflamistd
         Psi[nspec:, 1] = CTools.continuum_to_photometry(fe_att_final) * objflamistd
-        try:
-            coeff_final, _ = nnls(Psi, b_combined)
-        except RuntimeError:
-            coeff_final = np.zeros(2)
+        coeff_final = ContinuumTools._nnls2(Psi, b_combined)
 
         A_PL_fit, A_Fe_fit = coeff_final
 
