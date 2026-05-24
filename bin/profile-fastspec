@@ -75,6 +75,8 @@ def parse_args(argv=None):
                    help='Run cProfile on the warm fitting loop and write <mode>.prof.')
     p.add_argument('--cprofile-top', type=int, default=30,
                    help='Number of top cProfile entries to print (default: 30).')
+    p.add_argument('--redrockfile', default=None,
+                   help='Path to a real Redrock file.  Overrides the bundled test spectrum.')
     p.add_argument('--outdir', default=None,
                    help='Directory for output FITS and .prof files.  Defaults to a temp dir.')
     args = p.parse_args(argv)
@@ -193,9 +195,9 @@ def phase_io(paths, mode, timer):
     Spec = DESISpectra(
         phot=sc_data.photometry,
         cosmo=sc_data.cosmology,
-        fphotodir=str(paths['fphotodir']),
-        mapdir=str(paths['mapdir']),
-        redux_dir=str(paths['redux_dir']),
+        fphotodir=str(paths['fphotodir']) if paths['fphotodir'] else None,
+        mapdir=str(paths['mapdir']) if paths['mapdir'] else None,
+        redux_dir=str(paths['redux_dir']) if paths['redux_dir'] else None,
     )
 
     if fitstack:
@@ -286,6 +288,12 @@ def main(argv=None):
     templates = get_template_path(args)
     paths     = get_test_paths()
     mode      = args.mode
+
+    if args.redrockfile:
+        paths['redrockfile'] = pathlib.Path(args.redrockfile)
+        paths['redux_dir']   = None
+        paths['fphotodir']   = None
+        paths['mapdir']      = None
 
     print(f'\n--- FastSpecFit profiling harness  (mode={mode}) ---\n')
 
