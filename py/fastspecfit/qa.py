@@ -419,6 +419,12 @@ def _build_legend(metadata, specphot, fastspec, phot, fastphot, fitstack,
             leg['fe_amplitude'] = r'$A_{{\rm Fe}}={:.2g}\pm{:.2g}$'.format(A_Fe, 1./np.sqrt(A_Fe_ivar))
         else:
             leg['fe_amplitude'] = r'$A_{{\rm Fe}}={:.2g}$'.format(A_Fe)
+        tauv_val = specphot['TAUV']
+        tauv_ivar = specphot['TAUV_IVAR']
+        if tauv_ivar > 0.:
+            leg['tauv'] = r'$\tau_{{V}}={:.3f}\pm{:.3f}$'.format(tauv_val, 1./np.sqrt(tauv_ivar))
+        else:
+            leg['tauv'] = r'$\tau_{{V}}={:.3f}$'.format(tauv_val)
         if not fastphot:
             leg['rchi2'] = r'$\chi^{2}_{\nu,\mathrm{specphot}}$='+'{:.2f}'.format(specphot['RCHI2'])
             leg['rchi2_cont'] = r'$\chi^{2}_{\nu,\mathrm{cont}}$='+'{:.2f}'.format(specphot['RCHI2_CONT'])
@@ -627,6 +633,7 @@ def _build_qso_sed_model(CTools, templates, specphot, metadata, phot, igm,
     A_PL     = float(specphot['PL_AMPLITUDE'])
     fe_vdisp = float(specphot['FE_VDISP'])
     A_Fe     = float(specphot['FE_AMPLITUDE'])
+    tauv     = float(specphot['TAUV'])
     A_torus  = float(specphot['TORUS_AMPLITUDE'])
 
     ztemplatewave = CTools.ztemplatewave
@@ -657,10 +664,15 @@ def _build_qso_sed_model(CTools, templates, specphot, metadata, phot, igm,
             ztemplatewave[ir_lo:ir_hi], iragnwave_z, templates.agnflux,
             left=0., right=0.)
 
+    # Apply QSO dust attenuation to the UV/optical components; torus uses
+    # the stored energy-balance amplitude directly.
+    A_att = np.exp(-tauv * templates.qso_dust_klambda)
+
     # Scale by massnorm so the returned sedmodel has the same internal units
     # as the galaxy sedmodel from build_stellar_continuum (required by the
     # calling code's SED display factor and continuum_to_photometry).
-    sedmodel = (A_PL * pl_tmpl + A_Fe * fe_tmpl + A_torus * torus_tmpl) * CTools.massnorm
+    sedmodel = (A_PL * pl_tmpl * A_att + A_Fe * fe_tmpl * A_att
+                + A_torus * torus_tmpl) * CTools.massnorm
     sedphot   = CTools.continuum_to_photometry(sedmodel, phottable=True, get_abmag=True)
     sedwave   = ztemplatewave
 
@@ -698,6 +710,7 @@ def _build_qso_spectral_models(CTools, EMFit, data, fastspec, specphot, template
     A_PL     = float(specphot['PL_AMPLITUDE'])
     fe_vdisp = float(specphot['FE_VDISP'])
     A_Fe     = float(specphot['FE_AMPLITUDE'])
+    tauv     = float(specphot['TAUV'])
 
     ztemplatewave = CTools.ztemplatewave
     lam_obs_ref   = 1450. * (1. + redshift)
@@ -717,7 +730,8 @@ def _build_qso_spectral_models(CTools, EMFit, data, fastspec, specphot, template
                                    left=0., right=0.)
     fe_tmpl *= T_igm
 
-    qsomodel = A_PL * pl_tmpl + A_Fe * fe_tmpl
+    A_att = np.exp(-tauv * templates.qso_dust_klambda)
+    qsomodel = A_PL * pl_tmpl * A_att + A_Fe * fe_tmpl * A_att
 
     _desicontinuum = CTools.continuum_to_spectroscopy(qsomodel, interp=True)
     desicontinuum  = [_desicontinuum[campix[0]:campix[1]] / apercorr
@@ -1464,6 +1478,7 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
                 r'{}'.format(leg['pl_amplitude']),
                 r'{}'.format(leg['fe_vdisp']),
                 r'{}'.format(leg['fe_amplitude']),
+                r'{}'.format(leg['tauv']),
                 ))
         elif not fitstack:
             txt = '\n'.join((

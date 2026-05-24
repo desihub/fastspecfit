@@ -62,6 +62,7 @@ class Templates(object):
 
     AGN_PIXKMS = 75.  # [km/s]
     AGN_PIXKMS_BOUNDS = (1075., 3090.)
+    FE_VDISP_DEFAULT = 3000.  # [km/s] fallback when Fe-window coverage is insufficient
 
     DEFAULT_TEMPLATEVERSION = '2.0.0'
     DEFAULT_IMF = 'chabrier'
@@ -114,8 +115,9 @@ class Templates(object):
         self.flux_nolines = self.flux - templatelineflux[:, keeplo:keephi]
         self.npix = len(self.wave)
 
-        # dust attenuation curve
+        # dust attenuation curves
         self.dust_klambda = Templates.klambda(self.wave)
+        self.qso_dust_klambda = Templates.qso_klambda(self.wave)
         self.vdisp_nominal = vdisp_nominal # [km/s]
         self.vdisp_bounds = vdisp_bounds # [km/s]
 
@@ -154,6 +156,10 @@ class Templates(object):
 
             self.feflux = T['FEFLUX'].read()
             self.fewave = T['FEWAVE'].read()
+
+            from scipy.ndimage import gaussian_filter1d
+            _fe_sigma_pix = Templates.FE_VDISP_DEFAULT / Templates.AGN_PIXKMS
+            self.feflux_default = gaussian_filter1d(self.feflux, _fe_sigma_pix)
 
             febounds = np.searchsorted(templatewave, Templates.AGN_PIXKMS_BOUNDS, 'left')
             irbounds = np.searchsorted(templatewave, iragnwave[0], 'left')
@@ -430,3 +436,23 @@ class Templates(object):
         dust_normwave = 5500. # pivot wavelength
 
         return (wave / dust_normwave)**dust_power
+
+    @staticmethod
+    def qso_klambda(wave):
+        """QSO dust attenuation curve k(lambda) with a steeper UV slope than Calzetti.
+
+        Parameters
+        ----------
+        wave : :class:`numpy.ndarray`
+            Rest-frame wavelength array in Angstroms.
+
+        Returns
+        -------
+        klambda : :class:`numpy.ndarray`
+            Total-to-selective attenuation curve, same shape as ``wave``.
+
+        """
+        qso_dust_power    = -1.2
+        qso_dust_normwave = 5500.
+
+        return (wave / qso_dust_normwave) ** qso_dust_power
