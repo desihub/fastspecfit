@@ -2036,7 +2036,8 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
     best grid point.
 
     """
-    from scipy.optimize import nnls
+    import warnings
+    from scipy.optimize import nnls, minimize_scalar
     from scipy.ndimage import gaussian_filter1d
     from fastspecfit.util import find_minima, minfit
 
@@ -2138,8 +2139,6 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
     sigma_fe_grid = np.geomspace(300., 10000., 20)      # [km/s] log-spaced
     log_sigma_fe_grid = np.log10(sigma_fe_grid)
     alpha_grid = np.linspace(-0.5, 3.0, 11)             # power-law slope
-    tauv_grid = np.concatenate([[0.], np.geomspace(0.05, 5., 10)])  # V-band optical depth
-    TAUV_DEFAULT = 0.1
 
     # Fe-window pixel mask (uses line-masked ivar).
     fe_win_mask = ((specwave >= fewave_z[0]) & (specwave <= fewave_z[-1]) & (specivar > 0.))
@@ -2149,21 +2148,8 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
     # --- Precompute quantities independent of the data realization ---
     t0 = time.time()
 
-    # Attenuation factors for each tau_v.
-    A_att_cache = [np.exp(-tauv * templates.qso_dust_klambda) for tauv in tauv_grid]
-
-    # Attenuated PL projections (alpha × tau_v grid).  These are independent of
-    # sigma_fe, so we compute them once outside the MC loop.
-    pl_att_spec_cache = np.zeros((len(alpha_grid), len(tauv_grid), nspec))
-    pl_att_phot_cache = np.zeros((len(alpha_grid), len(tauv_grid), nphot))
-    for ialpha, alpha in enumerate(alpha_grid):
-        pl_t = _build_pl_template(alpha)
-        for itauv, A_att in enumerate(A_att_cache):
-            M = pl_t.copy()
-            ContinuumTools.attenuate(M, A_att, qso_zfactors,
-                                     CTools.ztemplatewave, torus_for_attenuate)
-            pl_att_spec_cache[ialpha, itauv] = CTools.continuum_to_spectroscopy(M)
-            pl_att_phot_cache[ialpha, itauv] = CTools.continuum_to_photometry(M)
+    # Raw PL templates for each alpha grid point (independent of sigma_fe and data).
+    pl_tmpls = [_build_pl_template(alpha) for alpha in alpha_grid]
 
     # Fe-window design matrices for each sigma_fe grid point.
     # Two nuisance PL columns (extreme slopes) marginalize over the continuum.
@@ -2242,94 +2228,81 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
                     if median_apercorr <= 0.:
                         median_apercorr = 1.
 
-        # Step 3: Joint (alpha, tau_v) 2D grid scan with energy-balance torus.
-        # Attenuated Fe projections for the current sigma_fe.
-        fe_att_spec = np.zeros((len(tauv_grid), nspec))
-        fe_att_phot = np.zeros((len(tauv_grid), nphot))
-        for itauv, A_att in enumerate(A_att_cache):
-            M = fe_tmpl.copy()
-            ContinuumTools.attenuate(M, A_att, qso_zfactors,
+        # Step 3: VARPRO — outer grid on alpha, inner Brent minimization on tau_v.
+        # For each alpha, minimize chi2 over tauv in [0, 5] exactly (Brent's method),
+        # with (A_PL, A_Fe) solved by NNLS inside the objective.
+        b_combined = np.concatenate([specflux_in * specistd,
+                                     objflam_in * objflamistd])
+        Psi = np.zeros((nspec + nphot, 2))
+
+        def _objective(tauv, pl_tmpl):
+            A_att = np.exp(-tauv * templates.qso_dust_klambda)
+            pl_att = pl_tmpl.copy()
+            ContinuumTools.attenuate(pl_att, A_att, qso_zfactors,
                                      CTools.ztemplatewave, torus_for_attenuate)
-            fe_att_spec[itauv] = CTools.continuum_to_spectroscopy(M)
-            fe_att_phot[itauv] = CTools.continuum_to_photometry(M)
+            fe_att = fe_tmpl.copy()
+            ContinuumTools.attenuate(fe_att, A_att, qso_zfactors,
+                                     CTools.ztemplatewave, torus_for_attenuate)
+            Psi[:nspec, 0] = CTools.continuum_to_spectroscopy(pl_att) * specistd / median_apercorr
+            Psi[:nspec, 1] = CTools.continuum_to_spectroscopy(fe_att) * specistd / median_apercorr
+            Psi[nspec:, 0] = CTools.continuum_to_photometry(pl_att) * objflamistd
+            Psi[nspec:, 1] = CTools.continuum_to_photometry(fe_att) * objflamistd
+            try:
+                c, _ = nnls(Psi, b_combined)
+            except RuntimeError:
+                return np.inf
+            r = Psi @ c - b_combined
+            return float(r.dot(r))
 
-        chi2_2d = np.full((len(alpha_grid), len(tauv_grid)), np.inf)
-        b_spec = specflux_in * specistd
-        b_phot = objflam_in * objflamistd
-        b_2d = np.concatenate([b_spec, b_phot])
+        best_chi2 = np.inf
+        best_ialpha = len(alpha_grid) // 2
+        best_tauv = 0.
 
-        A_2d = np.zeros((nspec + nphot, 2))
-        for ialpha in range(len(alpha_grid)):
-            for itauv in range(len(tauv_grid)):
-                A_2d[:nspec, 0] = pl_att_spec_cache[ialpha, itauv] * specistd / median_apercorr
-                A_2d[:nspec, 1] = fe_att_spec[itauv] * specistd / median_apercorr
-                A_2d[nspec:, 0] = pl_att_phot_cache[ialpha, itauv] * objflamistd
-                A_2d[nspec:, 1] = fe_att_phot[itauv] * objflamistd
-                try:
-                    c2, _ = nnls(A_2d, b_2d)
-                except RuntimeError:
-                    continue
-                r2 = A_2d @ c2 - b_2d
-                chi2_2d[ialpha, itauv] = float(r2.dot(r2))
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=RuntimeWarning,
+                                    module='scipy.optimize')
+            for ialpha, pl_tmpl in enumerate(pl_tmpls):
+                result = minimize_scalar(
+                    lambda t, p=pl_tmpl: _objective(t, p),
+                    bounds=(0., 5.), method='bounded',
+                    options={'xatol': 1e-4})
+                if result.fun < best_chi2:
+                    best_chi2 = result.fun
+                    best_ialpha = ialpha
+                    best_tauv = float(result.x)
 
-        imin2d = np.unravel_index(np.argmin(chi2_2d), chi2_2d.shape)
-        ialpha_best, itauv_best = imin2d
+        alpha_best = float(alpha_grid[best_ialpha])
+        tauv_best = best_tauv
 
-        # Refine alpha with a 1D parabola through the best tau_v slice.
-        lo_a = max(0, ialpha_best - 1)
-        hi_a = min(len(alpha_grid), ialpha_best + 2)
-        x0_a, _xerr_a, _y0_a, zw_a = minfit(alpha_grid[lo_a:hi_a],
-                                              chi2_2d[lo_a:hi_a, itauv_best])
-        if zw_a == 0 and alpha_grid[lo_a] <= x0_a <= alpha_grid[hi_a - 1]:
-            alpha_best = float(np.clip(x0_a, alpha_grid[0], alpha_grid[-1]))
-        else:
-            alpha_best = float(alpha_grid[ialpha_best])
-
-        # Refine tau_v with a 1D parabola in log-tau space.
-        log_tauv = np.log10(np.maximum(tauv_grid, 1e-4))
-        lo_t = max(0, itauv_best - 1)
-        hi_t = min(len(tauv_grid), itauv_best + 2)
-        x0_t, _xerr_t, _y0_t, zw_t = minfit(log_tauv[lo_t:hi_t],
-                                              chi2_2d[ialpha_best, lo_t:hi_t])
-        if zw_t == 0 and log_tauv[lo_t] <= x0_t <= log_tauv[hi_t - 1]:
-            tauv_best = float(np.clip(10.**x0_t, tauv_grid[0], 5.))
-        else:
-            tauv_best = float(tauv_grid[itauv_best])
-
-        # Step 4: Final 2-component NNLS at (alpha_best, tauv_best, sigma_fe).
-        pl_tmpl_final = _build_pl_template(alpha_best)
+        # Step 4: Final solve at (alpha_best, tauv_best) for model arrays and chi2.
         A_att_final = np.exp(-tauv_best * templates.qso_dust_klambda)
-
-        pl_att_final = pl_tmpl_final.copy()
+        pl_att_final = pl_tmpls[best_ialpha].copy()
         ContinuumTools.attenuate(pl_att_final, A_att_final, qso_zfactors,
                                  CTools.ztemplatewave, torus_for_attenuate)
         fe_att_final = fe_tmpl.copy()
         ContinuumTools.attenuate(fe_att_final, A_att_final, qso_zfactors,
                                  CTools.ztemplatewave, torus_for_attenuate)
 
-        pl_spec_final = CTools.continuum_to_spectroscopy(pl_att_final)
-        fe_spec_final = CTools.continuum_to_spectroscopy(fe_att_final)
-        pl_phot_final = CTools.continuum_to_photometry(pl_att_final)
-        fe_phot_final = CTools.continuum_to_photometry(fe_att_final)
-
-        A_final = np.zeros((nspec + nphot, 2))
-        A_final[:nspec, 0] = pl_spec_final * specistd / median_apercorr
-        A_final[:nspec, 1] = fe_spec_final * specistd / median_apercorr
-        A_final[nspec:, 0] = pl_phot_final * objflamistd
-        A_final[nspec:, 1] = fe_phot_final * objflamistd
-        b_final = np.concatenate([specflux_in * specistd,
-                                  objflam_in * objflamistd])
+        Psi[:nspec, 0] = CTools.continuum_to_spectroscopy(pl_att_final) * specistd / median_apercorr
+        Psi[:nspec, 1] = CTools.continuum_to_spectroscopy(fe_att_final) * specistd / median_apercorr
+        Psi[nspec:, 0] = CTools.continuum_to_photometry(pl_att_final) * objflamistd
+        Psi[nspec:, 1] = CTools.continuum_to_photometry(fe_att_final) * objflamistd
         try:
-            coeff_final, _ = nnls(A_final, b_final)
+            coeff_final, _ = nnls(Psi, b_combined)
         except RuntimeError:
             coeff_final = np.zeros(2)
 
         A_PL_fit, A_Fe_fit = coeff_final
 
+        resid = Psi @ coeff_final - b_combined
+        chi2_spec = float(resid[:nspec].dot(resid[:nspec]))
+        chi2_phot = float(resid[nspec:].dot(resid[nspec:]))
+
         # Torus amplitude from energy balance.
         if torus_norm > 0. and (A_PL_fit > 0. or A_Fe_fit > 0.):
             one_minus_A = 1. - A_att_final
             dwave = np.diff(CTools.ztemplatewave)
+            pl_tmpl_final = pl_tmpls[best_ialpha]
             lbol_pl = 0.5 * float(np.dot(
                 (pl_tmpl_final[:-1] * one_minus_A[:-1] + pl_tmpl_final[1:] * one_minus_A[1:]),
                 dwave))
@@ -2352,21 +2325,17 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
 
         return (sigma_fe, alpha_best, tauv_best,
                 A_PL_fit, A_Fe_fit, A_torus_fit,
-                median_apercorr, apercorrs, A_final, coeff_final,
+                chi2_spec, chi2_phot,
+                median_apercorr, apercorrs,
                 qm, qm_noline, dm)
 
     # --- Main fit ---
     t0 = time.time()
     (sigma_fe_best, alpha_best, tauv_best,
      A_PL, A_Fe, A_torus,
-     median_apercorr, apercorrs, A_full, coeff,
+     chi2_spec, chi2_phot,
+     median_apercorr, apercorrs,
      qsomodel, qsomodel_noline, desimodel) = _fit_qso_once(specflux, objflam)
-
-    b_full = np.concatenate([specflux * specistd / median_apercorr,
-                             objflam * objflamistd])
-    resid = A_full @ coeff - b_full
-    chi2_spec = float(resid[:nspec].dot(resid[:nspec]))
-    chi2_phot = float(resid[nspec:].dot(resid[nspec:]))
     nfree = 2  # A_PL and A_Fe; A_torus is derived, (alpha, tau_v, sigma_fe) fixed
     rchi2_cont = chi2_spec / max(ndof_cont - nfree, 1)
     rchi2_phot = chi2_phot / max(ndof_phot - nfree, 1)
@@ -2416,7 +2385,7 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
     t0 = time.time()
     smoothstats = np.zeros(len(data['camerapix']))
 
-    if np.all(coeff == 0.) or no_smooth_continuum:
+    if (A_PL == 0. and A_Fe == 0.) or no_smooth_continuum:
         smoothcontinuum = np.zeros_like(specwave)
     else:
         residuals = specflux * median_apercorr - desimodel
