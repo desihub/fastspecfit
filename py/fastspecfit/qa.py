@@ -399,13 +399,13 @@ def _build_legend(metadata, specphot, fastspec, phot, fastphot, fitstack,
             rz).replace('decam_', '').replace('sdss_', '')})
 
     if fastqso:
-        leg['pl_slope'] = r'$\alpha_{\nu}={:.2f}$'.format(specphot['PL_SLOPE'])
+        leg['pl_slope'] = r'$\alpha_{{\nu}}={:.2f}$'.format(specphot['PL_SLOPE'])
         A_PL = specphot['PL_AMPLITUDE']
         A_PL_ivar = specphot['PL_AMPLITUDE_IVAR']
         if A_PL_ivar > 0.:
-            leg['pl_amplitude'] = r'$A_{\rm PL}={:.2g}\pm{:.2g}$'.format(A_PL, 1./np.sqrt(A_PL_ivar))
+            leg['pl_amplitude'] = r'$A_{{\rm PL}}={:.2g}\pm{:.2g}$'.format(A_PL, 1./np.sqrt(A_PL_ivar))
         else:
-            leg['pl_amplitude'] = r'$A_{\rm PL}={:.2g}$'.format(A_PL)
+            leg['pl_amplitude'] = r'$A_{{\rm PL}}={:.2g}$'.format(A_PL)
         fe_vdisp = specphot['FE_VDISP']
         fe_vdisp_ivar = specphot['FE_VDISP_IVAR']
         if fe_vdisp_ivar > 0.:
@@ -416,9 +416,9 @@ def _build_legend(metadata, specphot, fastspec, phot, fastphot, fitstack,
         A_Fe = specphot['FE_AMPLITUDE']
         A_Fe_ivar = specphot['FE_AMPLITUDE_IVAR']
         if A_Fe_ivar > 0.:
-            leg['fe_amplitude'] = r'$A_{\rm Fe}={:.2g}\pm{:.2g}$'.format(A_Fe, 1./np.sqrt(A_Fe_ivar))
+            leg['fe_amplitude'] = r'$A_{{\rm Fe}}={:.2g}\pm{:.2g}$'.format(A_Fe, 1./np.sqrt(A_Fe_ivar))
         else:
-            leg['fe_amplitude'] = r'$A_{\rm Fe}={:.2g}$'.format(A_Fe)
+            leg['fe_amplitude'] = r'$A_{{\rm Fe}}={:.2g}$'.format(A_Fe)
         if not fastphot:
             leg['rchi2'] = r'$\chi^{2}_{\nu,\mathrm{specphot}}$='+'{:.2f}'.format(specphot['RCHI2'])
             leg['rchi2_cont'] = r'$\chi^{2}_{\nu,\mathrm{cont}}$='+'{:.2f}'.format(specphot['RCHI2_CONT'])
