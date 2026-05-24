@@ -94,7 +94,7 @@ Step 5 — merge output
 ---------------------
 After the job completes, merge the per-healpix output files:
 
-  mpi-fastspecfit --specprod loa \
+  mpi-fastspecfit --specprod loa --mp=16 \
       --samplefile my-sample.fits \
       --merge --merge-suffix mysample \
       --outdir-data $OUTDIR_DATA

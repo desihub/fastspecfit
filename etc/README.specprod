@@ -100,7 +100,7 @@ Step 5 — merge output catalogs
 After all jobs complete, merge the per-healpix FITS files into survey-level
 catalogs:
 
-  mpi-fastspecfit --specprod loa \
+  mpi-fastspecfit --specprod loa --mp=16 \
       --survey main --program dark \
       --merge --outdir-data $OUTDIR_DATA
 
