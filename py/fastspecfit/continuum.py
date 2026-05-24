@@ -2391,6 +2391,36 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             continuum_fastphot(redshift, objflam, objflamivar, CTools,
                                uniqueid=data['uniqueid'], debug_plots=debug_plots,
                                nmonte=nmonte, rng=rng)
+        has_continuum = not np.all(coeff == 0.)
+    elif fastqso:
+        # QSO continuum fitting (power law + UV Fe + IR torus).
+        (pl_slope, pl_slope_ivar,
+         pl_amplitude, pl_amplitude_ivar,
+         fe_vdisp, fe_vdisp_ivar,
+         fe_amplitude, fe_amplitude_ivar,
+         rchi2_cont, rchi2_phot,
+         median_apercorr, apercorrs,
+         sedmodel, sedmodel_nolines,
+         continuummodel,
+         smoothcontinuum, smoothstats,
+         specflux_monte,
+         sedmodel_monte, sedmodel_nolines_monte, continuummodel_monte) = \
+            qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
+                                   nmonte=nmonte, rng=rng, uniqueid=data['uniqueid'],
+                                   debug_plots=debug_plots,
+                                   no_smooth_continuum=no_smooth_continuum)
+
+        has_continuum = (pl_amplitude > 0.)
+        data['apercorr'] = median_apercorr  # needed for the line-fitting
+
+        for icam, cam in enumerate(np.atleast_1d(data['cameras'])):
+            fastfit[f'SNR_{cam.upper()}'] = data['snr'][icam]
+
+        msg = ['Smooth continuum correction:']
+        for cam, corr in zip(np.atleast_1d(data['cameras']), smoothstats):
+            fastfit[f'SMOOTHCORR_{cam.upper()}'] = corr * 100.  # [%]
+            msg.append(f'{cam}={100.*corr:.3f}%')
+        log.info(' '.join(msg))
     else:
         (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
          tauv, tauv_monte, tauv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar,
@@ -2401,7 +2431,8 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                                 nmonte=nmonte, rng=rng, uniqueid=data['uniqueid'],
                                 debug_plots=debug_plots, no_smooth_continuum=no_smooth_continuum)
 
-        data['apercorr'] = median_apercorr # needed for the line-fitting
+        has_continuum = not np.all(coeff == 0.)
+        data['apercorr'] = median_apercorr  # needed for the line-fitting
 
         # populate the output table
         for icam, cam in enumerate(np.atleast_1d(data['cameras'])):
@@ -2415,11 +2446,22 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
 
     #result['Z'] = redshift
     specphot['SEED'] = seed
-    specphot['COEFF'][CTools.agekeep] = coeff
     specphot['RCHI2_PHOT'] = rchi2_phot
-    specphot['VDISP'] = vdisp # * u.kilometer/u.second
-    specphot['DN4000_MODEL'] = dn4000_model
-    specphot['DN4000_MODEL_IVAR'] = dn4000_model_ivar
+
+    if fastqso:
+        specphot['PL_SLOPE'] = pl_slope
+        specphot['PL_SLOPE_IVAR'] = pl_slope_ivar
+        specphot['PL_AMPLITUDE'] = pl_amplitude
+        specphot['PL_AMPLITUDE_IVAR'] = pl_amplitude_ivar
+        specphot['FE_VDISP'] = fe_vdisp
+        specphot['FE_VDISP_IVAR'] = fe_vdisp_ivar
+        specphot['FE_AMPLITUDE'] = fe_amplitude
+        specphot['FE_AMPLITUDE_IVAR'] = fe_amplitude_ivar
+    else:
+        specphot['COEFF'][CTools.agekeep] = coeff
+        specphot['VDISP'] = vdisp  # * u.kilometer/u.second
+        specphot['DN4000_MODEL'] = dn4000_model
+        specphot['DN4000_MODEL_IVAR'] = dn4000_model_ivar
 
     if not fastphot:
         specphot['RCHI2_CONT'] = rchi2_cont
@@ -2436,12 +2478,13 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
         fastfit['APERCORR'] = median_apercorr
         for iband, band in enumerate(phot.synth_bands):
             fastfit[f'APERCORR_{band.upper()}'] = apercorrs[iband]
-        specphot['DN4000_OBS'] = dn4000
-        specphot['DN4000_IVAR'] = dn4000_ivar
-        specphot['VDISP_IVAR'] = vdisp_ivar # * (u.second/u.kilometer)**2
+        if not fastqso:
+            specphot['DN4000_OBS'] = dn4000
+            specphot['DN4000_IVAR'] = dn4000_ivar
+            specphot['VDISP_IVAR'] = vdisp_ivar  # * (u.second/u.kilometer)**2
 
     # Compute K-corrections, rest-frame quantities, and physical properties.
-    if not np.all(coeff == 0.):
+    if has_continuum:
 
         def do_kcorr(sedmodel, sedmodel_nolines, debug_plots=False):
             synth_absmag, synth_maggies_rest = phot.synth_absmag(
@@ -2485,7 +2528,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             specphot[key] = cfluxes[ikey]
 
         # Get the variance via Monte Carlo.
-        if sedmodel_monte is not None:
+        if sedmodel_monte is not None and sedmodel_nolines_monte is not None:
             res = [do_kcorr(sm, snm, False) for sm, snm in zip(sedmodel_monte, sedmodel_nolines_monte)]
             (synth_absmag_monte, _, _, _, _, _, lums_monte, cfluxes_monte) = tuple(zip(*res))
 
@@ -2509,89 +2552,93 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                 if var > TINY:
                     specphot[f'{cfluxkey}_IVAR'] = 1. / var
 
-        # get the SPS properties
-        def _get_sps_properties(coeff):
-            tinfo = templates.info[CTools.agekeep]
-            mstars = tinfo['mstar'] # [current mass in stars, Msun]
-            masstot = coeff.dot(mstars)
-            coefftot = np.sum(coeff)
-            if masstot > 0. and coefftot > 0.:
-                logmstar = np.log10(CTools.massnorm * masstot)
-                zzsun = np.log10(coeff.dot(mstars * 10.**tinfo['zzsun']) / masstot) # mass-weighted
-                age = coeff.dot(tinfo['age']) / coefftot / 1e9           # luminosity-weighted [Gyr]
-                #age = coeff.dot(mstars * tinfo['age']) / masstot / 1e9  # mass-weighted [Gyr]
-                sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])          # [Msun/yr]
-            else:
-                logmstar, zzsun, age, sfr = 0., 0., 0., 0.
-            return age, zzsun, logmstar, sfr
+        # get the SPS properties (galaxy only; not applicable for QSO or fastphot)
+        if not fastphot and not fastqso:
+            def _get_sps_properties(coeff):
+                tinfo = templates.info[CTools.agekeep]
+                mstars = tinfo['mstar'] # [current mass in stars, Msun]
+                masstot = coeff.dot(mstars)
+                coefftot = np.sum(coeff)
+                if masstot > 0. and coefftot > 0.:
+                    logmstar = np.log10(CTools.massnorm * masstot)
+                    zzsun = np.log10(coeff.dot(mstars * 10.**tinfo['zzsun']) / masstot) # mass-weighted
+                    age = coeff.dot(tinfo['age']) / coefftot / 1e9           # luminosity-weighted [Gyr]
+                    #age = coeff.dot(mstars * tinfo['age']) / masstot / 1e9  # mass-weighted [Gyr]
+                    sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])          # [Msun/yr]
+                else:
+                    logmstar, zzsun, age, sfr = 0., 0., 0., 0.
+                return age, zzsun, logmstar, sfr
 
-        age, zzsun, logmstar, sfr = _get_sps_properties(coeff)
-        specphot['TAUV'] = tauv
-        specphot['TAUV_IVAR'] = tauv_ivar
-        specphot['AGE'] = age
-        specphot['ZZSUN'] = zzsun
-        specphot['LOGMSTAR'] = logmstar
-        specphot['SFR'] = sfr
+            age, zzsun, logmstar, sfr = _get_sps_properties(coeff)
+            specphot['TAUV'] = tauv
+            specphot['TAUV_IVAR'] = tauv_ivar
+            specphot['AGE'] = age
+            specphot['ZZSUN'] = zzsun
+            specphot['LOGMSTAR'] = logmstar
+            specphot['SFR'] = sfr
 
-        if coeff_monte is not None:
-            res = [_get_sps_properties(c) for c in coeff_monte]
-            age_monte, zzsun_monte, logmstar_monte, sfr_monte = tuple(zip(*res))
+            if coeff_monte is not None:
+                res = [_get_sps_properties(c) for c in coeff_monte]
+                age_monte, zzsun_monte, logmstar_monte, sfr_monte = tuple(zip(*res))
 
-            for val_monte, col in zip([age_monte, zzsun_monte, logmstar_monte, sfr_monte],
-                                      ['AGE_IVAR', 'ZZSUN_IVAR', 'LOGMSTAR_IVAR', 'SFR_IVAR']):
-                with np.errstate(invalid='ignore'):
-                    val_ivar = var2ivar(np.nanvar(val_monte))
-                if val_ivar < F32MAX:
-                    specphot[col] = val_ivar
+                for val_monte, col in zip([age_monte, zzsun_monte, logmstar_monte, sfr_monte],
+                                          ['AGE_IVAR', 'ZZSUN_IVAR', 'LOGMSTAR_IVAR', 'SFR_IVAR']):
+                    with np.errstate(invalid='ignore'):
+                        val_ivar = var2ivar(np.nanvar(val_monte))
+                    if val_ivar < F32MAX:
+                        specphot[col] = val_ivar
 
-            # optional debugging plot
-            if debug_plots:
-                from fastspecfit.qa import _corner_plot
+                # optional debugging plot
+                if debug_plots:
+                    from fastspecfit.qa import _corner_plot
 
-                zzsun_sigma = np.nanstd(zzsun_monte)
-                tauv_sigma = np.nanstd(tauv_monte)
-                sfr_sigma = np.nanstd(sfr_monte)
-                logmstar_sigma = np.nanstd(logmstar_monte)
-                age_sigma = np.nanstd(age_monte)
+                    zzsun_sigma = np.nanstd(zzsun_monte)
+                    tauv_sigma = np.nanstd(tauv_monte)
+                    sfr_sigma = np.nanstd(sfr_monte)
+                    logmstar_sigma = np.nanstd(logmstar_monte)
+                    age_sigma = np.nanstd(age_monte)
 
-                truths = [zzsun, tauv, sfr, logmstar, age]
-                sigmas = [zzsun_sigma, tauv_sigma, sfr_sigma, logmstar_sigma, age_sigma]
-                sig = [max(5.*zzsun_sigma, 0.1), max(5.*tauv_sigma, 0.005), max(5.*sfr_sigma, 3),
-                       max(5.*logmstar_sigma, 0.1), max(5.*age_sigma, 0.005)]
-                _corner_plot(
-                    plotdata=np.vstack((zzsun_monte, tauv_monte, sfr_monte,
-                                        logmstar_monte, age_monte)).T,
-                    bins=max(nmonte // 3, 10),
-                    ranges=[(v-s, v+s) for v, s in zip(truths, sig)],
-                    labels=[r'$Z/Z_{\odot}$', r'$\tau_{V}$',
-                            r'SFR ($M_{\odot}/\mathrm{yr}$)',
-                            '\n'+r'$\log_{10}(M/M_{\odot})$', 'Age (Gyr)'],
-                    titles=[r'$Z/Z_{\odot}$='+f'{zzsun:.1f}'+r'$\pm$'+f'{zzsun_sigma:.1f}',
-                            r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
-                            r'SFR='+f'{sfr:.1f}'+r'$\pm$'+f'{sfr_sigma:.1f}'+r' $M_{\odot}/\mathrm{yr}$',
-                            r'$\log_{10}(M/M_{\odot})$='+f'{logmstar:.2f}'+r'$\pm$'+f'{logmstar_sigma:.2f}',
-                            f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr'],
-                    truths=truths, sigmas=sigmas,
-                    suptitle=f'SPS Properties: {data["uniqueid"]}',
-                    pngfile=f'qa-sps-properties-{data["uniqueid"]}.png',
-                    subplots_adjust=dict(left=0.1, right=0.92, bottom=0.1,
-                                         top=0.95, wspace=0.14, hspace=0.14),
-                )
+                    truths = [zzsun, tauv, sfr, logmstar, age]
+                    sigmas = [zzsun_sigma, tauv_sigma, sfr_sigma, logmstar_sigma, age_sigma]
+                    sig = [max(5.*zzsun_sigma, 0.1), max(5.*tauv_sigma, 0.005), max(5.*sfr_sigma, 3),
+                           max(5.*logmstar_sigma, 0.1), max(5.*age_sigma, 0.005)]
+                    _corner_plot(
+                        plotdata=np.vstack((zzsun_monte, tauv_monte, sfr_monte,
+                                            logmstar_monte, age_monte)).T,
+                        bins=max(nmonte // 3, 10),
+                        ranges=[(v-s, v+s) for v, s in zip(truths, sig)],
+                        labels=[r'$Z/Z_{\odot}$', r'$\tau_{V}$',
+                                r'SFR ($M_{\odot}/\mathrm{yr}$)',
+                                '\n'+r'$\log_{10}(M/M_{\odot})$', 'Age (Gyr)'],
+                        titles=[r'$Z/Z_{\odot}$='+f'{zzsun:.1f}'+r'$\pm$'+f'{zzsun_sigma:.1f}',
+                                r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
+                                r'SFR='+f'{sfr:.1f}'+r'$\pm$'+f'{sfr_sigma:.1f}'+r' $M_{\odot}/\mathrm{yr}$',
+                                r'$\log_{10}(M/M_{\odot})$='+f'{logmstar:.2f}'+r'$\pm$'+f'{logmstar_sigma:.2f}',
+                                f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr'],
+                        truths=truths, sigmas=sigmas,
+                        suptitle=f'SPS Properties: {data["uniqueid"]}',
+                        pngfile=f'qa-sps-properties-{data["uniqueid"]}.png',
+                        subplots_adjust=dict(left=0.1, right=0.92, bottom=0.1,
+                                             top=0.95, wspace=0.14, hspace=0.14),
+                    )
 
+            msg = []
+            for label, units, val, col in zip(['vdisp', 'log(M/Msun)', 'tau(V)', 'Age', 'SFR', 'Z/Zsun'],
+                                              [' km/s', '', '', ' Gyr', ' Msun/yr', ''],
+                                              [vdisp, logmstar, tauv, age, sfr, zzsun],
+                                              ['VDISP', 'LOGMSTAR', 'TAUV', 'AGE', 'SFR', 'ZZSUN']):
+                ivarcol = f'{col}_IVAR'
+                if ivarcol in specphot.value.dtype.names:
+                    val_ivar = specphot[ivarcol]
+                    var_msg = f'+/-{1./np.sqrt(val_ivar):.2f}' if val_ivar > 0. else ''
+                else:
+                    var_msg = ''
+                msg.append(f'{label}={val:.2f}{var_msg}{units}')
+            log.info(' '.join(msg))
 
-        msg = []
-        for label, units, val, col in zip(['vdisp', 'log(M/Msun)', 'tau(V)', 'Age', 'SFR', 'Z/Zsun'],
-                                          [' km/s', '', '', ' Gyr', ' Msun/yr', ''],
-                                          [vdisp, logmstar, tauv, age, sfr, zzsun],
-                                          ['VDISP', 'LOGMSTAR', 'TAUV', 'AGE', 'SFR', 'ZZSUN']):
-            ivarcol = f'{col}_IVAR'
-            if ivarcol in specphot.value.dtype.names:
-                val_ivar = specphot[ivarcol]
-                var_msg = f'+/-{1./np.sqrt(val_ivar):.2f}' if val_ivar > 0. else ''
-            else:
-                var_msg = ''
-            msg.append(f'{label}={val:.2f}{var_msg}{units}')
-        log.info(' '.join(msg))
+        if fastqso:
+            log.info(f'PL_SLOPE={pl_slope:.2f}, PL_AMPLITUDE={pl_amplitude:.3g}, '
+                     f'FE_VDISP={fe_vdisp:.0f} km/s, FE_AMPLITUDE={fe_amplitude:.3g}')
 
     log.debug(fsftime('continuum_specfit', time.time()-tall))
 
