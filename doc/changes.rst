@@ -2,8 +2,13 @@
 Change Log
 ==========
 
-3.4.1 (not released yet)
+3.4.2 (not released yet)
 ------------------------
+
+*
+
+3.4.1 (2026-05-26)
+------------------
 
 * Production logging and robustness fixes: replace ``desiutil`` logger with a
   custom ``getFastspecLogger()`` and ``_DynamicStdoutHandler`` that follows
