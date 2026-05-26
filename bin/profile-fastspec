@@ -18,6 +18,9 @@ Usage examples
 # fastphot mode with 3 warm repeats, save cProfile output:
   profile-fastspecfit --mode fastphot --nwarm 3 --cprofile
 
+# fastqso (QSO/AGN) mode:
+  profile-fastspecfit --fastqso
+
 # Use a pre-downloaded template file:
   profile-fastspecfit --templates /path/to/ftemplates-chabrier-2.0.0.fits
 
@@ -51,30 +54,44 @@ TEMPLATE_URL = (
 
 
 def parse_args(argv=None):
+    from fastspecfit.util import NMONTE_DEFAULT
+
     p = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument('--mode', choices=['fastspec', 'fastphot', 'stackfit'],
+    p.add_argument('--mode', choices=['fastspec', 'fastphot', 'fastqso', 'stackfit'],
                    default='fastspec',
                    help='Fitting mode to profile (default: fastspec).')
     p.add_argument('--fastphot', action='store_true',
                    help='Shorthand for --mode fastphot.')
+    p.add_argument('--fastqso', action='store_true',
+                   help='Shorthand for --mode fastqso.')
     p.add_argument('--templates', default=None,
                    help='Path to template FITS file.  Overrides FTEMPLATES_CACHE_DIR lookup.')
     p.add_argument('--nwarm', type=int, default=2,
                    help='Number of warm fitting passes after the cold pass (default: 2).')
-    p.add_argument('--nmonte', type=int, default=10,
-                   help='Monte Carlo realizations per object (default: 10).')
+    p.add_argument('--nmonte', type=int, default=NMONTE_DEFAULT,
+                   help='Monte Carlo realizations per object.')
     p.add_argument('--cprofile', action='store_true',
                    help='Run cProfile on the warm fitting loop and write <mode>.prof.')
     p.add_argument('--cprofile-top', type=int, default=30,
                    help='Number of top cProfile entries to print (default: 30).')
+    p.add_argument('--redrockfile', default=None,
+                   help='Path to a real Redrock file.  Overrides the bundled test spectrum.')
+    p.add_argument('--targetids', type=int, nargs='+', default=None,
+                   help='One or more TARGETIDs to fit.')
+    p.add_argument('--firsttarget', type=int, default=0,
+                   help='Index of first target in the redrock file (default: 0).')
+    p.add_argument('--ntargets', type=int, default=None,
+                   help='Number of targets to fit (default: all).')
     p.add_argument('--outdir', default=None,
                    help='Directory for output FITS and .prof files.  Defaults to a temp dir.')
     args = p.parse_args(argv)
     if args.fastphot:
         args.mode = 'fastphot'
+    if args.fastqso:
+        args.mode = 'fastqso'
     return args
 
 
@@ -174,19 +191,20 @@ def phase_init(sc_data, init_args, timer):
     timer.mark('sc_data.initialize (templates + JIT warmup)')
 
 
-def phase_io(paths, mode, timer):
+def phase_io(paths, mode, timer, targetids=None, firsttarget=0, ntargets=None):
     from fastspecfit.io import DESISpectra, get_output_dtype
     from fastspecfit.singlecopy import sc_data
 
     fastphot = (mode == 'fastphot')
+    fastqso  = (mode == 'fastqso')
     fitstack = (mode == 'stackfit')
 
     Spec = DESISpectra(
         phot=sc_data.photometry,
         cosmo=sc_data.cosmology,
-        fphotodir=str(paths['fphotodir']),
-        mapdir=str(paths['mapdir']),
-        redux_dir=str(paths['redux_dir']),
+        fphotodir=str(paths['fphotodir']) if paths['fphotodir'] else None,
+        mapdir=str(paths['mapdir']) if paths['mapdir'] else None,
+        redux_dir=str(paths['redux_dir']) if paths['redux_dir'] else None,
     )
 
     if fitstack:
@@ -197,12 +215,14 @@ def phase_io(paths, mode, timer):
     else:
         Spec.gather_metadata(
             [str(paths['redrockfile'])],
-            firsttarget=0,
+            targetids=targetids,
+            firsttarget=firsttarget,
+            ntargets=ntargets,
             redrockfile_prefix='redrock-',
             specfile_prefix='coadd-',
             qnfile_prefix='qso_qn-',
             use_quasarnet=False,
-            specprod_dir=str(paths['specproddir']),
+            specprod_dir=str(paths['specproddir']) if paths['specproddir'] else None,
         )
         data, meta = Spec.read(sc_data.photometry, fastphot=fastphot)
 
@@ -217,6 +237,7 @@ def build_fitargs(Spec, data, meta, mode, nmonte):
     from fastspecfit.singlecopy import sc_data
 
     fastphot = (mode == 'fastphot')
+    fastqso  = (mode == 'fastqso')
     fitstack = (mode == 'stackfit')
 
     ncoeff   = sc_data.templates.ntemplates
@@ -225,12 +246,12 @@ def build_fitargs(Spec, data, meta, mode, nmonte):
     fastfit_dtype, _ = get_output_dtype(
         Spec.specprod, phot=sc_data.photometry,
         linetable=sc_data.emlines.table, ncoeff=ncoeff,
-        cameras=cameras, fastphot=fastphot, fitstack=fitstack,
+        cameras=cameras, fastphot=fastphot, fitstack=fitstack, fastqso=fastqso,
     )
     specphot_dtype, _ = get_output_dtype(
         Spec.specprod, phot=sc_data.photometry,
         linetable=sc_data.emlines.table, ncoeff=ncoeff,
-        cameras=cameras, fastphot=fastphot, fitstack=fitstack, specphot=True,
+        cameras=cameras, fastphot=fastphot, fitstack=fitstack, specphot=True, fastqso=fastqso,
     )
 
     rng   = np.random.default_rng(seed=1)
@@ -240,7 +261,7 @@ def build_fitargs(Spec, data, meta, mode, nmonte):
         dict(
             iobj=i, data=data[i], meta=meta[i],
             fastfit_dtype=fastfit_dtype, specphot_dtype=specphot_dtype,
-            broadlinefit=True, fastphot=fastphot, fitstack=fitstack,
+            broadlinefit=True, fastphot=fastphot, fastqso=fastqso, fitstack=fitstack,
             constrain_age=False, no_smooth_continuum=False,
             debug_plots=False, uncertainty_floor=0.01,
             minsnr_balmer_broad=2.5, nmonte=nmonte, seed=int(seeds[i]),
@@ -277,6 +298,13 @@ def main(argv=None):
     paths     = get_test_paths()
     mode      = args.mode
 
+    if args.redrockfile:
+        paths['redrockfile'] = pathlib.Path(args.redrockfile)
+        paths['redux_dir']   = None
+        paths['specproddir'] = None
+        paths['fphotodir']   = None
+        paths['mapdir']      = None
+
     print(f'\n--- FastSpecFit profiling harness  (mode={mode}) ---\n')
 
     from fastspecfit.singlecopy import sc_data
@@ -288,7 +316,10 @@ def main(argv=None):
     phase_init(sc_data, init_args, timer)
 
     # Phase 2: I/O
-    Spec, data, meta = phase_io(paths, mode, timer)
+    Spec, data, meta = phase_io(paths, mode, timer,
+                                targetids=args.targetids,
+                                firsttarget=args.firsttarget,
+                                ntargets=args.ntargets)
     fitargs = build_fitargs(Spec, data, meta, mode, args.nmonte)
     nobj    = len(fitargs)
 

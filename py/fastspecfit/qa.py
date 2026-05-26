@@ -311,7 +311,7 @@ def _compute_line_stats(EMFit, fastspec, data, redshift, snrcut=1.5):
 
 
 def _build_legend(metadata, specphot, fastspec, phot, fastphot, fitstack,
-                  redshift, line_stats=None, snrcut=1.5):
+                  redshift, line_stats=None, snrcut=1.5, fastqso=False):
     """Build legend dictionaries for the QA figure.
 
     Parameters
@@ -352,23 +352,25 @@ def _build_legend(metadata, specphot, fastspec, phot, fastphot, fitstack,
     leg = {
         'z': '$z={:.7f}$'.format(redshift),
         'rchi2_phot': r'$\chi^{2}_{\nu,\mathrm{phot}}=$'+r'${:.2f}$'.format(specphot['RCHI2_PHOT']),
-        'dn4000_model': r'$D_{n}(4000)_{\mathrm{model}}=$'+r'${:.3f}$'.format(specphot['DN4000_MODEL']),
     }
+    if not fastqso:
+        leg['dn4000_model'] = r'$D_{n}(4000)_{\mathrm{model}}=$'+r'${:.3f}$'.format(specphot['DN4000_MODEL'])
 
-    for key, label, col, fmt, units in zip(
-            ['age', 'tauv', 'mstar', 'sfr', 'zzsun'],
-            ['Age', r'$\tau_{V}$', r'$\log_{10}(M/M_{\odot})$', r'$\mathrm{SFR}$', r'$Z/Z_{\odot}$'],
-            ['AGE', 'TAUV', 'LOGMSTAR', 'SFR', 'ZZSUN'],
-            ['{:.2f}', '{:.2f}', '{:.2f}', '{:.1f}', '{:.1f}'],
-            [' Gyr', '', '', r' $M_{\odot}/\mathrm{yr}$', '']):
-        val = specphot[col]
-        val_ivar = specphot[f'{col}_IVAR']
-        if val_ivar > 0.:
-            val_sig = 1. / np.sqrt(val_ivar)
-            strval = '$' + fmt.format(val) + r'\pm' + fmt.format(val_sig) + '$' + units
-        else:
-            strval = fmt.format(val)
-        leg[key] = label + '=' + strval
+    if not fastqso:
+        for key, label, col, fmt, units in zip(
+                ['age', 'tauv', 'mstar', 'sfr', 'zzsun'],
+                ['Age', r'$\tau_{V}$', r'$\log_{10}(M/M_{\odot})$', r'$\mathrm{SFR}$', r'$Z/Z_{\odot}$'],
+                ['AGE', 'TAUV', 'LOGMSTAR', 'SFR', 'ZZSUN'],
+                ['{:.2f}', '{:.2f}', '{:.2f}', '{:.1f}', '{:.1f}'],
+                [' Gyr', '', '', r' $M_{\odot}/\mathrm{yr}$', '']):
+            val = specphot[col]
+            val_ivar = specphot[f'{col}_IVAR']
+            if val_ivar > 0.:
+                val_sig = 1. / np.sqrt(val_ivar)
+                strval = '$' + fmt.format(val) + r'\pm' + fmt.format(val_sig) + '$' + units
+            else:
+                strval = fmt.format(val)
+            leg[key] = label + '=' + strval
 
     gindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 4300))
     rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1.+phot.band_shift) - 5600))
@@ -396,7 +398,37 @@ def _build_legend(metadata, specphot, fastspec, phot, fastphot, fitstack,
             str(shift_rband), absmag_rband.lower(), str(shift_zband), absmag_zband.lower(),
             rz).replace('decam_', '').replace('sdss_', '')})
 
-    if fastphot:
+    if fastqso:
+        leg['pl_slope'] = r'$\alpha_{{\nu}}={:.2f}$'.format(specphot['PL_SLOPE'])
+        A_PL = specphot['PL_AMPLITUDE']
+        A_PL_ivar = specphot['PL_AMPLITUDE_IVAR']
+        if A_PL_ivar > 0.:
+            leg['pl_amplitude'] = r'$A_{{\rm PL}}={:.2g}\pm{:.2g}$'.format(A_PL, 1./np.sqrt(A_PL_ivar))
+        else:
+            leg['pl_amplitude'] = r'$A_{{\rm PL}}={:.2g}$'.format(A_PL)
+        fe_vdisp = specphot['FE_VDISP']
+        fe_vdisp_ivar = specphot['FE_VDISP_IVAR']
+        if fe_vdisp_ivar > 0.:
+            leg['fe_vdisp'] = r'$\sigma_{{\rm Fe}}={:.0f}\pm{:.0f}$ km/s'.format(
+                fe_vdisp, 1./np.sqrt(fe_vdisp_ivar))
+        else:
+            leg['fe_vdisp'] = r'$\sigma_{{\rm Fe}}={:.0f}$ km/s'.format(fe_vdisp)
+        A_Fe = specphot['FE_AMPLITUDE']
+        A_Fe_ivar = specphot['FE_AMPLITUDE_IVAR']
+        if A_Fe_ivar > 0.:
+            leg['fe_amplitude'] = r'$A_{{\rm Fe}}={:.2g}\pm{:.2g}$'.format(A_Fe, 1./np.sqrt(A_Fe_ivar))
+        else:
+            leg['fe_amplitude'] = r'$A_{{\rm Fe}}={:.2g}$'.format(A_Fe)
+        tauv_val = specphot['TAUV']
+        tauv_ivar = specphot['TAUV_IVAR']
+        if tauv_ivar > 0.:
+            leg['tauv'] = r'$\tau_{{V}}={:.3f}\pm{:.3f}$'.format(tauv_val, 1./np.sqrt(tauv_ivar))
+        else:
+            leg['tauv'] = r'$\tau_{{V}}={:.3f}$'.format(tauv_val)
+        if not fastphot:
+            leg['rchi2'] = r'$\chi^{2}_{\nu,\mathrm{specphot}}$='+'{:.2f}'.format(specphot['RCHI2'])
+            leg['rchi2_cont'] = r'$\chi^{2}_{\nu,\mathrm{cont}}$='+'{:.2f}'.format(specphot['RCHI2_CONT'])
+    elif fastphot:
         leg['vdisp'] = r'$\sigma_{star}=$'+'{:.0f}'.format(specphot['VDISP'])+' km/s'
     else:
         if specphot['VDISP_IVAR'] > 0:
@@ -414,7 +446,7 @@ def _build_legend(metadata, specphot, fastspec, phot, fastphot, fitstack,
     leg_broad, leg_narrow, leg_uv = {}, {}, {}
 
     if not fastphot:
-        if specphot['DN4000_IVAR'] > 0:
+        if not fastqso and specphot['DN4000_IVAR'] > 0:
             leg['dn4000_spec'] = r'$D_{n}(4000)_{\mathrm{data}}=$'+r'${:.3f}$'.format(specphot['DN4000'])
 
         if 'LYALPHA_AMP' in fastspec.colnames and fastspec['LYALPHA_AMP']*np.sqrt(fastspec['LYALPHA_AMP_IVAR']) > snrcut:
@@ -583,6 +615,161 @@ def _build_sed_model(CTools, templates, specphot, metadata, phot,
     indx = np.where((sedmodel > 0) * (sedwave/1e4 > phot_wavelims[0]) *
                     (sedwave/1e4 < phot_wavelims[1]))[0]
     return sedwave[indx], sedmodel[indx], sedphot, phot_tbl
+
+
+def _build_qso_sed_model(CTools, templates, specphot, metadata, phot, igm,
+                         redshift, phot_wavelims, allfilters):
+    """Reconstruct the QSO broadband SED model from stored fit parameters.
+
+    Builds the power-law + Fe + IR torus continuum and returns the same
+    4-tuple as :func:`_build_sed_model`.
+
+    """
+    from scipy.ndimage import gaussian_filter1d
+    from fastspecfit.templates import Templates
+    from fastspecfit.photometry import Photometry
+
+    alpha    = float(specphot['PL_SLOPE'])
+    A_PL     = float(specphot['PL_AMPLITUDE'])
+    fe_vdisp = float(specphot['FE_VDISP'])
+    A_Fe     = float(specphot['FE_AMPLITUDE'])
+    tauv     = float(specphot['TAUV'])
+    A_torus  = float(specphot['TORUS_AMPLITUDE'])
+
+    ztemplatewave = CTools.ztemplatewave
+    lam_obs_ref   = 1450. * (1. + redshift)
+    T_igm         = igm.full_IGM(redshift, ztemplatewave)
+
+    pl_tmpl = (ztemplatewave / lam_obs_ref)**(alpha - 2.) * T_igm
+
+    fewave_z  = templates.fewave * (1. + redshift)
+    fe_pixkms = Templates.AGN_PIXKMS
+    sigma_pix = max(fe_vdisp / fe_pixkms, 1e-3)
+    feflux_broad = gaussian_filter1d(templates.feflux, sigma_pix)
+    fe_tmpl = np.zeros(len(ztemplatewave))
+    lo = np.searchsorted(ztemplatewave, fewave_z[0], 'left')
+    hi = np.searchsorted(ztemplatewave, fewave_z[-1], 'right')
+    if hi > lo:
+        fe_tmpl[lo:hi] = np.interp(ztemplatewave[lo:hi], fewave_z, feflux_broad,
+                                   left=0., right=0.)
+    fe_tmpl *= T_igm
+
+    n_ir = len(templates.agnflux)
+    iragnwave_z = templates.agnwave[-n_ir:] * (1. + redshift)
+    torus_tmpl = np.zeros(len(ztemplatewave))
+    ir_lo = np.searchsorted(ztemplatewave, iragnwave_z[0], 'left')
+    ir_hi = np.searchsorted(ztemplatewave, iragnwave_z[-1], 'right')
+    if ir_hi > ir_lo:
+        torus_tmpl[ir_lo:ir_hi] = np.interp(
+            ztemplatewave[ir_lo:ir_hi], iragnwave_z, templates.agnflux,
+            left=0., right=0.)
+
+    # Apply QSO dust attenuation to the UV/optical components; torus uses
+    # the stored energy-balance amplitude directly.
+    A_att = np.exp(-tauv * templates.qso_dust_klambda)
+
+    # Scale by massnorm so the returned sedmodel has the same internal units
+    # as the galaxy sedmodel from build_stellar_continuum (required by the
+    # calling code's SED display factor and continuum_to_photometry).
+    sedmodel = (A_PL * pl_tmpl * A_att + A_Fe * fe_tmpl * A_att
+                + A_torus * torus_tmpl) * CTools.massnorm
+    sedphot   = CTools.continuum_to_photometry(sedmodel, phottable=True, get_abmag=True)
+    sedwave   = ztemplatewave
+
+    nband = len(phot.bands)
+    maggies     = np.zeros(nband)
+    ivarmaggies = np.zeros(nband)
+    for iband, band in enumerate(phot.bands):
+        maggies[iband]     = metadata[f'FLUX_{band.upper()}']
+        ivarmaggies[iband] = metadata[f'FLUX_IVAR_{band.upper()}']
+    phot_tbl = Photometry.parse_photometry(
+        phot.bands, maggies=maggies, ivarmaggies=ivarmaggies,
+        lambda_eff=allfilters.effective_wavelengths.value,
+        min_uncertainty=phot.min_uncertainty, get_abmag=True)
+
+    indx = np.where((sedmodel > 0) * (sedwave/1e4 > phot_wavelims[0]) *
+                    (sedwave/1e4 < phot_wavelims[1]))[0]
+    return sedwave[indx], sedmodel[indx], sedphot, phot_tbl
+
+
+def _build_qso_spectral_models(CTools, EMFit, data, fastspec, specphot, templates, igm,
+                                fitstack, no_smooth_continuum, emline_snrmin, redshift):
+    """Reconstruct QSO per-camera continuum and emission-line spectral models.
+
+    Analogous to :func:`_build_spectral_models` but uses the stored QSO
+    power-law and Fe template parameters instead of SPS template coefficients.
+
+    """
+    from scipy.ndimage import gaussian_filter1d
+    from fastspecfit.templates import Templates
+
+    apercorr = fastspec['APERCORR']
+    fullwave  = np.hstack(data['wave'])
+
+    alpha    = float(specphot['PL_SLOPE'])
+    A_PL     = float(specphot['PL_AMPLITUDE'])
+    fe_vdisp = float(specphot['FE_VDISP'])
+    A_Fe     = float(specphot['FE_AMPLITUDE'])
+    tauv     = float(specphot['TAUV'])
+
+    ztemplatewave = CTools.ztemplatewave
+    lam_obs_ref   = 1450. * (1. + redshift)
+    T_igm         = igm.full_IGM(redshift, ztemplatewave)
+
+    pl_tmpl = (ztemplatewave / lam_obs_ref)**(alpha - 2.) * T_igm
+
+    fewave_z  = templates.fewave * (1. + redshift)
+    fe_pixkms = Templates.AGN_PIXKMS
+    sigma_pix = max(fe_vdisp / fe_pixkms, 1e-3)
+    feflux_broad = gaussian_filter1d(templates.feflux, sigma_pix)
+    fe_tmpl = np.zeros(len(ztemplatewave))
+    lo = np.searchsorted(ztemplatewave, fewave_z[0], 'left')
+    hi = np.searchsorted(ztemplatewave, fewave_z[-1], 'right')
+    if hi > lo:
+        fe_tmpl[lo:hi] = np.interp(ztemplatewave[lo:hi], fewave_z, feflux_broad,
+                                   left=0., right=0.)
+    fe_tmpl *= T_igm
+
+    A_att = np.exp(-tauv * templates.qso_dust_klambda)
+    qsomodel = A_PL * pl_tmpl * A_att + A_Fe * fe_tmpl * A_att
+
+    _desicontinuum = CTools.continuum_to_spectroscopy(qsomodel, interp=True)
+    desicontinuum  = [_desicontinuum[campix[0]:campix[1]] / apercorr
+                      for campix in data['camerapix']]
+    fullcontinuum  = np.hstack(desicontinuum)
+
+    desiresiduals = []
+    for icam in range(len(data['cameras'])):
+        resid = data['flux'][icam] - desicontinuum[icam]
+        I = (data['flux'][icam] == 0.) * (data['ivar'][icam] == 0.)
+        resid[I] = 0.
+        desiresiduals.append(resid)
+
+    if A_PL <= 0. or no_smooth_continuum:
+        fullsmoothcontinuum = np.zeros_like(fullwave)
+    else:
+        fullsmoothcontinuum = CTools.smooth_continuum(
+            fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']),
+            np.hstack(data['linemask']), camerapix=data['camerapix'])
+
+    desismoothcontinuum = [fullsmoothcontinuum[campix[0]:campix[1]]
+                           for campix in data['camerapix']]
+
+    _desiemlines = EMFit.emlinemodel_bestfit(
+        fastspec, redshift, fullwave, data['res'],
+        data['camerapix'], snrcut=emline_snrmin)
+    desiemlines = [_desiemlines[campix[0]:campix[1]] for campix in data['camerapix']]
+
+    return {
+        'fullwave':            fullwave,
+        'apercorr':            apercorr,
+        'desicontinuum':       desicontinuum,
+        'fullcontinuum':       fullcontinuum,
+        'desiresiduals':       desiresiduals,
+        'fullsmoothcontinuum': fullsmoothcontinuum,
+        'desismoothcontinuum': desismoothcontinuum,
+        'desiemlines':         desiemlines,
+    }
 
 
 def _build_spectral_models(CTools, EMFit, data, fastspec, specphot, templates,
@@ -803,7 +990,8 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
                init_sigma_uv=None, init_sigma_narrow=None, init_sigma_balmer=None,
                init_vshift_uv=None, init_vshift_narrow=None,
                init_vshift_balmer=None, fastphot=False, fitstack=False,
-               inputz=False, no_smooth_continuum=False, outdir=None, outprefix=None):
+               fastqso=False, inputz=False, no_smooth_continuum=False,
+               outdir=None, outprefix=None):
     """Generate a QA figure for a single object.
 
     Prepares the spectrum data and then calls :func:`qa_fastspec` to produce
@@ -866,15 +1054,15 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
                 phot_wavelims=(minphotwave, maxphotwave),
                 no_smooth_continuum=no_smooth_continuum,
                 emline_snrmin=emline_snrmin, nsmoothspec=nsmoothspec,
-                fastphot=fastphot, fitstack=fitstack,
+                fastphot=fastphot, fitstack=fitstack, fastqso=fastqso,
                 outprefix=outprefix, outdir=outdir, inputz=inputz)
 
 
 def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
                 coadd_type='healpix', spec_wavelims=(3550, 9900),
                 phot_wavelims=(0.1, 35), fastphot=False, fitstack=False,
-                outprefix=None, no_smooth_continuum=False, emline_snrmin=0.0,
-                nsmoothspec=1, outdir=None, inputz=None):
+                fastqso=False, outprefix=None, no_smooth_continuum=False,
+                emline_snrmin=0.0, nsmoothspec=1, outdir=None, inputz=None):
     """Generate and write a QA figure for one fitted object.
 
     Produces a multi-panel PNG showing the observed spectrum, best-fit
@@ -995,8 +1183,13 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
     target = _target_label(metadata, coadd_type)
 
     if not fitstack:
-        sedwave, sedmodel, sedphot, phot_tbl = _build_sed_model(
-            CTools, templates, specphot, metadata, phot, redshift, phot_wavelims, allfilters)
+        if fastqso:
+            sedwave, sedmodel, sedphot, phot_tbl = _build_qso_sed_model(
+                CTools, templates, specphot, metadata, phot, igm,
+                redshift, phot_wavelims, allfilters)
+        else:
+            sedwave, sedmodel, sedphot, phot_tbl = _build_sed_model(
+                CTools, templates, specphot, metadata, phot, redshift, phot_wavelims, allfilters)
 
     linetable, line_stats = None, None
     if not fastphot:
@@ -1004,13 +1197,18 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
 
     leg, leg_broad, leg_narrow, leg_uv = _build_legend(
         metadata, specphot, fastspec, phot, fastphot, fitstack, redshift,
-        line_stats=line_stats)
+        line_stats=line_stats, fastqso=fastqso)
 
     specmodels = None
     if not fastphot:
-        specmodels = _build_spectral_models(
-            CTools, EMFit, data, fastspec, specphot, templates, fitstack,
-            no_smooth_continuum, emline_snrmin, redshift)
+        if fastqso:
+            specmodels = _build_qso_spectral_models(
+                CTools, EMFit, data, fastspec, specphot, templates, igm, fitstack,
+                no_smooth_continuum, emline_snrmin, redshift)
+        else:
+            specmodels = _build_spectral_models(
+                CTools, EMFit, data, fastspec, specphot, templates, fitstack,
+                no_smooth_continuum, emline_snrmin, redshift)
         fullwave = specmodels['fullwave']
         apercorr = specmodels['apercorr']
 
@@ -1274,16 +1472,26 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
         sedax.text(0.02, 0.94, txt, ha='left', va='top',
                    transform=sedax.transAxes, fontsize=legfntsz)#, bbox=bbox)
 
-        txt = '\n'.join((
-            #r'{}'.format(leg['fagn']),
-            r'{}'.format(leg['zzsun']),
-            r'{}'.format(leg['tauv']),
-            r'{}'.format(leg['sfr']),
-            r'{}'.format(leg['age']),
-            r'{}'.format(leg['mstar']),
-            ))
-        sedax.text(legxpos, legypos2, txt, ha='right', va='bottom',
-                    transform=sedax.transAxes, fontsize=legfntsz1, bbox=bbox)
+        if fastqso:
+            txt = '\n'.join((
+                r'{}'.format(leg['pl_slope']),
+                r'{}'.format(leg['pl_amplitude']),
+                r'{}'.format(leg['fe_vdisp']),
+                r'{}'.format(leg['fe_amplitude']),
+                r'{}'.format(leg['tauv']),
+                ))
+        elif not fitstack:
+            txt = '\n'.join((
+                #r'{}'.format(leg['fagn']),
+                r'{}'.format(leg['zzsun']),
+                r'{}'.format(leg['tauv']),
+                r'{}'.format(leg['sfr']),
+                r'{}'.format(leg['age']),
+                r'{}'.format(leg['mstar']),
+                ))
+        if fastqso or not fitstack:
+            sedax.text(legxpos, legypos2, txt, ha='right', va='bottom',
+                        transform=sedax.transAxes, fontsize=legfntsz1, bbox=bbox)
 
         if not fastphot:
             # draw lines connecting the SED and spectral plots
@@ -1601,10 +1809,16 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
         if 'redshift' in legkeys:
             txt += [r'{}'.format(leg['redshift'])]
 
-        txt += [
-            #r'{}'.format(leg['zwarn']),
-            r'{}'.format(leg['vdisp']),
-        ]
+        if fastqso:
+            txt += [
+                r'{}'.format(leg['pl_slope']),
+                r'{}'.format(leg['pl_amplitude']),
+            ]
+        else:
+            txt += [
+                #r'{}'.format(leg['zwarn']),
+                r'{}'.format(leg['vdisp']),
+            ]
         if 'dv_narrow' in legkeys or 'dv_uv' in leg_uv.keys() or 'dv_broad' in leg_broad.keys():
             txt += ['']
 
@@ -1639,9 +1853,12 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
             txt += [r'{}'.format(leg['absmag_gr'])]
         if 'absmag_rz' in legkeys:
             txt += [r'{}'.format(leg['absmag_rz'])]
-        txt += ['', r'{}'.format(leg['dn4000_model'])]
-        if 'dn4000_spec' in legkeys:
-            txt += [r'{}'.format(leg['dn4000_spec'])]
+        if fastqso:
+            txt += ['', r'{}'.format(leg['fe_vdisp']), r'{}'.format(leg['fe_amplitude'])]
+        else:
+            txt += ['', r'{}'.format(leg['dn4000_model'])]
+            if 'dn4000_spec' in legkeys:
+                txt += [r'{}'.format(leg['dn4000_spec'])]
 
         #fig.text(startpos+deltapos, toppos, '\n'.join(txt), ha='left', va='top',
         fig.text(boxpos[ibox], toppos, '\n'.join(txt), ha='left', va='top',
@@ -1773,7 +1990,7 @@ def fastqa(args=None, comm=None):
 
     # NB: read_fastspecfit does not use any of the single-copy structures
     # allocated below.
-    metadata, specphot, fastfit, coadd_type, fastphot = \
+    metadata, specphot, fastfit, coadd_type, fastphot, fastqso = \
         read_fastspecfit(args.fastfitfile[0])
 
     if coadd_type == 'custom' and args.redrockfiles is None:
@@ -1930,6 +2147,7 @@ def fastqa(args=None, comm=None):
                 'nsmoothspec':         args.nsmoothspec,
                 'fastphot':            fastphot,
                 'fitstack':            fitstack,
+                'fastqso':             fastqso,
                 'inputz':              inputz,
                 'no_smooth_continuum': no_smooth_continuum,
                 'outdir':              args.outdir,

@@ -673,6 +673,41 @@ class ContinuumTools(object):
             M[i] *= A[i] * zfactors[i]
 
 
+    @staticmethod
+    @jit(nopython=True, nogil=True, fastmath=True, cache=True)
+    def _nnls2(A, b):
+        """Exact NNLS for a 2-column matrix, solved analytically without scipy overhead."""
+        AtA = A.T @ A
+        Atb = A.T @ b
+        bTb = float(b.dot(b))
+        det = AtA[0, 0] * AtA[1, 1] - AtA[0, 1] ** 2
+        if det > 0.:
+            c0 = (AtA[1, 1] * Atb[0] - AtA[0, 1] * Atb[1]) / det
+            c1 = (AtA[0, 0] * Atb[1] - AtA[0, 1] * Atb[0]) / det
+            if c0 >= 0. and c1 >= 0.:
+                result = np.empty(2)
+                result[0] = c0
+                result[1] = c1
+                return result
+        c_best = np.zeros(2)
+        best = bTb
+        if AtA[1, 1] > 0.:
+            c1 = Atb[1] / AtA[1, 1]
+            if c1 > 0.:
+                val = bTb - Atb[1] * c1
+                if val < best:
+                    best = val
+                    c_best[0] = 0.
+                    c_best[1] = c1
+        if AtA[0, 0] > 0.:
+            c0 = Atb[0] / AtA[0, 0]
+            if c0 > 0.:
+                if bTb - Atb[0] * c0 < best:
+                    c_best[0] = c0
+                    c_best[1] = 0.
+        return c_best
+
+
     def build_stellar_continuum(self, templateflux, templatecoeff,
                                 tauv, vdisp=None, conv_pre=None,
                                 dust_emission=True):
@@ -1980,10 +2015,457 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
             sedmodel_monte, sedmodel_nolines_monte, continuummodel_monte)
 
 
+def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
+                           nmonte=NMONTE_DEFAULT, rng=None, uniqueid=0,
+                           no_smooth_continuum=False, debug_plots=False):
+    """Fit a QSO continuum (power law + UV Fe emission + IR AGN torus) to spectroscopy and broadband photometry.
+
+    Parameters
+    ----------
+    redshift : float
+        Object redshift.
+    objflam : :class:`numpy.ndarray`
+        Observed photometry in units of 10**-17 erg/s/cm2/A.
+    objflamivar : :class:`numpy.ndarray`
+        Inverse variance of ``objflam``.
+    CTools : :class:`ContinuumTools`
+        Initialized continuum-fitting tools for this object.
+    igm : :class:`fastspecfit.igm.Inoue14`
+        IGM attenuation model.
+    nmonte : int, optional
+        Number of Monte Carlo realizations for uncertainty estimation.
+    rng : :class:`numpy.random.Generator`, optional
+        Random number generator for Monte Carlo draws.
+    uniqueid : int or str, optional
+        Object identifier used in log messages and debug plot filenames.
+    no_smooth_continuum : bool, optional
+        If ``True``, skip the nonparametric smooth continuum step.
+    debug_plots : bool, optional
+        If ``True``, write QA plots to the current directory.
+
+    Returns
+    -------
+    tuple
+        ``(pl_slope, pl_slope_ivar, pl_amplitude, pl_amplitude_ivar,
+        fe_vdisp, fe_vdisp_ivar, fe_amplitude, fe_amplitude_ivar,
+        tauv, tauv_ivar, torus_amplitude, torus_amplitude_ivar,
+        rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
+        sedmodel, sedmodel_nolines, continuummodel,
+        smoothcontinuum, smoothstats, specflux_monte,
+        sedmodel_monte, sedmodel_nolines_monte, continuummodel_monte)``
+
+    Notes
+    -----
+    The QSO continuum model has three components:
+
+    - Power law: F_λ ∝ (λ/1450 Å)^(α-2) with IGM attenuation applied, where α
+      is the spectral index in F_ν ∝ ν^{-α}.  The fitted amplitude A_PL is the
+      observed flux at 1450 Å rest-frame in units of 10^{-17} erg/s/cm²/Å.
+    - UV Fe emission: the Vestergaard & Wilkes (2001) template convolved to
+      velocity dispersion σ_Fe, resampled to the template wavelength grid.
+    - IR AGN torus: the Nenkova+08 template; its amplitude A_torus is derived
+      from energy balance (absorbed UV/optical luminosity re-emitted in the IR).
+
+    Fitting proceeds in four steps:
+
+    1. σ_Fe is determined by a chi2 grid scan restricted to the Fe-template
+       wavelength window (1075–3090 Å rest), with two nuisance power-law columns
+       marginalizing over the continuum.  The minimum is refined with a 1D
+       parabola fit in log-σ space.
+    2. The aperture correction is estimated from the ratio of broadband
+       photometry to a dust-free spectral model at α=1.5.
+    3. α and τ_V are optimized jointly via VARPRO: an outer grid on α (11 points
+       over [−0.5, 3.0]) with an inner Brent scalar minimization over τ_V ∈ [0, 5].
+       For each (α, τ_V) evaluation, dust attenuation and energy-balance torus
+       emission are applied via :meth:`ContinuumTools.attenuate`, and (A_PL, A_Fe)
+       are solved by NNLS on the joint spectro+photometric system.
+    4. A final NNLS solve at (α_best, τ_V,best) yields the model arrays and the
+       torus amplitude from energy balance.
+
+    All parameter uncertainties are estimated by Monte Carlo: the full four-step
+    pipeline is repeated for ``nmonte`` noise realizations drawn from the spectral
+    and photometric inverse variances.
+
+    """
+    import warnings
+    from scipy.optimize import nnls, minimize_scalar
+    from scipy.ndimage import gaussian_filter1d
+    from fastspecfit.util import find_minima, minfit
+
+    data = CTools.data
+    phot = CTools.phot
+    templates = CTools.templates
+
+    # Stack all cameras into a single spectrum.
+    specwave = np.hstack(data['wave'])
+    specflux = np.hstack(data['flux'])
+    specivar_nolinemask = np.hstack(data['ivar'])
+    slinemask = np.hstack(data['linemask'])
+    specivar = specivar_nolinemask * np.logical_not(slinemask)
+
+    specistd = np.sqrt(specivar)
+    objflamistd = np.sqrt(objflamivar)
+    ndof_cont = int(np.sum(specivar > 0.))
+    ndof_phot = int(np.sum(objflamivar > 0.))
+    nspec = len(specflux)
+    nphot = len(objflam)
+
+    ncam = len(data['cameras'])
+    snrmsg = f"Median spectral S/N_{data['cameras'][0]}={data['snr'][0]:.2f}"
+    for icam in range(1, ncam):
+        snrmsg += f" S/N_{data['cameras'][icam]}={data['snr'][icam]:.2f}"
+    log.info(snrmsg)
+
+    # Monte Carlo draws (use specivar_nolinemask so the same draws are reused
+    # in emission-line fitting, matching the continuum_fastspec convention).
+    if nmonte > 0 and ndof_cont > 0:
+        specstd = np.zeros_like(specivar_nolinemask)
+        I = specivar_nolinemask > 0.
+        specstd[I] = 1. / np.sqrt(specivar_nolinemask[I])
+        specflux_monte = rng.normal(specflux[np.newaxis, :],
+                                    specstd[np.newaxis, :],
+                                    size=(nmonte, nspec))
+        if ndof_phot > 0:
+            objflamstd = np.zeros_like(objflamistd)
+            I = objflamistd > 0.
+            objflamstd[I] = 1. / objflamistd[I]
+            objflam_monte = rng.normal(objflam[np.newaxis, :],
+                                       objflamstd[np.newaxis, :],
+                                       size=(nmonte, nphot))
+        else:
+            objflam_monte = np.tile(objflam, (nmonte, 1))
+    else:
+        specflux_monte = None
+
+    # IGM attenuation on the redshifted template wavelength grid.
+    T_igm = igm.full_IGM(redshift, CTools.ztemplatewave)
+
+    # Reference observed-frame wavelength for power-law normalization.
+    # A_PL is the observed flux at 1450 Å rest in 10^{-17} erg/s/cm²/Å.
+    PL_REFWAVE = 1450.
+    lam_obs_ref = PL_REFWAVE * (1. + redshift)
+
+    # Fe template: rest-frame wavelengths redshifted to observed frame.
+    fewave_z = templates.fewave * (1. + redshift)
+    fe_pixkms = Templates.AGN_PIXKMS  # 75 km/s per pixel
+
+    # IR AGN torus template, resampled to ztemplatewave.
+    n_ir = len(templates.agnflux)
+    iragnwave_z = templates.agnwave[-n_ir:] * (1. + redshift)
+    torus_on_template = np.zeros(len(CTools.ztemplatewave))
+    ir_lo = np.searchsorted(CTools.ztemplatewave, iragnwave_z[0], 'left')
+    ir_hi = np.searchsorted(CTools.ztemplatewave, iragnwave_z[-1], 'right')
+    if ir_hi > ir_lo:
+        torus_on_template[ir_lo:ir_hi] = np.interp(
+            CTools.ztemplatewave[ir_lo:ir_hi], iragnwave_z, templates.agnflux,
+            left=0., right=0.)
+
+    # Normalize torus for energy-balance use in attenuate (unit integral).
+    torus_norm = float(np.trapz(torus_on_template, CTools.ztemplatewave))
+    torus_for_attenuate = torus_on_template / torus_norm if torus_norm > 0. else torus_on_template
+
+    # zfactors=1 because QSO templates are built on ztemplatewave (observed frame,
+    # IGM already included); attenuate handles the energy balance only.
+    qso_zfactors = np.ones(len(CTools.ztemplatewave))
+
+    def _build_pl_template(alpha):
+        """Power law F_λ ∝ (λ/λ_ref)^(α-2) with IGM, normalized at 1450 Å rest."""
+        return (CTools.ztemplatewave / lam_obs_ref)**(alpha - 2.) * T_igm
+
+    def _build_fe_template(fe_vdisp):
+        """UV Fe emission template broadened to fe_vdisp km/s, resampled to ztemplatewave."""
+        sigma_pix = fe_vdisp / fe_pixkms
+        feflux_broad = gaussian_filter1d(templates.feflux, sigma_pix)
+        fe_on_template = np.zeros(len(CTools.ztemplatewave))
+        lo = np.searchsorted(CTools.ztemplatewave, fewave_z[0], 'left')
+        hi = np.searchsorted(CTools.ztemplatewave, fewave_z[-1], 'right')
+        if hi > lo:
+            fe_on_template[lo:hi] = np.interp(
+                CTools.ztemplatewave[lo:hi], fewave_z, feflux_broad,
+                left=0., right=0.)
+        fe_on_template *= T_igm
+        return fe_on_template
+
+    # Parameter grids.
+    sigma_fe_grid = np.geomspace(300., 10000., 20)      # [km/s] log-spaced
+    log_sigma_fe_grid = np.log10(sigma_fe_grid)
+    alpha_grid = np.linspace(-0.5, 3.0, 11)             # power-law slope
+
+    # Fe-window pixel mask (uses line-masked ivar).
+    fe_win_mask = ((specwave >= fewave_z[0]) & (specwave <= fewave_z[-1]) & (specivar > 0.))
+    n_fe_pix = int(np.sum(fe_win_mask))
+    FE_MIN_PIXELS = 50
+
+    # --- Precompute quantities independent of the data realization ---
+    t0 = time.time()
+
+    # Raw PL templates for each alpha grid point (independent of sigma_fe and data).
+    pl_tmpls = [_build_pl_template(alpha) for alpha in alpha_grid]
+
+    # Fe-window design matrices for each sigma_fe grid point.
+    # Two nuisance PL columns (extreme slopes) marginalize over the continuum.
+    nuis_pl_fe_cols = []
+    for alpha_n in [-0.5, 2.5]:
+        pl_n = _build_pl_template(alpha_n)
+        pl_n_spec = CTools.continuum_to_spectroscopy(pl_n)
+        nuis_pl_fe_cols.append(pl_n_spec[fe_win_mask] * specistd[fe_win_mask])
+
+    fe_win_dmats = []  # design matrices: shape (n_fe_pix, 3) for each sigma_fe
+    for sig_fe in sigma_fe_grid:
+        fe_full = _build_fe_template(sig_fe)
+        fe_spec = CTools.continuum_to_spectroscopy(fe_full)
+        fe_col = fe_spec[fe_win_mask] * specistd[fe_win_mask]
+        fe_win_dmats.append(np.column_stack([nuis_pl_fe_cols[0], nuis_pl_fe_cols[1], fe_col]))
+
+    log.debug(fsftime('qso_precompute', time.time()-t0))
+
+    # -----------------------------------------------------------------------
+    # Core fitting function: runs the full pipeline for one data realization.
+    # -----------------------------------------------------------------------
+    def _fit_qso_once(specflux_in, objflam_in):
+        # Step 1: Determine sigma_Fe from the Fe-template wavelength window.
+        if n_fe_pix < FE_MIN_PIXELS:
+            sigma_fe = templates.FE_VDISP_DEFAULT
+        else:
+            b_fe = specflux_in[fe_win_mask] * specistd[fe_win_mask]
+            chi2_fe = np.full(len(sigma_fe_grid), np.inf)
+            for ife, dmat in enumerate(fe_win_dmats):
+                try:
+                    c, _ = nnls(dmat, b_fe)
+                except RuntimeError:
+                    continue
+                r = dmat @ c - b_fe
+                chi2_fe[ife] = float(r.dot(r))
+
+            imins = find_minima(chi2_fe)
+            imin = imins[0]
+            lo = max(0, imin - 2)
+            hi = min(len(log_sigma_fe_grid), imin + 3)
+            x0, _xerr, _y0, zwarn = minfit(log_sigma_fe_grid[lo:hi], chi2_fe[lo:hi])
+            if zwarn == 0 and log_sigma_fe_grid[lo] <= x0 <= log_sigma_fe_grid[hi - 1]:
+                sigma_fe = float(np.clip(10.**x0, sigma_fe_grid[0], sigma_fe_grid[-1]))
+            else:
+                sigma_fe = float(sigma_fe_grid[imin])
+
+        # Step 2: Aperture correction using a nuisance PL + best Fe (no dust).
+        fe_tmpl = _build_fe_template(sigma_fe)
+        fe_spec_best = CTools.continuum_to_spectroscopy(fe_tmpl)
+        pl_tmpl_aper = _build_pl_template(1.5)
+        pl_spec_aper = CTools.continuum_to_spectroscopy(pl_tmpl_aper)
+
+        apercorrs = np.ones(len(phot.synth_bands))
+        median_apercorr = 1.
+
+        if np.any(phot.bands_to_fit):
+            A_pre = np.column_stack([pl_spec_aper * specistd, fe_spec_best * specistd])
+            b_pre = specflux_in * specistd
+            coeff_pre = ContinuumTools._nnls2(A_pre, b_pre)
+
+            if not np.all(coeff_pre == 0.):
+                qsomodel_pre = coeff_pre[0] * pl_tmpl_aper + coeff_pre[1] * fe_tmpl
+                sedflam = CTools.continuum_to_photometry(
+                    qsomodel_pre, filters=phot.synth_filters[data['photsys']])
+                I = np.isin(data['photometry']['band'], phot.synth_bands)
+                objflam_aper = CTools.fluxnorm * data['photometry'][I]['flam'].value
+                I2 = (objflam_aper > 0.) & (sedflam > 0.)
+                if np.any(I2):
+                    apercorrs[I2] = objflam_aper[I2] / sedflam[I2]
+                I3 = apercorrs > 0.
+                if np.any(I3):
+                    median_apercorr = median(apercorrs[I3])
+                    if median_apercorr <= 0.:
+                        median_apercorr = 1.
+
+        # Step 3: VARPRO — outer grid on alpha, inner Brent minimization on tau_v.
+        # For each alpha, minimize chi2 over tauv in [0, 5] exactly (Brent's method),
+        # with (A_PL, A_Fe) solved by NNLS inside the objective.
+        b_combined = np.concatenate([specflux_in * specistd,
+                                     objflam_in * objflamistd])
+        Psi = np.zeros((nspec + nphot, 2))
+
+        def _objective(tauv, pl_tmpl):
+            A_att = np.exp(-tauv * templates.qso_dust_klambda)
+            pl_att = pl_tmpl.copy()
+            ContinuumTools.attenuate(pl_att, A_att, qso_zfactors,
+                                     CTools.ztemplatewave, torus_for_attenuate)
+            fe_att = fe_tmpl.copy()
+            ContinuumTools.attenuate(fe_att, A_att, qso_zfactors,
+                                     CTools.ztemplatewave, torus_for_attenuate)
+            Psi[:nspec, 0] = CTools.continuum_to_spectroscopy(pl_att) * specistd / median_apercorr
+            Psi[:nspec, 1] = CTools.continuum_to_spectroscopy(fe_att) * specistd / median_apercorr
+            Psi[nspec:, 0] = CTools.continuum_to_photometry(pl_att) * objflamistd
+            Psi[nspec:, 1] = CTools.continuum_to_photometry(fe_att) * objflamistd
+            c = ContinuumTools._nnls2(Psi, b_combined)
+            r = Psi @ c - b_combined
+            return float(r.dot(r))
+
+        best_chi2 = np.inf
+        best_ialpha = len(alpha_grid) // 2
+        best_tauv = 0.
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=RuntimeWarning,
+                                    module='scipy.optimize')
+            for ialpha, pl_tmpl in enumerate(pl_tmpls):
+                result = minimize_scalar(
+                    lambda t, p=pl_tmpl: _objective(t, p),
+                    bounds=(0., 5.), method='bounded',
+                    options={'xatol': 1e-4})
+                if result.fun < best_chi2:
+                    best_chi2 = result.fun
+                    best_ialpha = ialpha
+                    best_tauv = float(result.x)
+
+        alpha_best = float(alpha_grid[best_ialpha])
+        tauv_best = best_tauv
+
+        # Step 4: Final solve at (alpha_best, tauv_best) for model arrays and chi2.
+        A_att_final = np.exp(-tauv_best * templates.qso_dust_klambda)
+        pl_att_final = pl_tmpls[best_ialpha].copy()
+        ContinuumTools.attenuate(pl_att_final, A_att_final, qso_zfactors,
+                                 CTools.ztemplatewave, torus_for_attenuate)
+        fe_att_final = fe_tmpl.copy()
+        ContinuumTools.attenuate(fe_att_final, A_att_final, qso_zfactors,
+                                 CTools.ztemplatewave, torus_for_attenuate)
+
+        Psi[:nspec, 0] = CTools.continuum_to_spectroscopy(pl_att_final) * specistd / median_apercorr
+        Psi[:nspec, 1] = CTools.continuum_to_spectroscopy(fe_att_final) * specistd / median_apercorr
+        Psi[nspec:, 0] = CTools.continuum_to_photometry(pl_att_final) * objflamistd
+        Psi[nspec:, 1] = CTools.continuum_to_photometry(fe_att_final) * objflamistd
+        coeff_final = ContinuumTools._nnls2(Psi, b_combined)
+
+        A_PL_fit, A_Fe_fit = coeff_final
+
+        resid = Psi @ coeff_final - b_combined
+        chi2_spec = float(resid[:nspec].dot(resid[:nspec]))
+        chi2_phot = float(resid[nspec:].dot(resid[nspec:]))
+
+        # Torus amplitude from energy balance.
+        if torus_norm > 0. and (A_PL_fit > 0. or A_Fe_fit > 0.):
+            one_minus_A = 1. - A_att_final
+            dwave = np.diff(CTools.ztemplatewave)
+            pl_tmpl_final = pl_tmpls[best_ialpha]
+            lbol_pl = 0.5 * float(np.dot(
+                (pl_tmpl_final[:-1] * one_minus_A[:-1] + pl_tmpl_final[1:] * one_minus_A[1:]),
+                dwave))
+            lbol_fe = 0.5 * float(np.dot(
+                (fe_tmpl[:-1] * one_minus_A[:-1] + fe_tmpl[1:] * one_minus_A[1:]),
+                dwave))
+            A_torus_fit = (A_PL_fit * lbol_pl + A_Fe_fit * lbol_fe) / torus_norm
+        else:
+            A_torus_fit = 0.
+
+        # Model arrays: attenuated PL + attenuated Fe (torus baked in via energy balance).
+        if A_PL_fit == 0. and A_Fe_fit == 0.:
+            qm = np.zeros(len(CTools.ztemplatewave))
+            qm_noline = np.zeros(len(CTools.ztemplatewave))
+            dm = np.zeros(nspec)
+        else:
+            qm = A_PL_fit * pl_att_final + A_Fe_fit * fe_att_final
+            qm_noline = A_PL_fit * pl_att_final  # PL continuum (no Fe features)
+            dm = CTools.continuum_to_spectroscopy(qm)
+
+        return (sigma_fe, alpha_best, tauv_best,
+                A_PL_fit, A_Fe_fit, A_torus_fit,
+                chi2_spec, chi2_phot,
+                median_apercorr, apercorrs,
+                qm, qm_noline, dm)
+
+    # --- Main fit ---
+    t0 = time.time()
+    (sigma_fe_best, alpha_best, tauv_best,
+     A_PL, A_Fe, A_torus,
+     chi2_spec, chi2_phot,
+     median_apercorr, apercorrs,
+     qsomodel, qsomodel_noline, desimodel) = _fit_qso_once(specflux, objflam)
+    nfree = 2  # A_PL and A_Fe; A_torus is derived, (alpha, tau_v, sigma_fe) fixed
+    rchi2_cont = chi2_spec / max(ndof_cont - nfree, 1)
+    rchi2_phot = chi2_phot / max(ndof_phot - nfree, 1)
+
+    log.debug(fsftime('qso_fit', time.time()-t0,
+                      context=f'alpha={alpha_best:.2f}, tauv={tauv_best:.3f}, '
+                              f'sigma_fe={sigma_fe_best:.0f} km/s, '
+                              f'rchi2_cont={rchi2_cont:.1f}, rchi2_phot={rchi2_phot:.1f}'))
+    log.debug(f'A_PL={A_PL:.3g} (10^-17 erg/s/cm2/A at 1450 A), '
+              f'A_Fe={A_Fe:.3g}, A_torus={A_torus:.3g}')
+
+    if median_apercorr != 1.:
+        log.debug(f'Median aperture correction {median_apercorr:.3f} '
+                  f'[{np.min(apercorrs):.3f}-{np.max(apercorrs):.3f}].')
+
+    # --- Monte Carlo for all parameter uncertainties ---
+    if specflux_monte is not None:
+        t0 = time.time()
+        mc_results = [_fit_qso_once(sf, of)
+                      for sf, of in zip(specflux_monte, objflam_monte)]
+
+        sigma_fe_monte  = np.array([r[0]  for r in mc_results])
+        alpha_monte     = np.array([r[1]  for r in mc_results])
+        tauv_monte      = np.array([r[2]  for r in mc_results])
+        A_PL_monte      = np.array([r[3]  for r in mc_results])
+        A_Fe_monte      = np.array([r[4]  for r in mc_results])
+        A_torus_monte   = np.array([r[5]  for r in mc_results])
+        qsomodel_monte         = [r[10] for r in mc_results]
+        qsomodel_noline_monte  = [r[11] for r in mc_results]
+        desimodel_monte        = np.vstack([r[12] for r in mc_results])
+
+        with np.errstate(invalid='ignore'):
+            sigma_fe_ivar      = var2ivar(np.nanvar(sigma_fe_monte))
+            alpha_ivar         = var2ivar(np.nanvar(alpha_monte))
+            tauv_ivar          = var2ivar(np.nanvar(tauv_monte))
+            pl_amplitude_ivar  = var2ivar(np.nanvar(A_PL_monte))
+            fe_amplitude_ivar  = var2ivar(np.nanvar(A_Fe_monte))
+            torus_amplitude_ivar = var2ivar(np.nanvar(A_torus_monte))
+
+        log.debug(fsftime('qso_mc', time.time()-t0))
+    else:
+        qsomodel_monte = qsomodel_noline_monte = desimodel_monte = None
+        sigma_fe_ivar = alpha_ivar = tauv_ivar = 0.
+        pl_amplitude_ivar = fe_amplitude_ivar = torus_amplitude_ivar = 0.
+
+    # --- Smooth continuum on the spectral residual ---
+    t0 = time.time()
+    smoothstats = np.zeros(len(data['camerapix']))
+
+    if (A_PL == 0. and A_Fe == 0.) or no_smooth_continuum:
+        smoothcontinuum = np.zeros_like(specwave)
+    else:
+        residuals = specflux * median_apercorr - desimodel
+        bad = (specflux == 0.) & (specivar == 0.)
+        residuals[bad] = 0.
+
+        smoothcontinuum = CTools.smooth_continuum(
+            specwave, residuals, specivar / median_apercorr**2,
+            slinemask, uniqueid=data['uniqueid'],
+            camerapix=data['camerapix'], debug_plots=debug_plots)
+
+        for icam, (ss, ee) in enumerate(data['camerapix']):
+            I = ((specflux[ss:ee] != 0.) & (specivar[ss:ee] != 0.)
+                 & (smoothcontinuum[ss:ee] != 0.))
+            if np.count_nonzero(I) > 3:
+                smoothstats[icam] = median(smoothcontinuum[ss:ee][I] / specflux[ss:ee][I])
+
+    log.debug(fsftime('qso_smooth_continuum', time.time()-t0))
+
+    return (alpha_best, alpha_ivar,
+            A_PL, pl_amplitude_ivar,
+            sigma_fe_best, sigma_fe_ivar,
+            A_Fe, fe_amplitude_ivar,
+            tauv_best, tauv_ivar,
+            A_torus, torus_amplitude_ivar,
+            rchi2_cont, rchi2_phot,
+            median_apercorr, apercorrs,
+            qsomodel, qsomodel_noline,
+            desimodel,
+            smoothcontinuum, smoothstats,
+            specflux_monte,
+            qsomodel_monte, qsomodel_noline_monte, desimodel_monte)
+
+
 def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                       nmonte=NMONTE_DEFAULT, seed=1, constrain_age=False,
                       no_smooth_continuum=False, fitstack=False,
-                      fastphot=False, debug_plots=False):
+                      fastphot=False, fastqso=False, debug_plots=False):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -2046,6 +2528,38 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             continuum_fastphot(redshift, objflam, objflamivar, CTools,
                                uniqueid=data['uniqueid'], debug_plots=debug_plots,
                                nmonte=nmonte, rng=rng)
+        has_continuum = not np.all(coeff == 0.)
+    elif fastqso:
+        # QSO continuum fitting (power law + UV Fe + IR torus).
+        (pl_slope, pl_slope_ivar,
+         pl_amplitude, pl_amplitude_ivar,
+         fe_vdisp, fe_vdisp_ivar,
+         fe_amplitude, fe_amplitude_ivar,
+         tauv, tauv_ivar,
+         torus_amplitude, torus_amplitude_ivar,
+         rchi2_cont, rchi2_phot,
+         median_apercorr, apercorrs,
+         sedmodel, sedmodel_nolines,
+         continuummodel,
+         smoothcontinuum, smoothstats,
+         specflux_monte,
+         sedmodel_monte, sedmodel_nolines_monte, continuummodel_monte) = \
+            qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
+                                   nmonte=nmonte, rng=rng, uniqueid=data['uniqueid'],
+                                   debug_plots=debug_plots,
+                                   no_smooth_continuum=no_smooth_continuum)
+
+        has_continuum = (pl_amplitude > 0.)
+        data['apercorr'] = median_apercorr  # needed for the line-fitting
+
+        for icam, cam in enumerate(np.atleast_1d(data['cameras'])):
+            fastfit[f'SNR_{cam.upper()}'] = data['snr'][icam]
+
+        msg = ['Smooth continuum correction:']
+        for cam, corr in zip(np.atleast_1d(data['cameras']), smoothstats):
+            fastfit[f'SMOOTHCORR_{cam.upper()}'] = corr * 100.  # [%]
+            msg.append(f'{cam}={100.*corr:.3f}%')
+        log.info(' '.join(msg))
     else:
         (coeff, coeff_monte, rchi2_cont, rchi2_phot, median_apercorr, apercorrs,
          tauv, tauv_monte, tauv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar,
@@ -2056,7 +2570,8 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                                 nmonte=nmonte, rng=rng, uniqueid=data['uniqueid'],
                                 debug_plots=debug_plots, no_smooth_continuum=no_smooth_continuum)
 
-        data['apercorr'] = median_apercorr # needed for the line-fitting
+        has_continuum = not np.all(coeff == 0.)
+        data['apercorr'] = median_apercorr  # needed for the line-fitting
 
         # populate the output table
         for icam, cam in enumerate(np.atleast_1d(data['cameras'])):
@@ -2070,11 +2585,26 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
 
     #result['Z'] = redshift
     specphot['SEED'] = seed
-    specphot['COEFF'][CTools.agekeep] = coeff
     specphot['RCHI2_PHOT'] = rchi2_phot
-    specphot['VDISP'] = vdisp # * u.kilometer/u.second
-    specphot['DN4000_MODEL'] = dn4000_model
-    specphot['DN4000_MODEL_IVAR'] = dn4000_model_ivar
+
+    if fastqso:
+        specphot['PL_SLOPE'] = pl_slope
+        specphot['PL_SLOPE_IVAR'] = pl_slope_ivar
+        specphot['PL_AMPLITUDE'] = pl_amplitude
+        specphot['PL_AMPLITUDE_IVAR'] = pl_amplitude_ivar
+        specphot['FE_VDISP'] = fe_vdisp
+        specphot['FE_VDISP_IVAR'] = fe_vdisp_ivar
+        specphot['FE_AMPLITUDE'] = fe_amplitude
+        specphot['FE_AMPLITUDE_IVAR'] = fe_amplitude_ivar
+        specphot['TAUV'] = tauv
+        specphot['TAUV_IVAR'] = tauv_ivar
+        specphot['TORUS_AMPLITUDE'] = torus_amplitude
+        specphot['TORUS_AMPLITUDE_IVAR'] = torus_amplitude_ivar
+    else:
+        specphot['COEFF'][CTools.agekeep] = coeff
+        specphot['VDISP'] = vdisp  # * u.kilometer/u.second
+        specphot['DN4000_MODEL'] = dn4000_model
+        specphot['DN4000_MODEL_IVAR'] = dn4000_model_ivar
 
     if not fastphot:
         specphot['RCHI2_CONT'] = rchi2_cont
@@ -2091,12 +2621,13 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
         fastfit['APERCORR'] = median_apercorr
         for iband, band in enumerate(phot.synth_bands):
             fastfit[f'APERCORR_{band.upper()}'] = apercorrs[iband]
-        specphot['DN4000_OBS'] = dn4000
-        specphot['DN4000_IVAR'] = dn4000_ivar
-        specphot['VDISP_IVAR'] = vdisp_ivar # * (u.second/u.kilometer)**2
+        if not fastqso:
+            specphot['DN4000_OBS'] = dn4000
+            specphot['DN4000_IVAR'] = dn4000_ivar
+            specphot['VDISP_IVAR'] = vdisp_ivar  # * (u.second/u.kilometer)**2
 
     # Compute K-corrections, rest-frame quantities, and physical properties.
-    if not np.all(coeff == 0.):
+    if has_continuum:
 
         def do_kcorr(sedmodel, sedmodel_nolines, debug_plots=False):
             synth_absmag, synth_maggies_rest = phot.synth_absmag(
@@ -2140,7 +2671,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             specphot[key] = cfluxes[ikey]
 
         # Get the variance via Monte Carlo.
-        if sedmodel_monte is not None:
+        if sedmodel_monte is not None and sedmodel_nolines_monte is not None:
             res = [do_kcorr(sm, snm, False) for sm, snm in zip(sedmodel_monte, sedmodel_nolines_monte)]
             (synth_absmag_monte, _, _, _, _, _, lums_monte, cfluxes_monte) = tuple(zip(*res))
 
@@ -2164,89 +2695,106 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                 if var > TINY:
                     specphot[f'{cfluxkey}_IVAR'] = 1. / var
 
-        # get the SPS properties
-        def _get_sps_properties(coeff):
-            tinfo = templates.info[CTools.agekeep]
-            mstars = tinfo['mstar'] # [current mass in stars, Msun]
-            masstot = coeff.dot(mstars)
-            coefftot = np.sum(coeff)
-            if masstot > 0. and coefftot > 0.:
-                logmstar = np.log10(CTools.massnorm * masstot)
-                zzsun = np.log10(coeff.dot(mstars * 10.**tinfo['zzsun']) / masstot) # mass-weighted
-                age = coeff.dot(tinfo['age']) / coefftot / 1e9           # luminosity-weighted [Gyr]
-                #age = coeff.dot(mstars * tinfo['age']) / masstot / 1e9  # mass-weighted [Gyr]
-                sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])          # [Msun/yr]
-            else:
-                logmstar, zzsun, age, sfr = 0., 0., 0., 0.
-            return age, zzsun, logmstar, sfr
+        # get the SPS properties (galaxy only; not applicable for QSO or fastphot)
+        if not fastphot and not fastqso:
+            def _get_sps_properties(coeff):
+                tinfo = templates.info[CTools.agekeep]
+                mstars = tinfo['mstar'] # [current mass in stars, Msun]
+                masstot = coeff.dot(mstars)
+                coefftot = np.sum(coeff)
+                if masstot > 0. and coefftot > 0.:
+                    logmstar = np.log10(CTools.massnorm * masstot)
+                    zzsun = np.log10(coeff.dot(mstars * 10.**tinfo['zzsun']) / masstot) # mass-weighted
+                    age = coeff.dot(tinfo['age']) / coefftot / 1e9           # luminosity-weighted [Gyr]
+                    #age = coeff.dot(mstars * tinfo['age']) / masstot / 1e9  # mass-weighted [Gyr]
+                    sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])          # [Msun/yr]
+                else:
+                    logmstar, zzsun, age, sfr = 0., 0., 0., 0.
+                return age, zzsun, logmstar, sfr
 
-        age, zzsun, logmstar, sfr = _get_sps_properties(coeff)
-        specphot['TAUV'] = tauv
-        specphot['TAUV_IVAR'] = tauv_ivar
-        specphot['AGE'] = age
-        specphot['ZZSUN'] = zzsun
-        specphot['LOGMSTAR'] = logmstar
-        specphot['SFR'] = sfr
+            age, zzsun, logmstar, sfr = _get_sps_properties(coeff)
+            specphot['TAUV'] = tauv
+            specphot['TAUV_IVAR'] = tauv_ivar
+            specphot['AGE'] = age
+            specphot['ZZSUN'] = zzsun
+            specphot['LOGMSTAR'] = logmstar
+            specphot['SFR'] = sfr
 
-        if coeff_monte is not None:
-            res = [_get_sps_properties(c) for c in coeff_monte]
-            age_monte, zzsun_monte, logmstar_monte, sfr_monte = tuple(zip(*res))
+            if coeff_monte is not None:
+                res = [_get_sps_properties(c) for c in coeff_monte]
+                age_monte, zzsun_monte, logmstar_monte, sfr_monte = tuple(zip(*res))
 
-            for val_monte, col in zip([age_monte, zzsun_monte, logmstar_monte, sfr_monte],
-                                      ['AGE_IVAR', 'ZZSUN_IVAR', 'LOGMSTAR_IVAR', 'SFR_IVAR']):
-                with np.errstate(invalid='ignore'):
-                    val_ivar = var2ivar(np.nanvar(val_monte))
-                if val_ivar < F32MAX:
-                    specphot[col] = val_ivar
+                for val_monte, col in zip([age_monte, zzsun_monte, logmstar_monte, sfr_monte],
+                                          ['AGE_IVAR', 'ZZSUN_IVAR', 'LOGMSTAR_IVAR', 'SFR_IVAR']):
+                    with np.errstate(invalid='ignore'):
+                        val_ivar = var2ivar(np.nanvar(val_monte))
+                    if val_ivar < F32MAX:
+                        specphot[col] = val_ivar
 
-            # optional debugging plot
-            if debug_plots:
-                from fastspecfit.qa import _corner_plot
+                # optional debugging plot
+                if debug_plots:
+                    from fastspecfit.qa import _corner_plot
 
-                zzsun_sigma = np.nanstd(zzsun_monte)
-                tauv_sigma = np.nanstd(tauv_monte)
-                sfr_sigma = np.nanstd(sfr_monte)
-                logmstar_sigma = np.nanstd(logmstar_monte)
-                age_sigma = np.nanstd(age_monte)
+                    zzsun_sigma = np.nanstd(zzsun_monte)
+                    tauv_sigma = np.nanstd(tauv_monte)
+                    sfr_sigma = np.nanstd(sfr_monte)
+                    logmstar_sigma = np.nanstd(logmstar_monte)
+                    age_sigma = np.nanstd(age_monte)
 
-                truths = [zzsun, tauv, sfr, logmstar, age]
-                sigmas = [zzsun_sigma, tauv_sigma, sfr_sigma, logmstar_sigma, age_sigma]
-                sig = [max(5.*zzsun_sigma, 0.1), max(5.*tauv_sigma, 0.005), max(5.*sfr_sigma, 3),
-                       max(5.*logmstar_sigma, 0.1), max(5.*age_sigma, 0.005)]
-                _corner_plot(
-                    plotdata=np.vstack((zzsun_monte, tauv_monte, sfr_monte,
-                                        logmstar_monte, age_monte)).T,
-                    bins=max(nmonte // 3, 10),
-                    ranges=[(v-s, v+s) for v, s in zip(truths, sig)],
-                    labels=[r'$Z/Z_{\odot}$', r'$\tau_{V}$',
-                            r'SFR ($M_{\odot}/\mathrm{yr}$)',
-                            '\n'+r'$\log_{10}(M/M_{\odot})$', 'Age (Gyr)'],
-                    titles=[r'$Z/Z_{\odot}$='+f'{zzsun:.1f}'+r'$\pm$'+f'{zzsun_sigma:.1f}',
-                            r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
-                            r'SFR='+f'{sfr:.1f}'+r'$\pm$'+f'{sfr_sigma:.1f}'+r' $M_{\odot}/\mathrm{yr}$',
-                            r'$\log_{10}(M/M_{\odot})$='+f'{logmstar:.2f}'+r'$\pm$'+f'{logmstar_sigma:.2f}',
-                            f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr'],
-                    truths=truths, sigmas=sigmas,
-                    suptitle=f'SPS Properties: {data["uniqueid"]}',
-                    pngfile=f'qa-sps-properties-{data["uniqueid"]}.png',
-                    subplots_adjust=dict(left=0.1, right=0.92, bottom=0.1,
-                                         top=0.95, wspace=0.14, hspace=0.14),
-                )
+                    truths = [zzsun, tauv, sfr, logmstar, age]
+                    sigmas = [zzsun_sigma, tauv_sigma, sfr_sigma, logmstar_sigma, age_sigma]
+                    sig = [max(5.*zzsun_sigma, 0.1), max(5.*tauv_sigma, 0.005), max(5.*sfr_sigma, 3),
+                           max(5.*logmstar_sigma, 0.1), max(5.*age_sigma, 0.005)]
+                    _corner_plot(
+                        plotdata=np.vstack((zzsun_monte, tauv_monte, sfr_monte,
+                                            logmstar_monte, age_monte)).T,
+                        bins=max(nmonte // 3, 10),
+                        ranges=[(v-s, v+s) for v, s in zip(truths, sig)],
+                        labels=[r'$Z/Z_{\odot}$', r'$\tau_{V}$',
+                                r'SFR ($M_{\odot}/\mathrm{yr}$)',
+                                '\n'+r'$\log_{10}(M/M_{\odot})$', 'Age (Gyr)'],
+                        titles=[r'$Z/Z_{\odot}$='+f'{zzsun:.1f}'+r'$\pm$'+f'{zzsun_sigma:.1f}',
+                                r'$\tau_{V}$='+f'{tauv:.2f}'+r'$\pm$'+f'{tauv_sigma:.2f}',
+                                r'SFR='+f'{sfr:.1f}'+r'$\pm$'+f'{sfr_sigma:.1f}'+r' $M_{\odot}/\mathrm{yr}$',
+                                r'$\log_{10}(M/M_{\odot})$='+f'{logmstar:.2f}'+r'$\pm$'+f'{logmstar_sigma:.2f}',
+                                f'Age={age:.2f}'+r'$\pm$'+f'{age_sigma:.2f} Gyr'],
+                        truths=truths, sigmas=sigmas,
+                        suptitle=f'SPS Properties: {data["uniqueid"]}',
+                        pngfile=f'qa-sps-properties-{data["uniqueid"]}.png',
+                        subplots_adjust=dict(left=0.1, right=0.92, bottom=0.1,
+                                             top=0.95, wspace=0.14, hspace=0.14),
+                    )
 
+            msg = []
+            for label, units, val, col in zip(['vdisp', 'log(M/Msun)', 'tau(V)', 'Age', 'SFR', 'Z/Zsun'],
+                                              [' km/s', '', '', ' Gyr', ' Msun/yr', ''],
+                                              [vdisp, logmstar, tauv, age, sfr, zzsun],
+                                              ['VDISP', 'LOGMSTAR', 'TAUV', 'AGE', 'SFR', 'ZZSUN']):
+                ivarcol = f'{col}_IVAR'
+                if ivarcol in specphot.value.dtype.names:
+                    val_ivar = specphot[ivarcol]
+                    var_msg = f'+/-{1./np.sqrt(val_ivar):.2f}' if val_ivar > 0. else ''
+                else:
+                    var_msg = ''
+                msg.append(f'{label}={val:.2f}{var_msg}{units}')
+            log.info(' '.join(msg))
 
-        msg = []
-        for label, units, val, col in zip(['vdisp', 'log(M/Msun)', 'tau(V)', 'Age', 'SFR', 'Z/Zsun'],
-                                          [' km/s', '', '', ' Gyr', ' Msun/yr', ''],
-                                          [vdisp, logmstar, tauv, age, sfr, zzsun],
-                                          ['VDISP', 'LOGMSTAR', 'TAUV', 'AGE', 'SFR', 'ZZSUN']):
-            ivarcol = f'{col}_IVAR'
-            if ivarcol in specphot.value.dtype.names:
-                val_ivar = specphot[ivarcol]
-                var_msg = f'+/-{1./np.sqrt(val_ivar):.2f}' if val_ivar > 0. else ''
-            else:
-                var_msg = ''
-            msg.append(f'{label}={val:.2f}{var_msg}{units}')
-        log.info(' '.join(msg))
+        if fastqso:
+            def _fmt(val, ivar, spec):
+                err = f'+/-{1./np.sqrt(ivar):{spec}}' if ivar > 0. else ''
+                return f'{val:{spec}}{err}'
+            log.info(
+                f'pl_slope={_fmt(pl_slope, pl_slope_ivar, ".2f")}, '
+                f'pl_amplitude={_fmt(pl_amplitude, pl_amplitude_ivar, ".3g")} '
+                f'(10^-17 erg/s/cm2/A at 1450 A), '
+                f'torus_amplitude={_fmt(torus_amplitude, torus_amplitude_ivar, ".3g")}')
+            log.info(
+                f'fe_vdisp={_fmt(fe_vdisp, fe_vdisp_ivar, ".0f")} km/s, '
+                f'fe_amplitude={_fmt(fe_amplitude, fe_amplitude_ivar, ".3g")}, '
+                f'tauv={_fmt(tauv, tauv_ivar, ".3f")}')
+            if median_apercorr != 1.:
+                log.info(f'Median aperture correction {median_apercorr:.3f} '
+                         f'[{np.min(apercorrs):.3f}-{np.max(apercorrs):.3f}].')
 
     log.debug(fsftime('continuum_specfit', time.time()-tall))
 
