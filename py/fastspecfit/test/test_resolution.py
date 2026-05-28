@@ -94,6 +94,8 @@ class TestResolution:
     def test_ndiag(self, diag_matrix, res):
         assert res.ndiag == diag_matrix.shape[0]
 
+    # ── dot (raw R) ───────────────────────────────────────────────────────────
+
     def test_dot_output_shape(self, res):
         npix = res.shape[0]
         v = np.ones(npix)
@@ -124,6 +126,53 @@ class TestResolution:
     def test_dot_zero_vector(self, res):
         v = np.zeros(res.shape[0])
         assert np.all(res.dot(v) == 0.)
+
+    def test_dot_uses_raw_matrix(self, diag_matrix, res):
+        """dot applies data0 (raw R), not the deconvolved W."""
+        npix = res.shape[0]
+        v    = np.ones(npix)
+        # Reconstruct what a raw matvec should produce from data0 directly.
+        from fastspecfit.resolution import Resolution
+        ndiag = diag_matrix.shape[0]
+        expected = np.zeros(npix)
+        w2 = ndiag // 2
+        for i in range(ndiag):
+            k       = w2 - i
+            i_start = max(0, -k)
+            j_start = max(0,  k)
+            j_end   = min(npix + k, npix)
+            for n in range(j_end - j_start):
+                expected[i_start + n] += diag_matrix[i, j_start + n] * v[j_start + n]
+        assert np.allclose(res.dot(v), expected)
+
+    # ── dot_deconv (deconvolved W) ────────────────────────────────────────────
+
+    def test_dot_deconv_output_shape(self, res):
+        npix = res.shape[0]
+        v = np.ones(npix)
+        assert res.dot_deconv(v).shape == (npix,)
+
+    def test_dot_deconv_out_parameter(self, res):
+        npix = res.shape[0]
+        v   = np.ones(npix)
+        out = np.empty(npix)
+        result = res.dot_deconv(v, out=out)
+        assert result is out
+        assert np.allclose(result, res.dot_deconv(v))
+
+    def test_dot_deconv_linearity(self, res):
+        rng = np.random.default_rng(7)
+        v   = rng.standard_normal(res.shape[0])
+        a   = 2.5
+        assert np.allclose(res.dot_deconv(a * v), a * res.dot_deconv(v))
+
+    def test_dot_deconv_differs_from_dot(self, res):
+        """dot and dot_deconv operate on different matrices."""
+        rng = np.random.default_rng(99)
+        v   = rng.standard_normal(res.shape[0])
+        assert not np.allclose(res.dot(v), res.dot_deconv(v))
+
+    # ── rowdata ───────────────────────────────────────────────────────────────
 
     def test_rowdata_shape(self, res):
         rows = res.rowdata()
