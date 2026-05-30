@@ -243,7 +243,7 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
         specdata['camerapix'][:, 1] = c_ends
 
         # use the coadded spectrum to build a robust emission-line mask
-        LM = LineMasker(sc_data.emlines.table)
+        LM = LineMasker(sc_data.emlines.table, sc_data.constraints)
         pix = LM.build_linemask(
             specdata['coadd_wave'], specdata['coadd_flux'],
             specdata['coadd_ivar'], specdata['coadd_res'],
@@ -397,7 +397,7 @@ def one_stacked_spectrum(specdata, meta, synthphot=True, debug_plots=False):
     specdata['camerapix'][:, 0] = c_starts
     specdata['camerapix'][:, 1] = c_ends
 
-    LM = LineMasker(sc_data.emlines.table)
+    LM = LineMasker(sc_data.emlines.table, sc_data.constraints)
     pix = LM.build_linemask(
         specdata['coadd_wave'], specdata['coadd_flux'],
         specdata['coadd_ivar'], specdata['coadd_res'],

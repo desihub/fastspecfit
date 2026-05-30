@@ -22,8 +22,9 @@ class LineMasker(object):
         Emission line table.
 
     """
-    def __init__(self, emline_table):
+    def __init__(self, emline_table, constraints):
         self.emline_table = emline_table
+        self.constraints  = constraints
 
 
     @staticmethod
@@ -551,13 +552,15 @@ class LineMasker(object):
                     maxsnr_broad = 0.
 
             if np.any(isNarrow):
-                linesigma_narrow = np.atleast_1d(linesigmas[isNarrow])[0]
+                # Use max across narrow groups: with separate forbidden/Balmer
+                # anchors the fitted sigmas can differ; max is conservative for masking.
+                linesigma_narrow = np.max(linesigmas[isNarrow])
                 linevshift_narrow = np.atleast_1d(linevshifts[isNarrow])[0]
                 maxsnr_narrow = np.max(linesnrs[isNarrow])
             else:
                 isNarrow = EMFit.isNarrow * Ifree
                 if np.any(isNarrow):
-                    linesigma_narrow = np.atleast_1d(linesigmas[isNarrow])[0]
+                    linesigma_narrow = np.max(linesigmas[isNarrow])
                     linevshift_narrow = np.atleast_1d(linevshifts[isNarrow])[0]
                     maxsnr_narrow = np.max(linesnrs[isNarrow])
                 else:
@@ -705,11 +708,12 @@ class LineMasker(object):
         camerapix = np.array([[0, len(wave)]]) # one camera
 
         # Read just the strong lines and determine which lines are in range of the camera.
-        EMFit = EMFitTools(emline_table=self.emline_table, uniqueid=uniqueid, stronglines=True)
+        EMFit = EMFitTools(emline_table=self.emline_table, constraints=self.constraints,
+                           uniqueid=uniqueid, stronglines=True)
         EMFit.compute_inrange_lines(redshift, wavelims=(np.min(wave), np.max(wave)))
 
         # Build the narrow and narrow+broad emission-line models.
-        linemodel_broad, linemodel_nobroad = EMFit.build_linemodels(separate_oiii_fit=False)
+        linemodel_broad, linemodel_nobroad = EMFit.build_linemodels()
 
         # ToDo: are there ever *no* "strong" lines in range?
         linetable = EMFit.line_table
@@ -784,7 +788,8 @@ class LineMasker(object):
 
         # Build the final pixel mask for *all* lines using our current best
         # knowledge of the broad Balmer lines....(comment continued below)
-        EMFit = EMFitTools(emline_table=self.emline_table, uniqueid=uniqueid, stronglines=False)
+        EMFit = EMFitTools(emline_table=self.emline_table, constraints=self.constraints,
+                           uniqueid=uniqueid, stronglines=False)
         EMFit.compute_inrange_lines(redshift, wavelims=(np.min(wave), np.max(wave)))
 
         linesigmas = np.zeros(len(EMFit.line_table))
