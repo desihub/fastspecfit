@@ -47,6 +47,11 @@ class TestDiagConversions:
         from fastspecfit.resolution import _mat_torows
         assert np.allclose(_mat_torows(_mat_torows(diag_matrix)), diag_matrix)
 
+    def test_tocolumns_roundtrip(self, diag_matrix):
+        """_mat_tocolumns(_mat_torows(X)) recovers X exactly."""
+        from fastspecfit.resolution import _mat_torows, _mat_tocolumns
+        assert np.allclose(_mat_tocolumns(_mat_torows(diag_matrix)), diag_matrix)
+
     def test_torows_preserves_center_diagonal(self, diag_matrix):
         from fastspecfit.resolution import _mat_torows
         w2 = diag_matrix.shape[0] // 2
