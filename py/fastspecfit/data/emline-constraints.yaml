@@ -1,0 +1,333 @@
+# FastSpecFit emission-line kinematic constraints
+# ================================================
+# Companion file to emlines.ecsv. Every line defined in emlines.ecsv
+# must appear exactly once in each profile, placed in one of:
+#   - a kinematic_group (as anchor or member)
+#   - free_lines  (independently fitted kinematics)
+#   - fixed_lines (amplitude fixed to zero, not fitted)
+# Lines in the global section are shared across all profiles and do not
+# need to be repeated in each profile. A startup consistency check
+# verifies that the union of placements equals the emlines.ecsv line list.
+#
+# Units:  sigma  [km/s],  vshift [km/s],  amplitude [10^-17 erg/s/cm^2/A]
+#
+# Schema rules (enforced at startup):
+#   - Every key under kinematic_groups.members, free_lines, and fixed_lines
+#     must be a name that exists in emlines.ecsv (or line_components below).
+#   - Every anchor must also exist in emlines.ecsv.
+#   - amplitude_constraints.fixed[].line and .ref must exist in emlines.ecsv.
+#   - amplitude_constraints.doublet_ratios[].line and .ref must exist in emlines.ecsv.
+#   - line_components[].base_line must exist in emlines.ecsv.
+#   - Within a profile, no line name may appear more than once across all placements.
+#   - bounds.sigma.min >= 0; bounds.sigma.min < bounds.sigma.max.
+#   - bounds.vshift.min < bounds.vshift.max.
+#   - fitting_strategy.final_pass.mode in {none, relax_inter_group, per_line}.
+#   - fitting_strategy.final_pass.adopt_if in {always, chi2_improves}.
+
+
+# =============================================================================
+# SECTION 1: Line component extensions
+# =============================================================================
+# Additional kinematic components beyond those in emlines.ecsv.
+# Add entries here when introducing outflow components, narrow sub-components
+# of broad lines, etc. Each entry must supply base_line (the existing
+# emlines.ecsv line at the same rest wavelength), and it must then appear
+# in a kinematic_group or free_lines in every profile.
+
+line_components: []
+
+
+# =============================================================================
+# SECTION 2: Amplitude constraints  (profile-independent)
+# =============================================================================
+# These apply regardless of which kinematic profile is active.
+
+amplitude_constraints:
+
+  # Fixed ratios: constrained amplitude = factor * reference amplitude.
+  # Factors encode the theoretical flux ratio corrected to velocity-space
+  # amplitudes (flux_ratio * lambda_constrained / lambda_reference).
+  # See comments in emlines.py for references.
+  fixed:
+    - line: nii_6548
+      ref:  nii_6584
+      factor: 0.32960    # 1/3.0326  ([NII] flux ratio 3.049, lambda-corrected)
+    - line: oiii_4959
+      ref:  oiii_5007
+      factor: 0.33729    # 1/2.9643  ([OIII] flux ratio 2.993, lambda-corrected)
+    - line: oii_7330
+      ref:  oii_7320
+      factor: 0.81633    # 1/1.225
+
+  # Doublet ratios: amplitude ratio is a free fitted parameter.
+  # The ratio is defined as line / ref, bounded as below.
+  # param_name is what appears in the output catalog.
+  doublet_ratios:
+    - line:       oii_3726
+      ref:        oii_3729
+      param_name: oii_doublet_ratio
+      bounds:     {min: 0.0, max: 2.0}
+      initial:    1.0
+    - line:       sii_6731
+      ref:        sii_6716
+      param_name: sii_doublet_ratio
+      bounds:     {min: 0.0, max: 2.0}
+      initial:    1.0
+    - line:       mgii_2796
+      ref:        mgii_2803
+      param_name: mgii_doublet_ratio
+      bounds:     {min: 0.0, max: 10.0}
+      initial:    1.0
+
+
+# =============================================================================
+# SECTION 3: Global placements  (apply to every profile)
+# =============================================================================
+# Lines here do not need to be listed again in any profile.
+
+global:
+
+  # Default bounds and initial guesses for all lines in global.free_lines.
+  # Individual lines can override these by using the long-form entry below.
+  default_bounds:
+    sigma:  {min: 1.0, max: 1.0e4}
+    vshift: {min: -2500.0, max: 2500.0}
+  default_initial:
+    sigma:  3000.0    # km/s; data-derived estimates override this at runtime
+    vshift: 0.0
+
+  # Lines with fully independent kinematics in every profile.
+  # These are UV and optical AGN/QSO-type lines (all isbroad=True,
+  # isbalmer=False in emlines.ecsv).
+  free_lines:
+    - lyalpha
+    - nv_1240
+    - oi_1304
+    - siliv_1396
+    - civ_1549
+    - heii_1640
+    - aliii_1857
+    - heii_4686
+
+  # Small kinematic pairs that are tied to each other but free from
+  # all profile-level groups. Bounds use the global UV/QSO defaults above.
+  kinematic_groups:
+
+    - name: ciii_aliii
+      # SiIII] 1892 is tied to CIII] 1908; both are broad AGN-type lines.
+      anchor: ciii_1908
+      bounds:
+        sigma:  {min: 1.0,     max: 1.0e4}
+        vshift: {min: -2500.0, max: 2500.0}
+      initial:
+        sigma:  3000.0
+        vshift: 0.0
+      members:
+        - siliii_1892   # amplitude free; kinematics tied to ciii_1908
+
+    - name: mgii_pair
+      # MgII 2796 kinematics follow MgII 2803; amplitude ratio is a free
+      # doublet parameter defined in amplitude_constraints.doublet_ratios.
+      anchor: mgii_2803
+      bounds:
+        sigma:  {min: 1.0,     max: 1.0e4}
+        vshift: {min: -2500.0, max: 2500.0}
+      initial:
+        sigma:  3000.0
+        vshift: 0.0
+      members:
+        - mgii_2796
+
+
+# =============================================================================
+# SECTION 4: Named kinematic profiles
+# =============================================================================
+# At runtime one profile pair (narrow_only + narrow_broad) is loaded.
+# Add new profiles here to experiment with different constraint schemes.
+#
+# Per-group fields:
+#   anchor  [string]  : line name; its vshift and sigma are the free parameters
+#   bounds  [mapping] : hard optimizer bounds applied to the anchor's vshift/sigma
+#   initial [mapping] : default starting point (overridden by data-derived estimates)
+#   members [list]    : lines tied to anchor with factor 1.0 for vshift and sigma
+#
+# Amplitude bounds (min: 0, max: data-derived) are set in _initial_guesses_and_bounds
+# and are not specified here.
+
+profiles:
+
+  # ---------------------------------------------------------------------------
+  narrow_only:
+  # ---------------------------------------------------------------------------
+  # Preferred when no significant broad Balmer component is detected.
+  # Two kinematic groups: all forbidden lines share [OIII] 5007; all narrow
+  # Balmer + HeI share Halpha. Broad Balmer amplitudes are fixed to zero.
+
+    kinematic_groups:
+
+      - name: forbidden
+        anchor: oiii_5007
+        bounds:
+          sigma:  {min: 1.0,    max: 750.0}
+          vshift: {min: -500.0, max: 500.0}
+        initial:
+          sigma:  150.0
+          vshift: 0.0
+        members:
+          - nev_3346
+          - nev_3426
+          - oii_3726      # amplitude also constrained via doublet_ratios
+          - oii_3729
+          - neiii_3869
+          - oiii_4363
+          - oiii_4959     # amplitude also constrained via amplitude_constraints.fixed
+          - nii_5755
+          - oi_6300
+          - siii_6312
+          - nii_6548      # amplitude also constrained via amplitude_constraints.fixed
+          - nii_6584
+          - sii_6716
+          - sii_6731      # amplitude also constrained via doublet_ratios
+          - ariii_7135
+          - oii_7320
+          - oii_7330      # amplitude also constrained via amplitude_constraints.fixed
+          - siii_9069
+          - siii_9532
+
+      - name: narrow_balmer
+        anchor: halpha
+        bounds:
+          sigma:  {min: 1.0,    max: 750.0}
+          vshift: {min: -500.0, max: 500.0}
+        initial:
+          sigma:  150.0
+          vshift: 0.0
+        members:
+          - h6
+          - hepsilon
+          - hdelta
+          - hgamma
+          - hbeta
+          - hei_4471
+          - hei_5876
+
+    free_lines: []
+
+    # Broad Balmer components are not fitted in this model.
+    fixed_lines:
+      - halpha_broad
+      - hbeta_broad
+      - hgamma_broad
+      - hdelta_broad
+      - hepsilon_broad
+      - h6_broad
+
+  # ---------------------------------------------------------------------------
+  narrow_broad:
+  # ---------------------------------------------------------------------------
+  # Preferred when a significant broad Balmer component is detected.
+  # Three kinematic groups: all narrow lines (Balmer + forbidden) share
+  # [NII] 6584; [OIII] 4959,5007 have separate kinematics; broad Balmer + HeI
+  # share Halpha_broad. The [OIII] doublet is kept separate because it
+  # frequently shows an outflow component distinct from the other forbidden lines.
+
+    kinematic_groups:
+
+      - name: narrow_all
+        # All narrow lines — Balmer, HeI, and forbidden — share one kinematic
+        # anchor. [OIII] 4959,5007 are excluded (handled in oiii_doublet below).
+        anchor: nii_6584
+        bounds:
+          sigma:  {min: 1.0,    max: 750.0}
+          vshift: {min: -500.0, max: 500.0}
+        initial:
+          sigma:  150.0
+          vshift: 0.0
+        members:
+          - nev_3346
+          - nev_3426
+          - oii_3726
+          - oii_3729
+          - neiii_3869
+          - oiii_4363
+          - nii_5755
+          - oi_6300
+          - siii_6312
+          - nii_6548
+          - halpha
+          - sii_6716
+          - sii_6731
+          - ariii_7135
+          - oii_7320
+          - oii_7330
+          - siii_9069
+          - siii_9532
+          - h6
+          - hepsilon
+          - hdelta
+          - hgamma
+          - hbeta
+          - hei_4471
+          - hei_5876
+
+      - name: oiii_doublet
+        anchor: oiii_5007
+        bounds:
+          sigma:  {min: 1.0,    max: 750.0}
+          vshift: {min: -500.0, max: 500.0}
+        initial:
+          sigma:  150.0
+          vshift: 0.0
+        members:
+          - oiii_4959   # amplitude also constrained via amplitude_constraints.fixed
+
+      - name: broad_balmer
+        anchor: halpha_broad
+        bounds:
+          sigma:  {min: 1.0,     max: 1.0e4}
+          vshift: {min: -2500.0, max: 2500.0}
+        initial:
+          sigma:  1000.0
+          vshift: 0.0
+        members:
+          - hbeta_broad
+          - hgamma_broad
+          - hdelta_broad
+          - hepsilon_broad
+          - h6_broad
+
+    free_lines:  []
+    fixed_lines: []
+
+
+# =============================================================================
+# SECTION 5: Fitting strategy
+# =============================================================================
+
+fitting_strategy:
+
+  final_pass:
+    # When enabled, a second optimization is run after the primary constrained
+    # fit, using the mode below. The result is adopted only if the chi2
+    # improvement (accounting for the additional free parameters via an
+    # F-test) clears the adoption threshold.
+    #
+    # mode options:
+    #   none              - no relaxation; primary constrained result is final
+    #   relax_inter_group - free the inter-group kinematic ties; within-group
+    #                       ties (e.g. Balmer lines tied to Halpha) are kept
+    #   per_line          - all kinematic parameters are freed; each line snaps
+    #                       independently to its chi2 minimum
+    #
+    # Amplitude constraints (fixed ratios and doublet ratios) are never
+    # relaxed regardless of mode.
+    enabled:   false
+    mode:      per_line
+    warm_start: true     # initialize from the primary best-fit values
+    adopt_if:  chi2_improves   # "always" | "chi2_improves"
+
+  monte_carlo:
+    # If true, each MC realization mirrors whatever the nominal fit adopted
+    # (primary only, or primary + final pass). The MC does not independently
+    # test whether to adopt the final pass result.
+    inherit_final_pass: true
