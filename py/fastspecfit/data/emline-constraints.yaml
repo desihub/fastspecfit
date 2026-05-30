@@ -90,7 +90,7 @@ global:
   # Default bounds and initial guesses for all lines in global.free_lines.
   # Individual lines can override these by using the long-form entry below.
   default_bounds:
-    sigma:  {min: 1.0, max: 1.0e4}
+    sigma:  {min: 1.0, max: 10000.0}
     vshift: {min: -2500.0, max: 2500.0}
   default_initial:
     sigma:  3000.0    # km/s; data-derived estimates override this at runtime
@@ -117,7 +117,7 @@ global:
       # SiIII] 1892 is tied to CIII] 1908; both are broad AGN-type lines.
       anchor: ciii_1908
       bounds:
-        sigma:  {min: 1.0,     max: 1.0e4}
+        sigma:  {min: 1.0,     max: 10000.0}
         vshift: {min: -2500.0, max: 2500.0}
       initial:
         sigma:  3000.0
@@ -130,7 +130,7 @@ global:
       # doublet parameter defined in amplitude_constraints.doublet_ratios.
       anchor: mgii_2803
       bounds:
-        sigma:  {min: 1.0,     max: 1.0e4}
+        sigma:  {min: 1.0,     max: 10000.0}
         vshift: {min: -2500.0, max: 2500.0}
       initial:
         sigma:  3000.0
@@ -284,7 +284,7 @@ profiles:
       - name: broad_balmer
         anchor: halpha_broad
         bounds:
-          sigma:  {min: 1.0,     max: 1.0e4}
+          sigma:  {min: 1.0,     max: 10000.0}
           vshift: {min: -2500.0, max: 2500.0}
         initial:
           sigma:  1000.0

@@ -86,13 +86,17 @@ class EmlineConstraints:
     def line_bounds(self, line_name):
         """Return ``(sigma_min, sigma_max, vshift_max, sigma_init, vshift_init)`` in km/s.
 
-        Searches global groups, global free lines, then all profiles.
-        Returns all zeros for lines in a profile's ``fixed_lines``.
+        Searches global groups, global free lines, then all profiles' kinematic
+        groups, and finally ``fixed_lines``. Kinematic groups across all profiles
+        are checked before ``fixed_lines`` because a line may be fixed in one
+        profile (e.g. ``narrow_only``) but carry real bounds in another
+        (e.g. ``narrow_broad``).  Returns all zeros only for lines that appear
+        exclusively in ``fixed_lines`` and nowhere else.
 
         Raises
         ------
         ValueError
-            If the line is not found in the constraint file.
+            If the line is not found anywhere in the constraint file.
         """
         for g in self.global_kinematic_groups:
             if line_name == g['anchor'] or line_name in g.get('members', []):
@@ -101,10 +105,13 @@ class EmlineConstraints:
             db, di = self.global_default_bounds, self.global_default_initial
             return (db['sigma']['min'], db['sigma']['max'],
                     db['vshift']['max'], di['sigma'], di['vshift'])
+        # Check kinematic groups across ALL profiles before fixed_lines.
         for profile in self.profiles.values():
             for g in profile.get('kinematic_groups', []):
                 if line_name == g['anchor'] or line_name in g.get('members', []):
                     return self._unpack_bounds(g)
+        # Only return zeros if the line appears in no kinematic group at all.
+        for profile in self.profiles.values():
             if line_name in profile.get('fixed_lines', []):
                 return (0., 0., 0., 0., 0.)
         raise ValueError(
@@ -113,7 +120,8 @@ class EmlineConstraints:
     @staticmethod
     def _unpack_bounds(g):
         sb, vb, ig = g['bounds']['sigma'], g['bounds']['vshift'], g['initial']
-        return (sb['min'], sb['max'], vb['max'], ig['sigma'], ig['vshift'])
+        return (float(sb['min']), float(sb['max']), float(vb['max']),
+                float(ig['sigma']), float(ig['vshift']))
 
     def _check_consistency(self, line_table):
         emline_names = set(line_table['name'])
