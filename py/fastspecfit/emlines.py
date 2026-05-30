@@ -477,6 +477,15 @@ class EMFitTools(object):
             sigma_min, sigma_max, vshift_max, _, _ = \
                 self.constraints.line_bounds(line_name)
 
+            # Lines in a profile's fixed_lines have all-zero bounds.
+            # Clamp their initials to zero so the bounds check passes.
+            if sigma_max == 0.:
+                initials[vshift] = 0.
+                initials[sigma]  = 0.
+                bounds[vshift]   = (0., 0.)
+                bounds[sigma]    = (0., 0.)
+                continue
+
             if line_isbroad:
                 if line_isbalmer:  # broad He+Balmer lines
                     initials[vshift] = initial_linevshift_balmer_broad
