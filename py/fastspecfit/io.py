@@ -1554,7 +1554,8 @@ def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_col
 
 def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
                       specprod=None, coadd_type=None, fphotofile=None,
-                      template_file=None, emlinesfile=None, fastphot=False,
+                      template_file=None, emlinesfile=None, constraintsfile=None,
+                      fastphot=False,
                       inputz=False, inputseeds=None, nmonte=50, vdisp_nominal=VDISP_NOMINAL,
                       vdisp_bounds=VDISP_BOUNDS, seed=1, uncertainty_floor=0.01,
                       minsnr_balmer_broad=2.5, nside=None, no_smooth_continuum=False,
@@ -1615,6 +1616,8 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         setdep(primhdr, 'FTEMPLATES_FILE', os.path.basename(template_file))
     if emlinesfile:
         setdep(primhdr, 'EMLINES_FILE', str(emlinesfile))
+    if constraintsfile:
+        setdep(primhdr, 'CONSTRAINTS_FILE', str(constraintsfile))
 
     meta.meta['EXTNAME'] = 'METADATA'
     specphot.meta['EXTNAME'] = 'SPECPHOT'

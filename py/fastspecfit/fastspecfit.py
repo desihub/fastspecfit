@@ -36,6 +36,7 @@ def make_init_sc_args(args, fastphot=False, fitstack=False):
     """
     return {
         'emlines_file':      getattr(args, 'emlinesfile', None),
+        'constraints_file':  getattr(args, 'constraintsfile', None),
         'fphotofile':        getattr(args, 'fphotofile', None),
         'fastphot':          fastphot,
         'fitstack':          fitstack,
@@ -100,6 +101,7 @@ def parse(options=None, rank=0):
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
     parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
     parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
+    parser.add_argument('--constraintsfile', type=str, default=None, help='Emission-line kinematic constraint YAML file.')
     parser.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
     parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
     parser.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum.')
@@ -225,7 +227,8 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
         emmodel = None
     else:
         emmodel = emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
-                                 phot, emline_table, broadlinefit=broadlinefit,
+                                 phot, emline_table, sc_data.constraints,
+                                 broadlinefit=broadlinefit,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
                                  debug_plots=debug_plots, specflux_monte=specflux_monte,
                                  continuummodel_monte=continuummodel_monte)
@@ -475,7 +478,8 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             outfile=args.outfile, specprod=Spec.specprod, coadd_type=Spec.coadd_type,
             fphotofile=sc_data.photometry.fphotofile,
             template_file=sc_data.templates.file,
-            emlinesfile=sc_data.emlines.file, fastphot=fastphot,
+            emlinesfile=sc_data.emlines.file,
+            constraintsfile=sc_data.constraints.file, fastphot=fastphot,
             inputz=input_redshifts is not None,
             nmonte=args.nmonte, vdisp_nominal=args.vdisp_nominal,
             vdisp_bounds=args.vdisp_bounds,

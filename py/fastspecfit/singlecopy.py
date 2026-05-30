@@ -26,6 +26,7 @@ class Singletons(object):
 
     def initialize(self,
                    emlines_file=None,
+                   constraints_file=None,
                    fphotofile=None,
                    fastphot=False,
                    vdisp_nominal=VDISP_NOMINAL,
@@ -75,8 +76,8 @@ class Singletons(object):
         if log_verbose:
             log.setLevel(DEBUG)
 
-        key = (emlines_file, fphotofile, fastphot, fitstack, ignore_photometry,
-               template_file, template_version, template_imf,
+        key = (emlines_file, constraints_file, fphotofile, fastphot, fitstack,
+               ignore_photometry, template_file, template_version, template_imf,
                vdisp_nominal, tuple(vdisp_bounds) if vdisp_bounds is not None else None)
         if getattr(self, '_init_key', None) == key:
             return
@@ -96,6 +97,11 @@ class Singletons(object):
         # emission line table
         self.emlines = LineTable(emlines_file)
         log.debug(f'Cached emission-line table {self.emlines.file}')
+
+        # kinematic constraint file (validated against emlines at startup)
+        from fastspecfit.emlines import EmlineConstraints
+        self.constraints = EmlineConstraints(constraints_file, self.emlines.table)
+        log.debug(f'Cached emission-line constraints {self.constraints.file}')
 
         # photometry
         self.photometry = Photometry(fphotofile, fitstack,
