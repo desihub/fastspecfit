@@ -80,9 +80,9 @@ def _mat_tocolumns(mat):
     w2 = w // 2
     result = np.empty((w, npix), dtype=mat.dtype)
     for r in range(w):
-        shift = r - w2
+        shift = w2 - r
         for j in range(npix):
-            result[r, j] = mat[r, (j - shift) % npix]
+            result[r, j] = mat[w - 1 - r, (j - shift) % npix]
     return result
 
 
@@ -130,6 +130,21 @@ def deconvolve_resolution_matrix(mat0,
         # Fallback for non-standard matrix widths
         gau_mat = _make_gaussian_matrix(width, sigma0_angstrom, pix_size_angstrom)
         mat_rows1 = scipy.linalg.solve(gau_mat, mat_rows)
+
+    # Renormalize the w2 edge columns of W_rows so their column sums match
+    # the interior median. Edge pixels of the DESI extraction have truncated
+    # kernels; without this step W under-weights flux at camera boundaries.
+    mult = float(np.median(mat_rows1.sum(axis=0)))
+    if mult == 0.:
+        mult = 1.
+    for i in range(w2):
+        N1 = mat_rows1[w2 - i:, i].sum()
+        if N1 != 0.:
+            mat_rows1[:, i] *= mult / N1
+        j = npix - 1 - i
+        N2 = mat_rows1[:w2 + 1 + i, j].sum()
+        if N2 != 0.:
+            mat_rows1[:, j] *= mult / N2
 
     return _mat_tocolumns(mat_rows1)
 
