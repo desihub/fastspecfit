@@ -1730,10 +1730,22 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
             emlineflux_model_pref = emlineflux_model_relax
             chi2_pref             = chi2_relax
             nfree_pref            = nfree_relax
-        log.info(fsftime('linefit_final_pass', time.time()-t0,
-                         context=f'targetid={data["uniqueid"]}, '
-                         f'mode={constraints.final_pass_mode}, '
-                         f'adopted={adopt_relax}'))
+            if constraints.final_pass_adopt_if == 'chi2_improves':
+                log.info(f'Adopting relaxed kinematic model ({constraints.final_pass_mode}): '
+                         f'delta-chi2={delta_chi2:.1f} > delta-ndof={delta_ndof:.0f}')
+            else:
+                log.info(f'Adopting relaxed kinematic model ({constraints.final_pass_mode}): '
+                         f'adopt_if=always')
+        else:
+            if constraints.final_pass_adopt_if == 'chi2_improves':
+                if delta_ndof <= 0:
+                    log.debug(f'Dropping relaxed kinematic model ({constraints.final_pass_mode}): '
+                              f'no additional free parameters (delta-ndof={delta_ndof:.0f})')
+                else:
+                    log.debug(f'Dropping relaxed kinematic model ({constraints.final_pass_mode}): '
+                              f'delta-chi2={delta_chi2:.1f} < delta-ndof={delta_ndof:.0f}')
+        log.debug(fsftime('linefit_final_pass', time.time()-t0,
+                          context=f'targetid={data["uniqueid"]}, mode={constraints.final_pass_mode}'))
 
     # Residual spectrum with no emission lines
     specflux_nolines = specflux - emlineflux_model_pref
