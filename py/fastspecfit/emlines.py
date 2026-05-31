@@ -45,13 +45,18 @@ class EmlineConstraints:
         verifies that every line appears exactly once in each profile.
 
     """
-    _DEFAULT_FILE = os.path.join(os.path.dirname(__file__), 'data',
-                                 'emline-constraints.yaml')
-
     def __init__(self, constraints_file=None, line_table=None):
         import yaml
+        from importlib import resources
 
-        self.file = constraints_file or self._DEFAULT_FILE
+        if constraints_file is None:
+            constraints_file = str(
+                resources.files('fastspecfit').joinpath('data/emline-constraints.yaml'))
+        self.file = constraints_file
+
+        if not os.path.isfile(self.file):
+            raise FileNotFoundError(
+                f'Emission-line constraint file {self.file} does not exist.')
         with open(self.file) as fh:
             raw = yaml.safe_load(fh)
 
@@ -81,6 +86,7 @@ class EmlineConstraints:
 
         if line_table is not None:
             self._check_consistency(line_table)
+
 
     def line_bounds(self, line_name):
         """Return ``(sigma_min, sigma_max, vshift_max, sigma_init, vshift_init)`` in km/s.
@@ -117,11 +123,13 @@ class EmlineConstraints:
         raise ValueError(
             f"Line '{line_name}' not found in constraint file '{self.file}'")
 
+
     @staticmethod
     def _unpack_bounds(g):
         sb, vb, ig = g['bounds']['sigma'], g['bounds']['vshift'], g['initial']
         return (float(sb['min']), float(sb['max']), float(vb['max']),
                 float(ig['sigma']), float(ig['vshift']))
+
 
     def _check_consistency(self, line_table):
         emline_names = set(line_table['name'])
@@ -158,13 +166,15 @@ class EMFitTools(object):
     ----------
     emline_table : :class:`astropy.table.Table`
         Table of emission lines to fit.
+    constraints : :class:`EmlineConstraints`
+        Parsed kinematic constraint file providing kinematic groups,
+        amplitude constraints, doublet ratio bounds, and fitting strategy.
     uniqueid : str or None, optional
         Unique identifier for the current object, used in log messages.
     stronglines : bool, optional
         If ``True``, restrict to strong lines only. Defaults to ``False``.
 
     """
-
     def __init__(self, emline_table, constraints, uniqueid=None, outfile_base='',
                  stronglines=False):
 
@@ -1545,6 +1555,9 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
         Photometry object providing filter curves for synthetic photometry.
     emline_table : :class:`astropy.table.Table`
         Table of emission lines to fit.
+    constraints : :class:`EmlineConstraints`
+        Parsed kinematic constraint file; controls kinematic groups,
+        amplitude constraints, and optional final relaxation pass.
     minsnr_balmer_broad : float, optional
         Minimum S/N required to adopt the broad Balmer component.
         Defaults to 2.5.

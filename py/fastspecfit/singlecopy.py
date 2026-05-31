@@ -45,6 +45,10 @@ class Singletons(object):
         emlines_file : :class:`str` or None, optional
             Path to the emission-line parameter file; uses the bundled
             default when ``None``.
+        constraints_file : :class:`str` or None, optional
+            Path to the emission-line kinematic constraint YAML file; uses
+            the bundled default when ``None``. A consistency check against
+            ``emlines_file`` is run at startup.
         fphotofile : :class:`str` or None, optional
             Path to the photometric configuration YAML file; uses the
             bundled DR9 default when ``None``.

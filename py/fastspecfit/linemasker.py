@@ -20,6 +20,9 @@ class LineMasker(object):
     ----------
     emline_table : :class:`astropy.table.Table`
         Emission line table.
+    constraints : :class:`fastspecfit.emlines.EmlineConstraints`
+        Parsed kinematic constraint file; passed to :class:`~fastspecfit.emlines.EMFitTools`
+        for the preliminary patch-fitting step.
 
     """
     def __init__(self, emline_table, constraints):
