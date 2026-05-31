@@ -321,7 +321,7 @@ fitting_strategy:
     #
     # Amplitude constraints (fixed ratios and doublet ratios) are never
     # relaxed regardless of mode.
-    enabled:   false
+    enabled:   true
     mode:      per_line
     warm_start: true     # initialize from the primary best-fit values
     adopt_if:  chi2_improves   # "always" | "chi2_improves"
