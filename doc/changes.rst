@@ -5,7 +5,10 @@ Change Log
 3.4.2 (not released yet)
 ------------------------
 
-*
+* Use original resolution matrix for continuum-fitting; major bug fix
+  in resolution matrix deconvolution [`PR #256`_].
+
+.. _`PR #256`: https://github.com/desihub/fastspecfit/pull/256
 
 3.4.1 (2026-05-26)
 ------------------

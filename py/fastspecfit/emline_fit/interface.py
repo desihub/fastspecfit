@@ -545,7 +545,7 @@ def _build_model_core(line_parameters,
                           redshift,
                           sigma_G)
 
-        resolution_matrices[icam].dot(mf, model_fluxes[s:e])
+        resolution_matrices[icam].dot_deconv(mf, model_fluxes[s:e])
 
 
 def _build_multimodel_core(line_parameters,
