@@ -494,7 +494,8 @@ class LineMasker(object):
                                                   param_bounds, wave,
                                                   flux, weights, redshift,
                                                   resolution_matrix, camerapix,
-                                                  continuum_patches=continuum_patches)
+                                                  continuum_patches=continuum_patches,
+                                                  ftol=1e-3, xtol=1e-5)
 
                 # Update the initial guesses as well as linesigmas and
                 # linevshifts (for linepix_and_contpix, at the top of the
