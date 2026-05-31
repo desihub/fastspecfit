@@ -411,14 +411,20 @@ the functions described here.
 motivated constraints that reduce the number of free kinematic parameters.  Lines within
 a \emph{kinematic group} share a common velocity shift $\Delta v$ and line-width $s$,
 tied to a single \emph{anchor} line with a fixed multiplicative factor of unity.  The
-groupings differ between the two models described below.
+groupings differ between the two models described below.  All constraints---kinematic
+groups, amplitude ratios, optimizer bounds, and fitting strategy---are read at startup
+from the bundled configuration file \texttt{data/emline-constraints.yaml}.
 
-Lines that belong to neither group---primarily UV and broad AGN lines (Ly$\alpha$,
-[N\,v]~$\lambda$1240, O\,\textsc{i}~$\lambda$1304, Si\,\textsc{iv}~$\lambda$1396,
-C\,\textsc{iv}~$\lambda$1549, He\,\textsc{ii}~$\lambda$1640, Al\,\textsc{iii}~$\lambda$1857,
-Si\,\textsc{iii}]~$\lambda$1892, C\,\textsc{iii}]~$\lambda$1908,
-Mg\,\textsc{ii}~$\lambda\lambda$2796,2803, and He\,\textsc{ii}~$\lambda$4686)---carry
-independently free kinematics in both models.
+Eight UV and broad AGN lines carry independently free kinematics in both models:
+Ly$\alpha$, [N\,v]~$\lambda$1240, O\,\textsc{i}~$\lambda$1304,
+Si\,\textsc{iv}~$\lambda$1396, C\,\textsc{iv}~$\lambda$1549,
+He\,\textsc{ii}~$\lambda$1640, Al\,\textsc{iii}~$\lambda$1857, and
+He\,\textsc{ii}~$\lambda$4686.  Two additional global kinematic pairs are applied
+regardless of which profile is active: Si\,\textsc{iii}]~$\lambda$1892 is tied to
+C\,\textsc{iii}]~$\lambda$1908 (anchor), and Mg\,\textsc{ii}~$\lambda$2796 is tied to
+Mg\,\textsc{ii}~$\lambda$2803 (anchor, with the amplitude ratio a free doublet parameter;
+Section~\ref{ssec:amp_constraints}).  Both global pairs use the broad-line bounds
+($1 < s < 10{,}000$~km/s, $|\Delta v| < 2{,}500$~km/s).
 
 \subsection{Narrow-only model (\texttt{linemodel\_nobroad})}
 \label{ssec:nobroad}
@@ -450,12 +456,13 @@ Forbidden & [O\,\textsc{iii}]~$\lambda$5007
     [S\,\textsc{iii}]~$\lambda\lambda$9069,9532 \\[4pt]
 Narrow Balmer + He\,\textsc{i} & H$\alpha$
   & H6~($\lambda$3890), H$\epsilon$, H$\delta$, H$\gamma$,
-    H$\beta$, H$\alpha$,
+    H$\beta$,
     He\,\textsc{i}~$\lambda$4471, He\,\textsc{i}~$\lambda$5876 \\
 \bottomrule
 \end{tabular}
 \caption{Kinematic groups in the narrow-only model.  All lines within a group share
-  the anchor's $\Delta v$ and $s$.  [O\,\textsc{iii}]~$\lambda$4959 is also subject to a
+  the anchor's $\Delta v$ and $s$, subject to bounds $1 < s < 750$~km/s and
+  $|\Delta v| < 500$~km/s.  [O\,\textsc{iii}]~$\lambda$4959 is also subject to a
   fixed amplitude constraint relative to [O\,\textsc{iii}]~$\lambda$5007
   (Table~\ref{tab:amp_constraints}).}
 \label{tab:groups_nobroad}
@@ -493,7 +500,10 @@ Broad Balmer & H$\alpha_{\mathrm{broad}}$
     H6$_{\mathrm{broad}}$ \\
 \bottomrule
 \end{tabular}
-\caption{Kinematic groups in the narrow+broad model.}
+\caption{Kinematic groups in the narrow+broad model.  Narrow groups (\emph{narrow all}
+  and \emph{[O\,\textsc{iii}] doublet}) are bounded by $1 < s < 750$~km/s and
+  $|\Delta v| < 500$~km/s; the broad Balmer group by $1 < s < 10{,}000$~km/s and
+  $|\Delta v| < 2{,}500$~km/s.}
 \label{tab:groups_broad}
 \end{table}
 
@@ -525,6 +535,22 @@ Mg\,\textsc{ii}~$\lambda$2796        & Mg\,\textsc{ii}~$\lambda$2803       & $r$
   ratios are fitted free parameters that encode density-sensitive flux ratios.}
 \label{tab:amp_constraints}
 \end{table}
+
+
+\subsection{Final optimization pass}
+\label{ssec:final_pass}
+
+By default, \textsc{FastSpecFit} runs a second optimization after the primary
+constrained fit.  This pass operates in \texttt{per\_line} mode: all kinematic ties
+between groups are released so that every line's $\Delta v$ and $s$ snap independently
+to their $\chi^2$ minimum, while amplitude constraints (fixed ratios and doublet ratios;
+Section~\ref{ssec:amp_constraints}) are always preserved.  The pass is warm-started from
+the primary best-fit values.  The relaxed solution is adopted only if the improvement in
+$\chi^2$ is significant accounting for the additional free parameters (criterion
+\texttt{chi2\_improves}); otherwise the primary constrained result is retained.  Monte
+Carlo realizations mirror whichever model was adopted for the nominal spectrum, so they
+do not independently re-evaluate the adoption criterion.  All of these defaults are
+governed by the \texttt{fitting\_strategy} block in \texttt{data/emline-constraints.yaml}.
 
 
 \section*{Acknowledgments}
