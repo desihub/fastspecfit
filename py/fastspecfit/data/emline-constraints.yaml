@@ -51,10 +51,10 @@ amplitude_constraints:
   fixed:
     - line: nii_6548
       ref:  nii_6584
-      factor: 0.32960    # 1/3.0326  ([NII] flux ratio 3.049, lambda-corrected)
+      factor: 0.32975    # 1/3.0326  ([NII] flux ratio 3.049, lambda-corrected)
     - line: oiii_4959
       ref:  oiii_5007
-      factor: 0.33729    # 1/2.9643  ([OIII] flux ratio 2.993, lambda-corrected)
+      factor: 0.33735    # 1/2.9643  ([OIII] flux ratio 2.993, lambda-corrected)
     - line: oii_7330
       ref:  oii_7320
       factor: 0.81633    # 1/1.225

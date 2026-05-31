@@ -1718,10 +1718,13 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                     linemodel_relax['tiedfactor'][i]  = 0.
                     linemodel_relax['free'][i]        = True
         elif constraints.final_pass_mode == 'relax_inter_group':
-            raise NotImplementedError("relax_inter_group mode requires a "
-                                      "dedicated profile in the constraint file")
+            errmsg = "Relax_inter_group mode requires a dedicated profile in the constraint file."
+            log.critical(errmsg)
+            raise NotImplementedError(errmsg)
         else:
-            raise ValueError(f"Unknown final_pass mode: '{constraints.final_pass_mode}'")
+            errmsg = f"Unknown final_pass mode: '{constraints.final_pass_mode}'"
+            log.critical(errmsg)
+            raise ValueError(errmsg)
 
         init_relax = (linemodel_pref['value'].value
                       if constraints.final_pass_warm_start else initial_guesses)
@@ -1746,10 +1749,10 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
             emlineflux_model_pref = emlineflux_model_relax
             chi2_pref             = chi2_relax
             nfree_pref            = nfree_relax
-        log.debug(fsftime('linefit_final_pass', time.time()-t0,
-                          context=f'targetid={data["uniqueid"]}, '
-                                  f'mode={constraints.final_pass_mode}, '
-                                  f'adopted={adopt_relax}'))
+        log.info(fsftime('linefit_final_pass', time.time()-t0,
+                         context=f'targetid={data["uniqueid"]}, '
+                         f'mode={constraints.final_pass_mode}, '
+                         f'adopted={adopt_relax}'))
 
     # Residual spectrum with no emission lines
     specflux_nolines = specflux - emlineflux_model_pref
