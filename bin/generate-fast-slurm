@@ -39,10 +39,6 @@ _ACCOUNT   = 'desi'
 _QOS       = 'regular'
 _MAIL_USER = 'jmoustakas@siena.edu'
 
-# Pick up OUTDIR_DATA from the environment (set by fastspecfit-env.sh) or fall
-# back to the standard PSCRATCH location.
-_OUTDIR = os.environ.get('OUTDIR_DATA') or os.path.expandvars('$PSCRATCH/fastspecfit/data')
-
 def _default_env_script():
     # Prefer a locally-edited copy in the current working directory (the normal
     # production workflow copies etc/fastspecfit-env.sh to $OUTDIR_DATA and edits it there).
@@ -54,7 +50,40 @@ def _default_env_script():
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         'etc', 'fastspecfit-env.sh')
 
+
+def _outdir_from_env_script(env_script):
+    """Parse OUTDIR_DATA from env_script without sourcing the full file.
+
+    Finds the ``export OUTDIR_DATA=...`` line and evaluates it in a minimal
+    bash subshell so that shell variables like ``$PSCRATCH`` still expand.
+    Returns None if the file cannot be read or the line is not found.
+    """
+    import re, subprocess
+    try:
+        with open(env_script) as fh:
+            for line in fh:
+                m = re.match(r'\s*export\s+OUTDIR_DATA\s*=(.*)', line)
+                if m:
+                    val = m.group(1).strip()
+                    r = subprocess.run(['bash', '-c', f'echo {val}'],
+                                       capture_output=True, text=True, timeout=5)
+                    result = r.stdout.strip()
+                    if result:
+                        return result
+    except Exception:
+        pass
+    return None
+
+
 _ENV_SCRIPT = _default_env_script()
+
+# OUTDIR_DATA priority:
+#   1. already set in the environment (user sourced the env script manually)
+#   2. parsed from the local fastspecfit-env.sh (user edited but did not source)
+#   3. standard PSCRATCH fallback
+_OUTDIR = (os.environ.get('OUTDIR_DATA')
+           or _outdir_from_env_script(_ENV_SCRIPT)
+           or os.path.expandvars('$PSCRATCH/fastspecfit/data'))
 
 # Maximum wall-clock hours allowed for the chosen QOS (used when --time is not given).
 _MAX_HOURS = {'regular': 12, 'debug': 0.5, 'premium': 24}
