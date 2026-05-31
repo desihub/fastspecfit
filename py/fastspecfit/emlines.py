@@ -45,7 +45,6 @@ class EmlineConstraints:
         verifies that every line appears exactly once in each profile.
 
     """
-
     _DEFAULT_FILE = os.path.join(os.path.dirname(__file__), 'data',
                                  'emline-constraints.yaml')
 
@@ -97,6 +96,7 @@ class EmlineConstraints:
         ------
         ValueError
             If the line is not found anywhere in the constraint file.
+
         """
         for g in self.global_kinematic_groups:
             if line_name == g['anchor'] or line_name in g.get('members', []):
@@ -541,20 +541,22 @@ class EMFitTools(object):
                 initials[amp_idx] = amp
                 bounds[amp_idx] = np.array([0., mx])
 
-        # Specialized parameters on the MgII, [OII], and [SII] doublet ratios. See
-        # https://github.com/desihub/fastspecfit/issues/39.
+        # Doublet ratio bounds and initial values from the constraint file.
         doublet_bounds = {
-            'mgii_doublet_ratio' : (0.0, 10.0), # MgII 2796/2803
-            'oii_doublet_ratio'  : (0.0,  2.0), # [OII] 3726/3729 # (0.5, 1.5) # (0.66, 1.4)
-            'sii_doublet_ratio'  : (0.0,  2.0), # [SII] 6731/6716 # (0.5, 1.5) # (0.67, 1.2)
+            dr['param_name']: (float(dr['bounds']['min']), float(dr['bounds']['max']))
+            for dr in self.constraints.doublet_ratios
+        }
+        doublet_initials = {
+            dr['param_name']: float(dr['initial'])
+            for dr in self.constraints.doublet_ratios
         }
 
         param_names = self.param_table['name'].value
 
         for iparam in self.doublet_idx:
             param_name = param_names[iparam]
-            bounds[iparam] = doublet_bounds[param_name]
-            initials[iparam] = 1.
+            bounds[iparam]   = doublet_bounds[param_name]
+            initials[iparam] = doublet_initials[param_name]
 
         # Make sure all parameters lie within their respective bounds.
         for iparam, param_name in enumerate(self.param_table['name'].value):
