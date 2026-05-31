@@ -5,9 +5,16 @@ Change Log
 3.4.2 (not released yet)
 ------------------------
 
+* Introduce a YAML-based emission-line constraint system: add
+  ``data/emline-constraints.yaml`` to define kinematic groups, doublet
+  bounds, amplitude constraints, and fitting-strategy parameters; add
+  ``EmlineConstraints`` class wired through ``EMFitTools``, ``linemasker``,
+  and ``qa``; enable the final per-line optimization pass by default
+  [`PR #257`_].
 * Use original resolution matrix for continuum-fitting; major bug fix
   in resolution matrix deconvolution [`PR #256`_].
 
+.. _`PR #257`: https://github.com/desihub/fastspecfit/pull/257
 .. _`PR #256`: https://github.com/desihub/fastspecfit/pull/256
 
 3.4.1 (2026-05-26)
