@@ -7,6 +7,7 @@ Methods and tools for fitting emission lines.
 """
 import os
 import time
+import logging
 import numpy as np
 from enum import IntEnum
 from itertools import chain
@@ -1219,26 +1220,6 @@ class EMFitTools(object):
                 line_stats[f'{groupname}_Z'] = redshift
 
 
-        import logging
-        if log.getEffectiveLevel() == logging.DEBUG:
-            for ln in self.line_table['name'].value:
-                linename = ln.upper()
-                for col in ('VSHIFT', 'SIGMA', 'MODELAMP', 'AMP', 'AMP_IVAR', 'CHI2', 'NPIX'):
-                    val = fastfit[f'{linename}_{col}']
-                    log.debug(f'{linename} {col}: {val:.4f}')
-                for col in ('FLUX', 'BOXFLUX', 'FLUX_IVAR', 'BOXFLUX_IVAR', 'CONT', 'CONT_IVAR', 'EW', 'EW_IVAR', 'FLUX_LIMIT'):
-                    val = fastfit[f'{linename}_{col}']
-                    log.debug(f'{linename} {col}: {val:.4f}')
-                print()
-
-            for lname in ['MGII', 'OII', 'SII']:
-                col = f'{lname}_DOUBLET_RATIO'
-                val = fastfit[col]
-                val_ivar = fastfit[f'{col}_IVAR']
-                log.debug(f'{col}: {val:.4f}')
-                log.debug(f'{col}_IVAR: {val_ivar:.4f}')
-            print()
-
         return line_stats
 
 
@@ -1912,7 +1893,7 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
 
     log.debug(fsftime('emline_specfit', time.time()-tall))
 
-    if debug_plots:
+    if debug_plots or log.isEnabledFor(logging.DEBUG):
         _fastfit_cols = [
             'RCHI2_LINE',
             'NARROW_Z', 'NARROW_ZRMS', 'BROAD_Z', 'BROAD_ZRMS',

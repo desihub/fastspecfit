@@ -297,6 +297,11 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
     if verbose:
         args.verbose = True
 
+    # --debug-plots implies --verbose: diagnostic plots are only useful
+    # alongside debug-level log output.
+    if getattr(args, 'debug_plots', False):
+        args.verbose = True
+
     targetids = None
     input_redshifts = None
     input_seeds = None
