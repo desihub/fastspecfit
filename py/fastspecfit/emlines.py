@@ -76,6 +76,12 @@ class EmlineConstraints:
         # named profiles
         self.profiles = raw['profiles']
 
+        # non-parametric moment groups: {output_label: [line_names]}
+        self.moments = {
+            entry['label']: list(entry['lines'])
+            for entry in raw.get('moments', [])
+        }
+
         # fitting strategy
         fs = raw['fitting_strategy']
         fp = fs['final_pass']
@@ -155,6 +161,14 @@ class EmlineConstraints:
                     f"Constraint profile '{profile_name}' references "
                     f"lines not in emlines.ecsv: {sorted(extra)}")
 
+        # Validate moment line names.
+        for label, lines in self.moments.items():
+            unknown = set(lines) - emline_names
+            if unknown:
+                raise ValueError(
+                    f"Moment group '{label}' references lines not in "
+                    f"emlines.ecsv: {sorted(unknown)}")
+
 
 class EMFitTools(object):
     """Tools for fitting emission-line spectra from DESI spectroscopy.
@@ -189,9 +203,8 @@ class EMFitTools(object):
             isstrong = self.line_table['isstrong'].value
             self.line_table = self.line_table[isstrong]
 
-        # lines for which we want to measure moments
-        self.moment_lines = {'CIV_1549': ['civ_1549'], 'MGII_2800': ['mgii_2796', 'mgii_2803'],
-                             'HBETA': ['hbeta'], 'OIII_5007': ['oiii_5007']} #, 'HALPHA': ['halpha']}
+        # lines for which we want to measure non-parametric moments
+        self.moment_lines = constraints.moments
 
         # Build some convenience (Boolean) arrays that we'll use in many places:
         line_isbroad  = self.line_table['isbroad'].value

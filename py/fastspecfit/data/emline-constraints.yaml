@@ -331,3 +331,23 @@ fitting_strategy:
     # (primary only, or primary + final pass). The MC does not independently
     # test whether to adopt the final pass result.
     inherit_final_pass: true
+
+
+# =============================================================================
+# SECTION 6: Non-parametric spectral moments
+# =============================================================================
+# Lines (or line groups) for which non-parametric flux moments are measured
+# in addition to the fitted Gaussian parameters.  Each entry maps an output
+# column prefix (label) to one or more line names from emlines.ecsv.
+# Multiple lines with the same label are aggregated before moment computation
+# (e.g. a doublet treated as a single feature).
+
+moments:
+  - label: CIV_1549
+    lines: [civ_1549]
+  - label: MGII_2800
+    lines: [mgii_2796, mgii_2803]
+  - label: HBETA
+    lines: [hbeta]
+  - label: OIII_5007
+    lines: [oiii_5007]

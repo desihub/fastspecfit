@@ -63,7 +63,7 @@ class TestLoading:
         assert 'narrow_broad' in ec.profiles
 
     def test_fitting_strategy_defaults(self, ec):
-        assert ec.final_pass_enabled is False
+        assert ec.final_pass_enabled is True
         assert ec.final_pass_mode == 'per_line'
         assert ec.final_pass_warm_start is True
         assert ec.final_pass_adopt_if == 'chi2_improves'
