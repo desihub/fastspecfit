@@ -5,9 +5,8 @@ Change Log
 3.4.2 (not released yet)
 ------------------------
 
-* Use original resolution matrix for continuum-fitting (deconvolved
-  resolution matrix was not being handled correctly, producing
-  spurious ringing [`PR #256`_].
+* Use original resolution matrix for continuum-fitting; major bug fix
+  in resolution matrix deconvolution [`PR #256`_].
 
 .. _`PR #256`: https://github.com/desihub/fastspecfit/pull/256
 
