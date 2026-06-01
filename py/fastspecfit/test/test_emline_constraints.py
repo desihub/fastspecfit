@@ -83,7 +83,7 @@ class TestLoading:
         assert gfp['narrow_only.narrow_balmer']['free_sigma']  is True
 
         # narrow_broad: narrow_all frees vshift only
-        assert gfp['narrow_broad.narrow_all']['free_vshift']  is True
+        assert gfp['narrow_broad.narrow_all']['free_vshift']  is False
         assert gfp['narrow_broad.narrow_all']['free_sigma']   is False
         # oiii_doublet and broad_balmer stay fully tied
         assert gfp['narrow_broad.oiii_doublet']['free_vshift'] is False
@@ -95,9 +95,13 @@ class TestLoading:
         assert gfp['global.ciii_aliii']['free_vshift'] is False
         assert gfp['global.mgii_pair']['free_vshift']  is False
 
-        # reserved fields present and null
-        assert gfp['narrow_broad.narrow_all']['delta_vshift_max'] is None
-        assert gfp['narrow_broad.narrow_all']['delta_sigma_max']  is None
+        # delta bounds: narrow groups use 100/100, broad groups use 500/1000
+        assert gfp['narrow_broad.narrow_all']['delta_vshift_max']  == 100.0
+        assert gfp['narrow_broad.narrow_all']['delta_sigma_max']   == 100.0
+        assert gfp['narrow_broad.broad_balmer']['delta_vshift_max'] == 500.0
+        assert gfp['narrow_broad.broad_balmer']['delta_sigma_max']  == 1000.0
+        assert gfp['global.ciii_aliii']['delta_vshift_max'] == 500.0
+        assert gfp['global.mgii_pair']['delta_sigma_max']   == 1000.0
 
 
 # ── Group 2: consistency check ────────────────────────────────────────────────

@@ -88,11 +88,13 @@ class EmlineConstraints:
                     raise ValueError(
                         f"Group '{g['name']}' final_pass in {context} "
                         f"is missing required key '{key}'.")
+            dvm = gfp.get('delta_vshift_max')
+            dsm = gfp.get('delta_sigma_max')
             return {
                 'free_vshift':      bool(gfp['free_vshift']),
                 'free_sigma':       bool(gfp['free_sigma']),
-                'delta_vshift_max': gfp.get('delta_vshift_max'),  # reserved; not yet used
-                'delta_sigma_max':  gfp.get('delta_sigma_max'),   # reserved; not yet used
+                'delta_vshift_max': float(dvm) if dvm is not None else None,
+                'delta_sigma_max':  float(dsm) if dsm is not None else None,
             }
 
         # group_final_pass: keyed by 'global.<name>' or '<profile>.<name>'
@@ -1769,8 +1771,47 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
         else:
             init_relax = (linemodel_pref['value'].value
                           if fp['warm_start'] else initial_guesses)
+
+            # Tighten bounds for freed parameters around their warm-start values
+            # using per-group delta_vshift_max / delta_sigma_max.
+            #
+            # Guardrails:
+            #   - Skip tightening if the warm-start is at (or within 1 km/s of)
+            #     an existing bound: a boundary-pinned value is unreliable as a
+            #     center, and the parameter is likely unconstrained anyway.
+            #   - Construction guarantees warm_val ∈ [new_lb, new_ub] whenever
+            #     delta > 0 and warm_val is strictly inside the original bounds.
+            #   - Sigma floor (param_bounds[i,0] >= 1 km/s for all sigma params)
+            #     prevents new_lb from going negative.
+            _BOUND_TOL = 1.0  # km/s; treat warm-start within this of a bound as pinned
+            param_bounds_relax = param_bounds.copy()
+            for i in range(len(linemodel_relax)):
+                if not linemodel_relax['free'][i]:
+                    continue
+                gfp = constraints.group_final_pass.get(linemodel_relax['group_name'][i])
+                if gfp is None:
+                    continue
+                param_type = EMFit.param_table['type'][i]
+                if param_type == ParamType.VSHIFT:
+                    delta = gfp['delta_vshift_max']
+                elif param_type == ParamType.SIGMA:
+                    delta = gfp['delta_sigma_max']
+                else:
+                    continue
+                if delta is None:
+                    continue
+                lb, ub   = param_bounds[i, 0], param_bounds[i, 1]
+                warm_val = init_relax[i]
+                if warm_val <= lb + _BOUND_TOL or warm_val >= ub - _BOUND_TOL:
+                    continue  # boundary-pinned; keep original bounds
+                new_lb = max(lb, warm_val - delta)
+                new_ub = min(ub, warm_val + delta)
+                if new_lb < new_ub:  # safety: only apply if bounds are non-degenerate
+                    param_bounds_relax[i, 0] = new_lb
+                    param_bounds_relax[i, 1] = new_ub
+
             emlineflux_model_relax, nfree_relax, chi2_relax = linefit(
-                EMFit, linemodel_relax, init_relax, param_bounds,
+                EMFit, linemodel_relax, init_relax, param_bounds_relax,
                 emlinewave, emlineflux, emlineivar, weights, redshift,
                 resolution_matrix, camerapix)
 

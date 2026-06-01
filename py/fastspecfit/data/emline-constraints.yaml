@@ -125,7 +125,7 @@ global:
         vshift: 0.0
       members:
         - siliii_1892   # amplitude free; kinematics tied to ciii_1908
-      final_pass: {free_vshift: false, free_sigma: false, delta_vshift_max: null, delta_sigma_max: null}
+      final_pass: {free_vshift: false, free_sigma: false, delta_vshift_max: 500.0, delta_sigma_max: 1000.0}
 
     - name: mgii_pair
       # MgII 2796 kinematics follow MgII 2803; amplitude ratio is a free
@@ -139,7 +139,7 @@ global:
         vshift: 0.0
       members:
         - mgii_2796
-      final_pass: {free_vshift: false, free_sigma: false, delta_vshift_max: null, delta_sigma_max: null}
+      final_pass: {free_vshift: false, free_sigma: false, delta_vshift_max: 500.0, delta_sigma_max: 1000.0}
 
 
 # =============================================================================
@@ -203,7 +203,7 @@ profiles:
           - oii_7330      # amplitude also constrained via amplitude_constraints.fixed
           - siii_9069
           - siii_9532
-        final_pass: {free_vshift: true, free_sigma: true, delta_vshift_max: null, delta_sigma_max: null}
+        final_pass: {free_vshift: true, free_sigma: true, delta_vshift_max: 100.0, delta_sigma_max: 100.0}
 
       - name: narrow_balmer
         anchor: halpha
@@ -221,7 +221,7 @@ profiles:
           - hbeta
           - hei_4471
           - hei_5876
-        final_pass: {free_vshift: true, free_sigma: true, delta_vshift_max: null, delta_sigma_max: null}
+        final_pass: {free_vshift: true, free_sigma: true, delta_vshift_max: 100.0, delta_sigma_max: 100.0}
 
     free_lines: []
 
@@ -290,7 +290,7 @@ profiles:
           - hei_5876
         # Free individual vshifts to absorb wavelength calibration offsets;
         # keep sigma tied so the line-width constraint stabilises the blend.
-        final_pass: {free_vshift: true, free_sigma: false, delta_vshift_max: null, delta_sigma_max: null}
+        final_pass: {free_vshift: false, free_sigma: false, delta_vshift_max: 100.0, delta_sigma_max: 100.0}
 
       - name: oiii_doublet
         anchor: oiii_5007
@@ -303,7 +303,7 @@ profiles:
         members:
           - oiii_4959   # amplitude also constrained via amplitude_constraints.fixed
         # Keep the doublet fully tied at all times.
-        final_pass: {free_vshift: false, free_sigma: false, delta_vshift_max: null, delta_sigma_max: null}
+        final_pass: {free_vshift: false, free_sigma: false, delta_vshift_max: 100.0, delta_sigma_max: 100.0}
 
       - name: broad_balmer
         anchor: halpha_broad
@@ -321,7 +321,7 @@ profiles:
           - h6_broad
         # Keep broad Balmer lines fully tied: faint higher-order members need
         # the constraint provided by the bright halpha_broad anchor.
-        final_pass: {free_vshift: false, free_sigma: false, delta_vshift_max: null, delta_sigma_max: null}
+        final_pass: {free_vshift: false, free_sigma: false, delta_vshift_max: 500.0, delta_sigma_max: 1000.0}
 
     free_lines:  []
     fixed_lines: []
