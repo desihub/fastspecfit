@@ -21,7 +21,7 @@
 #   - Within a profile, no line name may appear more than once across all placements.
 #   - bounds.sigma.min >= 0; bounds.sigma.min < bounds.sigma.max.
 #   - bounds.vshift.min < bounds.vshift.max.
-#   - profiles.<name>.final_pass.mode in {none, relax_inter_group, per_line}.
+#   - Every kinematic group (global and profile-level) must contain a final_pass block.
 #   - profiles.<name>.final_pass.adopt_if in {always, chi2_improves}.
 #   - Every profile must contain a final_pass block with all required keys.
 
@@ -125,6 +125,7 @@ global:
         vshift: 0.0
       members:
         - siliii_1892   # amplitude free; kinematics tied to ciii_1908
+      final_pass: {free_vshift: false, free_sigma: false, delta_vshift_max: null, delta_sigma_max: null}
 
     - name: mgii_pair
       # MgII 2796 kinematics follow MgII 2803; amplitude ratio is a free
@@ -138,6 +139,7 @@ global:
         vshift: 0.0
       members:
         - mgii_2796
+      final_pass: {free_vshift: false, free_sigma: false, delta_vshift_max: null, delta_sigma_max: null}
 
 
 # =============================================================================
@@ -147,10 +149,17 @@ global:
 # Add new profiles here to experiment with different constraint schemes.
 #
 # Per-group fields:
-#   anchor  [string]  : line name; its vshift and sigma are the free parameters
-#   bounds  [mapping] : hard optimizer bounds applied to the anchor's vshift/sigma
-#   initial [mapping] : default starting point (overridden by data-derived estimates)
-#   members [list]    : lines tied to anchor with factor 1.0 for vshift and sigma
+#   anchor          [string]  : line name; its vshift and sigma are the free parameters
+#   bounds          [mapping] : hard optimizer bounds applied to the anchor's vshift/sigma
+#   initial         [mapping] : default starting point (overridden by data-derived estimates)
+#   members         [list]    : lines tied to anchor with factor 1.0 for vshift and sigma
+#   final_pass      [mapping] : per-group relaxation policy (see below)
+#
+# Per-group final_pass fields:
+#   free_vshift     [bool]    : release vshift ties for all members in the final pass
+#   free_sigma      [bool]    : release sigma ties for all members in the final pass
+#   delta_vshift_max [float|null] : reserved; max vshift deviation from warm-start (not yet used)
+#   delta_sigma_max  [float|null] : reserved; max sigma deviation from warm-start (not yet used)
 #
 # Amplitude bounds (min: 0, max: data-derived) are set in _initial_guesses_and_bounds
 # and are not specified here.
@@ -194,6 +203,7 @@ profiles:
           - oii_7330      # amplitude also constrained via amplitude_constraints.fixed
           - siii_9069
           - siii_9532
+        final_pass: {free_vshift: true, free_sigma: true, delta_vshift_max: null, delta_sigma_max: null}
 
       - name: narrow_balmer
         anchor: halpha
@@ -211,6 +221,7 @@ profiles:
           - hbeta
           - hei_4471
           - hei_5876
+        final_pass: {free_vshift: true, free_sigma: true, delta_vshift_max: null, delta_sigma_max: null}
 
     free_lines: []
 
@@ -223,13 +234,9 @@ profiles:
       - hepsilon_broad
       - h6_broad
 
-    # Fitting strategy for this profile.
-    # Per-line relaxation is worthwhile here because the two-group constraint
-    # (forbidden + narrow_balmer) is tight enough that individual lines often
-    # benefit from breaking free.
+    # Fitting strategy for this profile: what to relax is specified per group above.
     final_pass:
       enabled:       true
-      mode:          per_line
       warm_start:    true        # initialize from the primary best-fit values
       adopt_if:      chi2_improves   # "always" | "chi2_improves"
       inherit_in_mc: true        # MC realizations mirror the final-pass decision
@@ -281,6 +288,9 @@ profiles:
           - hbeta
           - hei_4471
           - hei_5876
+        # Free individual vshifts to absorb wavelength calibration offsets;
+        # keep sigma tied so the line-width constraint stabilises the blend.
+        final_pass: {free_vshift: true, free_sigma: false, delta_vshift_max: null, delta_sigma_max: null}
 
       - name: oiii_doublet
         anchor: oiii_5007
@@ -292,6 +302,8 @@ profiles:
           vshift: 0.0
         members:
           - oiii_4959   # amplitude also constrained via amplitude_constraints.fixed
+        # Keep the doublet fully tied at all times.
+        final_pass: {free_vshift: false, free_sigma: false, delta_vshift_max: null, delta_sigma_max: null}
 
       - name: broad_balmer
         anchor: halpha_broad
@@ -307,17 +319,16 @@ profiles:
           - hdelta_broad
           - hepsilon_broad
           - h6_broad
+        # Keep broad Balmer lines fully tied: faint higher-order members need
+        # the constraint provided by the bright halpha_broad anchor.
+        final_pass: {free_vshift: false, free_sigma: false, delta_vshift_max: null, delta_sigma_max: null}
 
     free_lines:  []
     fixed_lines: []
 
-    # Fitting strategy for this profile.
-    # The three-group structure (narrow_all + oiii_doublet + broad_balmer)
-    # already provides substantial freedom; a per-line relaxation pass adds
-    # little and is therefore disabled by default.
+    # Fitting strategy for this profile: what to relax is specified per group above.
     final_pass:
-      enabled:       false
-      mode:          per_line
+      enabled:       true
       warm_start:    true
       adopt_if:      chi2_improves
       inherit_in_mc: true

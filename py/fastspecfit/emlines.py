@@ -75,9 +75,36 @@ class EmlineConstraints:
 
         # named profiles + per-profile final_pass strategy
         self.profiles = raw['profiles']
-        _fp_required = {'enabled', 'mode', 'warm_start', 'adopt_if', 'inherit_in_mc'}
+
+        def _parse_group_fp(g, context):
+            """Parse and validate a kinematic group's final_pass block."""
+            if 'final_pass' not in g:
+                raise ValueError(
+                    f"Kinematic group '{g['name']}' in {context} "
+                    f"is missing required 'final_pass' block.")
+            gfp = g['final_pass']
+            for key in ('free_vshift', 'free_sigma'):
+                if key not in gfp:
+                    raise ValueError(
+                        f"Group '{g['name']}' final_pass in {context} "
+                        f"is missing required key '{key}'.")
+            return {
+                'free_vshift':      bool(gfp['free_vshift']),
+                'free_sigma':       bool(gfp['free_sigma']),
+                'delta_vshift_max': gfp.get('delta_vshift_max'),  # reserved; not yet used
+                'delta_sigma_max':  gfp.get('delta_sigma_max'),   # reserved; not yet used
+            }
+
+        # group_final_pass: keyed by 'global.<name>' or '<profile>.<name>'
+        self.group_final_pass = {}
+        for g in self.global_kinematic_groups:
+            self.group_final_pass[f'global.{g["name"]}'] = _parse_group_fp(g, 'global')
+
+        _fp_required = {'enabled', 'warm_start', 'adopt_if', 'inherit_in_mc'}
         self.final_pass = {}
         for pname, profile in self.profiles.items():
+            for g in profile.get('kinematic_groups', []):
+                self.group_final_pass[f'{pname}.{g["name"]}'] = _parse_group_fp(g, f"profile '{pname}'")
             if 'final_pass' not in profile:
                 raise ValueError(
                     f"Constraint profile '{pname}' is missing required 'final_pass' block.")
@@ -88,7 +115,6 @@ class EmlineConstraints:
                     f"Profile '{pname}' final_pass is missing keys: {sorted(missing_keys)}")
             self.final_pass[pname] = {
                 'enabled':       bool(fp['enabled']),
-                'mode':          str(fp['mode']),
                 'warm_start':    bool(fp['warm_start']),
                 'adopt_if':      str(fp['adopt_if']),
                 'inherit_in_mc': bool(fp['inherit_in_mc']),
@@ -343,7 +369,7 @@ class EMFitTools(object):
             n_params = len(self.param_table)
             isfixed = np.full(n_params, False, dtype=bool)
 
-            tiedtoparam, tiedfactor = tying_info
+            tiedtoparam, tiedfactor, group_name = tying_info
             tied_mask   = (tiedtoparam != -1)
             tied_source = tiedtoparam[tied_mask]
 
@@ -381,10 +407,11 @@ class EMFitTools(object):
 
             # construct the final linemodel
             linemodel = Table({
-                'free': ~isfixed & ~istied,
-                'fixed': isfixed,
+                'free':       ~isfixed & ~istied,
+                'fixed':      isfixed,
                 'tiedtoparam': tiedtoparam.copy(), # we reuse these later
                 'tiedfactor':  tiedfactor.copy(),
+                'group_name':  group_name,
             }, copy=False)
 
             return linemodel
@@ -395,25 +422,32 @@ class EMFitTools(object):
             n_params    = len(self.param_table)
             tiedtoparam = np.full(n_params, -1, np.int32)
             tiedfactor  = np.empty(n_params, np.float64)
+            group_name  = np.full(n_params, '', dtype=object)
 
-            def _tie_kinematics(groups):
+            def _tie_kinematics(groups, prefix):
                 for g in groups:
                     if g['anchor'] not in self.line_map:
                         continue
+                    gname = prefix + g['name']
                     anchor_line = self.line_map[g['anchor']]
                     _, src_vshift, src_sigma = self.line_table['params'][anchor_line]
+                    group_name[src_vshift] = gname
+                    group_name[src_sigma]  = gname
                     for member_name in g.get('members', []):
                         if member_name not in self.line_map:
                             continue
                         member_line = self.line_map[member_name]
                         _, vshift, sigma = self.line_table['params'][member_line]
+                        group_name[vshift] = gname
+                        group_name[sigma]  = gname
                         tiedfactor[vshift]  = 1.0
                         tiedtoparam[vshift] = src_vshift
                         tiedfactor[sigma]   = 1.0
                         tiedtoparam[sigma]  = src_sigma
 
-            _tie_kinematics(self.constraints.global_kinematic_groups)
-            _tie_kinematics(self.constraints.profiles[profile_name].get('kinematic_groups', []))
+            _tie_kinematics(self.constraints.global_kinematic_groups, prefix='global.')
+            _tie_kinematics(self.constraints.profiles[profile_name].get('kinematic_groups', []),
+                            prefix=f'{profile_name}.')
 
             for fc in self.constraints.amplitude_fixed:
                 if fc['line'] not in self.line_map or fc['ref'] not in self.line_map:
@@ -425,19 +459,19 @@ class EMFitTools(object):
                 tiedfactor[amp_line]  = fc['factor']
                 tiedtoparam[amp_line] = amp_ref
 
-            return tiedtoparam, tiedfactor
+            return tiedtoparam, tiedfactor, group_name
 
         # narrow_broad model: all narrow + [OIII] + broad Balmer groups
         linemodel_broad = create_model(_build_tying_info('narrow_broad'))
 
         # narrow_only model: forbidden + narrow_balmer groups; broad fixed to zero
-        tiedtoparam_no, tiedfactor_no = _build_tying_info('narrow_only')
+        tiedtoparam_no, tiedfactor_no, group_name_no = _build_tying_info('narrow_only')
         forceFixed = []
         for line_name in self.constraints.profiles['narrow_only'].get('fixed_lines', []):
             if line_name in self.line_map:
                 for p in self.line_table['params'][self.line_map[line_name]]:
                     forceFixed.append(p)
-        linemodel_nobroad = create_model((tiedtoparam_no, tiedfactor_no), forceFixed)
+        linemodel_nobroad = create_model((tiedtoparam_no, tiedfactor_no, group_name_no), forceFixed)
 
         return linemodel_broad, linemodel_nobroad
 
@@ -1707,69 +1741,71 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
             linemodel_nobroad, emlineflux_model_nobroad, chi2_nobroad, nfree_nobroad
         delta_linechi2_balmer, delta_linendof_balmer = 0, np.int32(0)
 
-    # Optional final pass: relax kinematic ties and re-optimise.
-    # Settings are per-profile: look up based on which model was adopted.
+    # Optional final pass: relax per-group kinematic ties and re-optimise.
+    # What is relaxed is specified per kinematic group in the constraint file;
+    # the adoption decision is a single global chi2 comparison.
     profile_name = 'narrow_broad' if adopt_broad else 'narrow_only'
     fp = constraints.final_pass[profile_name]
-    if fp['enabled'] and fp['mode'] != 'none':
+    if fp['enabled']:
         t0 = time.time()
-        if fp['mode'] == 'per_line':
-            linemodel_relax = linemodel_pref.copy()
-            for i in range(len(linemodel_relax)):
-                if (not linemodel_relax['fixed'][i]
-                        and linemodel_relax['tiedtoparam'][i] != -1
-                        and EMFit.param_table['type'][i] in
-                            (ParamType.VSHIFT, ParamType.SIGMA)):
-                    linemodel_relax['tiedtoparam'][i] = -1
-                    linemodel_relax['tiedfactor'][i]  = 0.
-                    linemodel_relax['free'][i]        = True
-        elif fp['mode'] == 'relax_inter_group':
-            errmsg = "Relax_inter_group mode requires a dedicated profile in the constraint file."
-            log.critical(errmsg)
-            raise NotImplementedError(errmsg)
+        linemodel_relax = linemodel_pref.copy()
+        nfreed = 0
+        for i in range(len(linemodel_relax)):
+            if linemodel_relax['fixed'][i] or linemodel_relax['tiedtoparam'][i] == -1:
+                continue
+            gfp = constraints.group_final_pass.get(linemodel_relax['group_name'][i])
+            if gfp is None:
+                continue
+            param_type = EMFit.param_table['type'][i]
+            if ((param_type == ParamType.VSHIFT and gfp['free_vshift']) or
+                    (param_type == ParamType.SIGMA and gfp['free_sigma'])):
+                linemodel_relax['tiedtoparam'][i] = -1
+                linemodel_relax['tiedfactor'][i]  = 0.
+                linemodel_relax['free'][i]        = True
+                nfreed += 1
+
+        if nfreed == 0:
+            log.debug(f'Final pass ({profile_name}): no parameters freed; skipping.')
         else:
-            errmsg = f"Unknown final_pass mode: '{fp['mode']}'"
-            log.critical(errmsg)
-            raise ValueError(errmsg)
+            init_relax = (linemodel_pref['value'].value
+                          if fp['warm_start'] else initial_guesses)
+            emlineflux_model_relax, nfree_relax, chi2_relax = linefit(
+                EMFit, linemodel_relax, init_relax, param_bounds,
+                emlinewave, emlineflux, emlineivar, weights, redshift,
+                resolution_matrix, camerapix)
 
-        init_relax = (linemodel_pref['value'].value
-                      if fp['warm_start'] else initial_guesses)
-        emlineflux_model_relax, nfree_relax, chi2_relax = linefit(
-            EMFit, linemodel_relax, init_relax, param_bounds,
-            emlinewave, emlineflux, emlineivar, weights, redshift,
-            resolution_matrix, camerapix)
+            adopt_relax = False
+            if fp['adopt_if'] == 'always':
+                adopt_relax = True
+            elif fp['adopt_if'] == 'chi2_improves':
+                nbins      = np.sum(emlineivar > 0)
+                ndof_pref  = nbins - nfree_pref
+                ndof_relax = nbins - nfree_relax
+                delta_chi2 = chi2_pref * ndof_pref - chi2_relax * ndof_relax
+                delta_ndof = ndof_pref - ndof_relax
+                adopt_relax = (delta_ndof > 0 and delta_chi2 > delta_ndof)
 
-        adopt_relax = False
-        if fp['adopt_if'] == 'always':
-            adopt_relax = True
-        elif fp['adopt_if'] == 'chi2_improves':
-            nbins      = np.sum(emlineivar > 0)
-            ndof_pref  = nbins - nfree_pref
-            ndof_relax = nbins - nfree_relax
-            delta_chi2 = chi2_pref * ndof_pref - chi2_relax * ndof_relax
-            delta_ndof = ndof_pref - ndof_relax
-            adopt_relax = (delta_ndof > 0 and delta_chi2 > delta_ndof)
-
-        if adopt_relax:
-            linemodel_pref        = linemodel_relax
-            emlineflux_model_pref = emlineflux_model_relax
-            chi2_pref             = chi2_relax
-            nfree_pref            = nfree_relax
-            if fp['adopt_if'] == 'chi2_improves':
-                log.info(f'Adopting relaxed kinematic model ({fp["mode"]}): '
-                         f'delta-chi2={delta_chi2:.1f} > delta-ndof={delta_ndof:.0f}')
-            else:
-                log.info(f'Adopting relaxed kinematic model ({fp["mode"]}): adopt_if=always')
-        else:
-            if fp['adopt_if'] == 'chi2_improves':
-                if delta_ndof <= 0:
-                    log.debug(f'Dropping relaxed kinematic model ({fp["mode"]}): '
-                              f'no additional free parameters (delta-ndof={delta_ndof:.0f})')
+            if adopt_relax:
+                linemodel_pref        = linemodel_relax
+                emlineflux_model_pref = emlineflux_model_relax
+                chi2_pref             = chi2_relax
+                nfree_pref            = nfree_relax
+                if fp['adopt_if'] == 'chi2_improves':
+                    log.info(f'Adopting relaxed kinematic model ({profile_name}): '
+                             f'delta-chi2={delta_chi2:.1f} > delta-ndof={delta_ndof:.0f}')
                 else:
-                    log.debug(f'Dropping relaxed kinematic model ({fp["mode"]}): '
-                              f'delta-chi2={delta_chi2:.1f} < delta-ndof={delta_ndof:.0f}')
-        log.debug(fsftime('linefit_final_pass', time.time()-t0,
-                          context=f'targetid={data["uniqueid"]}, mode={fp["mode"]}'))
+                    log.info(f'Adopting relaxed kinematic model ({profile_name}): adopt_if=always')
+            else:
+                if fp['adopt_if'] == 'chi2_improves':
+                    if delta_ndof <= 0:
+                        log.debug(f'Dropping relaxed kinematic model ({profile_name}): '
+                                  f'no additional free parameters (delta-ndof={delta_ndof:.0f})')
+                    else:
+                        log.debug(f'Dropping relaxed kinematic model ({profile_name}): '
+                                  f'delta-chi2={delta_chi2:.1f} < delta-ndof={delta_ndof:.0f}')
+            log.debug(fsftime('linefit_final_pass', time.time()-t0,
+                              context=f'targetid={data["uniqueid"]}, profile={profile_name}, '
+                                      f'nfreed={nfreed}'))
 
     # Residual spectrum with no emission lines
     specflux_nolines = specflux - emlineflux_model_pref

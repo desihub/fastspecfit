@@ -65,16 +65,39 @@ class TestLoading:
     def test_fitting_strategy_per_profile(self, ec):
         assert set(ec.final_pass.keys()) == {'narrow_only', 'narrow_broad'}
 
-        fp_no = ec.final_pass['narrow_only']
-        assert fp_no['enabled']       is True
-        assert fp_no['mode']          == 'per_line'
-        assert fp_no['warm_start']    is True
-        assert fp_no['adopt_if']      == 'chi2_improves'
-        assert fp_no['inherit_in_mc'] is True
+        for pname in ('narrow_only', 'narrow_broad'):
+            fp = ec.final_pass[pname]
+            assert fp['enabled']       is True
+            assert fp['warm_start']    is True
+            assert fp['adopt_if']      == 'chi2_improves'
+            assert fp['inherit_in_mc'] is True
+            assert 'mode' not in fp
 
-        fp_nb = ec.final_pass['narrow_broad']
-        assert fp_nb['enabled']       is False
-        assert fp_nb['inherit_in_mc'] is True
+    def test_group_final_pass(self, ec):
+        gfp = ec.group_final_pass
+
+        # narrow_only: both groups release vshift and sigma
+        assert gfp['narrow_only.forbidden']['free_vshift']   is True
+        assert gfp['narrow_only.forbidden']['free_sigma']    is True
+        assert gfp['narrow_only.narrow_balmer']['free_vshift'] is True
+        assert gfp['narrow_only.narrow_balmer']['free_sigma']  is True
+
+        # narrow_broad: narrow_all frees vshift only
+        assert gfp['narrow_broad.narrow_all']['free_vshift']  is True
+        assert gfp['narrow_broad.narrow_all']['free_sigma']   is False
+        # oiii_doublet and broad_balmer stay fully tied
+        assert gfp['narrow_broad.oiii_doublet']['free_vshift'] is False
+        assert gfp['narrow_broad.oiii_doublet']['free_sigma']  is False
+        assert gfp['narrow_broad.broad_balmer']['free_vshift'] is False
+        assert gfp['narrow_broad.broad_balmer']['free_sigma']  is False
+
+        # global groups stay fully tied
+        assert gfp['global.ciii_aliii']['free_vshift'] is False
+        assert gfp['global.mgii_pair']['free_vshift']  is False
+
+        # reserved fields present and null
+        assert gfp['narrow_broad.narrow_all']['delta_vshift_max'] is None
+        assert gfp['narrow_broad.narrow_all']['delta_sigma_max']  is None
 
 
 # ── Group 2: consistency check ────────────────────────────────────────────────
