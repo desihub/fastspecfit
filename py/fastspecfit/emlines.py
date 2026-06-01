@@ -73,23 +73,32 @@ class EmlineConstraints:
         self.global_default_bounds   = g['default_bounds']
         self.global_default_initial  = g['default_initial']
 
-        # named profiles
+        # named profiles + per-profile final_pass strategy
         self.profiles = raw['profiles']
+        _fp_required = {'enabled', 'mode', 'warm_start', 'adopt_if', 'inherit_in_mc'}
+        self.final_pass = {}
+        for pname, profile in self.profiles.items():
+            if 'final_pass' not in profile:
+                raise ValueError(
+                    f"Constraint profile '{pname}' is missing required 'final_pass' block.")
+            fp = profile['final_pass']
+            missing_keys = _fp_required - set(fp)
+            if missing_keys:
+                raise ValueError(
+                    f"Profile '{pname}' final_pass is missing keys: {sorted(missing_keys)}")
+            self.final_pass[pname] = {
+                'enabled':       bool(fp['enabled']),
+                'mode':          str(fp['mode']),
+                'warm_start':    bool(fp['warm_start']),
+                'adopt_if':      str(fp['adopt_if']),
+                'inherit_in_mc': bool(fp['inherit_in_mc']),
+            }
 
         # non-parametric moment groups: {output_label: [line_names]}
         self.moments = {
             entry['label']: list(entry['lines'])
             for entry in raw.get('moments', [])
         }
-
-        # fitting strategy
-        fs = raw['fitting_strategy']
-        fp = fs['final_pass']
-        self.final_pass_enabled    = bool(fp['enabled'])
-        self.final_pass_mode       = str(fp['mode'])
-        self.final_pass_warm_start = bool(fp['warm_start'])
-        self.final_pass_adopt_if   = str(fp['adopt_if'])
-        self.mc_inherit_final_pass = bool(fs['monte_carlo']['inherit_final_pass'])
 
         if line_table is not None:
             self._check_consistency(line_table)
@@ -1699,9 +1708,12 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
         delta_linechi2_balmer, delta_linendof_balmer = 0, np.int32(0)
 
     # Optional final pass: relax kinematic ties and re-optimise.
-    if constraints.final_pass_enabled and constraints.final_pass_mode != 'none':
+    # Settings are per-profile: look up based on which model was adopted.
+    profile_name = 'narrow_broad' if adopt_broad else 'narrow_only'
+    fp = constraints.final_pass[profile_name]
+    if fp['enabled'] and fp['mode'] != 'none':
         t0 = time.time()
-        if constraints.final_pass_mode == 'per_line':
+        if fp['mode'] == 'per_line':
             linemodel_relax = linemodel_pref.copy()
             for i in range(len(linemodel_relax)):
                 if (not linemodel_relax['fixed'][i]
@@ -1711,26 +1723,26 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                     linemodel_relax['tiedtoparam'][i] = -1
                     linemodel_relax['tiedfactor'][i]  = 0.
                     linemodel_relax['free'][i]        = True
-        elif constraints.final_pass_mode == 'relax_inter_group':
+        elif fp['mode'] == 'relax_inter_group':
             errmsg = "Relax_inter_group mode requires a dedicated profile in the constraint file."
             log.critical(errmsg)
             raise NotImplementedError(errmsg)
         else:
-            errmsg = f"Unknown final_pass mode: '{constraints.final_pass_mode}'"
+            errmsg = f"Unknown final_pass mode: '{fp['mode']}'"
             log.critical(errmsg)
             raise ValueError(errmsg)
 
         init_relax = (linemodel_pref['value'].value
-                      if constraints.final_pass_warm_start else initial_guesses)
+                      if fp['warm_start'] else initial_guesses)
         emlineflux_model_relax, nfree_relax, chi2_relax = linefit(
             EMFit, linemodel_relax, init_relax, param_bounds,
             emlinewave, emlineflux, emlineivar, weights, redshift,
             resolution_matrix, camerapix)
 
         adopt_relax = False
-        if constraints.final_pass_adopt_if == 'always':
+        if fp['adopt_if'] == 'always':
             adopt_relax = True
-        elif constraints.final_pass_adopt_if == 'chi2_improves':
+        elif fp['adopt_if'] == 'chi2_improves':
             nbins      = np.sum(emlineivar > 0)
             ndof_pref  = nbins - nfree_pref
             ndof_relax = nbins - nfree_relax
@@ -1743,22 +1755,21 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
             emlineflux_model_pref = emlineflux_model_relax
             chi2_pref             = chi2_relax
             nfree_pref            = nfree_relax
-            if constraints.final_pass_adopt_if == 'chi2_improves':
-                log.info(f'Adopting relaxed kinematic model ({constraints.final_pass_mode}): '
+            if fp['adopt_if'] == 'chi2_improves':
+                log.info(f'Adopting relaxed kinematic model ({fp["mode"]}): '
                          f'delta-chi2={delta_chi2:.1f} > delta-ndof={delta_ndof:.0f}')
             else:
-                log.info(f'Adopting relaxed kinematic model ({constraints.final_pass_mode}): '
-                         f'adopt_if=always')
+                log.info(f'Adopting relaxed kinematic model ({fp["mode"]}): adopt_if=always')
         else:
-            if constraints.final_pass_adopt_if == 'chi2_improves':
+            if fp['adopt_if'] == 'chi2_improves':
                 if delta_ndof <= 0:
-                    log.debug(f'Dropping relaxed kinematic model ({constraints.final_pass_mode}): '
+                    log.debug(f'Dropping relaxed kinematic model ({fp["mode"]}): '
                               f'no additional free parameters (delta-ndof={delta_ndof:.0f})')
                 else:
-                    log.debug(f'Dropping relaxed kinematic model ({constraints.final_pass_mode}): '
+                    log.debug(f'Dropping relaxed kinematic model ({fp["mode"]}): '
                               f'delta-chi2={delta_chi2:.1f} < delta-ndof={delta_ndof:.0f}')
         log.debug(fsftime('linefit_final_pass', time.time()-t0,
-                          context=f'targetid={data["uniqueid"]}, mode={constraints.final_pass_mode}'))
+                          context=f'targetid={data["uniqueid"]}, mode={fp["mode"]}'))
 
     # Residual spectrum with no emission lines
     specflux_nolines = specflux - emlineflux_model_pref

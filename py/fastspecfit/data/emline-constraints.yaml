@@ -21,8 +21,9 @@
 #   - Within a profile, no line name may appear more than once across all placements.
 #   - bounds.sigma.min >= 0; bounds.sigma.min < bounds.sigma.max.
 #   - bounds.vshift.min < bounds.vshift.max.
-#   - fitting_strategy.final_pass.mode in {none, relax_inter_group, per_line}.
-#   - fitting_strategy.final_pass.adopt_if in {always, chi2_improves}.
+#   - profiles.<name>.final_pass.mode in {none, relax_inter_group, per_line}.
+#   - profiles.<name>.final_pass.adopt_if in {always, chi2_improves}.
+#   - Every profile must contain a final_pass block with all required keys.
 
 
 # =============================================================================
@@ -222,6 +223,17 @@ profiles:
       - hepsilon_broad
       - h6_broad
 
+    # Fitting strategy for this profile.
+    # Per-line relaxation is worthwhile here because the two-group constraint
+    # (forbidden + narrow_balmer) is tight enough that individual lines often
+    # benefit from breaking free.
+    final_pass:
+      enabled:       true
+      mode:          per_line
+      warm_start:    true        # initialize from the primary best-fit values
+      adopt_if:      chi2_improves   # "always" | "chi2_improves"
+      inherit_in_mc: true        # MC realizations mirror the final-pass decision
+
   # ---------------------------------------------------------------------------
   narrow_broad:
   # ---------------------------------------------------------------------------
@@ -236,7 +248,7 @@ profiles:
       - name: narrow_all
         # All narrow lines — Balmer, HeI, and forbidden — share one kinematic
         # anchor. [OIII] 4959,5007 are excluded (handled in oiii_doublet below).
-        anchor: nii_6584
+        anchor: halpha
         bounds:
           sigma:  {min: 1.0,    max: 750.0}
           vshift: {min: -500.0, max: 500.0}
@@ -254,7 +266,7 @@ profiles:
           - oi_6300
           - siii_6312
           - nii_6548
-          - halpha
+          - nii_6584
           - sii_6716
           - sii_6731
           - ariii_7135
@@ -299,42 +311,20 @@ profiles:
     free_lines:  []
     fixed_lines: []
 
-
-# =============================================================================
-# SECTION 5: Fitting strategy
-# =============================================================================
-
-fitting_strategy:
-
-  final_pass:
-    # When enabled, a second optimization is run after the primary constrained
-    # fit, using the mode below. The result is adopted only if the chi2
-    # improvement (accounting for the additional free parameters via an
-    # F-test) clears the adoption threshold.
-    #
-    # mode options:
-    #   none              - no relaxation; primary constrained result is final
-    #   relax_inter_group - free the inter-group kinematic ties; within-group
-    #                       ties (e.g. Balmer lines tied to Halpha) are kept
-    #   per_line          - all kinematic parameters are freed; each line snaps
-    #                       independently to its chi2 minimum
-    #
-    # Amplitude constraints (fixed ratios and doublet ratios) are never
-    # relaxed regardless of mode.
-    enabled:   true
-    mode:      per_line
-    warm_start: true     # initialize from the primary best-fit values
-    adopt_if:  chi2_improves   # "always" | "chi2_improves"
-
-  monte_carlo:
-    # If true, each MC realization mirrors whatever the nominal fit adopted
-    # (primary only, or primary + final pass). The MC does not independently
-    # test whether to adopt the final pass result.
-    inherit_final_pass: true
+    # Fitting strategy for this profile.
+    # The three-group structure (narrow_all + oiii_doublet + broad_balmer)
+    # already provides substantial freedom; a per-line relaxation pass adds
+    # little and is therefore disabled by default.
+    final_pass:
+      enabled:       false
+      mode:          per_line
+      warm_start:    true
+      adopt_if:      chi2_improves
+      inherit_in_mc: true
 
 
 # =============================================================================
-# SECTION 6: Non-parametric spectral moments
+# SECTION 5: Non-parametric spectral moments
 # =============================================================================
 # Lines (or line groups) for which non-parametric flux moments are measured
 # in addition to the fitted Gaussian parameters.  Each entry maps an output

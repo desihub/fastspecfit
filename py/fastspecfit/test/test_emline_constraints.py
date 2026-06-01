@@ -62,12 +62,19 @@ class TestLoading:
         assert 'narrow_only' in ec.profiles
         assert 'narrow_broad' in ec.profiles
 
-    def test_fitting_strategy_defaults(self, ec):
-        assert ec.final_pass_enabled is True
-        assert ec.final_pass_mode == 'per_line'
-        assert ec.final_pass_warm_start is True
-        assert ec.final_pass_adopt_if == 'chi2_improves'
-        assert ec.mc_inherit_final_pass is True
+    def test_fitting_strategy_per_profile(self, ec):
+        assert set(ec.final_pass.keys()) == {'narrow_only', 'narrow_broad'}
+
+        fp_no = ec.final_pass['narrow_only']
+        assert fp_no['enabled']       is True
+        assert fp_no['mode']          == 'per_line'
+        assert fp_no['warm_start']    is True
+        assert fp_no['adopt_if']      == 'chi2_improves'
+        assert fp_no['inherit_in_mc'] is True
+
+        fp_nb = ec.final_pass['narrow_broad']
+        assert fp_nb['enabled']       is False
+        assert fp_nb['inherit_in_mc'] is True
 
 
 # ── Group 2: consistency check ────────────────────────────────────────────────
