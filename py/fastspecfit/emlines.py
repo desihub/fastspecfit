@@ -325,6 +325,15 @@ class EMFitTools(object):
         param_idx[:,ParamType.SIGMA]     = c + 2*nlines
         self.line_table['params'] = param_idx
 
+        # mapping from amplitude parameter index -> output catalog column name,
+        # for lines whose amplitude is constrained by a fixed ratio to another line.
+        self.amp_fixed_col = {}
+        for fc in constraints.amplitude_fixed:
+            pname = fc.get('param_name')
+            if pname and fc['line'] in self.line_map:
+                amp_idx = param_idx[self.line_map[fc['line']], ParamType.AMPLITUDE]
+                self.amp_fixed_col[int(amp_idx)] = pname
+
         # needed by emlinemodel_bestfit()
         self.param_table['modelname'] = \
             np.array([ s.replace('_amp', '_modelamp').upper() for s in param_names ])
@@ -1074,22 +1083,13 @@ class EMFitTools(object):
                     if doublet_ivar < F32MAX:
                         fastfit[f'{param_modelnames[line_amp]}_IVAR'] = doublet_ivar
 
-            # Also store the 'tied' doublet ratios (fragile...).
-            if linemodel['tiedtoparam'][line_amp] != -1:
-                ratio = linemodel['tiedfactor'][line_amp]
-                match linename:
-                    case 'OIII_4959':
-                        col = 'OIII_DOUBLET_RATIO'
-                    case 'NII_6548':
-                        col = 'NII_DOUBLET_RATIO'
-                    case 'OII_7330':
-                        col = 'OIIRED_DOUBLET_RATIO'
-                    case _:
-                        errmsg = 'Unrecognized tied doublet {linename}'
-                        log.critical(errmsg)
-                        raise ValueError(errmsg)
-                fastfit[col] = 1. / ratio
-                fastfit[f'{col}_IVAR'] = 0. # not optimized
+            # Store the fixed amplitude ratio for amplitude-constrained lines
+            # (e.g. [OIII] 4959, [NII] 6548, [OII] 7330).  The column name
+            # comes from amplitude_constraints.fixed[].param_name in the YAML.
+            col = self.amp_fixed_col.get(line_amp)
+            if col is not None:
+                fastfit[col] = 1. / linemodel['tiedfactor'][line_amp]
+                fastfit[f'{col}_IVAR'] = 0.  # not optimized
 
 
             (boxflux, flux, cont), extras = get_fluxes(

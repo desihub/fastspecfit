@@ -53,12 +53,15 @@ amplitude_constraints:
     - line: nii_6548
       ref:  nii_6584
       factor: 0.32975    # 1/3.0326  ([NII] flux ratio 3.049, lambda-corrected)
+      param_name: NII_DOUBLET_RATIO
     - line: oiii_4959
       ref:  oiii_5007
       factor: 0.33735    # 1/2.9643  ([OIII] flux ratio 2.993, lambda-corrected)
+      param_name: OIII_DOUBLET_RATIO
     - line: oii_7330
       ref:  oii_7320
       factor: 0.81633    # 1/1.225
+      param_name: OIIRED_DOUBLET_RATIO
 
   # Doublet ratios: amplitude ratio is a free fitted parameter.
   # The ratio is defined as line / ref, bounded as below.
