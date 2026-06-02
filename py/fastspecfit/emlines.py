@@ -2030,33 +2030,75 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
     log.debug(fsftime('emline_specfit', time.time()-tall))
 
     if debug_plots or log.isEnabledFor(logging.DEBUG):
-        _fastfit_cols = [
-            'RCHI2_LINE',
-            'NARROW_Z', 'NARROW_ZRMS', 'BROAD_Z', 'BROAD_ZRMS',
-            'OII_DOUBLET_RATIO',
-            'OII_3726_FLUX', 'OII_3726_FLUX_IVAR',
-            'HBETA_FLUX', 'HBETA_FLUX_IVAR',
-            'OIII_5007_FLUX', 'OIII_5007_FLUX_IVAR',
-            'NII_6584_FLUX', 'NII_6584_FLUX_IVAR',
-            'HALPHA_FLUX', 'HALPHA_FLUX_IVAR',
-            'HALPHA_BROAD_FLUX', 'HALPHA_BROAD_FLUX_IVAR',
-            'SII_6731_FLUX', 'SII_6731_FLUX_IVAR',
-        ]
-        _specphot_cols = [
-            'RCHI2', 'RCHI2_CONT', 'RCHI2_PHOT',
-            'VDISP', 'VDISP_IVAR',
-            'AGE', 'ZZSUN', 'LOGMSTAR', 'SFR', 'AV',
-            'DN4000', 'DN4000_OBS', 'DN4000_MODEL',
-        ]
-        _fnames = fastfit.value.dtype.names
-        _snames = specphot.value.dtype.names
-        print(f'--- fastfit [{data["uniqueid"]}] ---')
-        for name in _fastfit_cols:
-            if name in _fnames:
-                print(f'  {name}: {fastfit[name]}')
-        print(f'--- specphot [{data["uniqueid"]}] ---')
-        for name in _specphot_cols:
-            if name in _snames:
-                print(f'  {name}: {specphot[name]}')
+        print(f'--- emline [{data["uniqueid"]}] ---')
+        print(f'  rchi2(line) = {specphot["RCHI2_LINE"]:.3f}')
+
+        # Kinematic group summary from line_stats (not stored in output table).
+        def _kfmt(dv, dverr, sig, sigerr):
+            dv_str  = f'{dv:+8.1f} ±{dverr:5.1f}' if dverr > 0. else f'{dv:+8.1f}       '
+            sig_str = f'{sig:5.0f} ±{sigerr:4.0f}' if sigerr > 0. else f'{sig:5.0f}     '
+            return f'dv = {dv_str} km/s    sigma = {sig_str} km/s'
+
+        print('  kinematics:')
+        print(f'    narrow   {_kfmt(C_LIGHT*(line_stats["NARROW_Z"][0]-redshift), C_LIGHT*line_stats["NARROW_ZRMS"][0], line_stats["NARROW_SIGMA"][0], line_stats["NARROW_SIGMARMS"][0])}')
+        if np.any(EMFit.isBalmerBroad & EMFit.line_in_range):
+            print(f'    broad    {_kfmt(C_LIGHT*(line_stats["BROAD_Z"][0]-redshift), C_LIGHT*line_stats["BROAD_ZRMS"][0], line_stats["BROAD_SIGMA"][0], line_stats["BROAD_SIGMARMS"][0])}')
+        if np.any(EMFit.isBroad & EMFit.line_in_range):
+            print(f'    UV       {_kfmt(C_LIGHT*(line_stats["UV_Z"][0]-redshift), C_LIGHT*line_stats["UV_ZRMS"][0], line_stats["UV_SIGMA"][0], line_stats["UV_SIGMARMS"][0])}')
+
+        # Strong in-range line fluxes and rest-frame EW.
+        isstrong_inrange = EMFit.line_table['isstrong'].value & EMFit.line_in_range
+        if np.any(isstrong_inrange):
+            fnames = fastfit.value.dtype.names
+            print('  strong lines in range  [flux | EW (Å)]:')
+            for lname in EMFit.line_table['name'].value[isstrong_inrange]:
+                ucol     = lname.upper()
+                ivar_col = f'{ucol}_FLUX_IVAR'
+                if ivar_col not in fnames:
+                    continue
+                ivar = float(fastfit[ivar_col])
+                if ivar <= 0.:
+                    continue
+                flux     = float(fastfit[f'{ucol}_FLUX'])
+                flux_err = 1. / np.sqrt(ivar)
+                snr      = flux * np.sqrt(ivar)
+                line_str = f'    {ucol:20s}  {flux:8.1f} ±{flux_err:5.1f}   S/N = {snr:5.1f}'
+                ew_col     = f'{ucol}_EW'
+                ewivar_col = f'{ucol}_EW_IVAR'
+                ew     = float(fastfit[ew_col])     if ew_col     in fnames else 0.
+                ewivar = float(fastfit[ewivar_col]) if ewivar_col in fnames else 0.
+                if ew > 0.:
+                    if ewivar > 0.:
+                        line_str += f'   EW = {ew:7.1f} ±{1./np.sqrt(ewivar):5.1f} Å'
+                    else:
+                        line_str += f'   EW = {ew:7.1f} Å'
+                print(line_str)
+
+        # Specphot summary.
+        snames = specphot.value.dtype.names
+
+        def _sv(col, fmt='.2f', unit=''):
+            """Value ± error (only when ivar > 0), with optional unit suffix."""
+            if col not in snames:
+                return '---'
+            v  = float(specphot[col])
+            ic = col + '_IVAR'
+            iv = float(specphot[ic]) if ic in snames else 0.
+            s  = format(v, fmt)
+            if iv > 0.:
+                s += f' ± {format(1./np.sqrt(iv), fmt)}'
+            return s + (f' {unit}' if unit else '')
+
+        print('  specphot:')
+        r2   = format(float(specphot['RCHI2']),      '.3f') if 'RCHI2'      in snames else '---'
+        r2c  = format(float(specphot['RCHI2_CONT']), '.3f') if 'RCHI2_CONT' in snames else '---'
+        r2p  = format(float(specphot['RCHI2_PHOT']), '.3f') if 'RCHI2_PHOT' in snames else '---'
+        print(f'    rchi2 = {r2}   rchi2_cont = {r2c}   rchi2_phot = {r2p}')
+        print(f'    vdisp = {_sv("VDISP", ".1f", "km/s")}   logmstar = {_sv("LOGMSTAR")}   age = {_sv("AGE", ".2f", "Gyr")}')
+        print(f'    sfr = {_sv("SFR", ".2f", "Msun/yr")}   zzsun = {_sv("ZZSUN")}   AV = {_sv("AV")}')
+        dn4000     = format(float(specphot['DN4000']),       '.3f') if 'DN4000'       in snames else '---'
+        dn4000_obs = format(float(specphot['DN4000_OBS']),   '.3f') if 'DN4000_OBS'   in snames else '---'
+        dn4000_mod = format(float(specphot['DN4000_MODEL']), '.3f') if 'DN4000_MODEL' in snames else '---'
+        print(f'    dn4000 = {dn4000}  (obs = {dn4000_obs},  model = {dn4000_mod})')
 
     return spectra_out
