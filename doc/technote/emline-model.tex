@@ -403,6 +403,18 @@ and $s$.  The Jacobian rows for those lines are assembled by the sparse
 vector to and from the per-line parameter array before calling
 the functions described here.
 
+\paragraph{Output for heavily masked lines.}
+When more than 30\% of the pixels in the original inverse-variance spectrum within
+a line's spectral window are masked, the pixel-level measurements (BOXFLUX, CONT,
+CHI2) cannot be computed reliably.  For lines whose amplitude, $\Delta v$, and $s$
+are all tied to a kinematic anchor, however, the model-derived quantities (AMP,
+VSHIFT, SIGMA, MODELAMP, and the analytic flux $\Phi = \sqrt{2\pi}\,A\,\lstar\,s/\C$;
+equation~\ref{eq:flux_phys}) are still valid and are reported with the pixel-level
+fields set to zero.  This primarily benefits the fixed-ratio doublet members such as
+[O\,\textsc{iii}]~$\lambda$4959, [N\,\textsc{ii}]~$\lambda$6548, and
+[O\,\textsc{ii}]~$\lambda$7330 (Table~\ref{tab:amp_constraints}), whose parameters
+are fully determined by their bright reference lines.
+
 
 \section{Kinematic Groups and Parameter Constraints}
 \label{sec:kinematics}
@@ -541,28 +553,47 @@ Mg\,\textsc{ii}~$\lambda$2796        & Mg\,\textsc{ii}~$\lambda$2803       & $r$
 \label{ssec:final_pass}
 
 After the primary constrained fit \textsc{FastSpecFit} optionally runs a second
-optimization whose behavior is specified independently for each kinematic profile via a
-\texttt{final\_pass} block embedded within that profile's entry in
-\texttt{data/emline-constraints.yaml}.
+optimization pass in which some kinematic ties are relaxed.  The pass is controlled at
+two levels of granularity, both defined in \texttt{data/emline-constraints.yaml}:
 
-For the \emph{narrow-only} profile, the final pass is enabled by default in
-\texttt{per\_line} mode: all kinematic ties between groups are released so that every
-line's $\Delta v$ and $s$ snap independently to their $\chi^2$ minimum.  Amplitude
+\begin{itemize}
+\item \textbf{Per kinematic group}: each group carries \texttt{free\_vshift} and
+  \texttt{free\_sigma} boolean flags.  When a flag is \texttt{true}, the corresponding
+  parameter type ($\Delta v$ or $s$) is freed for every member of that group in the
+  relaxed model.  Groups with both flags \texttt{false} are not relaxed.
+
+\item \textbf{Per profile}: the fields \texttt{enabled}, \texttt{warm\_start},
+  \texttt{adopt\_if}, and \texttt{inherit\_in\_mc} control whether the pass runs,
+  how it is initialized, and when its result is adopted.
+\end{itemize}
+
+For the \emph{narrow-only} profile, both kinematic groups have \texttt{free\_vshift:
+true} and \texttt{free\_sigma: true}, so every line's $\Delta v$ and $s$ are freed
+independently.  For the \emph{narrow+broad} profile, all three groups currently have
+both flags set to \texttt{false}; the pass is nominally enabled but produces no free
+parameters, so it is a no-op in the current default configuration.  Amplitude
 constraints (fixed ratios and doublet ratios; Section~\ref{ssec:amp_constraints}) are
-always preserved regardless of mode.  The pass is warm-started from the primary
-best-fit values, and the relaxed solution is adopted only if the improvement in $\chi^2$
-is significant relative to the number of additional free parameters (criterion
-\texttt{chi2\_improves}); otherwise the primary constrained result is retained.
+never relaxed regardless of the per-group flags.
 
-For the \emph{narrow+broad} profile, the final pass is disabled by default because the
-three-group structure (narrow lines, [O\,\textsc{iii}] doublet, and broad Balmer; see
-Table~\ref{tab:broad_groups}) already provides substantial kinematic freedom, making
-further per-line relaxation of limited benefit.
+\paragraph{Warm-start bounds.}
+Each freed parameter is initialized at its primary best-fit value (\texttt{warm\_start:
+true}) and constrained to remain within a symmetric window of half-width
+$\delta_v$\,(km\,s$^{-1}$) for velocity shifts or $\delta_s$\,(km\,s$^{-1}$) for
+line widths, both specified per kinematic group.  If the warm-start value lies within
+1\,km\,s$^{-1}$ of the existing optimizer boundary the tightening is skipped for that
+parameter, preventing ill-constrained parameters from being anchored near a wall.
+Default values are $\delta_v = 100$\,km\,s$^{-1}$ and $\delta_s = 100$\,km\,s$^{-1}$
+for narrow-line groups, and $\delta_v = 500$\,km\,s$^{-1}$ and
+$\delta_s = 1{,}000$\,km\,s$^{-1}$ for broad-line groups.
 
-Monte Carlo realizations mirror whichever model was adopted for the nominal spectrum and
-do not independently re-evaluate the adoption criterion (\texttt{inherit\_in\_mc: true}).
-The mode, adoption criterion, warm-start flag, and Monte Carlo inheritance setting can
-all be adjusted independently per profile.
+\paragraph{Adoption.}
+The relaxed solution is adopted only if the global $\chi^2$ improvement exceeds the
+number of additional free parameters (\texttt{chi2\_improves}); otherwise the primary
+result is retained.  The adoption decision is a single global comparison rather than
+per-group, because the total $\chi^2$ is not decomposable by kinematic group when line
+profiles overlap spectrally.  Monte Carlo realizations use the structure of whichever
+model was adopted for the nominal fit and do not independently re-evaluate the adoption
+criterion (\texttt{inherit\_in\_mc: true}).
 
 
 \section*{Acknowledgments}
