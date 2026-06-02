@@ -1019,6 +1019,13 @@ class EMFitTools(object):
                 flux = 0.
                 cont, clipflux = 0., []
 
+                # Intrinsic line flux: integral of the log-Gaussian
+                # = sqrt(2*pi) * A * sigma * lambda*, independent of the resolution matrix.
+                # Computed from model parameters alone so it is available even when the
+                # local pixel window is heavily masked.
+                if obsamps[line_amp] > TINY:
+                    flux = np.sqrt(2. * np.pi) * parameters[line_amp] * linezwave * linesigma0 / C_LIGHT
+
                 # Are the pixels based on the original inverse spectrum fully masked?
                 if line_s == line_e or np.sum(oemlineivar_s[line_s:line_e] == 0.) > 0.3 * (line_e - line_s):
                     patchindx = [] # return null patch
@@ -1028,12 +1035,6 @@ class EMFitTools(object):
                         dwaves_patch = dwaves[patchindx]
                         emlineflux_patch = emlineflux_s[patchindx]
                         boxflux = np.sum(emlineflux_patch * dwaves_patch)
-
-                        # require amp > 0 (line not dropped) to compute the flux
-                        if obsamps[line_amp] > TINY:
-                            # intrinsic line flux: integral of the log-Gaussian A*exp(-(log lambda - mu)^2/(2*sigma^2))
-                            # = sqrt(2*pi) * A * sigma * lambda*, independent of the resolution matrix
-                            flux = np.sqrt(2. * np.pi) * parameters[line_amp] * linezwave * linesigma0 / C_LIGHT
 
                         # next, get the continuum level
                         borderindx = get_continuum_pixels(emlinewave_s, linezwave, linesigma_ang_window)
@@ -1100,15 +1101,37 @@ class EMFitTools(object):
             npix = len(patchindx)
             fastfit[f'{linename}_NPIX'] = npix
 
-            # Are the pixels based on the original inverse spectrum fully
-            # masked? If so, set everything to zero and move onto the next
-            # line.
+            # If the local pixel window is too heavily masked, check whether all
+            # three parameters of this line are tied to a kinematic anchor.  For
+            # such fully-tied lines the model-derived quantities (AMP, VSHIFT,
+            # SIGMA, MODELAMP, FLUX) are still valid; only pixel-level measurements
+            # (BOXFLUX, CONT, CHI2, FLUX_IVAR) are unavailable.
             if npix == 0:
-                obsamps[line_amp] = 0.
-                parameters[line_amp] = 0.
-                values[line_amp] = 0.
-                values[line_vshift] = 0.
-                values[line_sigma] = 0.
+                all_tied = (linemodel['tiedtoparam'][line_amp]    != -1 and
+                            linemodel['tiedtoparam'][line_vshift] != -1 and
+                            linemodel['tiedtoparam'][line_sigma]  != -1)
+                if all_tied:
+                    fastfit[f'{linename}_AMP']      = obsamps[line_amp]
+                    fastfit[f'{linename}_VSHIFT']   = values[line_vshift]
+                    fastfit[f'{linename}_SIGMA']    = values[line_sigma]
+                    fastfit[f'{linename}_MODELAMP'] = parameters[line_amp]
+                    fastfit[f'{linename}_FLUX']     = flux
+                    if results_monte is not None:
+                        obsamps_ivar = var2ivar(obsamps_var[line_amp])
+                        vshift_ivar  = var2ivar(values_var[line_vshift])
+                        sigma_ivar   = var2ivar(values_var[line_sigma])
+                        if obsamps_ivar < F32MAX:
+                            fastfit[f'{linename}_AMP_IVAR']    = obsamps_ivar
+                        if vshift_ivar < F32MAX:
+                            fastfit[f'{linename}_VSHIFT_IVAR'] = vshift_ivar
+                        if sigma_ivar < F32MAX:
+                            fastfit[f'{linename}_SIGMA_IVAR']  = sigma_ivar
+                else:
+                    obsamps[line_amp] = 0.
+                    parameters[line_amp] = 0.
+                    values[line_amp] = 0.
+                    values[line_vshift] = 0.
+                    values[line_sigma] = 0.
                 continue
 
             flux_ivar, cont_ivar = 0., 0. # defaults if not computed below
