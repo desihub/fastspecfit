@@ -33,6 +33,8 @@ Contents
    api.rst
    changes.rst
 
+.. _vacs index:
+
 Value Added Catalogs (VACs)
 ---------------------------
 

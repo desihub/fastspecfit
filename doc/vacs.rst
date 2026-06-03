@@ -10,12 +10,8 @@ Description
 -----------
 
 The following pages describe the content and construction of the ``FastSpecFit``
-value-added catalogs (VACs) for the following DESI Data Releases and Data
-Assemblies:
-
-* :ref:`Iron (Data Release 1)<iron vac>`
-* :ref:`Guadalupe (Data Release 1 Supplement)<guadalupe vac>`
-* :ref:`Fuji (Early Data Release)<fuji vac>`
+value-added catalogs (VACs). For a complete list of available VACs organized by
+data release, please see the :ref:`VAC index<vacs index>`.
 
 .. note::
 
@@ -75,6 +71,19 @@ combine all the individual `healpix` catalogs for a given ``SURVEY`` and
    extension). The ``fastphot`` merged catalogs also omit the ``MODELS``
    extension, which is not produced by ``fastphot``.
 
+.. note::
+
+   For large survey-program combinations (e.g., ``main-bright`` and
+   ``main-dark``), the merged catalogs are further subdivided by nside=1
+   healpixel to keep individual file sizes manageable. In that case the
+   filenames follow the pattern::
+
+     {fastspec,fastphot}-SURVEY-PROGRAM-nside1-hpNN.fits
+
+   where ``NN`` runs from ``00`` to ``11``, corresponding to the 12 nside=1
+   healpixels covering the full sky. Individual VAC pages document which
+   survey-program combinations are split in this way.
+
 .. _`sample selection`:
 
 Sample Selection
@@ -93,17 +102,17 @@ catalog`_. The following bit of Python code illustrates which targets we fit:
 .. code-block:: python
 
   import fitsio
-  import numpy as np
-  from fastspecfit.io import ZWarningMask
+  from fastspecfit.util import ZWarningMask
 
   zb = fitsio.read(redrockfile, 'REDSHIFTS')
   fm = fitsio.read(redrockfile, 'FIBERMAP')
 
-  I = np.where((zb['Z'] > 0.001) * (fm['OBJTYPE'] == 'TGT') *
-               (zb['ZWARN'] & ZWarningMask.NODATA == 0))[0]
+  I = (zb['Z'] > 1e-3) & (fm['OBJTYPE'] == 'TGT') & (zb['ZWARN'] & ZWarningMask.NODATA == 0)
 
-Here, the ``ZWarningMask.NODATA`` bit indicates a spectrum which contains no
-data (all inverse variance pixel values in the extracted spectrum are zero).
+Here, the ``ZWarningMask.NODATA`` bit indicates a spectrum which
+contains no data (all inverse variance pixel values in the extracted
+spectrum are zero). Navigate to the DESI `ZWARN bit definitions`_
+documentation for more details.
 
 .. _`qso redshifts`:
 
@@ -176,6 +185,7 @@ For questions (or problems) regarding any of the VACs catalogs or their
 construction, please `open a ticket`_ and/or contact `John Moustakas (Siena
 University)`_.
 
+.. _`ZWARN bit definitions`: https://desidatamodel.readthedocs.io/en/latest/bitmasks.html#zwarn-bit-definitions
 .. _`here`: https://data.desi.lbl.gov/doc/organization/
 .. _`Redrock catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/redrock-SURVEY-PROGRAM-PIXNUM.html
 .. _`QuasarNet catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/qso_qn-SURVEY-PROGRAM-PIXNUM.html
