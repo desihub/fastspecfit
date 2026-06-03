@@ -1,7 +1,8 @@
 .. _iron vac:
+.. _iron fastspec vac:
 
-Iron VAC (DR1)
-==============
+Iron fastspec VAC (DR1)
+=======================
 
 .. contents:: Contents
     :depth: 3
@@ -9,9 +10,11 @@ Iron VAC (DR1)
 Overview
 --------
 
-This page describes the ``Iron`` value-added catalog, which was
-publicly released in March 2025 as part of `DESI Data Release 1
-(DESI/DR1)`_.
+This page describes the ``Iron`` fastspec value-added catalog, which
+contains full spectrophotometric fitting results (continuum + emission
+lines) and was publicly released in March 2025 as part of `DESI Data
+Release 1 (DESI/DR1)`_. For the companion photometry-only catalog, see
+the :ref:`Iron fastphot VAC<iron fastphot vac>`.
 
 Please refer to the :ref:`acknowledgments` section for the conditions for using
 this VAC.

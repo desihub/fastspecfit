@@ -13,9 +13,9 @@ The following pages describe the content and construction of the ``FastSpecFit``
 value-added catalogs (VACs) for the following DESI Data Releases and Data
 Assemblies:
 
-* :ref:`Fuji (Early Data Release)<fuji vac>`
 * :ref:`Iron (Data Release 1)<iron vac>`
 * :ref:`Guadalupe (Data Release 1 Supplement)<guadalupe vac>`
+* :ref:`Fuji (Early Data Release)<fuji vac>`
 
 .. note::
 
@@ -40,20 +40,20 @@ We run ``FastSpecFit`` on the healpix-coadded DESI spectra, and organize the
 files identically to how the spectra, redshift catalogs, and other data products
 are organized in the DESI data releases and assemblies (as documented
 `here`_). In other words, relative to the VAC data release directory ``VACDIR``,
-the individual ``fastspec`` files (see :ref:`algorithms`) can be found at the
-following location::
+the individual per-healpix files can be found at the following location::
 
-  $VACDIR/healpix/SURVEY/PROGRAM/HPIXGROUP/HEALPIX/fastspec-SURVEY-PROGRAM-HEALPIX.fits.gz
+  $VACDIR/healpix/SURVEY/PROGRAM/HPIXGROUP/HEALPIX/{fastspec,fastphot}-SURVEY-PROGRAM-HEALPIX.fits{.gz}
 
 where ``SURVEY``, ``PROGRAM``, ``HPIXGROUP``, and ``HEALPIX`` are fully
 documented `here`_.
 
 .. note::
 
-   The ``fastspec`` catalogs are gzipped because they contain the fitting
-   results as well as the best-fitting model spectra; see the :ref:`fastspec
-   data model<fastspec datamodel>` pages for a full description of the contents
-   of these files.
+   The ``fastspec`` healpix catalogs are gzipped because they contain the
+   best-fitting model spectra in addition to the fitting results (see the
+   :ref:`fastspec data model<fastspec datamodel>`). The ``fastphot`` healpix
+   catalogs are not gzipped because they do not include a ``MODELS`` extension
+   (see the :ref:`fastphot data model<fastphot datamodel>`).
 
 .. _`merged catalogs`:
 
@@ -65,13 +65,15 @@ combine all the individual `healpix` catalogs for a given ``SURVEY`` and
 ``PROGRAM`` into a single file. Relative to the top-level data release directory
 ``VACDIR``, the merged catalog filenames have the following syntax::
 
-  $VACDIR/catalogs/fastspec-SURVEY-PROGRAM.fits
+  $VACDIR/catalogs/{fastspec,fastphot}-SURVEY-PROGRAM.fits
 
 .. note::
 
-   In order to keep the size of the files reasonable, these files do not contain
-   the ``MODELS`` FITS extension (see the :ref:`fastspec data model<fastspec
-   datamodel>` page for a description of this FITS extension). 
+   In order to keep the size of the files reasonable, the merged ``fastspec``
+   catalogs do not contain the ``MODELS`` FITS extension (see the :ref:`fastspec
+   data model<fastspec datamodel>` page for a description of this FITS
+   extension). The ``fastphot`` merged catalogs also omit the ``MODELS``
+   extension, which is not produced by ``fastphot``.
 
 .. _`sample selection`:
 
@@ -172,11 +174,11 @@ Issues
 
 For questions (or problems) regarding any of the VACs catalogs or their
 construction, please `open a ticket`_ and/or contact `John Moustakas (Siena
-College)`_.
+University)`_.
 
 .. _`here`: https://data.desi.lbl.gov/doc/organization/
 .. _`Redrock catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/redrock-SURVEY-PROGRAM-PIXNUM.html
 .. _`QuasarNet catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/qso_qn-SURVEY-PROGRAM-PIXNUM.html
 .. _`MgII catalog`: https://desidatamodel.readthedocs.io/en/latest/DESI_SPECTRO_REDUX/SPECPROD/healpix/SURVEY/PROGRAM/PIXGROUP/PIXNUM/qso_mgii-SURVEY-PROGRAM-PIXNUM.html
 .. _`open a ticket`: https://github.com/desihub/fastspecfit/issues
-.. _`John Moustakas (Siena College)`: mailto:jmoustakas@siena.edu
+.. _`John Moustakas (Siena University)`: mailto:jmoustakas@siena.edu
