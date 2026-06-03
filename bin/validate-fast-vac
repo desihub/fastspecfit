@@ -348,8 +348,7 @@ def run_checksums(args, comm, rank, size):
 # Entry point
 # ---------------------------------------------------------------------------
 
-def main():
-
+def _parse_args():
     p = argparse.ArgumentParser()
     p.add_argument('--vacdir', type=str, required=True,
                    help='top-level VAC directory')
@@ -374,6 +373,13 @@ def main():
         if missing:
             p.error(f'--write-checksums requires: {", ".join(missing)}')
 
+    return args
+
+
+def main():
+    import sys
+
+    # MPI init before argument parsing so that errors are handled cleanly.
     try:
         from mpi4py import MPI
         comm = MPI.COMM_WORLD
@@ -382,6 +388,23 @@ def main():
     except ImportError:
         comm = None
         rank, size = 0, 1
+
+    # Parse and validate args on rank 0 only, then broadcast to all ranks.
+    # If parsing fails, comm.Abort terminates all ranks before they can hang
+    # on the broadcast.
+    if rank == 0:
+        try:
+            args = _parse_args()
+        except SystemExit as e:
+            rc = e.code if isinstance(e.code, int) else 1
+            if comm:
+                comm.Abort(rc)
+            sys.exit(rc)
+    else:
+        args = None
+
+    if comm:
+        args = comm.bcast(args, root=0)
 
     if args.write_checksums:
         run_checksums(args, comm, rank, size)
