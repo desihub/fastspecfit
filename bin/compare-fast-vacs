@@ -114,6 +114,9 @@ def _decode(arr):
 
 def _hexbin_panel(ax, xval, yval, lims, xlabel, ylabel, dolog):
     """Draw a hexbin comparison panel with a 1:1 line and stats annotation."""
+    # Clip to the plot extent so hexbin bin indices are always finite.
+    xval = np.clip(xval, lims[0], lims[1])
+    yval = np.clip(yval, lims[0], lims[1])
     ax.hexbin(xval, yval,
               extent=(lims[0], lims[1], lims[0], lims[1]),
               gridsize=40, bins='log', cmap='Blues',
