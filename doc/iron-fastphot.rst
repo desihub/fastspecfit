@@ -60,55 +60,77 @@ catalog, organized by survey and program.
 ============================ ========= =================
 File Name                    File Size Number of Targets
 ============================ ========= =================
-fastphot-iron-cmx-other.fits TBD       TBD
+fastphot-iron-cmx-other.fits 2.34 MB   2,762
 ============================ ========= =================
 
 ============================= ========= =================
 File Name                     File Size Number of Targets
 ============================= ========= =================
-fastphot-iron-sv1-backup.fits TBD       TBD
-fastphot-iron-sv1-bright.fits TBD       TBD
-fastphot-iron-sv1-dark.fits   TBD       TBD
-fastphot-iron-sv1-other.fits  TBD       TBD
-Total (sv1)                   TBD       TBD
+fastphot-iron-sv1-backup.fits 2.95 MB   3,331
+fastphot-iron-sv1-bright.fits 106 MB    126,650
+fastphot-iron-sv1-dark.fits   196 MB    233,202
+fastphot-iron-sv1-other.fits  28.6 MB   34,112
+Total (sv1)                   334 MB    397,295
 ============================= ========= =================
 
 ============================= ========= =================
 File Name                     File Size Number of Targets
 ============================= ========= =================
-fastphot-iron-sv2-backup.fits TBD       TBD
-fastphot-iron-sv2-bright.fits TBD       TBD
-fastphot-iron-sv2-dark.fits   TBD       TBD
-Total (sv2)                   TBD       TBD
+fastphot-iron-sv2-backup.fits 132 KB    105
+fastphot-iron-sv2-bright.fits 39.3 MB   46,486
+fastphot-iron-sv2-dark.fits   44.4 MB   52,690
+Total (sv2)                   83.8 MB   99,281
 ============================= ========= =================
 
 ============================= ========= =================
 File Name                     File Size Number of Targets
 ============================= ========= =================
-fastphot-iron-sv3-backup.fits TBD       TBD
-fastphot-iron-sv3-bright.fits TBD       TBD
-fastphot-iron-sv3-dark.fits   TBD       TBD
-Total (sv3)                   TBD       TBD
+fastphot-iron-sv3-backup.fits 1.33 MB   1,524
+fastphot-iron-sv3-bright.fits 229 MB    265,293
+fastphot-iron-sv3-dark.fits   511 MB    592,191
+Total (sv3)                   741 MB    859,008
 ============================= ========= =================
 
 ================================= ========= =================
 File Name                         File Size Number of Targets
 ================================= ========= =================
-fastphot-iron-special-backup.fits TBD       TBD
-fastphot-iron-special-bright.fits TBD       TBD
-fastphot-iron-special-dark.fits   TBD       TBD
-fastphot-iron-special-other.fits  TBD       TBD
-Total (special)                   TBD       TBD
+fastphot-iron-special-backup.fits 458 KB    552
+fastphot-iron-special-bright.fits 32.1 MB   43,261
+fastphot-iron-special-dark.fits   11.1 MB   14,954
+fastphot-iron-special-other.fits  32.9 MB   42,064
+Total (special)                   76.5 MB   100,831
 ================================= ========= =================
 
-============================= ========= =================
-File Name                     File Size Number of Targets
-============================= ========= =================
-fastphot-iron-main-backup.fits TBD      TBD
-fastphot-iron-main-bright.fits TBD      TBD
-fastphot-iron-main-dark.fits   TBD      TBD
-Total (main)                   TBD      TBD
-============================= ========= =================
+========================================== =========== =================
+File Name                                  File Size   Number of Targets
+========================================== =========== =================
+fastphot-iron-main-backup.fits             11.2 MB     15,163
+fastphot-iron-main-bright-nside1-hp00.fits 76.8 MB     101,838
+fastphot-iron-main-bright-nside1-hp01.fits 766 MB      1,017,041
+fastphot-iron-main-bright-nside1-hp02.fits 1.02e+03 MB 1,358,627
+fastphot-iron-main-bright-nside1-hp03.fits 304 MB      403,581
+fastphot-iron-main-bright-nside1-hp04.fits 740 MB      981,600
+fastphot-iron-main-bright-nside1-hp05.fits 227 MB      301,057
+fastphot-iron-main-bright-nside1-hp06.fits 1.02e+03 MB 1,347,464
+fastphot-iron-main-bright-nside1-hp07.fits 508 MB      673,711
+fastphot-iron-main-bright-nside1-hp08.fits 61.6 MB     81,734
+fastphot-iron-main-bright-nside1-hp09.fits 50.4 MB     66,856
+fastphot-iron-main-bright-nside1-hp10.fits 34.4 MB     45,570
+fastphot-iron-main-bright-nside1-hp11.fits 50.4 MB     66,848
+fastphot-iron-main-dark-nside1-hp00.fits   269 MB      352,447
+fastphot-iron-main-dark-nside1-hp01.fits   853 MB      1,118,746
+fastphot-iron-main-dark-nside1-hp02.fits   1.26 GB     1,699,122
+fastphot-iron-main-dark-nside1-hp03.fits   164 MB      214,658
+fastphot-iron-main-dark-nside1-hp04.fits   1.29 GB     1,739,317
+fastphot-iron-main-dark-nside1-hp05.fits   441 MB      579,026
+fastphot-iron-main-dark-nside1-hp06.fits   2.12 GB     2,851,879
+fastphot-iron-main-dark-nside1-hp07.fits   787 MB      1,032,151
+fastphot-iron-main-dark-nside1-hp08.fits   165 MB      216,757
+fastphot-iron-main-dark-nside1-hp09.fits   119 MB      156,454
+fastphot-iron-main-dark-nside1-hp10.fits   56.8 MB     74,463
+fastphot-iron-main-dark-nside1-hp11.fits   31 MB       40,609
+Total (main)                               12.3 GB     16,536,719
+========================================== =========== =================
 
 Code & Template Versions
 ------------------------
@@ -131,20 +153,20 @@ following bit of code::
 ================ ==========
 Software Package Version(s)
 ================ ==========
-python           TBD
-numpy            TBD
-scipy            TBD
-astropy          TBD
-yaml             TBD
-matplotlib       TBD
-fitsio           TBD
-mpi4py           TBD
-healpy           TBD
-desiutil         TBD
-desispec         TBD
-desitarget       TBD
-speclite         TBD
-fastspecfit      TBD
+python           3.10.14
+numpy            1.22.4
+scipy            1.8.1
+astropy          6.0.1
+yaml             6.0.1
+matplotlib       3.8.4
+fitsio           1.2.1
+mpi4py           3.1.6
+healpy           1.16.6
+desiutil         3.4.3
+desispec         0.68.1
+desitarget       2.8.0
+speclite         0.20
+fastspecfit      3.1.5, 3.2.0
 ================ ==========
 
 .. rst-class:: columns
@@ -156,7 +178,7 @@ DESI_ROOT            /global/cfs/cdirs/desi
 DUST_DIR             /dvs_ro/cfs/cdirs/desi/external/dust/v0_1
 FPHOTO_DIR           /dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9
 FTEMPLATES_DIR       /dvs_ro/cfs/cdirs/desi/public/external/templates/fastspecfit
-FTEMPLATES_FILE      TBD (see `README.txt`_)
+FTEMPLATES_FILE      ftemplates-chabrier-2.0.0.fits (see `README.txt`_)
 ==================== ============================================================
 
 .. _previous versions - iron fastphot:
@@ -167,9 +189,9 @@ Notes & Known Issues
 v1.0 (latest release)
 ~~~~~~~~~~~~~~~~~~~~~~
 
-* Release date: TBD
-* ``FastSpecFit`` version: TBD
-* Templates: TBD (see `README.txt`_).
+* Release date: June 2026
+* ``FastSpecFit`` version: ``3.1.5``
+* Templates: ``ftemplates-chabrier-2.0.0.fits``  (see `README.txt`_).
 * Notes:
 
   * Initial public release of the ``Iron`` fastphot VAC.
