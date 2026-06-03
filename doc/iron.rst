@@ -42,10 +42,8 @@ click on the following links:
 Summary Statistics
 ------------------
 
-The next two tables summarize the size and number of targets in each merged
-catalog. The first table gives the sample in each survey and program, while the
-second table combines all the individual programs into separate ``main``,
-``sv``, and ``special`` catalogs.
+The following tables summarize the size and number of targets in each merged
+catalog, organized by survey and program.
 
 .. rst-class:: columns
 
@@ -124,7 +122,7 @@ fastspec-iron-main-dark-nside1-hp11.fits   171 MB    40,609
 Total (main)                               67.7 GB   16,536,719
 ========================================== ========= =================
 
-The following table summarizes the number of QSO targets whose redshift has been
+The following tables summarize the number of QSO targets whose redshift has been
 updated using the procedure documented :ref:`here<qso redshifts>`.
 
 .. rst-class:: columns
@@ -267,6 +265,24 @@ v3.0 (latest release)
 * Templates: ``ftemplates-chabrier-2.0.0.fits``  (see `README.txt`_).
 * Notes:
 
+  * Near-total rewrite of the stellar continuum and emission-line fitting
+    engines, resulting in improved accuracy and significantly faster execution
+    [`PR/#177`_, `PR/#186`_].
+  * Updated rest wavelengths and emission-line list; broad He I lines removed
+    [`PR/#179`_].
+  * Monte Carlo uncertainties added for all fitted model parameters (e.g.,
+    line fluxes, equivalent widths, stellar masses) [`PR/#189`_].
+  * Updated theoretical [N II] 6548, 6584 and [O III] 4959, 5007 doublet
+    ratios [`PR/#195`_].
+  * Updated algorithm for correcting QSO redshifts [`PR/#201`_].
+  * Backwards-incompatible data model update; large merged catalogs now split
+    into separate ``SPECPHOT`` and ``FASTSPEC`` extensions [`PR/#197`_,
+    `PR/#211`_].
+  * Bug fix: <1% bias in fluxes and equivalent widths of tied and free doublet
+    ratios [`PR/#198`_].
+  * Bug fix: significant errors in flux and equivalent-width inverse-variance
+    estimates [`PR/#213`_].
+
 * Known issues:
 
   * None at this time.
@@ -352,3 +368,13 @@ v1.0
 .. _`PR/#157`: https://github.com/desihub/fastspecfit/pull/157
 .. _`PR/#158`: https://github.com/desihub/fastspecfit/pull/158
 .. _`PR/#166`: https://github.com/desihub/fastspecfit/pull/166
+.. _`PR/#177`: https://github.com/desihub/fastspecfit/pull/177
+.. _`PR/#179`: https://github.com/desihub/fastspecfit/pull/179
+.. _`PR/#186`: https://github.com/desihub/fastspecfit/pull/186
+.. _`PR/#189`: https://github.com/desihub/fastspecfit/pull/189
+.. _`PR/#195`: https://github.com/desihub/fastspecfit/pull/195
+.. _`PR/#197`: https://github.com/desihub/fastspecfit/pull/197
+.. _`PR/#198`: https://github.com/desihub/fastspecfit/pull/198
+.. _`PR/#201`: https://github.com/desihub/fastspecfit/pull/201
+.. _`PR/#211`: https://github.com/desihub/fastspecfit/pull/211
+.. _`PR/#213`: https://github.com/desihub/fastspecfit/pull/213
