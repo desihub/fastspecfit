@@ -1770,7 +1770,11 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
     # What is relaxed is specified per kinematic group in the constraint file;
     # the adoption decision is a single global chi2 comparison.
     profile_name = 'narrow_broad' if adopt_broad else 'narrow_only'
+
     fp = constraints.final_pass[profile_name]
+    delta_kinechi2 = np.float32(0.) # initialize
+    delta_kinendof = np.int32(0)
+
     if fp['enabled']:
         t0 = time.time()
         linemodel_relax = linemodel_pref.copy()
@@ -1845,9 +1849,9 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                 nbins      = np.sum(emlineivar > 0)
                 ndof_pref  = nbins - nfree_pref
                 ndof_relax = nbins - nfree_relax
-                delta_chi2 = chi2_pref * ndof_pref - chi2_relax * ndof_relax
-                delta_ndof = ndof_pref - ndof_relax
-                adopt_relax = (delta_ndof > 0 and delta_chi2 > delta_ndof)
+                delta_kinechi2 = chi2_pref * ndof_pref - chi2_relax * ndof_relax
+                delta_kinendof = ndof_pref - ndof_relax
+                adopt_relax = (delta_kinendof > 0 and delta_kinechi2 > delta_kinendof)
 
             if adopt_relax:
                 linemodel_pref        = linemodel_relax
@@ -1856,17 +1860,17 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                 nfree_pref            = nfree_relax
                 if fp['adopt_if'] == 'chi2_improves':
                     log.info(f'Adopting relaxed kinematic model ({profile_name}): '
-                             f'delta-chi2={delta_chi2:.1f} > delta-ndof={delta_ndof:.0f}')
+                             f'delta-chi2={delta_kinechi2:.1f} > delta-ndof={delta_kinendof:.0f}')
                 else:
                     log.info(f'Adopting relaxed kinematic model ({profile_name}): adopt_if=always')
             else:
                 if fp['adopt_if'] == 'chi2_improves':
-                    if delta_ndof <= 0:
+                    if delta_kinendof <= 0:
                         log.debug(f'Dropping relaxed kinematic model ({profile_name}): '
-                                  f'no additional free parameters (delta-ndof={delta_ndof:.0f})')
+                                  f'no additional free parameters (delta-ndof={delta_kinendof:.0f})')
                     else:
                         log.debug(f'Dropping relaxed kinematic model ({profile_name}): '
-                                  f'delta-chi2={delta_chi2:.1f} < delta-ndof={delta_ndof:.0f}')
+                                  f'delta-chi2={delta_kinechi2:.1f} < delta-ndof={delta_kinendof:.0f}')
             log.debug(fsftime('linefit_final_pass', time.time()-t0,
                               context=f'targetid={data["uniqueid"]}, profile={profile_name}, '
                                       f'nfreed={nfreed}'))
@@ -1940,6 +1944,8 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
     #fastfit['NDOF_LINE'] = ndof_pref
     fastfit['DELTA_LINECHI2'] = delta_linechi2_balmer  # chi2_nobroad - chi2_broad
     fastfit['DELTA_LINENDOF'] = delta_linendof_balmer  # ndof_nobroad - ndof_broad
+    fastfit['DELTA_KINECHI2'] = delta_kinechi2 # chi2_constrained - chi2_relaxed
+    fastfit['DELTA_KINENDOF'] = delta_kinendof # ndof_constrained - ndof_relaxed
 
     # full-fit reduced chi2
     rchi2 = np.sum(oemlineivar * (specflux - (continuummodel + smooth_continuum + emlineflux_model_best))**2)

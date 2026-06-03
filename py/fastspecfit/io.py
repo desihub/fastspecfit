@@ -2053,6 +2053,8 @@ def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
             #add_field('DOF_BROAD', dtype='i8')
             add_field('DELTA_LINECHI2', dtype='f4') # delta-reduced chi2 with and without broad line-emission
             add_field('DELTA_LINENDOF', dtype=np.int32)
+            add_field('DELTA_KINECHI2', dtype='f4') # delta-reduced chi2 with and without final-pass optimization
+            add_field('DELTA_KINENDOF', dtype=np.int32)
 
             # special columns for the fitted doublets
             add_field('MGII_DOUBLET_RATIO', dtype='f4')
