@@ -390,6 +390,8 @@ Name                        Type         Units                         Descripti
           INIT_BALMER_BROAD         bool                               Boolean flag indicating whether a broad Balmer emission line was initially identified in the spectral range.
              DELTA_LINECHI2      float32                               Chi-squared difference between an emission-line model without and with broad lines.
              DELTA_LINENDOF        int32                               Difference in the degrees of freedom between an emission-line model without and with broad lines.
+             DELTA_KINECHI2      float32                               Chi-squared difference between the constrained and relaxed emission-line model.
+             DELTA_KINENDOF        int32                               Difference in the degrees of freedom between the constrained and relaxed emission-line model.
          MGII_DOUBLET_RATIO      float32                               MgII 2796 / 2803 doublet line-ratio.
     MGII_DOUBLET_RATIO_IVAR      float32                               Inverse variance in MGII_DOUBLET_RATIO.
           OII_DOUBLET_RATIO      float32                               [OII] 3726 / 3729 doublet line-ratio.
