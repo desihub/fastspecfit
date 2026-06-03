@@ -55,6 +55,9 @@ Defined in `pyproject.toml` and implemented in `py/fastspecfit/fastspecfit.py`:
 - `stackfit` — fit stacked/coadded spectra
 - `fastqa` — generate QA figures from output catalogs
 - `mpi-fastspecfit` (bin script) — MPI parallel execution across many files
+- `generate-fast-slurm` (bin script) — generate load-balanced Slurm job scripts
+- `parse-fast-logs` (bin script) — parse log files and report timing statistics
+- `compare-fast-vacs` (bin script) — compare two FastSpecFit VACs
 - `profile-fastspec` (bin script) — profiling tool for fastspec performance
 
 ## Architecture
@@ -85,12 +88,12 @@ This pattern avoids re-reading large files in multiprocessing workers.
 | `fastspecfit.py` | CLI parsing, top-level `fastspec`/`fastphot` drivers, per-object dispatch |
 | `continuum.py` | `ContinuumTools` class — stellar SED fitting against SPS templates with dust attenuation and velocity dispersion |
 | `emlines.py` | `EMFitTools` class — emission-line fitting orchestration |
-| `emline_fit/` | Numba-accelerated emission-line model (Gaussian point evaluation at pixel centers), Jacobian, sparse representation, and parameter mapping |
+| `emline_fit/` | Numba-accelerated emission-line model (Gaussian point evaluation at pixel centers), Jacobian, sparse representation, parameter mapping, and public interface (`interface.py`, `utils.py`) |
 | `io.py` | `DESISpectra` class for reading DESI spectra; output FITS writing |
 | `photometry.py` | `Photometry` class — filter curves (via speclite), photometric bands, dust reddening |
 | `templates.py` | `Templates` class — reads SPS template FITS files, manages FFT convolution caching for velocity dispersion broadening |
 | `resolution.py` | DESI resolution matrix handling; deconvolution using Koposov/rvspecfit approach; defines `SIGMA0_ANGSTROM` pre-convolution Gaussian sigma |
-| `linetable.py` | Reads `data/emlines.ecsv` emission-line parameter table |
+| `linetable.py` | Reads `data/emlines.ecsv` emission-line parameter table; `EmlineConstraints` reads `data/emline-constraints.yaml` for kinematic groups, doublet bounds, and fitting-strategy parameters |
 | `igm.py` | `Inoue14` IGM attenuation (Ly-α forest) |
 | `cosmo.py` | Tabulated DESI fiducial cosmology interpolation |
 | `mpi.py` | MPI/multiprocessing utilities for large-scale production runs |
@@ -106,6 +109,7 @@ This pattern avoids re-reading large files in multiprocessing workers.
 ### Bundled Data Files (`py/fastspecfit/data/`)
 
 - `emlines.ecsv` — emission line table (wavelengths, line types, constraints)
+- `emline-constraints.yaml` — YAML-based kinematic groups, doublet bounds, amplitude constraints, and per-group fitting-strategy parameters
 - `legacysurvey-dr9.yaml` / `legacysurvey-dr10.yaml` — photometric filter/band configuration
 - `stacked-phot.yaml` — photometric configuration for stacked spectra
 - `desi_fiducial_cosmology.dat` — tabulated cosmology table
