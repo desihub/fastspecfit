@@ -105,7 +105,7 @@ following bit of code::
 
   import fitsio
   from desiutil.depend import Dependencies
-  codever = Dependencies(fitsio.read_header('/path/to/fastspecfit/file.fits, ext=0))
+  codever = Dependencies(fitsio.read_header('/path/to/fastspecfit/file.fits', ext=0))
   for codename, version in codever.items():
       print(codename, version)
 
@@ -166,7 +166,7 @@ v3.2 (latest release)
 
   * Several updates to the spectrophotometric templates aimed at addressing the
     stellar mass bias identified in `issue/#159`_ (see `PR/#166`_):
-    
+
     * Templates are now just solar metallicity (previously 0.1, 1, and 1.6 times
       solar).
     * Five age bins now (vs 8 previously).
@@ -179,7 +179,7 @@ v3.2 (latest release)
     velocity shifts are all tied together.
   * All known bugs fixed.
 * Known issues:
-  
+
   * None at this time.
 
 v3.1
@@ -194,7 +194,7 @@ v3.1
     grid; see `PR/#158`_).
   * All known bugs fixed.
 * Known Issues:
-  
+
   * **Warning**: Stellar masses are systematically higher (by 0.2-0.5 dex)
     compared to other methods, so they should be used with caution (see
     `issue/#159`_). Similarly, star-formation rates and other SPS model
@@ -216,7 +216,7 @@ v3.0
     emission-line model spectra were not being convolved with the resolution
     matrix (see `PR/#137`_). 
 * Known Issues:
-  
+
   * **Warning**: Stellar masses are systematically higher (by 0.2-0.5 dex)
     compared to other methods, so they should be used with caution (see
     `issue/#159`_). Similarly, star-formation rates and other SPS model
@@ -235,7 +235,7 @@ v2.0
 
   * Major update of underlying spectrophotometric templates.
 * Known Issues:
-  
+
   * **Bug**: [OII] 7320,7330 doublet amplitude ratio incorrectly inverted (fixed
     in `PR/#120`_).
   * **Bug**: Artificial redshift dependence in derived stellar masses due to age
@@ -250,7 +250,7 @@ v1.0
 * ``FastSpecFit`` versions: ``1.0.0``, ``1.0.1``
 * Templates: `SSP-CKC14z/v1.0`_
 * Notes & Known Issues:
-  
+
   * First major release; many issues addressed in future releases.
 
 .. _`DESI Early Data Release (DESI/EDR)`: https://data.desi.lbl.gov/public/edr
