@@ -45,7 +45,7 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         Photometry configuration file override.
     emlinesfile : :class:`str` or None, optional
         Emission-line parameter file override.
-    constraintsfile : :class:`str` of None, optional
+    constraintsfile : :class:`str` or None, optional
         Emission-line constraints file override.
     mp_per_file : :class:`bool`, optional
         If ``True``, run multiple files in parallel (one file per worker).

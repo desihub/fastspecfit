@@ -742,6 +742,8 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
             cmdargs += f' --fphotofile={args.fphotofile}'
         if args.emlinesfile:
             cmdargs += f' --emlinesfile={args.emlinesfile}'
+        if args.constraintsfile:
+            cmdargs += f' --constraintsfile={args.constraintsfile}'
         if args.nmonte:
             cmdargs += f' --nmonte={args.nmonte}'
         if args.vdisp_nominal:
