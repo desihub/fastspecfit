@@ -31,6 +31,7 @@ Examples:
 import hashlib
 import multiprocessing
 import os
+import re
 import shutil
 import subprocess
 import argparse
@@ -191,6 +192,33 @@ def check_file_integrity(filepath):
     return problems
 
 
+_EXTRANEOUS_RE = [
+    re.compile(r'.*\.log\.\d+$'),      # backed-up logs: *.log.0, *.log.1, ...
+    re.compile(r'.*\.log-rank\d+$'),   # interrupted rank logs: *.log-rank0, ...
+    re.compile(r'.*\.fits\.tmp$'),     # interrupted temp output
+    re.compile(r'.*\.fits\.tmp\.gz$'), # interrupted temp gzipped output
+]
+
+
+def check_extraneous_files(dirpath):
+    """Warn about leftover backup logs and incomplete output files in dirpath.
+
+    Returns
+    -------
+    list of str
+        Warning strings (empty if directory is clean).
+    """
+    warnings = []
+    try:
+        names = [f.name for f in Path(dirpath).iterdir() if f.is_file()]
+    except Exception as e:
+        return [f'[{dirpath}]: could not list directory ({e})']
+    for name in sorted(names):
+        if any(pat.match(name) for pat in _EXTRANEOUS_RE):
+            warnings.append(f'extraneous file: {os.path.join(dirpath, name)}')
+    return warnings
+
+
 def run_validation(args, comm, rank, size):
     fitsverify_ok = shutil.which('fitsverify') is not None
     if rank == 0 and not fitsverify_ok:
@@ -219,9 +247,17 @@ def run_validation(args, comm, rank, size):
     log.info(f'Rank {rank}: validating {len(my_files):,d} file(s).')
 
     n_checked = n_issues = 0
+    checked_dirs = set()
     for filepath in my_files:
         filepath = Path(filepath)
         log.info(f'Rank {rank} [{n_checked + 1}/{len(my_files)}]: {filepath.name}')
+
+        # Check the parent directory for extraneous files (once per directory).
+        if filepath.parent not in checked_dirs:
+            checked_dirs.add(filepath.parent)
+            for msg in check_extraneous_files(filepath.parent):
+                log.warning(msg)
+
         problems = []
         if fitsverify_ok:
             problems.extend(run_fitsverify(filepath))
@@ -390,21 +426,23 @@ def main():
         rank, size = 0, 1
 
     # Parse and validate args on rank 0 only, then broadcast to all ranks.
-    # If parsing fails, comm.Abort terminates all ranks before they can hang
-    # on the broadcast.
+    # On error, rank 0 lets argparse print the usage message and then
+    # broadcasts None so other ranks exit silently without MPI noise.
     if rank == 0:
         try:
             args = _parse_args()
         except SystemExit as e:
-            rc = e.code if isinstance(e.code, int) else 1
             if comm:
-                comm.Abort(rc)
-            sys.exit(rc)
+                comm.bcast(None, root=0)
+            sys.exit(e.code if isinstance(e.code, int) else 1)
     else:
         args = None
 
     if comm:
         args = comm.bcast(args, root=0)
+
+    if args is None:
+        sys.exit(0)
 
     if args.write_checksums:
         run_checksums(args, comm, rank, size)
