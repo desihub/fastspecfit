@@ -15,12 +15,21 @@ Examples:
   # validate
   validate-fast-vac --vacdir=/path/to/iron/v3.0
 
+  # validate a subset
+  validate-fast-vac --vacdir=/path/to/iron/v3.0 --survey main --program dark bright
+
   # write checksums
   validate-fast-vac --vacdir=/path/to/loa/v1.0 --write-checksums \\
       --dr=dr2 --specprod=loa --version=v1.0
 
+  # in production
+  salloc -N 1 -C cpu -A desi -t 01:00:00 --qos interactive
+  source ~/code/impy/bin/fastspecfit-env-nersc
+  srun --ntasks=64 validate-fast-vac --vacdir=$PSCRATCH/fastspecfit/loa-3.4.2/loa --mp 8
+
 """
 import hashlib
+import multiprocessing
 import os
 import shutil
 import subprocess
@@ -60,19 +69,54 @@ def _distribute(items, weights, comm, rank, size):
 # Validation
 # ---------------------------------------------------------------------------
 
-def discover_files(vacdir):
-    """Recursively find all FITS and FITS.gz files under vacdir."""
-    fits_files = sorted(glob(os.path.join(vacdir, '**', '*.fits'), recursive=True))
-    fits_gz_files = sorted(glob(os.path.join(vacdir, '**', '*.fits.gz'), recursive=True))
-    return np.array(fits_files + fits_gz_files)
-
-
-def get_ntargets(filepath):
+def _get_ntargets_vac(filepath):
     """Return the row count of the first BinTable extension; fall back to 1."""
     try:
         return fitsio.FITS(filepath)[1].get_nrows()
     except Exception:
         return 1
+
+
+def discover_vac_files(vacdir, surveys=None, programs=None):
+    """Discover all VAC FITS files to validate.
+
+    Uses ``findfiles`` from ``fastspecfit.mpi`` for the healpix tree (supports
+    survey/program filtering) and a simple glob for the catalogs directory.
+    Surveys and programs are auto-detected from the directory tree when not
+    provided.
+    """
+    from fastspecfit.mpi import findfiles
+
+    all_files = []
+
+    healpix_base = os.path.join(vacdir, 'healpix')
+    if os.path.isdir(healpix_base):
+        if surveys is None:
+            surveys = sorted(d for d in os.listdir(healpix_base)
+                             if os.path.isdir(os.path.join(healpix_base, d)))
+        if programs is None:
+            progs = set()
+            for survey in surveys:
+                sdir = os.path.join(healpix_base, survey)
+                if os.path.isdir(sdir):
+                    progs.update(d for d in os.listdir(sdir)
+                                 if os.path.isdir(os.path.join(sdir, d)))
+            programs = sorted(progs)
+
+        log.info(f'Searching healpix tree: surveys={surveys}, programs={programs}')
+        for prefix in ('fastspec', 'fastphot'):
+            for gzip in (True, False):
+                found = findfiles(healpix_base, prefix=prefix, coadd_type='healpix',
+                                  survey=surveys, program=programs, gzip=gzip)
+                if len(found) > 0:
+                    all_files.extend(found)
+
+    catdir = os.path.join(vacdir, 'catalogs')
+    if os.path.isdir(catdir):
+        all_files.extend(sorted(glob(os.path.join(catdir, '*.fits'))))
+        all_files.extend(sorted(glob(os.path.join(catdir, '*.fits.gz'))))
+
+    return np.array(sorted(set(all_files)))
 
 
 def run_fitsverify(filepath):
@@ -153,22 +197,31 @@ def run_validation(args, comm, rank, size):
         log.warning('fitsverify not found on PATH; skipping fitsverify checks.')
 
     if rank == 0:
-        all_files = discover_files(args.vacdir)
+        all_files = discover_vac_files(args.vacdir,
+                                       surveys=args.survey,
+                                       programs=args.program)
         if len(all_files) == 0:
             log.error(f'No FITS files found under {args.vacdir}')
             if comm:
                 comm.Abort(1)
             return 1
-        log.info(f'Found {len(all_files):,d} FITS file(s) to validate.')
-        ntargets = np.array([get_ntargets(f) for f in all_files])
+        log.info(f'Found {len(all_files):,d} FITS file(s). Counting targets (mp={args.mp})...')
+        if args.mp > 1:
+            with multiprocessing.Pool(args.mp) as P:
+                ntargets = np.array(P.map(_get_ntargets_vac, all_files))
+        else:
+            ntargets = np.array([_get_ntargets_vac(f) for f in all_files])
+        log.info(f'Total targets: {np.sum(ntargets):,d}')
     else:
         all_files = ntargets = None
 
     my_files = _distribute(all_files, ntargets, comm, rank, size)
+    log.info(f'Rank {rank}: validating {len(my_files):,d} file(s).')
 
     n_checked = n_issues = 0
     for filepath in my_files:
         filepath = Path(filepath)
+        log.info(f'Rank {rank} [{n_checked + 1}/{len(my_files)}]: {filepath.name}')
         problems = []
         if fitsverify_ok:
             problems.extend(run_fitsverify(filepath))
@@ -300,6 +353,12 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--vacdir', type=str, required=True,
                    help='top-level VAC directory')
+    p.add_argument('--mp', type=int, default=1,
+                   help='number of multiprocessing workers on rank 0 for target counting (default 1)')
+    p.add_argument('--survey', nargs='+', default=None,
+                   help='survey(s) to validate (default: all detected)')
+    p.add_argument('--program', nargs='+', default=None,
+                   help='program(s) to validate (default: all detected)')
     p.add_argument('--write-checksums', action='store_true',
                    help='write per-directory SHA-256 checksum files instead of validating')
     p.add_argument('--dr', type=str, default=None,
