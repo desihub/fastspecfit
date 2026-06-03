@@ -14,7 +14,7 @@ from fastspecfit.logger import log
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False,
                     sample=None, input_redshifts=False, outdir_data='.', templates=None,
                     templateversion=None, fphotodir=None, fphotofile=None, emlinesfile=None,
-                    mp_per_file=False):
+                    constraintsfile=None, mp_per_file=False):
     """Run fastspec, fastphot, or fastqa across MPI ranks.
 
     Parameters
@@ -45,6 +45,8 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         Photometry configuration file override.
     emlinesfile : :class:`str` or None, optional
         Emission-line parameter file override.
+    constraintsfile : :class:`str` of None, optional
+        Emission-line constraints file override.
     mp_per_file : :class:`bool`, optional
         If ``True``, run multiple files in parallel (one file per worker).
 
@@ -256,6 +258,7 @@ def main():
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
     parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
     parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
+    parser.add_argument('--constraintsfile', type=str, default=None, help='Emission-line kinematic constraint YAML file.')
 
     parser.add_argument('--merge', action='store_true', help='Merge all individual catalogs (for a given survey and program) into one large file.')
     parser.add_argument('--mergedir', type=str, help='Output directory for merged catalogs.')
@@ -425,7 +428,8 @@ def main():
                                   makeqa=args.makeqa, outdir_data=outdir_data, sample=sample,
                                   input_redshifts=args.input_redshifts, templates=args.templates,
                                   templateversion=args.templateversion, fphotodir=args.fphotodir,
-                                  fphotofile=args.fphotofile, emlinesfile=args.emlinesfile, mp_per_file=args.mp_per_file)
+                                  fphotofile=args.fphotofile, emlinesfile=args.emlinesfile, 
+                                  constraintsfile=args.constraintsfile, mp_per_file=args.mp_per_file)
 
         if args.profile:
             profiler.disable()
