@@ -1,0 +1,418 @@
+#!/usr/bin/env python
+"""compare-fast-vacs -- compare two fastspecfit value-added catalogs.
+
+Supports both the current data model (SPECPHOT + FASTSPEC HDUs, v3+) and the
+older single-FASTSPEC-HDU layout (v2.5.x).  HDU structure is auto-detected, so
+old and new catalogs can be compared freely.
+
+Example
+-------
+compare-fast-vacs \\
+    fastspec-loa-sv3-dark.fits \\
+    /global/cfs/cdirs/desi/vac/dr2/fastspecfit/loa/v1.0/catalogs/fastspec-loa-sv3-dark.fits \\
+    --outfile loa-sv3-dark-3.4.2-v1.0.pdf \\
+    --label1 loa-3.4.2 --label2 v1.0
+"""
+
+import os
+import sys
+import argparse
+import numpy as np
+import fitsio
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+
+INCH = 3.0   # inches per panel
+SNR_MIN = 1.0
+
+LINES = [
+    'MGII_2803',
+    'OII_3726', 'OII_3729',
+    'HBETA', 'HBETA_BROAD',
+    'OIII_5007',
+    'HALPHA', 'HALPHA_BROAD',
+    'NII_6584',
+    'SII_6716',
+]
+
+# ---------------------------------------------------------------------------
+# I/O
+# ---------------------------------------------------------------------------
+
+def _hdu_names(filepath):
+    with fitsio.FITS(filepath) as fits:
+        return {hdu.get_extname().upper() for hdu in fits}
+
+
+def read_catalog(filepath):
+    """Read a fastspecfit catalog into a flat dict of numpy arrays.
+
+    Handles both the current layout (SPECPHOT + FASTSPEC) and the older
+    single-FASTSPEC-HDU layout.  SPECPHOT columns take precedence over
+    same-named FASTSPEC columns only for non-identifier fields.
+    """
+    hdus = _hdu_names(filepath)
+    data = {}
+
+    if 'FASTSPEC' in hdus:
+        fs = fitsio.read(filepath, 'FASTSPEC')
+        for col in fs.dtype.names:
+            data[col] = fs[col]
+        del fs
+    elif 'FIBERMAP' in hdus:
+        # minimal fallback if someone passes a non-fastspecfit file
+        raise ValueError(f'No FASTSPEC HDU found in {filepath}')
+
+    if 'SPECPHOT' in hdus:
+        sp = fitsio.read(filepath, 'SPECPHOT')
+        id_cols = {'TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX',
+                   'TILEID', 'NIGHT', 'FIBER', 'EXPID'}
+        for col in sp.dtype.names:
+            if col not in id_cols or col not in data:
+                data[col] = sp[col]
+        del sp
+
+    if not data:
+        raise ValueError(f'Could not read any recognized HDUs from {filepath}')
+
+    return data
+
+
+# ---------------------------------------------------------------------------
+# Matching
+# ---------------------------------------------------------------------------
+
+def match_catalogs(cat1, cat2, nmax=None, seed=1):
+    """Match two catalogs on TARGETID.
+
+    Returns index arrays (idx1, idx2) into cat1 and cat2, with an optional
+    random subsample of size nmax applied after matching.
+    """
+    _, idx1, idx2 = np.intersect1d(
+        cat1['TARGETID'], cat2['TARGETID'], return_indices=True)
+
+    if nmax is not None and len(idx1) > nmax:
+        rng = np.random.default_rng(seed)
+        sel = np.sort(rng.choice(len(idx1), size=nmax, replace=False))
+        idx1, idx2 = idx1[sel], idx2[sel]
+
+    return idx1, idx2
+
+
+# ---------------------------------------------------------------------------
+# Plot helpers
+# ---------------------------------------------------------------------------
+
+def _decode(arr):
+    """Decode a byte-string numpy array to str, stripping whitespace."""
+    if arr.dtype.kind == 'S':
+        return np.array([v.decode().strip() for v in arr])
+    return np.array([str(v).strip() for v in arr])
+
+
+def _hexbin_panel(ax, xval, yval, lims, xlabel, ylabel, dolog):
+    """Draw a hexbin comparison panel with a 1:1 line and stats annotation."""
+    ax.hexbin(xval, yval,
+              extent=(lims[0], lims[1], lims[0], lims[1]),
+              gridsize=40, bins='log', cmap='Blues',
+              mincnt=1, linewidths=0.2)
+    ax.plot(lims, lims, 'k-', lw=0.8, zorder=5)
+    ax.set_xlim(lims)
+    ax.set_ylim(lims)
+    prefix = r'$\log_{10}$' + ' ' if dolog else ''
+    ax.set_xlabel(f'{prefix}{xlabel}', fontsize=7)
+    ax.set_ylabel(f'{prefix}{ylabel}', fontsize=7)
+    ax.tick_params(labelsize=6)
+
+    delta = yval - xval
+    txt = (f'N={len(delta):,d}\n'
+           rf'$\tilde{{\Delta}}$={np.median(delta):.3f}'
+           rf'  $\sigma$={np.std(delta):.3f}')
+    ax.text(0.03, 0.97, txt, va='top', ha='left',
+            transform=ax.transAxes, fontsize=6,
+            bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.7))
+
+
+def _prep(cat1, cat2, idx1, idx2, col,
+          dolog=False, ivar_col=None, extra_mask=None,
+          clip_pct=(5, 95)):
+    """Extract, filter, and optionally log-scale a pair of matched columns.
+
+    Returns (x, y, lims) ready for _hexbin_panel, or (None, None, None) if
+    the column is absent in either catalog or too few points survive filtering.
+    """
+    if col not in cat1 or col not in cat2:
+        return None, None, None
+
+    v1 = cat1[col][idx1].astype(float)
+    v2 = cat2[col][idx2].astype(float)
+
+    mask = np.isfinite(v1) & np.isfinite(v2)
+
+    if ivar_col is not None:
+        if ivar_col in cat1 and ivar_col in cat2:
+            mask &= (cat1[ivar_col][idx1] > 0) & (cat2[ivar_col][idx2] > 0)
+
+    if extra_mask is not None:
+        mask &= extra_mask
+
+    v1, v2 = v1[mask], v2[mask]
+
+    if dolog:
+        good = (v1 > 0) & (v2 > 0)
+        v1, v2 = np.log10(v1[good]), np.log10(v2[good])
+    else:
+        good = np.isfinite(v1) & np.isfinite(v2)
+        v1, v2 = v1[good], v2[good]
+
+    if len(v1) < 10:
+        return None, None, None
+
+    lo = min(np.percentile(v1, clip_pct[0]), np.percentile(v2, clip_pct[0]))
+    hi = max(np.percentile(v1, clip_pct[1]), np.percentile(v2, clip_pct[1]))
+    if lo == hi:
+        return None, None, None
+    pad = 0.05 * (hi - lo)
+    lims = (lo - pad, hi + pad)
+
+    return v1, v2, lims
+
+
+def _blank(ax, title):
+    ax.axis('off')
+    ax.set_title(title, fontsize=7, color='gray')
+
+
+# ---------------------------------------------------------------------------
+# Pages
+# ---------------------------------------------------------------------------
+
+def cover_page(pdf, filepath1, filepath2, label1, label2, cat1, cat2, n_matched):
+    fig, ax = plt.subplots(figsize=(8.5, 11))
+    ax.axis('off')
+
+    lines = [
+        'compare-fast-vacs',
+        '',
+        f'New catalog  [{label1}]',
+        f'  {filepath1}',
+        f'  N = {len(cat1["TARGETID"]):,d}',
+        '',
+        f'Reference catalog  [{label2}]',
+        f'  {filepath2}',
+        f'  N = {len(cat2["TARGETID"]):,d}',
+        '',
+        f'N matched = {n_matched:,d}',
+    ]
+
+    for lbl, cat in [(label1, cat1), (label2, cat2)]:
+        if 'SPECTYPE' in cat:
+            types, counts = np.unique(_decode(cat['SPECTYPE']),
+                                      return_counts=True)
+            lines += ['', f'SPECTYPE [{lbl}]:']
+            for t, c in zip(types, counts):
+                lines.append(f'  {t:<12s}  {c:,d}')
+
+    ax.text(0.05, 0.95, '\n'.join(lines), va='top', ha='left',
+            transform=ax.transAxes, fontsize=10, family='monospace')
+    pdf.savefig(fig, bbox_inches='tight')
+    plt.close(fig)
+
+
+def stellar_page(pdf, cat1, cat2, idx1, idx2, label1, label2):
+    """Compare stellar population / SPECPHOT parameters."""
+
+    # (column, dolog, ivar_col) -- AV is the old-model name for TAUV
+    params = [
+        ('LOGMSTAR',     False, 'LOGMSTAR_IVAR'),
+        ('SFR',          True,  'SFR_IVAR'),
+        ('VDISP',        False, 'VDISP_IVAR'),
+        ('TAUV',         False, 'TAUV_IVAR'),
+        ('AGE',          True,  'AGE_IVAR'),
+        ('DN4000',       False, 'DN4000_IVAR'),
+        ('DN4000_OBS',   False, 'DN4000_IVAR'),
+        ('DN4000_MODEL', False, 'DN4000_MODEL_IVAR'),
+        ('APERCORR',     False, None),
+    ]
+
+    # Fall back to AV for old catalogs that predate TAUV
+    params = [
+        ('AV' if col == 'TAUV' and 'TAUV' not in cat1 and 'AV' in cat1
+         else col,
+         dolog,
+         None if col == 'TAUV' and 'TAUV' not in cat1 else ivar)
+        for col, dolog, ivar in params
+    ]
+
+    ncols, nrows = 3, 3
+    fig, axes = plt.subplots(nrows, ncols,
+                             figsize=(INCH * ncols, INCH * nrows))
+    fig.suptitle('Stellar population parameters', fontsize=10)
+
+    for ax, (col, dolog, ivar) in zip(axes.flat, params):
+        x, y, lims = _prep(cat1, cat2, idx1, idx2, col,
+                           dolog=dolog, ivar_col=ivar)
+        if x is None:
+            _blank(ax, f'{col}\n(not available)')
+        else:
+            _hexbin_panel(ax, x, y, lims,
+                          f'{col} [{label2}]', f'{col} [{label1}]', dolog)
+
+    fig.tight_layout()
+    pdf.savefig(fig, bbox_inches='tight')
+    plt.close(fig)
+
+
+def doublets_page(pdf, cat1, cat2, idx1, idx2, label1, label2):
+    """Compare doublet line ratios."""
+    doublets = [
+        'MGII_DOUBLET_RATIO',
+        'OII_DOUBLET_RATIO',
+        'OIII_DOUBLET_RATIO',
+        'SII_DOUBLET_RATIO',
+        'NII_DOUBLET_RATIO',
+        'OIIRED_DOUBLET_RATIO',
+    ]
+
+    ncols, nrows = 3, 2
+    fig, axes = plt.subplots(nrows, ncols,
+                             figsize=(INCH * ncols, INCH * nrows))
+    fig.suptitle('Doublet line ratios', fontsize=10)
+
+    for ax, col in zip(axes.flat, doublets):
+        x, y, lims = _prep(cat1, cat2, idx1, idx2, col,
+                           dolog=False, ivar_col=col + '_IVAR')
+        if x is None:
+            _blank(ax, f'{col}\n(not available)')
+        else:
+            _hexbin_panel(ax, x, y, lims,
+                          f'{col} [{label2}]', f'{col} [{label1}]', False)
+
+    fig.tight_layout()
+    pdf.savefig(fig, bbox_inches='tight')
+    plt.close(fig)
+
+
+def line_page(pdf, cat1, cat2, idx1, idx2, label1, label2, line):
+    """One page comparing all measured quantities for a single emission line."""
+
+    amp_col  = f'{line}_AMP'
+    ivar_col = f'{line}_AMP_IVAR'
+
+    def _snr(cat, idx):
+        if amp_col in cat and ivar_col in cat:
+            return (cat[amp_col][idx]
+                    * np.sqrt(np.maximum(cat[ivar_col][idx], 0.)))
+        return np.zeros(len(idx))
+
+    snr_mask = (_snr(cat1, idx1) > SNR_MIN) & (_snr(cat2, idx2) > SNR_MIN)
+    n_snr = snr_mask.sum()
+
+    if n_snr < 10:
+        print(f'    skipping {line}: {n_snr} objects with S/N > {SNR_MIN}')
+        return
+
+    idx1s, idx2s = idx1[snr_mask], idx2[snr_mask]
+
+    # (suffix, dolog, ivar_suffix_or_None)
+    quantities = [
+        ('FLUX',    True,  'FLUX_IVAR'),
+        ('AMP',     True,  'AMP_IVAR'),
+        ('BOXFLUX', True,  'BOXFLUX_IVAR'),
+        ('SIGMA',   False, 'SIGMA_IVAR'),
+        ('VSHIFT',  False, 'VSHIFT_IVAR'),
+        ('CONT',    True,  'CONT_IVAR'),
+        ('EW',      True,  'EW_IVAR'),
+        ('CHI2',    True,  None),
+    ]
+
+    ncols, nrows = 4, 2
+    fig, axes = plt.subplots(nrows, ncols,
+                             figsize=(INCH * ncols, INCH * nrows))
+    fig.suptitle(f'{line}   (N with S/N > {SNR_MIN}: {n_snr:,d})', fontsize=10)
+
+    for ax, (suf, dolog, ivar_suf) in zip(axes.flat, quantities):
+        col  = f'{line}_{suf}'
+        ivar = f'{line}_{ivar_suf}' if ivar_suf else None
+        x, y, lims = _prep(cat1, cat2, idx1s, idx2s, col,
+                           dolog=dolog, ivar_col=ivar)
+        if x is None:
+            _blank(ax, f'{suf}\n(not available)')
+        else:
+            _hexbin_panel(ax, x, y, lims,
+                          f'{suf} [{label2}]', f'{suf} [{label1}]', dolog)
+
+    for ax in axes.flat[len(quantities):]:
+        ax.axis('off')
+
+    fig.tight_layout()
+    pdf.savefig(fig, bbox_inches='tight')
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Compare two fastspecfit value-added catalogs.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument('newcat',
+                        help='New / release-candidate catalog FITS file')
+    parser.add_argument('refcat',
+                        help='Reference / existing VAC FITS file')
+    parser.add_argument('--outfile', default='compare-fast-vacs.pdf',
+                        help='Output PDF path')
+    parser.add_argument('--label1', default=None,
+                        help='Label for the new catalog (default: filename stem)')
+    parser.add_argument('--label2', default=None,
+                        help='Label for the reference catalog (default: filename stem)')
+    parser.add_argument('--nmax', type=int, default=None,
+                        help='Randomly subsample to at most this many matched objects')
+    parser.add_argument('--seed', type=int, default=1,
+                        help='Random seed for subsampling')
+    args = parser.parse_args()
+
+    def stem(path):
+        base = os.path.basename(path)
+        for ext in ('.fits.gz', '.fits.fz', '.fits'):
+            if base.endswith(ext):
+                return base[:-len(ext)]
+        return os.path.splitext(base)[0]
+
+    label1 = args.label1 or stem(args.newcat)
+    label2 = args.label2 or stem(args.refcat)
+
+    print(f'Reading {args.newcat}')
+    cat1 = read_catalog(args.newcat)
+    print(f'Reading {args.refcat}')
+    cat2 = read_catalog(args.refcat)
+
+    print('Matching on TARGETID ...')
+    idx1, idx2 = match_catalogs(cat1, cat2, nmax=args.nmax, seed=args.seed)
+    print(f'  N = {len(idx1):,d} matched objects')
+
+    with PdfPages(args.outfile) as pdf:
+        print('Cover page')
+        cover_page(pdf, args.newcat, args.refcat, label1, label2,
+                   cat1, cat2, len(idx1))
+
+        print('Stellar parameters')
+        stellar_page(pdf, cat1, cat2, idx1, idx2, label1, label2)
+
+        print('Doublet ratios')
+        doublets_page(pdf, cat1, cat2, idx1, idx2, label1, label2)
+
+        for line in LINES:
+            print(f'{line}')
+            line_page(pdf, cat1, cat2, idx1, idx2, label1, label2, line)
+
+    print(f'Wrote {args.outfile}')
+
+
+if __name__ == '__main__':
+    main()
