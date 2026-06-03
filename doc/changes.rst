@@ -2,15 +2,18 @@
 Change Log
 ==========
 
-3.4.2 (not released yet)
+3.4.3 (not released yet)
 ------------------------
 
-* Introduce a YAML-based emission-line constraint system: add
+3.4.2 (2026-06-03)
+------------------
+
+* Introduce YAML-based emission-line constraint system via
   ``data/emline-constraints.yaml`` to define kinematic groups, doublet
-  bounds, amplitude constraints, and fitting-strategy parameters; add
-  ``EmlineConstraints`` class wired through ``EMFitTools``, ``linemasker``,
-  and ``qa``; enable the final per-line optimization pass by default
-  [`PR #257`_].
+  bounds, amplitude constraints, and fitting-strategy parameters;
+  enable the final per-line optimization pass by default for
+  narrow-only solutions; two new columns: ``DELTA_KINECHI2`` and
+  ``DELTA_KINENDOF`` [`PR #257`_].
 * Use original resolution matrix for continuum-fitting; major bug fix
   in resolution matrix deconvolution [`PR #256`_].
 
