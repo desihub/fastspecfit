@@ -18,8 +18,8 @@ from astropy.table import Table
 
 def _make_emfit(**kwargs):
     from fastspecfit.linetable import LineTable
-    from fastspecfit.emlines import EMFitTools
-    return EMFitTools(LineTable().table, **kwargs)
+    from fastspecfit.emlines import EMFitTools, EmlineConstraints
+    return EMFitTools(LineTable().table, EmlineConstraints(), **kwargs)
 
 
 @pytest.fixture(scope='module')

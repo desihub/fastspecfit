@@ -5,7 +5,9 @@ fastspecfit.emlines
 Methods and tools for fitting emission lines.
 
 """
+import os
 import time
+import logging
 import numpy as np
 from enum import IntEnum
 from itertools import chain
@@ -27,6 +29,184 @@ class ParamType(IntEnum):
     SIGMA = 2
 
 
+class EmlineConstraints:
+    """Parsed and validated emission-line kinematic constraint file.
+
+    Reads the companion YAML constraint file, runs a startup consistency
+    check against ``line_table``, and exposes the constraint data for use
+    by :class:`EMFitTools`.
+
+    Parameters
+    ----------
+    constraints_file : str or None
+        Path to the YAML constraint file. Uses the bundled default when
+        ``None``.
+    line_table : :class:`astropy.table.Table` or None
+        Full emission-line table. When provided, a consistency check
+        verifies that every line appears exactly once in each profile.
+
+    """
+    def __init__(self, constraints_file=None, line_table=None):
+        import yaml
+        from importlib import resources
+
+        if constraints_file is None:
+            constraints_file = str(
+                resources.files('fastspecfit').joinpath('data/emline-constraints.yaml'))
+        self.file = constraints_file
+
+        if not os.path.isfile(self.file):
+            raise FileNotFoundError(
+                f'Emission-line constraint file {self.file} does not exist.')
+        with open(self.file) as fh:
+            raw = yaml.safe_load(fh)
+
+        # amplitude constraints (profile-independent)
+        ac = raw['amplitude_constraints']
+        self.amplitude_fixed = ac.get('fixed', [])
+        self.doublet_ratios  = ac.get('doublet_ratios', [])
+
+        # global placements (shared across all profiles)
+        g = raw['global']
+        self.global_free_lines       = list(g.get('free_lines', []))
+        self.global_kinematic_groups = list(g.get('kinematic_groups', []))
+        self.global_default_bounds   = g['default_bounds']
+        self.global_default_initial  = g['default_initial']
+
+        # named profiles + per-profile final_pass strategy
+        self.profiles = raw['profiles']
+
+        def _parse_group_fp(g, context):
+            """Parse and validate a kinematic group's final_pass block."""
+            if 'final_pass' not in g:
+                raise ValueError(
+                    f"Kinematic group '{g['name']}' in {context} "
+                    f"is missing required 'final_pass' block.")
+            gfp = g['final_pass']
+            for key in ('free_vshift', 'free_sigma'):
+                if key not in gfp:
+                    raise ValueError(
+                        f"Group '{g['name']}' final_pass in {context} "
+                        f"is missing required key '{key}'.")
+            dvm = gfp.get('delta_vshift_max')
+            dsm = gfp.get('delta_sigma_max')
+            return {
+                'free_vshift':      bool(gfp['free_vshift']),
+                'free_sigma':       bool(gfp['free_sigma']),
+                'delta_vshift_max': float(dvm) if dvm is not None else None,
+                'delta_sigma_max':  float(dsm) if dsm is not None else None,
+            }
+
+        # group_final_pass: keyed by 'global.<name>' or '<profile>.<name>'
+        self.group_final_pass = {}
+        for g in self.global_kinematic_groups:
+            self.group_final_pass[f'global.{g["name"]}'] = _parse_group_fp(g, 'global')
+
+        _fp_required = {'enabled', 'warm_start', 'adopt_if', 'inherit_in_mc'}
+        self.final_pass = {}
+        for pname, profile in self.profiles.items():
+            for g in profile.get('kinematic_groups', []):
+                self.group_final_pass[f'{pname}.{g["name"]}'] = _parse_group_fp(g, f"profile '{pname}'")
+            if 'final_pass' not in profile:
+                raise ValueError(
+                    f"Constraint profile '{pname}' is missing required 'final_pass' block.")
+            fp = profile['final_pass']
+            missing_keys = _fp_required - set(fp)
+            if missing_keys:
+                raise ValueError(
+                    f"Profile '{pname}' final_pass is missing keys: {sorted(missing_keys)}")
+            self.final_pass[pname] = {
+                'enabled':       bool(fp['enabled']),
+                'warm_start':    bool(fp['warm_start']),
+                'adopt_if':      str(fp['adopt_if']),
+                'inherit_in_mc': bool(fp['inherit_in_mc']),
+            }
+
+        # non-parametric moment groups: {output_label: [line_names]}
+        self.moments = {
+            entry['label']: list(entry['lines'])
+            for entry in raw.get('moments', [])
+        }
+
+        if line_table is not None:
+            self._check_consistency(line_table)
+
+
+    def line_bounds(self, line_name):
+        """Return ``(sigma_min, sigma_max, vshift_max, sigma_init, vshift_init)`` in km/s.
+
+        Searches global groups, global free lines, then all profiles' kinematic
+        groups, and finally ``fixed_lines``. Kinematic groups across all profiles
+        are checked before ``fixed_lines`` because a line may be fixed in one
+        profile (e.g. ``narrow_only``) but carry real bounds in another
+        (e.g. ``narrow_broad``).  Returns all zeros only for lines that appear
+        exclusively in ``fixed_lines`` and nowhere else.
+
+        Raises
+        ------
+        ValueError
+            If the line is not found anywhere in the constraint file.
+
+        """
+        for g in self.global_kinematic_groups:
+            if line_name == g['anchor'] or line_name in g.get('members', []):
+                return self._unpack_bounds(g)
+        if line_name in self.global_free_lines:
+            db, di = self.global_default_bounds, self.global_default_initial
+            return (db['sigma']['min'], db['sigma']['max'],
+                    db['vshift']['max'], di['sigma'], di['vshift'])
+        # Check kinematic groups across ALL profiles before fixed_lines.
+        for profile in self.profiles.values():
+            for g in profile.get('kinematic_groups', []):
+                if line_name == g['anchor'] or line_name in g.get('members', []):
+                    return self._unpack_bounds(g)
+        # Only return zeros if the line appears in no kinematic group at all.
+        for profile in self.profiles.values():
+            if line_name in profile.get('fixed_lines', []):
+                return (0., 0., 0., 0., 0.)
+        raise ValueError(
+            f"Line '{line_name}' not found in constraint file '{self.file}'")
+
+
+    @staticmethod
+    def _unpack_bounds(g):
+        sb, vb, ig = g['bounds']['sigma'], g['bounds']['vshift'], g['initial']
+        return (float(sb['min']), float(sb['max']), float(vb['max']),
+                float(ig['sigma']), float(ig['vshift']))
+
+
+    def _check_consistency(self, line_table):
+        emline_names = set(line_table['name'])
+        for profile_name, profile in self.profiles.items():
+            placed = set(self.global_free_lines)
+            for g in self.global_kinematic_groups:
+                placed.add(g['anchor'])
+                placed.update(g.get('members', []))
+            for g in profile.get('kinematic_groups', []):
+                placed.add(g['anchor'])
+                placed.update(g.get('members', []))
+            placed.update(profile.get('free_lines', []))
+            placed.update(profile.get('fixed_lines', []))
+            missing = emline_names - placed
+            extra   = placed - emline_names
+            if missing:
+                raise ValueError(
+                    f"Constraint profile '{profile_name}' is missing "
+                    f"lines from emlines.ecsv: {sorted(missing)}")
+            if extra:
+                raise ValueError(
+                    f"Constraint profile '{profile_name}' references "
+                    f"lines not in emlines.ecsv: {sorted(extra)}")
+
+        # Validate moment line names.
+        for label, lines in self.moments.items():
+            unknown = set(lines) - emline_names
+            if unknown:
+                raise ValueError(
+                    f"Moment group '{label}' references lines not in "
+                    f"emlines.ecsv: {sorted(unknown)}")
+
+
 class EMFitTools(object):
     """Tools for fitting emission-line spectra from DESI spectroscopy.
 
@@ -38,18 +218,21 @@ class EMFitTools(object):
     ----------
     emline_table : :class:`astropy.table.Table`
         Table of emission lines to fit.
+    constraints : :class:`EmlineConstraints`
+        Parsed kinematic constraint file providing kinematic groups,
+        amplitude constraints, doublet ratio bounds, and fitting strategy.
     uniqueid : str or None, optional
         Unique identifier for the current object, used in log messages.
     stronglines : bool, optional
         If ``True``, restrict to strong lines only. Defaults to ``False``.
 
     """
-
-    def __init__(self, emline_table, uniqueid=None, outfile_base='',
+    def __init__(self, emline_table, constraints, uniqueid=None, outfile_base='',
                  stronglines=False):
 
-        self.line_table = emline_table
-        self.uniqueid = uniqueid
+        self.line_table  = emline_table
+        self.constraints = constraints
+        self.uniqueid    = uniqueid
         self.outfile_base = outfile_base
 
         # restrict to just strong lines and assign to patches
@@ -57,9 +240,8 @@ class EMFitTools(object):
             isstrong = self.line_table['isstrong'].value
             self.line_table = self.line_table[isstrong]
 
-        # lines for which we want to measure moments
-        self.moment_lines = {'CIV_1549': ['civ_1549'], 'MGII_2800': ['mgii_2796', 'mgii_2803'],
-                             'HBETA': ['hbeta'], 'OIII_5007': ['oiii_5007']} #, 'HALPHA': ['halpha']}
+        # lines for which we want to measure non-parametric moments
+        self.moment_lines = constraints.moments
 
         # Build some convenience (Boolean) arrays that we'll use in many places:
         line_isbroad  = self.line_table['isbroad'].value
@@ -89,12 +271,11 @@ class EMFitTools(object):
         # mapping to enable fast lookup of line number by name
         self.line_map = { line_name : line_idx for line_idx, line_name in enumerate(line_names) }
 
-        # info about tied doublet lines
+        # info about tied doublet lines — sourced from the constraint file
         doublet_lines = {
-            # indx           source         ratio name
-            'mgii_2796' : ( 'mgii_2803' , 'mgii_doublet_ratio' ) ,
-            'oii_3726'  : ( 'oii_3729'  , 'oii_doublet_ratio'  ) ,
-            'sii_6731'  : ( 'sii_6716'  , 'sii_doublet_ratio'  ) ,
+            dr['line']: (dr['ref'], dr['param_name'])
+            for dr in constraints.doublet_ratios
+            if dr['line'] in self.line_map and dr['ref'] in self.line_map
         }
 
         # mapping from target -> source for all tied doublets
@@ -144,6 +325,15 @@ class EMFitTools(object):
         param_idx[:,ParamType.SIGMA]     = c + 2*nlines
         self.line_table['params'] = param_idx
 
+        # mapping from amplitude parameter index -> output catalog column name,
+        # for lines whose amplitude is constrained by a fixed ratio to another line.
+        self.amp_fixed_col = {}
+        for fc in constraints.amplitude_fixed:
+            pname = fc.get('param_name')
+            if pname and fc['line'] in self.line_map:
+                amp_idx = param_idx[self.line_map[fc['line']], ParamType.AMPLITUDE]
+                self.amp_fixed_col[int(amp_idx)] = pname
+
         # needed by emlinemodel_bestfit()
         self.param_table['modelname'] = \
             np.array([ s.replace('_amp', '_modelamp').upper() for s in param_names ])
@@ -159,25 +349,19 @@ class EMFitTools(object):
              (zlinewave < (wavelims[1] - wavepad)))
 
 
-    def build_linemodels(self, separate_oiii_fit=True):
+    def build_linemodels(self):
         """Build broad and narrow emission-line model tables.
 
-        Establishes fixed parameters, tying relationships, and doublet
-        constraints for each model. :meth:`compute_inrange_lines` must be
-        called first to populate in-range information.
-
-        Parameters
-        ----------
-        separate_oiii_fit : bool, optional
-            If ``True``, fit [OIII] 4959,5007 separately from the other
-            narrow forbidden lines. Defaults to ``True``.
+        Reads kinematic groups and amplitude constraints from
+        ``self.constraints`` (the ``narrow_broad`` and ``narrow_only``
+        profiles). :meth:`compute_inrange_lines` must be called first.
 
         Returns
         -------
         linemodel_broad : :class:`astropy.table.Table`
-            Line model allowing broad Balmer + helium components.
+            Line model using the ``narrow_broad`` constraint profile.
         linemodel_nobroad : :class:`astropy.table.Table`
-            Line model with broad components fixed to zero.
+            Line model using the ``narrow_only`` constraint profile.
 
         """
 
@@ -196,7 +380,7 @@ class EMFitTools(object):
             n_params = len(self.param_table)
             isfixed = np.full(n_params, False, dtype=bool)
 
-            tiedtoparam, tiedfactor = tying_info
+            tiedtoparam, tiedfactor, group_name = tying_info
             tied_mask   = (tiedtoparam != -1)
             tied_source = tiedtoparam[tied_mask]
 
@@ -234,170 +418,71 @@ class EMFitTools(object):
 
             # construct the final linemodel
             linemodel = Table({
-                'free': ~isfixed & ~istied,
-                'fixed': isfixed,
+                'free':       ~isfixed & ~istied,
+                'fixed':      isfixed,
                 'tiedtoparam': tiedtoparam.copy(), # we reuse these later
                 'tiedfactor':  tiedfactor.copy(),
+                'group_name':  group_name,
             }, copy=False)
 
             return linemodel
 
 
-        def tie_line(tying_info, line_params, source_linename, amp_factor=None):
-            """Tie parameters of given line to source line. We don't tie the
-            amplitude unless a tying factor is given for it.
+        def _build_tying_info(profile_name):
+            """Build fresh tying arrays from the named constraint profile."""
+            n_params    = len(self.param_table)
+            tiedtoparam = np.full(n_params, -1, np.int32)
+            tiedfactor  = np.empty(n_params, np.float64)
+            group_name  = np.full(n_params, '', dtype=object)
 
-            """
-            tiedtoparam, tiedfactor = tying_info
+            def _tie_kinematics(groups, prefix):
+                for g in groups:
+                    if g['anchor'] not in self.line_map:
+                        continue
+                    gname = prefix + g['name']
+                    anchor_line = self.line_map[g['anchor']]
+                    _, src_vshift, src_sigma = self.line_table['params'][anchor_line]
+                    group_name[src_vshift] = gname
+                    group_name[src_sigma]  = gname
+                    for member_name in g.get('members', []):
+                        if member_name not in self.line_map:
+                            continue
+                        member_line = self.line_map[member_name]
+                        _, vshift, sigma = self.line_table['params'][member_line]
+                        group_name[vshift] = gname
+                        group_name[sigma]  = gname
+                        tiedfactor[vshift]  = 1.0
+                        tiedtoparam[vshift] = src_vshift
+                        tiedfactor[sigma]   = 1.0
+                        tiedtoparam[sigma]  = src_sigma
 
-            amp, vshift, sigma = line_params
+            _tie_kinematics(self.constraints.global_kinematic_groups, prefix='global.')
+            _tie_kinematics(self.constraints.profiles[profile_name].get('kinematic_groups', []),
+                            prefix=f'{profile_name}.')
 
-            source_line = self.line_map[source_linename]
-            src_amp, src_vshift, src_sigma = self.line_table['params'][source_line]
+            for fc in self.constraints.amplitude_fixed:
+                if fc['line'] not in self.line_map or fc['ref'] not in self.line_map:
+                    continue
+                line     = self.line_map[fc['line']]
+                ref      = self.line_map[fc['ref']]
+                amp_line = self.line_table['params'][line, ParamType.AMPLITUDE]
+                amp_ref  = self.line_table['params'][ref,  ParamType.AMPLITUDE]
+                tiedfactor[amp_line]  = fc['factor']
+                tiedtoparam[amp_line] = amp_ref
 
-            if amp_factor != None:
-                tiedfactor[amp] = amp_factor
-                tiedtoparam[amp] = src_amp
+            return tiedtoparam, tiedfactor, group_name
 
-            tiedfactor[vshift] = 1.0
-            tiedtoparam[vshift] = src_vshift
+        # narrow_broad model: all narrow + [OIII] + broad Balmer groups
+        linemodel_broad = create_model(_build_tying_info('narrow_broad'))
 
-            tiedfactor[sigma] = 1.0
-            tiedtoparam[sigma] = src_sigma
-
-
-        # Build the relationship of "tied" parameters. In the 'tied' array, the
-        # non-zero value is the multiplicative factor by which the parameter
-        # represented in the 'tiedtoparam' index should be multiplied.
-
-        n_params = len(self.param_table)
-        tying_info = (
-            np.full(n_params, -1, np.int32), # source parameter for tying
-            np.empty(n_params, np.float64),  # multiplier between source and tied value
-        )
-
-        # Physical doublets and lines in the same ionization species should have
-        # their velocity shifts and line-widths always tied. In addition, set fixed
-        # doublet-ratios here. Note that these constraints must be set on *all*
-        # lines, not just those in range.
-        for line_name, line_isbalmer, line_isbroad, line_params in \
-                self.line_table.iterrows('name', 'isbalmer', 'isbroad', 'params'):
-
-            # broad He + Balmer
-            if line_isbalmer and line_isbroad and line_name != 'halpha_broad':
-                tie_line(tying_info, line_params, 'halpha_broad')
-            # narrow He + Balmer
-            elif line_isbalmer and not line_isbroad and line_name != 'halpha':
-                tie_line(tying_info, line_params, 'halpha')
-            else:
-                match line_name:
-                    case 'mgii_2796':
-                        tie_line(tying_info, line_params, 'mgii_2803')
-                    case 'oii_3726':
-                        tie_line(tying_info, line_params, 'oii_3729')
-                    case 'sii_6731':
-                        tie_line(tying_info, line_params, 'sii_6716')
-                    case 'nev_3346' | 'nev_3426': # should [NeIII] 3869 be tied to [NeV]???
-                        tie_line(tying_info, line_params, 'neiii_3869')
-
-                    case 'nii_5755' | 'oi_6300' | 'siii_6312':
-                        # Tentative! Tie auroral lines to [OIII] 4363 but maybe we shouldn't tie [OI] 6300 here...
-                        tie_line(tying_info, line_params, 'oiii_4363')
-                    case 'oiii_4959':
-                        """
-                        [O3] (4-->2): airwave: 4958.9097 vacwave: 4960.2937 emissivity: 1.172e-21
-                        [O3] (4-->3): airwave: 5006.8417 vacwave: 5008.2383 emissivity: 3.497e-21
-                        https://ui.adsabs.harvard.edu/abs/2007AIPC..895..313D/abstract
-
-                        Note: The theoretical [OIII] 4959,5007 doublet *flux*
-                        ratio is 2.993, so since we fit in velocity space the
-                        constrained amplitude ratio has to be
-                        2.993*4960.295/5008.240=2.9643.
-                        """
-                        tie_line(tying_info, line_params, 'oiii_5007', amp_factor=1./2.9643)
-                    case 'nii_6548':
-                        """
-                        [N2] (4-->2): airwave: 6548.0488 vacwave: 6549.8578 emissivity: 2.02198e-21
-                        [N2] (4-->3): airwave: 6583.4511 vacwave: 6585.2696 emissivity: 5.94901e-21
-                        https://ui.adsabs.harvard.edu/abs/2023AdSpR..71.1219D/abstract
-
-                        Note: The theoretical [NII] 6548,84 doublet *flux*
-                        ratio is 3.049, so since we fit in velocity space the
-                        constrained amplitude ratio has to be
-                        3.049*6549.861/6585.273=3.0326
-                        """
-                        tie_line(tying_info, line_params, 'nii_6584', amp_factor = 1./3.0326)
-                    case 'oii_7330':
-                        """
-                        [O2] (5-->2): airwave: 7318.9185 vacwave: 7320.9350 emissivity: 8.18137e-24
-                        [O2] (4-->2): airwave: 7319.9849 vacwave: 7322.0018 emissivity: 2.40519e-23
-                        [O2] (5-->3): airwave: 7329.6613 vacwave: 7331.6807 emissivity: 1.35614e-23
-                        [O2] (4-->3): airwave: 7330.7308 vacwave: 7332.7506 emissivity: 1.27488e-23
-
-                        This quadruplet ratio is sufficently poorly determined
-                        that we are not going to apply the wavelength
-                        correction used for [OIII] and [NII].
-
-                        """
-                        tie_line(tying_info, line_params, 'oii_7320', amp_factor = 1./1.225)
-                    case 'siii_9069':
-                        tie_line(tying_info, line_params, 'siii_9532')
-                    case 'siliii_1892':
-                        # Tentative! Tie SiIII] 1892 to CIII] 1908 because they're so close in wavelength.
-                        tie_line(tying_info, line_params, 'ciii_1908')
-
-            # Tie all the forbidden and narrow Balmer+helium lines *except
-            # [OIII] 4959,5007* to [NII] 6584 when we have broad lines. The
-            # [OIII] doublet frequently has an outflow component, so fit it
-            # separately. See the discussion at
-            # https://github.com/desihub/fastspecfit/issues/160
-            if separate_oiii_fit:
-                if not line_isbroad and not line_name in { 'nii_6584', 'oiii_4959', 'oiii_5007' }:
-                    tie_line(tying_info, line_params, 'nii_6584')
-            else:
-                if not line_isbroad and line_name != 'oiii_5007':
-                    tie_line(tying_info, line_params, 'oiii_5007')
-
-                ## Tie all forbidden lines to [OIII] 5007; the narrow Balmer and
-                ## helium lines are separately tied together.
-                #if not line_isbroad and not line_isbalmer and line_name != 'oiii_5007'):
-                #    tie_line(tying_info, line_params, 'oiii_5007')
-
-        linemodel_broad = create_model(tying_info)
-
-        # Model 2 - like Model 1, but additionally fix params of all
-        # broad lines.  we inherit tying info from Model 1, which we
-        # will modify below.
-
+        # narrow_only model: forbidden + narrow_balmer groups; broad fixed to zero
+        tiedtoparam_no, tiedfactor_no, group_name_no = _build_tying_info('narrow_only')
         forceFixed = []
-        for line_name, line_isbalmer, line_isbroad, line_params in \
-                self.line_table.iterrows('name', 'isbalmer', 'isbroad', 'params'):
-
-            if line_name == 'halpha_broad':
-                for p in line_params:  # all of amp, vshift, sigma
-                    forceFixed.append(p) # fix all of these
-
-            if line_isbalmer and line_isbroad and line_name != 'halpha_broad':
-                tie_line(tying_info, line_params, 'halpha_broad', amp_factor = 1.0)
-
-            if separate_oiii_fit:
-                # Tie the forbidden lines to [OIII] 5007.
-                if not line_isbalmer and not line_isbroad and line_name != 'oiii_5007':
-                    tie_line(tying_info, line_params, 'oiii_5007')
-
-                # Tie narrow Balmer and helium lines together.
-                if line_isbalmer and not line_isbroad:
-                    if line_name == 'halpha':
-                        tiedtoparam, _ = tying_info
-
-                        _, vshift, sigma = line_params
-                        for p in (vshift, sigma):
-                            # untie the params of this line
-                            tiedtoparam[p] = -1
-                    else:
-                        tie_line(tying_info, line_params, 'halpha')
-
-        linemodel_nobroad = create_model(tying_info, forceFixed)
+        for line_name in self.constraints.profiles['narrow_only'].get('fixed_lines', []):
+            if line_name in self.line_map:
+                for p in self.line_table['params'][self.line_map[line_name]]:
+                    forceFixed.append(p)
+        linemodel_nobroad = create_model((tiedtoparam_no, tiedfactor_no, group_name_no), forceFixed)
 
         return linemodel_broad, linemodel_nobroad
 
@@ -463,24 +548,11 @@ class EMFitTools(object):
         initials = np.empty(len(self.param_table), dtype=np.float64)
         bounds = np.empty((len(self.param_table), 2), dtype=np.float64)
 
-        # a priori initial guesses and bounds
-        minsigma_broad = 1. # 100.
-        minsigma_narrow = 1.
-        minsigma_balmer_broad = 1. # 100.0 # minsigma_narrow
-
-        maxsigma_broad = 1e4
-        maxsigma_narrow = 750.
-        maxsigma_balmer_broad = 1e4
-
-        maxvshift_broad = 2500.
-        maxvshift_narrow = 500.
-        maxvshift_balmer_broad = 2500.
-
         minamp = 0.
         maxamp = +1e5
 
-        for iline, (line_isbalmer, line_isbroad, line_params) in \
-            enumerate(self.line_table.iterrows('isbalmer', 'isbroad', 'params')):
+        for iline, (line_name, line_isbalmer, line_isbroad, line_params) in \
+            enumerate(self.line_table.iterrows('name', 'isbalmer', 'isbroad', 'params')):
 
             amp, vshift, sigma = line_params
 
@@ -488,22 +560,31 @@ class EMFitTools(object):
             initials[amp] = 1.
             bounds[amp] = (minamp, maxamp)
 
+            sigma_min, sigma_max, vshift_max, _, _ = \
+                self.constraints.line_bounds(line_name)
+
+            # Lines in a profile's fixed_lines have all-zero bounds.
+            # Clamp their initials to zero so the bounds check passes.
+            if sigma_max == 0.:
+                initials[vshift] = 0.
+                initials[sigma]  = 0.
+                bounds[vshift]   = (0., 0.)
+                bounds[sigma]    = (0., 0.)
+                continue
+
             if line_isbroad:
-                if line_isbalmer: # broad He+Balmer lines
+                if line_isbalmer:  # broad He+Balmer lines
                     initials[vshift] = initial_linevshift_balmer_broad
-                    initials[sigma] = initial_linesigma_balmer_broad
-                    bounds[vshift] = (-maxvshift_balmer_broad, +maxvshift_balmer_broad)
-                    bounds[sigma] = (minsigma_balmer_broad, maxsigma_balmer_broad)
-                else: # broad UV/QSO lines (non-Balmer)
+                    initials[sigma]  = initial_linesigma_balmer_broad
+                else:              # broad UV/QSO lines (non-Balmer)
                     initials[vshift] = initial_linevshift_broad
-                    initials[sigma] = initial_linesigma_broad
-                    bounds[vshift] = (-maxvshift_broad, +maxvshift_broad)
-                    bounds[sigma] = (minsigma_broad, maxsigma_broad)
-            else: # narrow He+Balmer lines, and forbidden lines
+                    initials[sigma]  = initial_linesigma_broad
+            else:                  # narrow He+Balmer lines and forbidden lines
                 initials[vshift] = initial_linevshift_narrow
-                initials[sigma] = initial_linesigma_narrow
-                bounds[vshift] = (-maxvshift_narrow, +maxvshift_narrow)
-                bounds[sigma] = (minsigma_narrow, maxsigma_narrow)
+                initials[sigma]  = initial_linesigma_narrow
+
+            bounds[vshift] = (-vshift_max, +vshift_max)
+            bounds[sigma]  = (sigma_min, sigma_max)
 
         # Replace a priori initial values based on the data, with optional local
         # continuum subtraction.
@@ -538,20 +619,22 @@ class EMFitTools(object):
                 initials[amp_idx] = amp
                 bounds[amp_idx] = np.array([0., mx])
 
-        # Specialized parameters on the MgII, [OII], and [SII] doublet ratios. See
-        # https://github.com/desihub/fastspecfit/issues/39.
+        # Doublet ratio bounds and initial values from the constraint file.
         doublet_bounds = {
-            'mgii_doublet_ratio' : (0.0, 10.0), # MgII 2796/2803
-            'oii_doublet_ratio'  : (0.0,  2.0), # [OII] 3726/3729 # (0.5, 1.5) # (0.66, 1.4)
-            'sii_doublet_ratio'  : (0.0,  2.0), # [SII] 6731/6716 # (0.5, 1.5) # (0.67, 1.2)
+            dr['param_name']: (float(dr['bounds']['min']), float(dr['bounds']['max']))
+            for dr in self.constraints.doublet_ratios
+        }
+        doublet_initials = {
+            dr['param_name']: float(dr['initial'])
+            for dr in self.constraints.doublet_ratios
         }
 
         param_names = self.param_table['name'].value
 
         for iparam in self.doublet_idx:
             param_name = param_names[iparam]
-            bounds[iparam] = doublet_bounds[param_name]
-            initials[iparam] = 1.
+            bounds[iparam]   = doublet_bounds[param_name]
+            initials[iparam] = doublet_initials[param_name]
 
         # Make sure all parameters lie within their respective bounds.
         for iparam, param_name in enumerate(self.param_table['name'].value):
@@ -945,6 +1028,13 @@ class EMFitTools(object):
                 flux = 0.
                 cont, clipflux = 0., []
 
+                # Intrinsic line flux: integral of the log-Gaussian
+                # = sqrt(2*pi) * A * sigma * lambda*, independent of the resolution matrix.
+                # Computed from model parameters alone so it is available even when the
+                # local pixel window is heavily masked.
+                if obsamps[line_amp] > TINY:
+                    flux = np.sqrt(2. * np.pi) * parameters[line_amp] * linezwave * linesigma0 / C_LIGHT
+
                 # Are the pixels based on the original inverse spectrum fully masked?
                 if line_s == line_e or np.sum(oemlineivar_s[line_s:line_e] == 0.) > 0.3 * (line_e - line_s):
                     patchindx = [] # return null patch
@@ -954,12 +1044,6 @@ class EMFitTools(object):
                         dwaves_patch = dwaves[patchindx]
                         emlineflux_patch = emlineflux_s[patchindx]
                         boxflux = np.sum(emlineflux_patch * dwaves_patch)
-
-                        # require amp > 0 (line not dropped) to compute the flux
-                        if obsamps[line_amp] > TINY:
-                            # intrinsic line flux: integral of the log-Gaussian A*exp(-(log lambda - mu)^2/(2*sigma^2))
-                            # = sqrt(2*pi) * A * sigma * lambda*, independent of the resolution matrix
-                            flux = np.sqrt(2. * np.pi) * parameters[line_amp] * linezwave * linesigma0 / C_LIGHT
 
                         # next, get the continuum level
                         borderindx = get_continuum_pixels(emlinewave_s, linezwave, linesigma_ang_window)
@@ -999,22 +1083,13 @@ class EMFitTools(object):
                     if doublet_ivar < F32MAX:
                         fastfit[f'{param_modelnames[line_amp]}_IVAR'] = doublet_ivar
 
-            # Also store the 'tied' doublet ratios (fragile...).
-            if linemodel['tiedtoparam'][line_amp] != -1:
-                ratio = linemodel['tiedfactor'][line_amp]
-                match linename:
-                    case 'OIII_4959':
-                        col = 'OIII_DOUBLET_RATIO'
-                    case 'NII_6548':
-                        col = 'NII_DOUBLET_RATIO'
-                    case 'OII_7330':
-                        col = 'OIIRED_DOUBLET_RATIO'
-                    case _:
-                        errmsg = 'Unrecognized tied doublet {linename}'
-                        log.critical(errmsg)
-                        raise ValueError(errmsg)
-                fastfit[col] = 1. / ratio
-                fastfit[f'{col}_IVAR'] = 0. # not optimized
+            # Store the fixed amplitude ratio for amplitude-constrained lines
+            # (e.g. [OIII] 4959, [NII] 6548, [OII] 7330).  The column name
+            # comes from amplitude_constraints.fixed[].param_name in the YAML.
+            col = self.amp_fixed_col.get(line_amp)
+            if col is not None:
+                fastfit[col] = 1. / linemodel['tiedfactor'][line_amp]
+                fastfit[f'{col}_IVAR'] = 0.  # not optimized
 
 
             (boxflux, flux, cont), extras = get_fluxes(
@@ -1026,15 +1101,37 @@ class EMFitTools(object):
             npix = len(patchindx)
             fastfit[f'{linename}_NPIX'] = npix
 
-            # Are the pixels based on the original inverse spectrum fully
-            # masked? If so, set everything to zero and move onto the next
-            # line.
+            # If the local pixel window is too heavily masked, check whether all
+            # three parameters of this line are tied to a kinematic anchor.  For
+            # such fully-tied lines the model-derived quantities (AMP, VSHIFT,
+            # SIGMA, MODELAMP, FLUX) are still valid; only pixel-level measurements
+            # (BOXFLUX, CONT, CHI2, FLUX_IVAR) are unavailable.
             if npix == 0:
-                obsamps[line_amp] = 0.
-                parameters[line_amp] = 0.
-                values[line_amp] = 0.
-                values[line_vshift] = 0.
-                values[line_sigma] = 0.
+                all_tied = (linemodel['tiedtoparam'][line_amp]    != -1 and
+                            linemodel['tiedtoparam'][line_vshift] != -1 and
+                            linemodel['tiedtoparam'][line_sigma]  != -1)
+                if all_tied:
+                    fastfit[f'{linename}_AMP']      = obsamps[line_amp]
+                    fastfit[f'{linename}_VSHIFT']   = values[line_vshift]
+                    fastfit[f'{linename}_SIGMA']    = values[line_sigma]
+                    fastfit[f'{linename}_MODELAMP'] = parameters[line_amp]
+                    fastfit[f'{linename}_FLUX']     = flux
+                    if results_monte is not None:
+                        obsamps_ivar = var2ivar(obsamps_var[line_amp])
+                        vshift_ivar  = var2ivar(values_var[line_vshift])
+                        sigma_ivar   = var2ivar(values_var[line_sigma])
+                        if obsamps_ivar < F32MAX:
+                            fastfit[f'{linename}_AMP_IVAR']    = obsamps_ivar
+                        if vshift_ivar < F32MAX:
+                            fastfit[f'{linename}_VSHIFT_IVAR'] = vshift_ivar
+                        if sigma_ivar < F32MAX:
+                            fastfit[f'{linename}_SIGMA_IVAR']  = sigma_ivar
+                else:
+                    obsamps[line_amp] = 0.
+                    parameters[line_amp] = 0.
+                    values[line_amp] = 0.
+                    values[line_vshift] = 0.
+                    values[line_sigma] = 0.
                 continue
 
             flux_ivar, cont_ivar = 0., 0. # defaults if not computed below
@@ -1203,26 +1300,6 @@ class EMFitTools(object):
             else:
                 line_stats[f'{groupname}_Z'] = redshift
 
-
-        import logging
-        if log.getEffectiveLevel() == logging.DEBUG:
-            for ln in self.line_table['name'].value:
-                linename = ln.upper()
-                for col in ('VSHIFT', 'SIGMA', 'MODELAMP', 'AMP', 'AMP_IVAR', 'CHI2', 'NPIX'):
-                    val = fastfit[f'{linename}_{col}']
-                    log.debug(f'{linename} {col}: {val:.4f}')
-                for col in ('FLUX', 'BOXFLUX', 'FLUX_IVAR', 'BOXFLUX_IVAR', 'CONT', 'CONT_IVAR', 'EW', 'EW_IVAR', 'FLUX_LIMIT'):
-                    val = fastfit[f'{linename}_{col}']
-                    log.debug(f'{linename} {col}: {val:.4f}')
-                print()
-
-            for lname in ['MGII', 'OII', 'SII']:
-                col = f'{lname}_DOUBLET_RATIO'
-                val = fastfit[col]
-                val_ivar = fastfit[f'{col}_IVAR']
-                log.debug(f'{col}: {val:.4f}')
-                log.debug(f'{col}_IVAR: {val_ivar:.4f}')
-            print()
 
         return line_stats
 
@@ -1517,7 +1594,7 @@ def linefit(EMFit, linemodel, initial_guesses, param_bounds,
 
 
 def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
-                   phot, emline_table, minsnr_balmer_broad=2.5,
+                   phot, emline_table, constraints, minsnr_balmer_broad=2.5,
                    minsigma_balmer_broad=250., continuummodel_monte=None,
                    specflux_monte=None, synthphot=True, broadlinefit=True,
                    debug_plots=False):
@@ -1540,6 +1617,9 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
         Photometry object providing filter curves for synthetic photometry.
     emline_table : :class:`astropy.table.Table`
         Table of emission lines to fit.
+    constraints : :class:`EmlineConstraints`
+        Parsed kinematic constraint file; controls kinematic groups,
+        amplitude constraints, and optional final relaxation pass.
     minsnr_balmer_broad : float, optional
         Minimum S/N required to adopt the broad Balmer component.
         Defaults to 2.5.
@@ -1573,7 +1653,7 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
 
     tall = time.time()
 
-    EMFit = EMFitTools(emline_table, uniqueid=data['uniqueid'],
+    EMFit = EMFitTools(emline_table, constraints, uniqueid=data['uniqueid'],
                        outfile_base=data.get('outfile_base', ''))
 
     redshift = data['redshift']
@@ -1620,7 +1700,7 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
     # get initial guesses for their parameters.  We'll fit both models
     # to the data below and pick the one that fits better.
 
-    linemodel_broad, linemodel_nobroad = EMFit.build_linemodels(separate_oiii_fit=True)
+    linemodel_broad, linemodel_nobroad = EMFit.build_linemodels()
     #EMFit.summarize_linemodel(linemodel_nobroad)
     #EMFit.summarize_linemodel(linemodel_broad)
 
@@ -1670,9 +1750,11 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                              minsnr_balmer_broad, minsigma_balmer_broad)
 
         if adopt_broad:
-            linemodel_pref, emlineflux_model_pref, chi2_pref = linemodel_broad, emlineflux_model_broad, chi2_broad
+            linemodel_pref, emlineflux_model_pref, chi2_pref, nfree_pref = \
+                linemodel_broad, emlineflux_model_broad, chi2_broad, nfree_broad
         else:
-            linemodel_pref, emlineflux_model_pref, chi2_pref = linemodel_nobroad, emlineflux_model_nobroad, chi2_nobroad
+            linemodel_pref, emlineflux_model_pref, chi2_pref, nfree_pref = \
+                linemodel_nobroad, emlineflux_model_nobroad, chi2_nobroad, nfree_nobroad
     else:
         adopt_broad = False
         if not broadlinefit:
@@ -1680,8 +1762,118 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
         elif not data['balmerbroad']:
             log.info('Skipping broad-line fitting (no broad Balmer lines in the spectral range).')
 
-        linemodel_pref, emlineflux_model_pref, chi2_pref = linemodel_nobroad, emlineflux_model_nobroad, chi2_nobroad
+        linemodel_pref, emlineflux_model_pref, chi2_pref, nfree_pref = \
+            linemodel_nobroad, emlineflux_model_nobroad, chi2_nobroad, nfree_nobroad
         delta_linechi2_balmer, delta_linendof_balmer = 0, np.int32(0)
+
+    # Optional final pass: relax per-group kinematic ties and re-optimise.
+    # What is relaxed is specified per kinematic group in the constraint file;
+    # the adoption decision is a single global chi2 comparison.
+    profile_name = 'narrow_broad' if adopt_broad else 'narrow_only'
+
+    fp = constraints.final_pass[profile_name]
+    delta_kinechi2 = np.float32(0.) # initialize
+    delta_kinendof = np.int32(0)
+
+    if fp['enabled']:
+        t0 = time.time()
+        linemodel_relax = linemodel_pref.copy()
+        nfreed = 0
+        for i in range(len(linemodel_relax)):
+            if linemodel_relax['fixed'][i] or linemodel_relax['tiedtoparam'][i] == -1:
+                continue
+            gfp = constraints.group_final_pass.get(linemodel_relax['group_name'][i])
+            if gfp is None:
+                continue
+            param_type = EMFit.param_table['type'][i]
+            if ((param_type == ParamType.VSHIFT and gfp['free_vshift']) or
+                    (param_type == ParamType.SIGMA and gfp['free_sigma'])):
+                linemodel_relax['tiedtoparam'][i] = -1
+                linemodel_relax['tiedfactor'][i]  = 0.
+                linemodel_relax['free'][i]        = True
+                nfreed += 1
+
+        if nfreed == 0:
+            log.debug(f'Final pass ({profile_name}): no parameters freed; skipping.')
+        else:
+            init_relax = (linemodel_pref['value'].value
+                          if fp['warm_start'] else initial_guesses)
+
+            # Tighten bounds for freed parameters around their warm-start values
+            # using per-group delta_vshift_max / delta_sigma_max.
+            #
+            # Guardrails:
+            #   - Skip tightening if the warm-start is at (or within 1 km/s of)
+            #     an existing bound: a boundary-pinned value is unreliable as a
+            #     center, and the parameter is likely unconstrained anyway.
+            #   - Construction guarantees warm_val ∈ [new_lb, new_ub] whenever
+            #     delta > 0 and warm_val is strictly inside the original bounds.
+            #   - Sigma floor (param_bounds[i,0] >= 1 km/s for all sigma params)
+            #     prevents new_lb from going negative.
+            _BOUND_TOL = 1.0  # km/s; treat warm-start within this of a bound as pinned
+            param_bounds_relax = param_bounds.copy()
+            for i in range(len(linemodel_relax)):
+                if not linemodel_relax['free'][i]:
+                    continue
+                gfp = constraints.group_final_pass.get(linemodel_relax['group_name'][i])
+                if gfp is None:
+                    continue
+                param_type = EMFit.param_table['type'][i]
+                if param_type == ParamType.VSHIFT:
+                    delta = gfp['delta_vshift_max']
+                elif param_type == ParamType.SIGMA:
+                    delta = gfp['delta_sigma_max']
+                else:
+                    continue
+                if delta is None:
+                    continue
+                lb, ub   = param_bounds[i, 0], param_bounds[i, 1]
+                warm_val = init_relax[i]
+                if warm_val <= lb + _BOUND_TOL or warm_val >= ub - _BOUND_TOL:
+                    continue  # boundary-pinned; keep original bounds
+                new_lb = max(lb, warm_val - delta)
+                new_ub = min(ub, warm_val + delta)
+                if new_lb < new_ub:  # safety: only apply if bounds are non-degenerate
+                    param_bounds_relax[i, 0] = new_lb
+                    param_bounds_relax[i, 1] = new_ub
+
+            emlineflux_model_relax, nfree_relax, chi2_relax = linefit(
+                EMFit, linemodel_relax, init_relax, param_bounds_relax,
+                emlinewave, emlineflux, emlineivar, weights, redshift,
+                resolution_matrix, camerapix)
+
+            adopt_relax = False
+            if fp['adopt_if'] == 'always':
+                adopt_relax = True
+            elif fp['adopt_if'] == 'chi2_improves':
+                nbins      = np.sum(emlineivar > 0)
+                ndof_pref  = nbins - nfree_pref
+                ndof_relax = nbins - nfree_relax
+                delta_kinechi2 = chi2_pref * ndof_pref - chi2_relax * ndof_relax
+                delta_kinendof = ndof_pref - ndof_relax
+                adopt_relax = (delta_kinendof > 0 and delta_kinechi2 > delta_kinendof)
+
+            if adopt_relax:
+                linemodel_pref        = linemodel_relax
+                emlineflux_model_pref = emlineflux_model_relax
+                chi2_pref             = chi2_relax
+                nfree_pref            = nfree_relax
+                if fp['adopt_if'] == 'chi2_improves':
+                    log.info(f'Adopting relaxed kinematic model ({profile_name}): '
+                             f'delta-chi2={delta_kinechi2:.1f} > delta-ndof={delta_kinendof:.0f}')
+                else:
+                    log.info(f'Adopting relaxed kinematic model ({profile_name}): adopt_if=always')
+            else:
+                if fp['adopt_if'] == 'chi2_improves':
+                    if delta_kinendof <= 0:
+                        log.debug(f'Dropping relaxed kinematic model ({profile_name}): '
+                                  f'no additional free parameters (delta-ndof={delta_kinendof:.0f})')
+                    else:
+                        log.debug(f'Dropping relaxed kinematic model ({profile_name}): '
+                                  f'delta-chi2={delta_kinechi2:.1f} < delta-ndof={delta_kinendof:.0f}')
+            log.debug(fsftime('linefit_final_pass', time.time()-t0,
+                              context=f'targetid={data["uniqueid"]}, profile={profile_name}, '
+                                      f'nfreed={nfreed}'))
 
     # Residual spectrum with no emission lines
     specflux_nolines = specflux - emlineflux_model_pref
@@ -1752,6 +1944,8 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
     #fastfit['NDOF_LINE'] = ndof_pref
     fastfit['DELTA_LINECHI2'] = delta_linechi2_balmer  # chi2_nobroad - chi2_broad
     fastfit['DELTA_LINENDOF'] = delta_linendof_balmer  # ndof_nobroad - ndof_broad
+    fastfit['DELTA_KINECHI2'] = delta_kinechi2 # chi2_constrained - chi2_relaxed
+    fastfit['DELTA_KINENDOF'] = delta_kinendof # ndof_constrained - ndof_relaxed
 
     # full-fit reduced chi2
     rchi2 = np.sum(oemlineivar * (specflux - (continuummodel + smooth_continuum + emlineflux_model_best))**2)
@@ -1841,34 +2035,76 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
 
     log.debug(fsftime('emline_specfit', time.time()-tall))
 
-    if debug_plots:
-        _fastfit_cols = [
-            'RCHI2_LINE',
-            'NARROW_Z', 'NARROW_ZRMS', 'BROAD_Z', 'BROAD_ZRMS',
-            'OII_DOUBLET_RATIO',
-            'OII_3726_FLUX', 'OII_3726_FLUX_IVAR',
-            'HBETA_FLUX', 'HBETA_FLUX_IVAR',
-            'OIII_5007_FLUX', 'OIII_5007_FLUX_IVAR',
-            'NII_6584_FLUX', 'NII_6584_FLUX_IVAR',
-            'HALPHA_FLUX', 'HALPHA_FLUX_IVAR',
-            'HALPHA_BROAD_FLUX', 'HALPHA_BROAD_FLUX_IVAR',
-            'SII_6731_FLUX', 'SII_6731_FLUX_IVAR',
-        ]
-        _specphot_cols = [
-            'RCHI2', 'RCHI2_CONT', 'RCHI2_PHOT',
-            'VDISP', 'VDISP_IVAR',
-            'AGE', 'ZZSUN', 'LOGMSTAR', 'SFR', 'AV',
-            'DN4000', 'DN4000_OBS', 'DN4000_MODEL',
-        ]
-        _fnames = fastfit.value.dtype.names
-        _snames = specphot.value.dtype.names
-        print(f'--- fastfit [{data["uniqueid"]}] ---')
-        for name in _fastfit_cols:
-            if name in _fnames:
-                print(f'  {name}: {fastfit[name]}')
-        print(f'--- specphot [{data["uniqueid"]}] ---')
-        for name in _specphot_cols:
-            if name in _snames:
-                print(f'  {name}: {specphot[name]}')
+    if debug_plots or log.isEnabledFor(logging.DEBUG):
+        print(f'--- emline [{data["uniqueid"]}] ---')
+        print(f'  rchi2(line) = {specphot["RCHI2_LINE"]:.3f}')
+
+        # Kinematic group summary from line_stats (not stored in output table).
+        def _kfmt(dv, dverr, sig, sigerr):
+            dv_str  = f'{dv:+8.1f} ±{dverr:5.1f}' if dverr > 0. else f'{dv:+8.1f}       '
+            sig_str = f'{sig:5.0f} ±{sigerr:4.0f}' if sigerr > 0. else f'{sig:5.0f}     '
+            return f'dv = {dv_str} km/s    sigma = {sig_str} km/s'
+
+        print('  kinematics:')
+        print(f'    narrow   {_kfmt(C_LIGHT*(line_stats["NARROW_Z"][0]-redshift), C_LIGHT*line_stats["NARROW_ZRMS"][0], line_stats["NARROW_SIGMA"][0], line_stats["NARROW_SIGMARMS"][0])}')
+        if np.any(EMFit.isBalmerBroad & EMFit.line_in_range):
+            print(f'    broad    {_kfmt(C_LIGHT*(line_stats["BROAD_Z"][0]-redshift), C_LIGHT*line_stats["BROAD_ZRMS"][0], line_stats["BROAD_SIGMA"][0], line_stats["BROAD_SIGMARMS"][0])}')
+        if np.any(EMFit.isBroad & EMFit.line_in_range):
+            print(f'    UV       {_kfmt(C_LIGHT*(line_stats["UV_Z"][0]-redshift), C_LIGHT*line_stats["UV_ZRMS"][0], line_stats["UV_SIGMA"][0], line_stats["UV_SIGMARMS"][0])}')
+
+        # Strong in-range line fluxes and rest-frame EW.
+        isstrong_inrange = EMFit.line_table['isstrong'].value & EMFit.line_in_range
+        if np.any(isstrong_inrange):
+            fnames = fastfit.value.dtype.names
+            print('  strong lines in range  [flux | EW (Å)]:')
+            for lname in EMFit.line_table['name'].value[isstrong_inrange]:
+                ucol     = lname.upper()
+                ivar_col = f'{ucol}_FLUX_IVAR'
+                if ivar_col not in fnames:
+                    continue
+                ivar = float(fastfit[ivar_col])
+                if ivar <= 0.:
+                    continue
+                flux     = float(fastfit[f'{ucol}_FLUX'])
+                flux_err = 1. / np.sqrt(ivar)
+                snr      = flux * np.sqrt(ivar)
+                line_str = f'    {ucol:20s}  {flux:8.1f} ±{flux_err:5.1f}   S/N = {snr:5.1f}'
+                ew_col     = f'{ucol}_EW'
+                ewivar_col = f'{ucol}_EW_IVAR'
+                ew     = float(fastfit[ew_col])     if ew_col     in fnames else 0.
+                ewivar = float(fastfit[ewivar_col]) if ewivar_col in fnames else 0.
+                if ew > 0.:
+                    if ewivar > 0.:
+                        line_str += f'   EW = {ew:7.1f} ±{1./np.sqrt(ewivar):5.1f} Å'
+                    else:
+                        line_str += f'   EW = {ew:7.1f} Å'
+                print(line_str)
+
+        # Specphot summary.
+        snames = specphot.value.dtype.names
+
+        def _sv(col, fmt='.2f', unit=''):
+            """Value ± error (only when ivar > 0), with optional unit suffix."""
+            if col not in snames:
+                return '---'
+            v  = float(specphot[col])
+            ic = col + '_IVAR'
+            iv = float(specphot[ic]) if ic in snames else 0.
+            s  = format(v, fmt)
+            if iv > 0.:
+                s += f' ± {format(1./np.sqrt(iv), fmt)}'
+            return s + (f' {unit}' if unit else '')
+
+        print('  specphot:')
+        r2   = format(float(specphot['RCHI2']),      '.3f') if 'RCHI2'      in snames else '---'
+        r2c  = format(float(specphot['RCHI2_CONT']), '.3f') if 'RCHI2_CONT' in snames else '---'
+        r2p  = format(float(specphot['RCHI2_PHOT']), '.3f') if 'RCHI2_PHOT' in snames else '---'
+        print(f'    rchi2 = {r2}   rchi2_cont = {r2c}   rchi2_phot = {r2p}')
+        print(f'    vdisp = {_sv("VDISP", ".1f", "km/s")}   logmstar = {_sv("LOGMSTAR")}   age = {_sv("AGE", ".2f", "Gyr")}')
+        print(f'    sfr = {_sv("SFR", ".2f", "Msun/yr")}   zzsun = {_sv("ZZSUN")}   AV = {_sv("AV")}')
+        dn4000     = format(float(specphot['DN4000']),       '.3f') if 'DN4000'       in snames else '---'
+        dn4000_obs = format(float(specphot['DN4000_OBS']),   '.3f') if 'DN4000_OBS'   in snames else '---'
+        dn4000_mod = format(float(specphot['DN4000_MODEL']), '.3f') if 'DN4000_MODEL' in snames else '---'
+        print(f'    dn4000 = {dn4000}  (obs = {dn4000_obs},  model = {dn4000_mod})')
 
     return spectra_out

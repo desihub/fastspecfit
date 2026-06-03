@@ -243,7 +243,7 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
         specdata['camerapix'][:, 1] = c_ends
 
         # use the coadded spectrum to build a robust emission-line mask
-        LM = LineMasker(sc_data.emlines.table)
+        LM = LineMasker(sc_data.emlines.table, sc_data.constraints)
         pix = LM.build_linemask(
             specdata['coadd_wave'], specdata['coadd_flux'],
             specdata['coadd_ivar'], specdata['coadd_res'],
@@ -397,7 +397,7 @@ def one_stacked_spectrum(specdata, meta, synthphot=True, debug_plots=False):
     specdata['camerapix'][:, 0] = c_starts
     specdata['camerapix'][:, 1] = c_ends
 
-    LM = LineMasker(sc_data.emlines.table)
+    LM = LineMasker(sc_data.emlines.table, sc_data.constraints)
     pix = LM.build_linemask(
         specdata['coadd_wave'], specdata['coadd_flux'],
         specdata['coadd_ivar'], specdata['coadd_res'],
@@ -1554,7 +1554,8 @@ def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_col
 
 def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
                       specprod=None, coadd_type=None, fphotofile=None,
-                      template_file=None, emlinesfile=None, fastphot=False,
+                      template_file=None, emlinesfile=None, constraintsfile=None,
+                      fastphot=False,
                       inputz=False, inputseeds=None, nmonte=50, vdisp_nominal=VDISP_NOMINAL,
                       vdisp_bounds=VDISP_BOUNDS, seed=1, uncertainty_floor=0.01,
                       minsnr_balmer_broad=2.5, nside=None, no_smooth_continuum=False,
@@ -1615,6 +1616,8 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         setdep(primhdr, 'FTEMPLATES_FILE', os.path.basename(template_file))
     if emlinesfile:
         setdep(primhdr, 'EMLINES_FILE', str(emlinesfile))
+    if constraintsfile:
+        setdep(primhdr, 'CONSTRAINTS_FILE', str(constraintsfile))
 
     meta.meta['EXTNAME'] = 'METADATA'
     specphot.meta['EXTNAME'] = 'SPECPHOT'
@@ -2050,6 +2053,8 @@ def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
             #add_field('DOF_BROAD', dtype='i8')
             add_field('DELTA_LINECHI2', dtype='f4') # delta-reduced chi2 with and without broad line-emission
             add_field('DELTA_LINENDOF', dtype=np.int32)
+            add_field('DELTA_KINECHI2', dtype='f4') # delta-reduced chi2 with and without final-pass optimization
+            add_field('DELTA_KINENDOF', dtype=np.int32)
 
             # special columns for the fitted doublets
             add_field('MGII_DOUBLET_RATIO', dtype='f4')

@@ -965,7 +965,7 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
     CTools = ContinuumTools(data, templates, phot, igm, fastphot=fastphot,
                             fluxnorm=1. if fitstack else FLUXNORM)
     if not fastphot:
-        EMFit = EMFitTools(emline_table=sc_data.emlines.table)
+        EMFit = EMFitTools(emline_table=sc_data.emlines.table, constraints=sc_data.constraints)
 
     filters = phot.synth_filters[metadata['PHOTSYS']]
     allfilters = phot.filters[metadata['PHOTSYS']]
