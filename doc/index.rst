@@ -46,6 +46,13 @@ Value Added Catalogs (VACs)
 
 .. toctree::
    :maxdepth: 1
+   :caption: DR2 (Loa)
+
+   loa.rst
+   loa-fastphot.rst
+
+.. toctree::
+   :maxdepth: 1
    :caption: DR1 (Iron)
 
    iron.rst
