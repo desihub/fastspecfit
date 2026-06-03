@@ -1,6 +1,6 @@
 Author:
 
-- `John Moustakas (Siena College) <https://github.com/moustakas>`_
+- `John Moustakas (Siena University) <https://github.com/moustakas>`_
 
 Direct contributions to the code base:
 
