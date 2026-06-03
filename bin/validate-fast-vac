@@ -7,10 +7,7 @@ from glob import glob
 import numpy as np
 import fitsio
 
-from fastspecfit.io import DESI_ROOT_NERSC
 from fastspecfit.logger import getFastspecLogger
-desi_root = os.environ.get('DESI_ROOT', DESI_ROOT_NERSC)
-
 log = getFastspecLogger()
 
 
@@ -250,7 +247,7 @@ def main():
     p.add_argument('--validate', action='store_true', help='Validate the files.')
     args = p.parse_args()
 
-    specprod_dir = os.path.join(desi_root, 'spectro', 'redux', args.specprod)
+    specprod_dir = os.path.join(os.getenv('DESI_SPECTRO_REDUX', args.specprod)
 
     # Print file statistics for all detected catalog types.
     found_any = False
