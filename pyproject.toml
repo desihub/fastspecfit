@@ -75,6 +75,7 @@ script-files = [
     "bin/parse-fast-logs",
     "bin/compare-fast-vacs",
     "bin/profile-fastspec",
+    "bin/vac-statistics",
     "bin/validate-fast-vac"
 ]
 
