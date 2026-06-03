@@ -40,8 +40,8 @@ Value Added Catalogs (VACs)
    :maxdepth: 1
 
    vacs.rst
-   fuji.rst
    iron.rst
+   fuji.rst
    guadalupe.rst
    acknowledgments.rst
 

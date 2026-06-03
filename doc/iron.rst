@@ -9,9 +9,9 @@ Iron VAC (DR1)
 Overview
 --------
 
-This page describes the ``Iron`` value-added catalog, which will be publicly
-released as part of the `DESI Data Release 1 (DESI/DR1)`_ sometime in 2024
-(exact date TBD).
+This page describes the ``Iron`` value-added catalog, which was
+publicly released in March 2025 as part of `DESI Data Release 1
+(DESI/DR1)`_.
 
 Please refer to the :ref:`acknowledgments` section for the conditions for using
 this VAC.
@@ -27,8 +27,8 @@ Data Content & Access
 Data from the ``Iron`` VAC can be accessed at any of the following links:
 
 ============================ ==================================================================
-Data url                     https://data.desi.lbl.gov/public/dr1/vac/dr1/fastspecfit/iron/v2.1
-`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/dr1/vac/dr1/fastspecfit/iron/v2.1``
+Data url                     https://data.desi.lbl.gov/public/dr1/vac/dr1/fastspecfit/iron/v3.0
+`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/dr1/vac/dr1/fastspecfit/iron/v3.0``
 ============================ ==================================================================
 
 For more information regarding the content and organization of the VAC, please
@@ -41,7 +41,7 @@ click on the following links:
 
 Summary Statistics
 ------------------
-  
+
 The next two tables summarize the size and number of targets in each merged
 catalog. The first table gives the sample in each survey and program, while the
 second table combines all the individual programs into separate ``main``,
@@ -123,14 +123,14 @@ following bit of code::
 ================ ==========
 Software Package Version(s)
 ================ ==========
-python           3.10.8
+python           3.10.14
 numpy            1.22.4
 scipy            1.8.1
-astropy          5.2.1
-yaml             6.0
-matplotlib       3.6.2
-fitsio           1.1.8
-desiutil         3.4.2
+astropy          6.0.1
+yaml             6.0.1
+matplotlib       3.8.4
+fitsio           1.2.1
+desiutil         3.4.3
 desispec         0.60.2
 desitarget       2.7.0
 desimodel        0.19.0
