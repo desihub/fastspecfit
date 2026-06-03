@@ -73,6 +73,7 @@ script-files = [
     "bin/get-cutouts",
     "bin/mpi-fastspecfit",
     "bin/parse-fast-logs",
+    "bin/compare-fast-vacs",
     "bin/profile-fastspec"
 ]
 

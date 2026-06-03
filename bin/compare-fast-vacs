@@ -12,17 +12,18 @@ compare-fast-vacs \\
     /global/cfs/cdirs/desi/vac/dr2/fastspecfit/loa/v1.0/catalogs/fastspec-loa-sv3-dark.fits \\
     --outfile loa-sv3-dark-3.4.2-v1.0.pdf \\
     --label1 loa-3.4.2 --label2 v1.0
-"""
 
+"""
 import os
 import sys
 import argparse
 import numpy as np
 import fitsio
 import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+
+matplotlib.use('Agg')
 
 INCH = 3.0   # inches per panel
 SNR_MIN = 1.0
@@ -52,6 +53,7 @@ def read_catalog(filepath):
     Handles both the current layout (SPECPHOT + FASTSPEC) and the older
     single-FASTSPEC-HDU layout.  SPECPHOT columns take precedence over
     same-named FASTSPEC columns only for non-identifier fields.
+
     """
     hdus = _hdu_names(filepath)
     data = {}
@@ -79,7 +81,6 @@ def read_catalog(filepath):
 
     return data
 
-
 # ---------------------------------------------------------------------------
 # Matching
 # ---------------------------------------------------------------------------
@@ -89,6 +90,7 @@ def match_catalogs(cat1, cat2, nmax=None, seed=1):
 
     Returns index arrays (idx1, idx2) into cat1 and cat2, with an optional
     random subsample of size nmax applied after matching.
+
     """
     _, idx1, idx2 = np.intersect1d(
         cat1['TARGETID'], cat2['TARGETID'], return_indices=True)
@@ -99,7 +101,6 @@ def match_catalogs(cat1, cat2, nmax=None, seed=1):
         idx1, idx2 = idx1[sel], idx2[sel]
 
     return idx1, idx2
-
 
 # ---------------------------------------------------------------------------
 # Plot helpers
@@ -145,6 +146,7 @@ def _prep(cat1, cat2, idx1, idx2, col,
 
     Returns (x, y, lims) ready for _hexbin_panel, or (None, None, None) if
     the column is absent in either catalog or too few points survive filtering.
+
     """
     if col not in cat1 or col not in cat2:
         return None, None, None
