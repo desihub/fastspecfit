@@ -23,14 +23,14 @@ To run ``FastSpecFit`` at `NERSC`_, first request an interactive CPU node::
 
 Then, load the package on top of the standard DESI software stack::
 
-  source /global/cfs/cdirs/desi/software/desi_environment.sh main
+  source /dvs_ro/cfs/cdirs/desi/software/desi_environment.sh main
   module load fastspecfit/main
 
 To load specific tagged versions, replace ``main`` with the desired
 release, for example::
 
-  source /global/cfs/cdirs/desi/software/desi_environment.sh 26.3
-  module load fastspecfit/3.4.0
+  source /dvs_ro/cfs/cdirs/desi/software/desi_environment.sh 26.3
+  module load fastspecfit/3.4.3
 
 Development Checkout
 ~~~~~~~~~~~~~~~~~~~~
@@ -44,21 +44,28 @@ run the following **once** after cloning or after each ``git pull``::
 This registers the CLI entry points (``fastspec``, ``fastphot``, etc.) in the
 active conda environment and generates the ``_version.py`` file that records the
 correct package version in output file headers. The ``--no-deps`` flag skips
-reinstalling dependencies already provided by the DESI software stack. There is
-no need to set ``PYTHONPATH`` manually.
+reinstalling dependencies already provided by the DESI software stack.
+
+Alternatively, in some cases it may be necessary to bypass the *pip
+install* step and manually add ``FastSpecFit`` to your ``PYTHONPATH``
+and ``PATH`` via::
+
+  export PYTHONPATH=/path/to/fastspecfit/py:${PYTHONPATH}
+  export PATH=/path/to/fastspecfit/bin:${PATH}
+
 
 JupyterHub
 ~~~~~~~~~~
 
 To use ``FastSpecFit`` within NERSC's `JupyterHub`_, first install the
 appropriate Jupyter kernel (one time). Then, to access the ``main``
-branch::
+branch, do::
 
   mkdir -p ${HOME}/.local/share/jupyter/kernels/fastspecfit-main
   wget -O ${HOME}/.local/share/jupyter/kernels/fastspecfit-main/kernel.json \
     https://raw.githubusercontent.com/desihub/fastspecfit/main/etc/jupyter-kernel.json
 
-Or, to use the latest tagged release::
+Or, to use the latest tagged release, do::
 
   mkdir -p ${HOME}/.local/share/jupyter/kernels/fastspecfit-latest
   wget -O ${HOME}/.local/share/jupyter/kernels/fastspecfit-latest/kernel.json \

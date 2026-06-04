@@ -74,7 +74,9 @@ script-files = [
     "bin/mpi-fastspecfit",
     "bin/parse-fast-logs",
     "bin/compare-fast-vacs",
-    "bin/profile-fastspec"
+    "bin/profile-fastspec",
+    "bin/vac-statistics",
+    "bin/validate-fast-vac"
 ]
 
 [tool.setuptools.package-data]

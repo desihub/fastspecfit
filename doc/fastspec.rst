@@ -124,12 +124,13 @@ Name                   Type        Units      Description
   SV1_SCND_TARGET [5]_   int64                SV1 secondary targeting bit.
   SV2_SCND_TARGET [5]_   int64                SV2 secondary targeting bit.
   SV3_SCND_TARGET [5]_   int64                SV3 secondary targeting bit.
-                     Z float64                Redshift based on Redrock or QuasarNet (for QSO targets only).
-                 ZWARN    int8                Redrock zwarning bit.
+                     Z float64                Redshift based on either Redrock or QuasarNet (for QSO targets only).
+                 ZWARN    int8                Redshift zwarning bit based on either Redrock or QuasarNet (for QSO targets only).
              DELTACHI2 float64                Redrock delta-chi-squared.
               SPECTYPE    str6                Redrock spectral classification type.
                SUBTYPE   str20                Redrock spectral subtype.
                   Z_RR float64                Redrock redshift.
+              ZWARN_RR    int8                Redrock zwarning bit.
              TSNR2_BGS float32                Template signal-to-noise ratio squared for BGS targets.
              TSNR2_LRG float32                Like TSNR2_BGS but for LRG targets.
              TSNR2_ELG float32                Like TSNR2_BGS but for ELG targets.

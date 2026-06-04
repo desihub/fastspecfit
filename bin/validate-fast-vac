@@ -1,0 +1,454 @@
+#!/usr/bin/env python
+"""Validate all FITS files in a FastSpecFit VAC directory, or write checksums.
+
+Validation: runs fitsverify and checks for NaN/inf values in all non-MODELS
+BinTable extensions.  Work is distributed across MPI ranks weighted by number
+of targets per file.
+
+Checksums: computes SHA-256 digests for every file in each directory under
+catalogs/ and healpix/, writing one checksum file per directory.  Directories
+whose checksum file already exists are skipped.  Work is distributed across
+MPI ranks weighted by total bytes per directory.
+
+Examples:
+
+  # validate
+  validate-fast-vac --vacdir=/path/to/iron/v3.0
+
+  # validate a subset
+  validate-fast-vac --vacdir=/path/to/iron/v3.0 --survey main --program dark bright
+
+  # write checksums
+  validate-fast-vac --vacdir=/path/to/loa/v1.0 --write-checksums \\
+      --dr=dr2 --specprod=loa --version=v1.0
+
+  # in production
+  salloc -N 1 -C cpu -A desi -t 01:00:00 --qos interactive
+  source ~/code/impy/bin/fastspecfit-env-nersc
+  srun --ntasks=64 validate-fast-vac --vacdir=$PSCRATCH/fastspecfit/loa-3.4.2/loa --mp 8
+
+"""
+import hashlib
+import multiprocessing
+import os
+import re
+import shutil
+import subprocess
+import argparse
+from pathlib import Path
+from glob import glob
+import numpy as np
+import fitsio
+
+from fastspecfit.logger import getFastspecLogger
+log = getFastspecLogger()
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+def _distribute(items, weights, comm, rank, size):
+    """Rank-0 partitions *items* by *weights* and sends each rank its slice.
+
+    Returns the slice assigned to the calling rank.
+    """
+    if comm and size > 1:
+        if rank == 0:
+            from desispec.parallel import weighted_partition
+            groups = weighted_partition(weights, size)
+            for irank in range(1, size):
+                comm.send(items[groups[irank]], dest=irank, tag=1)
+            return items[groups[0]]
+        else:
+            return comm.recv(source=0, tag=1)
+    else:
+        return items if rank == 0 else np.array([])
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+def _get_ntargets_vac(filepath):
+    """Return the row count of the first BinTable extension; fall back to 1."""
+    try:
+        return fitsio.FITS(filepath)[1].get_nrows()
+    except Exception:
+        return 1
+
+
+def discover_vac_files(vacdir, surveys=None, programs=None):
+    """Discover all VAC FITS files to validate.
+
+    Uses ``findfiles`` from ``fastspecfit.mpi`` for the healpix tree (supports
+    survey/program filtering) and a simple glob for the catalogs directory.
+    Surveys and programs are auto-detected from the directory tree when not
+    provided.
+    """
+    from fastspecfit.mpi import findfiles
+
+    all_files = []
+
+    healpix_base = os.path.join(vacdir, 'healpix')
+    if os.path.isdir(healpix_base):
+        if surveys is None:
+            surveys = sorted(d for d in os.listdir(healpix_base)
+                             if os.path.isdir(os.path.join(healpix_base, d)))
+        if programs is None:
+            progs = set()
+            for survey in surveys:
+                sdir = os.path.join(healpix_base, survey)
+                if os.path.isdir(sdir):
+                    progs.update(d for d in os.listdir(sdir)
+                                 if os.path.isdir(os.path.join(sdir, d)))
+            programs = sorted(progs)
+
+        log.info(f'Searching healpix tree: surveys={surveys}, programs={programs}')
+        for prefix in ('fastspec', 'fastphot'):
+            for gzip in (True, False):
+                found = findfiles(healpix_base, prefix=prefix, coadd_type='healpix',
+                                  survey=surveys, program=programs, gzip=gzip)
+                if len(found) > 0:
+                    all_files.extend(found)
+
+    catdir = os.path.join(vacdir, 'catalogs')
+    if os.path.isdir(catdir):
+        all_files.extend(sorted(glob(os.path.join(catdir, '*.fits'))))
+        all_files.extend(sorted(glob(os.path.join(catdir, '*.fits.gz'))))
+
+    return np.array(sorted(set(all_files)))
+
+
+def run_fitsverify(filepath):
+    """
+    Run ``fitsverify -e -q`` on a single FITS file.
+
+    Parameters
+    ----------
+    filepath : Path or str
+
+    Returns
+    -------
+    list of str
+        Problem strings (empty if file passed).
+    """
+    result = subprocess.run(
+        ['fitsverify', '-e', '-q', str(filepath)],
+        capture_output=True, text=True
+    )
+    if result.returncode == 0:
+        return []
+
+    # Collect non-empty output lines; fitsverify writes to stdout
+    lines = [l.strip() for l in result.stdout.splitlines() if l.strip()]
+    if lines:
+        return [f'fitsverify [{filepath.name}]: {l}' for l in lines]
+    # No output but non-zero exit — report generically
+    return [f'fitsverify [{filepath.name}]: failed (rc={result.returncode})']
+
+
+def check_file_integrity(filepath):
+    """Check all BinTable extensions except MODELS for NaN/inf values.
+
+    Parameters
+    ----------
+    filepath : Path or str
+
+    Returns
+    -------
+    list of str
+        Problem strings (empty if no issues found).
+    """
+    filepath = Path(filepath)
+    problems = []
+    try:
+        with fitsio.FITS(str(filepath)) as fits:
+            for ext in range(len(fits)):
+                info = fits[ext].get_info()
+                extname = info.get('extname', f'HDU{ext}').upper()
+                if extname == 'MODELS':
+                    continue
+                if info['hdutype'] != fitsio.BINARY_TBL:
+                    continue
+                if info.get('nrows', 0) == 0:
+                    continue
+                try:
+                    data = fits[ext].read()
+                except Exception as e:
+                    problems.append(f'[{filepath.name}] {extname}: read error ({e})')
+                    continue
+                for col in data.dtype.names:
+                    arr = data[col]
+                    if arr.dtype.kind not in ('f', 'c'):
+                        continue
+                    bad = np.isnan(arr) | np.isinf(arr)
+                    if np.any(bad):
+                        n_bad = int(np.sum(bad))
+                        problems.append(
+                            f'[{filepath.name}] {extname}.{col}: {n_bad:,d} NaN/inf value(s)')
+    except Exception as e:
+        problems.append(f'[{filepath.name}]: could not open ({e})')
+    return problems
+
+
+_EXTRANEOUS_RE = [
+    re.compile(r'.*\.log\.\d+$'),      # backed-up logs: *.log.0, *.log.1, ...
+    re.compile(r'.*\.log-rank\d+$'),   # interrupted rank logs: *.log-rank0, ...
+    re.compile(r'.*\.fits\.tmp$'),     # interrupted temp output
+    re.compile(r'.*\.fits\.tmp\.gz$'), # interrupted temp gzipped output
+]
+
+
+def check_extraneous_files(dirpath):
+    """Warn about leftover backup logs and incomplete output files in dirpath.
+
+    Returns
+    -------
+    list of str
+        Warning strings (empty if directory is clean).
+    """
+    warnings = []
+    try:
+        names = [f.name for f in Path(dirpath).iterdir() if f.is_file()]
+    except Exception as e:
+        return [f'[{dirpath}]: could not list directory ({e})']
+    for name in sorted(names):
+        if any(pat.match(name) for pat in _EXTRANEOUS_RE):
+            warnings.append(f'extraneous file: {os.path.join(dirpath, name)}')
+    return warnings
+
+
+def run_validation(args, comm, rank, size):
+    fitsverify_ok = shutil.which('fitsverify') is not None
+    if rank == 0 and not fitsverify_ok:
+        log.warning('fitsverify not found on PATH; skipping fitsverify checks.')
+
+    if rank == 0:
+        all_files = discover_vac_files(args.vacdir,
+                                       surveys=args.survey,
+                                       programs=args.program)
+        if len(all_files) == 0:
+            log.error(f'No FITS files found under {args.vacdir}')
+            if comm:
+                comm.Abort(1)
+            return 1
+        log.info(f'Found {len(all_files):,d} FITS file(s). Counting targets (mp={args.mp})...')
+        if args.mp > 1:
+            with multiprocessing.Pool(args.mp) as P:
+                ntargets = np.array(P.map(_get_ntargets_vac, all_files))
+        else:
+            ntargets = np.array([_get_ntargets_vac(f) for f in all_files])
+        log.info(f'Total targets: {np.sum(ntargets):,d}')
+    else:
+        all_files = ntargets = None
+
+    my_files = _distribute(all_files, ntargets, comm, rank, size)
+    log.info(f'Rank {rank}: validating {len(my_files):,d} file(s).')
+
+    n_checked = n_issues = 0
+    checked_dirs = set()
+    for filepath in my_files:
+        filepath = Path(filepath)
+        log.info(f'Rank {rank} [{n_checked + 1}/{len(my_files)}]: {filepath.name}')
+
+        # Check the parent directory for extraneous files (once per directory).
+        if filepath.parent not in checked_dirs:
+            checked_dirs.add(filepath.parent)
+            for msg in check_extraneous_files(filepath.parent):
+                log.warning(msg)
+
+        problems = []
+        if fitsverify_ok:
+            problems.extend(run_fitsverify(filepath))
+        problems.extend(check_file_integrity(filepath))
+        n_checked += 1
+        if problems:
+            n_issues += 1
+            for msg in problems:
+                log.warning(msg)
+
+    counts = comm.gather((n_checked, n_issues), root=0) if comm else [(n_checked, n_issues)]
+    if rank == 0:
+        total_checked = sum(c[0] for c in counts)
+        total_issues = sum(c[1] for c in counts)
+        if total_issues == 0:
+            log.info(f'All {total_checked:,d} file(s) passed validation.')
+        else:
+            log.warning(f'{total_issues:,d}/{total_checked:,d} file(s) have issues.')
+
+
+# ---------------------------------------------------------------------------
+# Checksums
+# ---------------------------------------------------------------------------
+
+def sha256_file(filepath):
+    """Return hex SHA-256 digest of a file."""
+    h = hashlib.sha256()
+    with open(filepath, 'rb') as f:
+        for chunk in iter(lambda: f.read(1 << 20), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _checksum_filename(dirpath, vacdir, dr, specprod, version):
+    """Return the checksum filename for *dirpath* (placed inside that dir)."""
+    rel = os.path.relpath(dirpath, vacdir)
+    rel_underscored = rel.replace(os.sep, '_')
+    return f'{dr}_vac_{dr}_fastspecfit_{specprod}_{version}_{rel_underscored}.sha256sum'
+
+
+def discover_checksum_dirs(vacdir, dr, specprod, version):
+    """Return arrays of (dirpath, total_bytes) for directories that need checksums.
+
+    Scans catalogs/ and healpix/ under vacdir.  Directories whose checksum
+    file already exists are excluded.
+    """
+    dirs = set()
+    for subdir in ('catalogs', 'healpix'):
+        base = os.path.join(vacdir, subdir)
+        if not os.path.isdir(base):
+            continue
+        for root, _, files in os.walk(base):
+            if files:
+                dirs.add(root)
+
+    pending, weights = [], []
+    for d in sorted(dirs):
+        csum_name = _checksum_filename(d, vacdir, dr, specprod, version)
+        if os.path.exists(os.path.join(d, csum_name)):
+            log.info(f'Skipping {d} (checksum exists)')
+            continue
+        total_bytes = sum(
+            os.path.getsize(os.path.join(d, f))
+            for f in os.listdir(d)
+            if os.path.isfile(os.path.join(d, f))
+        )
+        pending.append(d)
+        weights.append(max(total_bytes, 1))
+
+    return np.array(pending), np.array(weights)
+
+
+def write_checksums_for_dir(dirpath, vacdir, dr, specprod, version):
+    """Compute and write the checksum file for all files in dirpath."""
+    dirpath = Path(dirpath)
+    csum_name = _checksum_filename(str(dirpath), vacdir, dr, specprod, version)
+    csum_path = dirpath / csum_name
+
+    files = sorted(f for f in dirpath.iterdir() if f.is_file() and f.name != csum_name)
+    if not files:
+        return
+
+    lines = []
+    for f in files:
+        try:
+            digest = sha256_file(f)
+            lines.append(f'{digest}  {f.name}\n')
+        except Exception as e:
+            log.warning(f'[{f.name}]: could not checksum ({e})')
+
+    try:
+        csum_path.write_text(''.join(lines))
+        log.info(f'Wrote {csum_path}')
+    except Exception as e:
+        log.warning(f'Could not write {csum_path}: {e}')
+
+
+def run_checksums(args, comm, rank, size):
+    if rank == 0:
+        pending, weights = discover_checksum_dirs(
+            args.vacdir, args.dr, args.specprod, args.version)
+        if len(pending) == 0:
+            log.info('All checksum files already exist; nothing to do.')
+            if comm:
+                comm.Abort(0)
+            return
+        log.info(f'Writing checksums for {len(pending):,d} director(ies).')
+    else:
+        pending = weights = None
+
+    my_dirs = _distribute(pending, weights, comm, rank, size)
+
+    n_written = 0
+    for dirpath in my_dirs:
+        write_checksums_for_dir(dirpath, args.vacdir, args.dr, args.specprod, args.version)
+        n_written += 1
+
+    counts = comm.gather(n_written, root=0) if comm else [n_written]
+    if rank == 0:
+        log.info(f'Done. Wrote checksums for {sum(counts):,d} director(ies).')
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def _parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument('--vacdir', type=str, required=True,
+                   help='top-level VAC directory')
+    p.add_argument('--mp', type=int, default=1,
+                   help='number of multiprocessing workers on rank 0 for target counting (default 1)')
+    p.add_argument('--survey', nargs='+', default=None,
+                   help='survey(s) to validate (default: all detected)')
+    p.add_argument('--program', nargs='+', default=None,
+                   help='program(s) to validate (default: all detected)')
+    p.add_argument('--write-checksums', action='store_true',
+                   help='write per-directory SHA-256 checksum files instead of validating')
+    p.add_argument('--dr', type=str, default=None,
+                   help='data release label for checksum filenames (e.g. dr2; required with --write-checksums)')
+    p.add_argument('--specprod', type=str, default=None,
+                   help='spectroscopic production name (e.g. loa; required with --write-checksums)')
+    p.add_argument('--version', type=str, default=None,
+                   help='VAC version string (e.g. v1.0; required with --write-checksums)')
+    args = p.parse_args()
+
+    if args.write_checksums:
+        missing = [f'--{f}' for f in ('dr', 'specprod', 'version') if getattr(args, f) is None]
+        if missing:
+            p.error(f'--write-checksums requires: {", ".join(missing)}')
+
+    return args
+
+
+def main():
+    import sys
+
+    # MPI init before argument parsing so that errors are handled cleanly.
+    try:
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+        rank = comm.rank
+        size = comm.size
+    except ImportError:
+        comm = None
+        rank, size = 0, 1
+
+    # Parse and validate args on rank 0 only, then broadcast to all ranks.
+    # On error, rank 0 lets argparse print the usage message and then
+    # broadcasts None so other ranks exit silently without MPI noise.
+    if rank == 0:
+        try:
+            args = _parse_args()
+        except SystemExit as e:
+            if comm:
+                comm.bcast(None, root=0)
+            sys.exit(e.code if isinstance(e.code, int) else 1)
+    else:
+        args = None
+
+    if comm:
+        args = comm.bcast(args, root=0)
+
+    if args is None:
+        sys.exit(0)
+
+    if args.write_checksums:
+        run_checksums(args, comm, rank, size)
+    else:
+        run_validation(args, comm, rank, size)
+
+
+if __name__ == '__main__':
+    main()

@@ -5,11 +5,15 @@ Change Log
 3.4.3 (not released yet)
 ------------------------
 
+* VAC documentation overhaul: reorganize by data release; add Iron/fastphot
+  and Loa/DR2 VAC pages; replace inaccurate QSO-redshift code block with
+  prose [`PR #260`_].
 * Propagate ``--constraintsfile`` through ``mpi-fastspecfit``. Exclude
   amplitude-constrained doublet pairs from kinematic relaxation in the
   final optimization pass and update the default narrow-only
   final-pass configuration to ``free_sigma: false`` [`PR #259`_].
 
+.. _`PR #260`: https://github.com/desihub/fastspecfit/pull/260
 .. _`PR #259`: https://github.com/desihub/fastspecfit/pull/259
 
 3.4.2 (2026-06-03)
