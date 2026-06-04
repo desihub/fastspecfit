@@ -260,10 +260,17 @@ v1.0 (latest release)
 
 * Known issues:
 
-  * None at this time.
+  * **Bug**: Significant errors in flux and equivalent-width inverse-variance
+    estimates (fixed in ``3.1.5``; see `PR/#213`_).
+  * **Bug**: Poor line fits for a small fraction of strong emission lines due
+    to a clipping error in the ``ivar2var`` function (fixed in ``3.2.0``; see
+    `PR/#228`_).
 
 .. _`DESI Data Release 2 (DESI/DR2)`: https://data.desi.lbl.gov/doc/releases/dr2
 .. _`NERSC`: https://nersc.gov
 .. _`open a ticket`: https://github.com/desihub/fastspecfit/issues
 .. _`change log`: https://github.com/desihub/fastspecfit/blob/main/doc/changes.rst
 .. _`README.txt`: https://data.desi.lbl.gov/public/external/templates/fastspecfit/README.txt
+.. _`PR/#213`: https://github.com/desihub/fastspecfit/pull/213
+.. _`PR/#227`: https://github.com/desihub/fastspecfit/pull/227
+.. _`PR/#228`: https://github.com/desihub/fastspecfit/pull/228

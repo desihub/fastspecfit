@@ -279,7 +279,9 @@ v3.0 (latest release)
 
 * Known issues:
 
-  * None at this time.
+  * **Bug**: Poor line fits for a small fraction of strong emission lines due
+    to a clipping error in the ``ivar2var`` function (fixed in ``3.2.0``; see
+    `PR/#228`_).
 
 v2.1
 ~~~~
@@ -372,3 +374,5 @@ v1.0
 .. _`PR/#201`: https://github.com/desihub/fastspecfit/pull/201
 .. _`PR/#211`: https://github.com/desihub/fastspecfit/pull/211
 .. _`PR/#213`: https://github.com/desihub/fastspecfit/pull/213
+.. _`PR/#227`: https://github.com/desihub/fastspecfit/pull/227
+.. _`PR/#228`: https://github.com/desihub/fastspecfit/pull/228

@@ -157,7 +157,7 @@ desiutil         3.4.3
 desispec         0.68.1
 desitarget       2.8.0
 speclite         0.20
-fastspecfit      3.1.5, 3.2.0
+fastspecfit      3.2.0
 ================ ==========
 
 .. rst-class:: columns
@@ -181,7 +181,7 @@ v1.0 (latest release)
 ~~~~~~~~~~~~~~~~~~~~~~
 
 * Release date: June 2026
-* ``FastSpecFit`` version: ``3.1.5``, ``3.2.0``
+* ``FastSpecFit`` version: ``3.2.0``
 * Templates: ``ftemplates-chabrier-2.0.0.fits``  (see `README.txt`_).
 * Notes:
 

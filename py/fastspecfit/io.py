@@ -1384,7 +1384,7 @@ class DESISpectra(object):
                     if col in _input_meta.colnames:
                         _input_meta.remove_column(col)
                 tractor = gather_tractorphot(_input_meta, columns=PHOTCOLS, legacysurveydir=self.fphotodir)
-            
+
             # DR9-specific stuff
             if legacysurveydr.lower() == 'dr9' or legacysurveydr.lower() == 'dr10':
                 metas = []
@@ -1632,7 +1632,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         hdu_specphot = fits.convenience.table_to_hdu(specphot)
         if fastfit is not None:
             hdu_fastfit = fits.convenience.table_to_hdu(fastfit)
-    
+
         if modelspectra is not None:
             hdu_data = fits.ImageHDU(name='MODELS')
             # [nobj, 3, nwave]
@@ -2275,4 +2275,3 @@ def create_output_table(records, meta, units, fitstack=False):
     output_table = hstack((output_table, Table(np.array(records), units=units)))
 
     return output_table
-
