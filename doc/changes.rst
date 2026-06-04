@@ -5,6 +5,13 @@ Change Log
 3.4.3 (not released yet)
 ------------------------
 
+* VAC documentation overhaul: reorganize by data release; add Iron/fastphot
+  and Loa/DR2 VAC pages; replace inaccurate QSO-redshift code block with
+  prose; extend ``bin/vac-statistics`` with healpix-based code-version
+  scraping [`PR #260`_].
+
+.. _`PR #260`: https://github.com/desihub/fastspecfit/pull/260
+
 3.4.2 (2026-06-03)
 ------------------
 
