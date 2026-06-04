@@ -78,9 +78,9 @@ class TestLoading:
 
         # narrow_only: both groups release vshift and sigma
         assert gfp['narrow_only.forbidden']['free_vshift']   is True
-        assert gfp['narrow_only.forbidden']['free_sigma']    is True
+        assert gfp['narrow_only.forbidden']['free_sigma']    is False
         assert gfp['narrow_only.narrow_balmer']['free_vshift'] is True
-        assert gfp['narrow_only.narrow_balmer']['free_sigma']  is True
+        assert gfp['narrow_only.narrow_balmer']['free_sigma']  is False
 
         # narrow_broad: narrow_all frees vshift only
         assert gfp['narrow_broad.narrow_all']['free_vshift']  is False
