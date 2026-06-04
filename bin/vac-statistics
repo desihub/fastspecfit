@@ -200,26 +200,58 @@ def print_qso_statistics(files, specprod, script):
         print()
 
 
-def gather_healpix_files(vacdir, script):
-    """Glob all per-healpix catalog files under vacdir/healpix/."""
+def _survey_program_from_healpix_path(filepath):
+    """Extract (survey, program) from a healpix file path."""
+    parts = filepath.replace('\\', '/').split('/')
+    try:
+        idx = parts.index('healpix')
+        return parts[idx + 1], parts[idx + 2]
+    except (ValueError, IndexError):
+        return '', ''
+
+
+def gather_healpix_files(vacdir, script, sample=True):
+    """Glob per-healpix catalog files under vacdir/healpix/.
+
+    If sample=True (default), return one file per (survey, program) rather
+    than all files, for a fast version check.
+    """
     ext = '.fits.gz' if script == 'fastspec' else '.fits'
     pattern = os.path.join(vacdir, 'healpix', '*', '*', '*', '*', f'{script}-*{ext}')
-    return sorted(glob(pattern))
+    all_files = sorted(glob(pattern))
+    if not sample:
+        return all_files
+    seen = set()
+    sampled = []
+    for f in all_files:
+        key = _survey_program_from_healpix_path(f)
+        if key not in seen:
+            seen.add(key)
+            sampled.append(f)
+    return sampled
 
 
-def print_code_versions(vacdir, all_files):
-    """Print software versions table collected from all healpix catalog headers."""
+def print_code_versions(vacdir, all_files, sample=True):
+    """Print software versions table collected from healpix catalog headers.
+
+    When sample=True (default), reads one healpix file per survey/program plus
+    the first merged catalog per script.  When sample=False, reads every healpix
+    file (slow for large specprods).
+    """
     from desiutil.depend import Dependencies
 
     pkg_versions = {pkg: set() for pkg in _PACKAGES}
     nread = 0
 
     for script, merged_files in all_files.items():
-        source_files = gather_healpix_files(vacdir, script)
+        source_files = gather_healpix_files(vacdir, script, sample=sample)
         if not source_files:
             log.warning(f'No healpix files found for {script}; falling back to merged catalogs.')
             source_files = list(merged_files)
-        log.info(f'Reading code versions from {len(source_files)} {script} healpix files.')
+        elif sample and merged_files[0] not in source_files:
+            # Always include the first merged catalog — it may carry a later version.
+            source_files = source_files + [merged_files[0]]
+        log.info(f'Reading code versions from {len(source_files)} {script} files.')
         for filepath in source_files:
             try:
                 hdr = fitsio.read_header(filepath, ext=0)
@@ -278,6 +310,8 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--specprod', type=str, required=True, help='spectroscopic production name (e.g., iron)')
     p.add_argument('--vacdir', type=str, required=True, help='top-level VAC directory')
+    p.add_argument('--all-versions', action='store_true',
+                   help='read every healpix file for code versions (slow; default: one per survey/program)')
     args = p.parse_args()
 
     all_files = {}
@@ -300,7 +334,7 @@ def main():
         print_qso_statistics(files, args.specprod, script)
 
     print('\n### Software Versions ###\n')
-    print_code_versions(args.vacdir, all_files)
+    print_code_versions(args.vacdir, all_files, sample=not args.all_versions)
 
     print('\n### Environment Variables ###\n')
     print_env_vars()
