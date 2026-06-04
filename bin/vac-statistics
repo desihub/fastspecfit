@@ -24,7 +24,8 @@ _PACKAGES = ['python', 'numpy', 'scipy', 'astropy', 'yaml', 'matplotlib',
              'desitarget', 'speclite', 'fastspecfit']
 
 _ENV_VARS = ['DESI_ROOT', 'DUST_DIR', 'FPHOTO_DIR', 'FTEMPLATES_DIR',
-             'FTEMPLATES_FILE', 'FPHOTO_FILE', 'EMLINES_FILE']
+             'FTEMPLATES_FILE', 'FPHOTO_FILE', 'EMLINES_FILE',
+             'CONSTRAINTS_FILE']
 
 
 def _parse_survey_program(filepath, specprod, script):
