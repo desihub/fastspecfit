@@ -7,6 +7,11 @@ Loa fastspec VAC (DR2)
 .. contents:: Contents
     :depth: 3
 
+.. warning::
+
+   This VAC has not yet been publicly released. It is currently
+   accessible only to DESI collaboration members via NERSC.
+
 Overview
 --------
 
