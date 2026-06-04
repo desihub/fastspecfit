@@ -255,8 +255,8 @@ Notes & Known Issues
 v1.0 (latest release)
 ~~~~~~~~~~~~~~~~~~~~~~
 
-* Release date: TBD
-* ``FastSpecFit`` version: TBD
+* Release date: 2027 (Exact date TBD)
+* ``FastSpecFit`` version: 
 * Templates: TBD (see `README.txt`_).
 * Notes:
 

@@ -200,33 +200,57 @@ def print_qso_statistics(files, specprod, script):
         print()
 
 
-def print_code_versions(files):
-    """Print the software versions table read from the primary FITS header."""
+def gather_healpix_files(vacdir, script):
+    """Glob all per-healpix catalog files under vacdir/healpix/."""
+    ext = '.fits.gz' if script == 'fastspec' else '.fits'
+    pattern = os.path.join(vacdir, 'healpix', '*', '*', '*', '*', f'{script}-*{ext}')
+    return sorted(glob(pattern))
+
+
+def print_code_versions(vacdir, all_files):
+    """Print software versions table collected from all healpix catalog headers."""
     from desiutil.depend import Dependencies
 
-    hdr = fitsio.read_header(files[0], ext=0)
-    try:
-        codever = dict(Dependencies(hdr).items())
-    except Exception as e:
-        log.warning(f'Could not read code versions from {files[0]}: {e}')
+    pkg_versions = {pkg: set() for pkg in _PACKAGES}
+    nread = 0
+
+    for script, merged_files in all_files.items():
+        source_files = gather_healpix_files(vacdir, script)
+        if not source_files:
+            log.warning(f'No healpix files found for {script}; falling back to merged catalogs.')
+            source_files = list(merged_files)
+        log.info(f'Reading code versions from {len(source_files)} {script} healpix files.')
+        for filepath in source_files:
+            try:
+                hdr = fitsio.read_header(filepath, ext=0)
+                for pkg, ver in Dependencies(hdr).items():
+                    if pkg in pkg_versions:
+                        pkg_versions[pkg].add(str(ver))
+                nread += 1
+            except Exception as e:
+                log.warning(f'Could not read code versions from {filepath}: {e}')
+
+    if nread == 0:
+        log.warning('No code versions could be read.')
         return
 
     headers = ['Software Package', 'Version(s)']
     widths = np.array([len(h) for h in headers])
     lines = []
     for pkg in _PACKAGES:
-        ver = codever.get(pkg)
-        if ver is None:
+        versions = pkg_versions[pkg]
+        if not versions:
             continue
-        for ii, dd in enumerate([pkg, str(ver)]):
+        ver_str = ', '.join(sorted(versions))
+        for ii, dd in enumerate([pkg, ver_str]):
             if len(dd) > widths[ii]:
                 widths[ii] = len(dd)
-        lines.append([pkg, str(ver)])
+        lines.append([pkg, ver_str])
 
     if lines:
         build_table(widths, lines, headers)
     else:
-        log.warning(f'No recognized package versions found in {files[0]}')
+        log.warning('No recognized package versions found.')
 
 
 def print_env_vars():
@@ -275,9 +299,8 @@ def main():
         print(f'\n### QSO Redshift Corrections ({script}) ###')
         print_qso_statistics(files, args.specprod, script)
 
-    first_files = next(iter(all_files.values()))
     print('\n### Software Versions ###\n')
-    print_code_versions(first_files)
+    print_code_versions(args.vacdir, all_files)
 
     print('\n### Environment Variables ###\n')
     print_env_vars()
