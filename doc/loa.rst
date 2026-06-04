@@ -206,15 +206,6 @@ The following tables document the code versions and environment variables used
 to produce this VAC. For details regarding the revision history of
 ``FastSpecFit``, please see the `change log`_.
 
-Note that the tagged dependencies can be retrieved from any FITS file with the
-following bit of code::
-
-  import fitsio
-  from desiutil.depend import Dependencies
-  codever = Dependencies(fitsio.read_header('/path/to/fastspecfit/file.fits', ext=0))
-  for codename, version in codever.items():
-      print(codename, version)
-
 .. rst-class:: columns
 
 ================ ==========
@@ -232,7 +223,7 @@ desiutil         3.4.3
 desispec         0.68.1
 desitarget       2.8.0
 speclite         0.20
-fastspecfit      3.1.5
+fastspecfit      3.1.4, 3.1.5
 ================ ==========
 
 .. rst-class:: columns
@@ -256,8 +247,8 @@ v1.0 (latest release)
 ~~~~~~~~~~~~~~~~~~~~~~
 
 * Release date: 2027 (Exact date TBD)
-* ``FastSpecFit`` version: 
-* Templates: TBD (see `README.txt`_).
+* ``FastSpecFit`` version: ``3.1.4``, ``3.1.5``
+* Templates: ``ftemplates-chabrier-2.0.0.fits``  (see `README.txt`_).
 * Notes:
 
   * Initial release of the ``Loa`` fastspec VAC.
