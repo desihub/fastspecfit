@@ -76,6 +76,16 @@ class EmlineConstraints:
         # named profiles + per-profile final_pass strategy
         self.profiles = raw['profiles']
 
+        # Lines that are members of amplitude-constrained doublets (both fixed
+        # ratios and free doublet ratios). These must never receive independent
+        # kinematics in the final pass: releasing them individually would give
+        # physically identical transitions different sigma or vshift.
+        doublet_lines = frozenset(
+            item
+            for entry in ac.get('fixed', []) + ac.get('doublet_ratios', [])
+            for item in (entry['line'], entry['ref'])
+        )
+
         def _parse_group_fp(g, context):
             """Parse and validate a kinematic group's final_pass block."""
             if 'final_pass' not in g:
@@ -90,11 +100,13 @@ class EmlineConstraints:
                         f"is missing required key '{key}'.")
             dvm = gfp.get('delta_vshift_max')
             dsm = gfp.get('delta_sigma_max')
+            members = set(g.get('members', [])) | {g.get('anchor', '')}
             return {
                 'free_vshift':      bool(gfp['free_vshift']),
                 'free_sigma':       bool(gfp['free_sigma']),
                 'delta_vshift_max': float(dvm) if dvm is not None else None,
                 'delta_sigma_max':  float(dsm) if dsm is not None else None,
+                'locked_members':   members & doublet_lines,
             }
 
         # group_final_pass: keyed by 'global.<name>' or '<profile>.<name>'
@@ -1784,6 +1796,9 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                 continue
             gfp = constraints.group_final_pass.get(linemodel_relax['group_name'][i])
             if gfp is None:
+                continue
+            line_name = EMFit.line_table['name'][EMFit.param_table['line'][i]]
+            if line_name in gfp['locked_members']:
                 continue
             param_type = EMFit.param_table['type'][i]
             if ((param_type == ParamType.VSHIFT and gfp['free_vshift']) or
