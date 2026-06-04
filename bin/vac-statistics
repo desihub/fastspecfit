@@ -203,10 +203,10 @@ def print_qso_statistics(files, specprod, script):
 def gather_healpix_files(vacdir, script, sample=True):
     """Return healpix catalog files under vacdir/healpix/.
 
-    If sample=True (default), walk survey and program subdirectories and return
-    the first file found in each (survey, program) combination — typically a
-    few dozen files, read in under a second.  If sample=False, return every
-    healpix file (slow for large specprods).
+    If sample=True (default), descend one directory at a time and return the
+    first file found in each (survey, program) combination — typically a few
+    dozen files read in under a second.  If sample=False, return every healpix
+    file (slow for large specprods).
     """
     ext = '.fits.gz' if script == 'fastspec' else '.fits'
     healpix_dir = os.path.join(vacdir, 'healpix')
@@ -216,9 +216,16 @@ def gather_healpix_files(vacdir, script, sample=True):
     files = []
     for survey_dir in sorted(glob(os.path.join(healpix_dir, '*'))):
         for program_dir in sorted(glob(os.path.join(survey_dir, '*'))):
-            matches = sorted(glob(os.path.join(program_dir, '*', '*', f'{script}-*{ext}')))
-            if matches:
-                files.append(matches[0])
+            try:
+                hpixgroup = sorted(os.listdir(program_dir))[0]
+                healpix = sorted(os.listdir(os.path.join(program_dir, hpixgroup)))[0]
+                leaf = os.path.join(program_dir, hpixgroup, healpix)
+                match = next((os.path.join(leaf, f) for f in sorted(os.listdir(leaf))
+                              if f.startswith(script) and f.endswith(ext)), None)
+                if match:
+                    files.append(match)
+            except (OSError, IndexError):
+                continue
     return files
 
 
