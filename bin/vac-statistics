@@ -200,43 +200,33 @@ def print_qso_statistics(files, specprod, script):
         print()
 
 
-def _survey_program_from_healpix_path(filepath):
-    """Extract (survey, program) from a healpix file path."""
-    parts = filepath.replace('\\', '/').split('/')
-    try:
-        idx = parts.index('healpix')
-        return parts[idx + 1], parts[idx + 2]
-    except (ValueError, IndexError):
-        return '', ''
-
-
 def gather_healpix_files(vacdir, script, sample=True):
-    """Glob per-healpix catalog files under vacdir/healpix/.
+    """Return healpix catalog files under vacdir/healpix/.
 
-    If sample=True (default), return one file per (survey, program) rather
-    than all files, for a fast version check.
+    If sample=True (default), walk survey and program subdirectories and return
+    the first file found in each (survey, program) combination — typically a
+    few dozen files, read in under a second.  If sample=False, return every
+    healpix file (slow for large specprods).
     """
     ext = '.fits.gz' if script == 'fastspec' else '.fits'
-    pattern = os.path.join(vacdir, 'healpix', '*', '*', '*', '*', f'{script}-*{ext}')
-    all_files = sorted(glob(pattern))
+    healpix_dir = os.path.join(vacdir, 'healpix')
     if not sample:
-        return all_files
-    seen = set()
-    sampled = []
-    for f in all_files:
-        key = _survey_program_from_healpix_path(f)
-        if key not in seen:
-            seen.add(key)
-            sampled.append(f)
-    return sampled
+        pattern = os.path.join(healpix_dir, '*', '*', '*', '*', f'{script}-*{ext}')
+        return sorted(glob(pattern))
+    files = []
+    for survey_dir in sorted(glob(os.path.join(healpix_dir, '*'))):
+        for program_dir in sorted(glob(os.path.join(survey_dir, '*'))):
+            matches = sorted(glob(os.path.join(program_dir, '*', '*', f'{script}-*{ext}')))
+            if matches:
+                files.append(matches[0])
+    return files
 
 
 def print_code_versions(vacdir, all_files, sample=True):
     """Print software versions table collected from healpix catalog headers.
 
-    When sample=True (default), reads one healpix file per survey/program plus
-    the first merged catalog per script.  When sample=False, reads every healpix
-    file (slow for large specprods).
+    When sample=True (default), reads one healpix file per survey/program.
+    When sample=False, reads every healpix file (slow for large specprods).
     """
     from desiutil.depend import Dependencies
 
@@ -248,9 +238,6 @@ def print_code_versions(vacdir, all_files, sample=True):
         if not source_files:
             log.warning(f'No healpix files found for {script}; falling back to merged catalogs.')
             source_files = list(merged_files)
-        elif sample and merged_files[0] not in source_files:
-            # Always include the first merged catalog — it may carry a later version.
-            source_files = source_files + [merged_files[0]]
         log.info(f'Reading code versions from {len(source_files)} {script} files.')
         for filepath in source_files:
             try:
