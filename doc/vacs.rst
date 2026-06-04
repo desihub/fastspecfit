@@ -124,58 +124,29 @@ determined by Redrock is incorrect. To mitigate this issue, the DESI team has
 developed an approach to rectify the redshift nominally measured by Redrock
 using the machine-learning algorithm ``QuasarNet``.
 
-Let ``redrockfile``, ``qnfile``, and ``mgiifile`` be the full pathname to a
-given `Redrock catalog`_, `QuasarNet catalog`_, and `MgII catalog`_,
-respectively. We update the Redrock redshift ``Z`` (and store the original
-Redrock redshift and ``ZWARNING`` bitmask in ``Z_RR`` and ``ZWARN_RR``; see the
-:ref:`fastspec data model<fastspec datamodel>`) for all QSO targets using the
-following bit of code:
+We update the Redrock redshift ``Z`` for affected QSO targets using the
+`QuasarNet catalog`_ and `MgII catalog`_ afterburners distributed alongside
+each Redrock output file. The original Redrock redshift and ``ZWARNING``
+bitmask are preserved in the ``Z_RR`` and ``ZWARN_RR`` output columns (see the
+:ref:`fastspec data model<fastspec datamodel>`); note that only ``Z`` is
+modified, not ``ZWARN``.
 
-.. code-block:: python
+The update is applied separately to two classes of targets:
 
-  import fitsio
-  import numpy as np
-  from astropy.table import Table
-  from desitarget.targets import main_cmx_or_sv
+**Primary QSO targets** — objects assigned to a QSO targeting bit (or the
+equivalent ``SV0_QSO`` / ``MINI_SV_QSO`` commissioning bits for CMX data) —
+have their redshift corrected when two conditions are met: the QuasarNet
+afterburner independently classifies the spectrum as a QSO
+(``IS_QSO_QN_NEW_RR = True``), and the maximum QuasarNet line confidence
+across the six lines Lyα, C IV, C III], Mg II, Hβ, and Hα exceeds a
+threshold. For DR2 (Loa) this threshold is 0.99; for DR1 (Iron) it was 0.95.
 
-  QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha']
-  QNCOLS = ['TARGETID', 'Z_NEW', 'ZWARN_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
-  MGIICOLS = ['TARGETID', 'IS_QSO_MGII']
-
-  zb = Table(fitsio.read(redrockfile, 'REDSHIFTS'))
-
-  # find QSO targets
-  surv_target, surv_mask, surv = main_cmx_or_sv(meta, scnd=True)
-  if surv == 'cmx':
-      desi_target = surv_target[0]
-      scnd_target = surv_target[-1]
-      desi_mask = surv_mask[0]
-      scnd_mask = surv_mask[-1]
-      IQSO = ((meta[desi_target] & desi_mask['SV0_QSO'] != 0) |
-              (meta[desi_target] & desi_mask['MINI_SV_QSO'] != 0))
-      IWISE_VAR_QSO = np.zeros(len(fitindx), bool)
-  else:
-    desi_target, bgs_target, mws_target, scnd_target = surv_target
-    desi_mask, bgs_mask, mws_mask, scnd_mask = surv_mask
-    IQSO = meta[desi_target] & desi_mask['QSO'] != 0
-    IWISE_VAR_QSO = meta[scnd_target] & scnd_mask['WISE_VAR_QSO'] != 0
-
-  if np.sum(IQSO) > 0 or np.sum(IWISE_VAR_QSO) > 0:
-      qn = Table(fitsio.read(qnfile, 'QN_RR', rows=fitindx, columns=QNCOLS))
-      assert(np.all(qn['TARGETID'] == meta['TARGETID']))
-      log.debug('Updating QSO redshifts using a QN threshold of 0.99.')
-      qn['IS_QSO_QN_099'] = np.max(np.array([qn[name] for name in QNLINES]), axis=0) > QNthresh
-      iqso = IQSO * qn['IS_QSO_QN_NEW_RR'] * qn['IS_QSO_QN_099']
-      if np.sum(iqso) > 0:
-          zb['Z'][iqso] = qn['Z_NEW'][iqso]
-          zb['ZWARN'][iqso] = qn['ZWARN_NEW'][iqso]
-      if np.sum(IWISE_VAR_QSO) > 0:
-          mgii = Table(fitsio.read(mgiifile, 'MGII', rows=fitindx, columns=MGIICOLS))
-          assert(np.all(mgii['TARGETID'] == meta['TARGETID']))
-          iwise_var_qso = (((zb['SPECTYPE'] == 'QSO') | mgii['IS_QSO_MGII'] | qn['IS_QSO_QN_099']) & (IWISE_VAR_QSO & qn['IS_QSO_QN_NEW_RR']))
-          if np.sum(iwise_var_qso) > 0:
-              zb['Z'][iwise_var_qso] = qn['Z_NEW'][iwise_var_qso]
-              zb['ZWARN'][iwise_var_qso] = qn['ZWARN_NEW'][iwise_var_qso]
+**Variable WISE QSO secondary targets** (``WISE_VAR_QSO`` secondary targeting
+bit, present in main-survey and some SV programs but not CMX data) are updated
+under a broader criterion: ``IS_QSO_QN_NEW_RR`` must be set and at least one
+of the following must hold — the Redrock spectral type is ``QSO``, the MgII
+afterburner identifies the object as a QSO (``IS_QSO_MGII``), or the maximum
+QuasarNet line confidence exceeds the threshold above.
 
 
 Issues
