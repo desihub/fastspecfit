@@ -27,10 +27,10 @@ Data Content & Access
 
 Data from the ``Loa`` fastphot VAC can be accessed at any of the following links:
 
-============================ ==================================================================
-Data url                     TBD
-`NERSC`_ (for collaborators) TBD
-============================ ==================================================================
+============================ ========================================================
+Data url                     https://data.desi.lbl.gov/desi/vac/dr2/fastphot/loa/v1.0
+`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/vac/dr2/fastphot/loa/v1.0``
+============================ ========================================================
 
 For more information regarding the content and organization of the VAC, please
 click on the following links:
