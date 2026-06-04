@@ -206,7 +206,7 @@ profiles:
           - oii_7330      # amplitude also constrained via amplitude_constraints.fixed
           - siii_9069
           - siii_9532
-        final_pass: {free_vshift: true, free_sigma: true, delta_vshift_max: 100.0, delta_sigma_max: 100.0}
+        final_pass: {free_vshift: true, free_sigma: false, delta_vshift_max: 100.0, delta_sigma_max: 100.0}
 
       - name: narrow_balmer
         anchor: halpha
@@ -224,7 +224,7 @@ profiles:
           - hbeta
           - hei_4471
           - hei_5876
-        final_pass: {free_vshift: true, free_sigma: true, delta_vshift_max: 100.0, delta_sigma_max: 100.0}
+        final_pass: {free_vshift: true, free_sigma: false, delta_vshift_max: 100.0, delta_sigma_max: 100.0}
 
     free_lines: []
 

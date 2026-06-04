@@ -560,20 +560,30 @@ two levels of granularity, both defined in \texttt{data/emline-constraints.yaml}
 \item \textbf{Per kinematic group}: each group carries \texttt{free\_vshift} and
   \texttt{free\_sigma} boolean flags.  When a flag is \texttt{true}, the corresponding
   parameter type ($\Delta v$ or $s$) is freed for every member of that group in the
-  relaxed model.  Groups with both flags \texttt{false} are not relaxed.
+  relaxed model, with one exception: lines that belong to any amplitude-constrained
+  doublet pair (Section~\ref{ssec:amp_constraints}) are never freed kinematically,
+  because releasing them individually would allow transitions originating from the same
+  upper level to acquire different velocity shifts or line widths.  Groups with both
+  flags \texttt{false} are not relaxed.
 
 \item \textbf{Per profile}: the fields \texttt{enabled}, \texttt{warm\_start},
   \texttt{adopt\_if}, and \texttt{inherit\_in\_mc} control whether the pass runs,
   how it is initialized, and when its result is adopted.
 \end{itemize}
 
-For the \emph{narrow-only} profile, both kinematic groups have \texttt{free\_vshift:
-true} and \texttt{free\_sigma: true}, so every line's $\Delta v$ and $s$ are freed
-independently.  For the \emph{narrow+broad} profile, all three groups currently have
-both flags set to \texttt{false}; the pass is nominally enabled but produces no free
-parameters, so it is a no-op in the current default configuration.  Amplitude
-constraints (fixed ratios and doublet ratios; Section~\ref{ssec:amp_constraints}) are
-never relaxed regardless of the per-group flags.
+In the default configuration, both kinematic groups of the \emph{narrow-only} profile
+have \texttt{free\_vshift: true} and \texttt{free\_sigma: false}: individual velocity
+shifts $\Delta v$ are freed so that each line can absorb small wavelength-calibration
+offsets, while line widths $s$ remain shared within the group.  Doublet-constrained
+lines---[O\,\textsc{ii}]~$\lambda\lambda$3726,3729;
+[S\,\textsc{ii}]~$\lambda\lambda$6716,6731;
+[N\,\textsc{ii}]~$\lambda\lambda$6548,6584;
+[O\,\textsc{iii}]~$\lambda\lambda$4959,5007;
+[O\,\textsc{ii}]~$\lambda\lambda$7320,7330;
+and Mg\,\textsc{ii}~$\lambda\lambda$2796,2803---retain their kinematic ties even when
+\texttt{free\_vshift} is \texttt{true}.  For the \emph{narrow+broad} profile, all three
+groups have both flags set to \texttt{false}; the pass is nominally enabled but produces
+no free parameters and is therefore a no-op in the current default configuration.
 
 \paragraph{Warm-start bounds.}
 Each freed parameter is initialized at its primary best-fit value (\texttt{warm\_start:

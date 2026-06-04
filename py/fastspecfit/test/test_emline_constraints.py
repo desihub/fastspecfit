@@ -78,9 +78,9 @@ class TestLoading:
 
         # narrow_only: both groups release vshift and sigma
         assert gfp['narrow_only.forbidden']['free_vshift']   is True
-        assert gfp['narrow_only.forbidden']['free_sigma']    is True
+        assert gfp['narrow_only.forbidden']['free_sigma']    is False
         assert gfp['narrow_only.narrow_balmer']['free_vshift'] is True
-        assert gfp['narrow_only.narrow_balmer']['free_sigma']  is True
+        assert gfp['narrow_only.narrow_balmer']['free_sigma']  is False
 
         # narrow_broad: narrow_all frees vshift only
         assert gfp['narrow_broad.narrow_all']['free_vshift']  is False
@@ -102,6 +102,44 @@ class TestLoading:
         assert gfp['narrow_broad.broad_balmer']['delta_sigma_max']  == 1000.0
         assert gfp['global.ciii_aliii']['delta_vshift_max'] == 500.0
         assert gfp['global.mgii_pair']['delta_sigma_max']   == 1000.0
+
+    def test_locked_members(self, ec):
+        gfp = ec.group_final_pass
+
+        # Every group must carry a locked_members set.
+        for key, val in gfp.items():
+            assert 'locked_members' in val, f"'{key}' missing locked_members"
+
+        # narrow_only.forbidden: every amplitude-constrained doublet line that
+        # belongs to the group (members + anchor) must be locked.
+        forbidden_locked = gfp['narrow_only.forbidden']['locked_members']
+        for line in (
+            'oii_3726',  'oii_3729',   # doublet_ratios
+            'sii_6716',  'sii_6731',   # doublet_ratios
+            'nii_6548',  'nii_6584',   # amplitude_constraints.fixed
+            'oiii_4959', 'oiii_5007',  # amplitude_constraints.fixed (anchor)
+            'oii_7320',  'oii_7330',   # amplitude_constraints.fixed
+        ):
+            assert line in forbidden_locked, \
+                f"Expected '{line}' in narrow_only.forbidden locked_members"
+
+        # Non-doublet members of the forbidden group must not be locked.
+        for line in ('neiii_3869', 'nev_3346', 'ariii_7135', 'oi_6300', 'siii_9069'):
+            assert line not in forbidden_locked, \
+                f"'{line}' should not be in narrow_only.forbidden locked_members"
+
+        # narrow_balmer has no doublet members.
+        assert gfp['narrow_only.narrow_balmer']['locked_members'] == set()
+
+        # global mgii_pair: both MgII doublet lines must be locked.
+        mgii_locked = gfp['global.mgii_pair']['locked_members']
+        assert 'mgii_2796' in mgii_locked
+        assert 'mgii_2803' in mgii_locked
+
+        # narrow_broad.oiii_doublet: the member and anchor are both doublet lines.
+        oiii_locked = gfp['narrow_broad.oiii_doublet']['locked_members']
+        assert 'oiii_4959' in oiii_locked
+        assert 'oiii_5007' in oiii_locked
 
 
 # ── Group 2: consistency check ────────────────────────────────────────────────
