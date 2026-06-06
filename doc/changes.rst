@@ -2,8 +2,13 @@
 Change Log
 ==========
 
-3.4.3 (not released yet)
+3.5.0 (not released yet)
 ------------------------
+
+*
+
+3.4.3 (2026-06-06)
+------------------
 
 * VAC documentation overhaul: reorganize by data release; add Iron/fastphot
   and Loa/DR2 VAC pages; replace inaccurate QSO-redshift code block with
