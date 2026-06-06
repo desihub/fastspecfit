@@ -717,7 +717,8 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
     outfile : :class:`str`
         Path to the output FITS file (or input file for ``--makeqa``).
     sample : :class:`astropy.table.Table` or None, optional
-        Optional target sample table with columns ``{SURVEY, PROGRAM, HEALPIX, TARGETID}``.
+        Optional target sample table with columns
+        ``{SURVEY, PROGRAM, TARGETID}`` and either ``UNIQPIX`` or ``HEALPIX``.
     fastphot : :class:`bool`, optional
         If ``True``, build arguments for ``fastphot`` instead of ``fastspec``.
     input_redshifts : :class:`bool`, optional
@@ -768,10 +769,11 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
             cmdargs += f' --seed={args.seed}'
 
         if sample is not None:
-            _, survey, program, healpix = os.path.basename(redrockfile).split('-')
-            healpix = int(healpix.split('.')[0])
+            _, survey, program, pixnum = os.path.basename(redrockfile).split('-')
+            pixnum = int(pixnum.split('.')[0])
+            pixcol = 'UNIQPIX' if 'UNIQPIX' in sample.colnames else 'HEALPIX'
             I = ((sample['SURVEY'] == survey) * (sample['PROGRAM'] == program) *
-                 (sample['HEALPIX'] == healpix))
+                 (sample[pixcol] == pixnum))
             targetids = ','.join(sample[I]['TARGETID'].astype(str))
             cmdargs += f' --targetids={targetids}'
             if input_redshifts:
