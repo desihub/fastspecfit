@@ -2,6 +2,14 @@
 Change Log
 ==========
 
+3.5.0 (not released yet)
+------------------------
+
+* Support new hierarchical healpixels (``uniqpix``); ``METADATA`` HDU
+  now contains both ``UNIQPIX`` and ``HEALPIX`` [`PR #261`_].
+
+.. _`PR #261`: https://github.com/desihub/fastspecfit/pull/261
+
 3.4.3 (not released yet)
 ------------------------
 
