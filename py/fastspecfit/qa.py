@@ -215,7 +215,13 @@ def _target_label(metadata, coadd_type):
         If ``coadd_type`` is not recognized.
 
     """
-    if coadd_type in ('healpix', 'custom'):
+    if coadd_type == 'uniqpix':
+        return [
+            'Survey/Program/Uniqpix: {}/{}/{}'.format(
+                metadata['SURVEY'], metadata['PROGRAM'], metadata['UNIQPIX']),
+            'TargetID: {}'.format(metadata['TARGETID']),
+        ]
+    elif coadd_type in ('healpix', 'custom'):
         return [
             'Survey/Program/Healpix: {}/{}/{}'.format(
                 metadata['SURVEY'], metadata['PROGRAM'], metadata['HEALPIX']),
@@ -1689,7 +1695,7 @@ def parse(options=None):
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('--healpix', default=None, type=str, nargs='*', help="""Generate QA for all objects
-        with this healpixels (only defined for coadd-type 'healpix').""")
+        in these pixels (healpix values for coadd-type 'healpix', uniqpix values for 'uniqpix').""")
     parser.add_argument('--tile', default=None, type=str, nargs='*', help='Generate QA for all objects on this tile.')
     parser.add_argument('--night', default=None, type=str, nargs='*', help="""Generate QA for all objects observed on this
         night (only defined for coadd-type 'pernight' and 'perexp').""")
@@ -1970,10 +1976,28 @@ def fastqa(args=None, comm=None):
                             indx = np.where((specprod == allspecprods) * (survey == allsurveys) *
                                             (program == allprograms) * (pixel == allpixels))[0]
                             if len(indx) == 0:
-                                #log.warning('No object found with specprod={}, survey={}, program={}, and healpixel={}!'.format(
-                                #    specprod, survey, program, pixel))
                                 continue
                             redrockfile = os.path.join(args.redux_dir, specprod, 'healpix', str(survey), str(program), str(pixel // 100),
+                                                       str(pixel), 'redrock-{}-{}-{}.fits'.format(survey, program, pixel))
+                            _wrap_qa(redrockfile, indx)
+    elif coadd_type == 'uniqpix':
+        if args.redrockfiles is not None:
+            for redrockfile in args.redrockfiles:
+                _wrap_qa(redrockfile)
+        else:
+            allspecprods = metadata['SPECPROD'].data
+            allsurveys = metadata['SURVEY'].data
+            allprograms = metadata['PROGRAM'].data
+            allpixels = metadata['UNIQPIX'].data
+            for specprod in set(allspecprods):
+                for survey in set(allsurveys):
+                    for program in set(allprograms):
+                        for pixel in set(allpixels):
+                            indx = np.where((specprod == allspecprods) * (survey == allsurveys) *
+                                            (program == allprograms) * (pixel == allpixels))[0]
+                            if len(indx) == 0:
+                                continue
+                            redrockfile = os.path.join(args.redux_dir, specprod, 'spectra', str(survey), str(program), str(pixel // 100),
                                                        str(pixel), 'redrock-{}-{}-{}.fits'.format(survey, program, pixel))
                             _wrap_qa(redrockfile, indx)
     elif coadd_type == 'custom':
