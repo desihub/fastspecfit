@@ -5,7 +5,11 @@ Change Log
 3.5.0 (not released yet)
 ------------------------
 
-*
+* Add ``dt`` (age bin width) to template ``METADATA`` and compute the
+  continuum-based ``SFR`` averaged over the most recent 100 Myr, following
+  Leja et al. (2019); requires templates v2.1.0+ [`PR #262`_].
+
+.. _`PR #262`: https://github.com/desihub/fastspecfit/pull/262
 
 3.4.3 (2026-06-06)
 ------------------
