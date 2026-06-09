@@ -4,7 +4,21 @@ fastspecfit.test.test_fastspecfit
 
 """
 import os
+import numpy as np
 import pytest
+
+
+# ---------------------------------------------------------------------------
+# Template tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
+def test_template_dt_column(templates):
+    """Templates >=2.1.0 must carry a dt column for 100-Myr SFR averaging."""
+    from fastspecfit.templates import Templates
+    T = Templates(template_file=templates)
+    assert 'dt' in T.info.colnames, 'dt column missing'
+    assert np.all(T.info['dt'] > 0), 'dt values must be positive'
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +56,17 @@ def test_fastspec(fastspec_output):
     for hdu in fits:
         if hdu.has_data():
             assert(hdu.get_extname() in ['METADATA', 'SPECPHOT', 'FASTSPEC', 'MODELS'])
+
+
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
+def test_sfr_values(fastspec_output, fastphot_output):
+    """SFR in SPECPHOT must be finite and non-negative for all objects."""
+    import fitsio
+    for outfile in [fastspec_output, fastphot_output]:
+        data = fitsio.read(outfile, ext='SPECPHOT')
+        assert 'SFR' in data.dtype.names
+        assert np.all(data['SFR'] >= 0), f'negative SFR in {outfile}'
+        assert np.all(np.isfinite(data['SFR'])), f'non-finite SFR in {outfile}'
 
 
 # ---------------------------------------------------------------------------
