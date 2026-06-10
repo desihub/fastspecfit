@@ -2211,7 +2211,7 @@ def create_output_meta(input_meta, phot, fastphot=False, fitstack=False):
             if metacol in metacols:
                 meta[metacol] = input_meta[metacol]
     else:
-        for metacol in ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER',
+        for metacol in ('TARGETID', 'SURVEY', 'PROGRAM', 'UNIQPIX', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER',
                         'EXPID', 'TILEID_LIST', 'RA', 'DEC', 'COADD_FIBERSTATUS'):
             if metacol in metacols:
                 meta[metacol] = input_meta[metacol]
