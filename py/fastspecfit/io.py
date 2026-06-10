@@ -723,24 +723,24 @@ class DESISpectra(object):
                 survey = hdr['SURVEY']
                 program = hdr['PROGRAM']
                 healpix = np.int32(hdr['SPGRPVAL'])
-                nside = np.int32(hdr['HPXNSIDE']) if 'HPXNSIDE' in hdr else np.int32(64)
-                uniqpix = np.int32(healpix + 4 * nside**2)
+                # uniqpix = np.int32(healpix + 4 * nside**2), where
+                # nside = np.int32(hdr['HPXNSIDE']) if 'HPXNSIDE' in hdr else np.int32(64)
                 thrunight = None
-                log.info('specprod={}, coadd_type={}, survey={}, program={}, healpix={}, uniqpix={}'.format(
-                    self.specprod, self.coadd_type, survey, program, healpix, uniqpix))
+                log.info('specprod={}, coadd_type={}, survey={}, program={}, healpix={}'.format(
+                    self.specprod, self.coadd_type, survey, program, healpix))
             elif self.coadd_type == 'uniqpix':
                 survey = hdr['SURVEY']
                 program = hdr['PROGRAM']
                 uniqpix = np.int32(hdr['SPGRPVAL'])
-                healpix = np.int32(hdr['HPXPIXEL'])
+                # healpix = np.int32(uniqpix - 4 * nside**2), where
+                # nside = 2**int(np.log2(np.sqrt(uniqpix / 4))) (i.e., uniqpix is self-decoding)
                 thrunight = None
-                log.info('specprod={}, coadd_type={}, survey={}, program={}, uniqpix={}, healpix={}'.format(
-                    self.specprod, self.coadd_type, survey, program, uniqpix, healpix))
+                log.info('specprod={}, coadd_type={}, survey={}, program={}, uniqpix={}'.format(
+                    self.specprod, self.coadd_type, survey, program, uniqpix))
             elif self.coadd_type == 'custom':
                 survey = 'custom'
                 program = 'custom'
                 healpix = np.int32(0)
-                uniqpix = np.int32(0)
                 thrunight = None
                 log.info('specprod={}, coadd_type={}, survey={}, program={}, healpix={}'.format(
                     self.specprod, self.coadd_type, survey, program, healpix))
@@ -918,8 +918,10 @@ class DESISpectra(object):
             if self.coadd_type in ('healpix', 'uniqpix', 'custom'):
                 meta['SURVEY'] = survey
                 meta['PROGRAM'] = program
-                meta['HEALPIX'] = healpix
-                meta['UNIQPIX'] = uniqpix
+                if self.coadd_type == 'uniqpix':
+                    meta['UNIQPIX'] = uniqpix
+                else:
+                    meta['HEALPIX'] = healpix
             else:
                 if hasattr(self, 'tileinfo'):
                     meta['SURVEY'] = survey
@@ -2193,7 +2195,8 @@ def create_output_meta(input_meta, phot, fastphot=False, fitstack=False):
             colunit[f'FIBERFLUX_{band}'] = phot.photounits
             colunit[f'FIBERTOTFLUX_{band}'] = phot.photounits
 
-    skipcols = fluxcols + ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID', 'RELEASE']
+    skipcols = fluxcols + ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME',
+                           'BRICKID', 'BRICK_OBJID', 'RELEASE']
 
     if fitstack:
         redrockcols = ('Z')
@@ -2280,7 +2283,8 @@ def create_output_table(records, meta, units, fitstack=False):
     if fitstack:
         initcols = ('STACKID', 'SURVEY', 'PROGRAM')
     else:
-        initcols = ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID')
+        initcols = ('TARGETID', 'SURVEY', 'PROGRAM', 'UNIQPIX', 'HEALPIX',
+                    'TILEID', 'NIGHT', 'FIBER', 'EXPID')
     initcols = [col for col in initcols if col in metacols]
 
     cdata = [meta[col] for col in initcols]
