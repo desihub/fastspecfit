@@ -8,8 +8,12 @@ Change Log
 * Add ``dt`` (age bin width) to template ``METADATA`` and compute the
   continuum-based ``SFR`` averaged over the most recent 100 Myr; bump
   templates to ``2.1.0`` [`PR #262`_].
+* Support new hierarchical healpixels (``uniqpix``) used for the first
+  time in the ``Matterhorn`` (DR3) spectroscopic production [`PR
+  #261`_].
 
 .. _`PR #262`: https://github.com/desihub/fastspecfit/pull/262
+.. _`PR #261`: https://github.com/desihub/fastspecfit/pull/261
 
 3.4.3 (2026-06-06)
 ------------------

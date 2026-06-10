@@ -29,7 +29,8 @@ def get_ntargets_one(specfile, htmldir_root, outdir_root, coadd_type='healpix',
             ntargets = fitsio.FITS(specfile)[1].get_nrows()
         else:
             outdir = os.path.dirname(specfile).replace(outdir_root, htmldir_root)
-            meta = fitsio.read(specfile, 'METADATA', columns=['SURVEY', 'PROGRAM', 'TARGETID', 'HEALPIX'])
+            pixcol = 'UNIQPIX' if coadd_type == 'uniqpix' else 'HEALPIX'
+            meta = fitsio.read(specfile, 'METADATA', columns=['SURVEY', 'PROGRAM', 'TARGETID', pixcol])
             ntargets = 0
             for meta1 in meta:
                 pngfile = get_qa_filename(meta1, coadd_type, outdir=outdir, fastphot=fastphot)
@@ -57,14 +58,16 @@ def findfiles(filedir, prefix='redrock', coadd_type=None, survey=None,
     prefix : :class:`str`, optional
         Filename prefix. Default is ``'redrock'``.
     coadd_type : :class:`str` or None, optional
-        Coadd type: ``'healpix'``, ``'cumulative'``, ``'pernight'``, or
-        ``'perexp'``.
+        Coadd type: ``'healpix'``, ``'uniqpix'``, ``'cumulative'``,
+        ``'pernight'``, or ``'perexp'``.
     survey : :class:`str` or array-like of str, optional
         DESI survey name(s), e.g. ``'main'``.
     program : :class:`str` or array-like of str, optional
         DESI program name(s), e.g. ``'dark'``.
     healpix : array-like or None, optional
-        Specific HEALPix pixel(s) to include.
+        Specific pixel(s) to include. Pass healpix values when
+        ``coadd_type='healpix'``, or uniqpix values when
+        ``coadd_type='uniqpix'``.
     tile : array-like or None, optional
         Specific tile ID(s) to include.
     night : array-like or None, optional
@@ -73,7 +76,8 @@ def findfiles(filedir, prefix='redrock', coadd_type=None, survey=None,
         If ``True``, look for ``.fits.gz`` files. Default is ``False``.
     sample : :class:`astropy.table.Table` or None, optional
         Input sample catalog; when provided, file paths are built directly
-        from ``SURVEY``, ``PROGRAM``, and ``HEALPIX`` columns.
+        from ``SURVEY``, ``PROGRAM``, and ``UNIQPIX`` (or ``HEALPIX``)
+        columns.
 
     Returns
     -------
@@ -87,24 +91,26 @@ def findfiles(filedir, prefix='redrock', coadd_type=None, survey=None,
         fitssuffix = 'fits'
 
     if sample is not None: # special case of an input catalog
+        if 'UNIQPIX' in sample.colnames:
+            pixcol = 'UNIQPIX'
+        else:
+            pixcol = 'HEALPIX'
         thesefiles, ntargets = [], []
         for onesurvey in sorted(set(sample['SURVEY'].data)):
             S = np.where(onesurvey == sample['SURVEY'])[0]
             for oneprogram in sorted(set(sample['PROGRAM'][S].data)):
                 log.info(f'Building file list for survey={onesurvey} and program={oneprogram}')
                 P = np.where(oneprogram == sample['PROGRAM'][S])[0]
-                uhealpix, _ntargets = np.unique(sample['HEALPIX'][S][P].astype(str), return_counts=True)
+                upix, _ntargets = np.unique(sample[pixcol][S][P].astype(str), return_counts=True)
                 ntargets.append(_ntargets)
-                for onepix in uhealpix:
-                    #ntargets.append(np.sum(onepix == sample['HEALPIX'][S][P].astype(str)))
+                for onepix in upix:
                     thesefiles.append(os.path.join(filedir, onesurvey, oneprogram, str(int(onepix)//100), onepix,
                                                    f'{prefix}-{onesurvey}-{oneprogram}-{onepix}.{fitssuffix}'))
         if len(thesefiles) > 0:
-            #thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
             thesefiles = np.hstack(thesefiles)
             ntargets = np.hstack(ntargets)
         return thesefiles, ntargets
-    elif coadd_type == 'healpix':
+    elif coadd_type in ('healpix', 'uniqpix'):
         thesefiles = []
         for onesurvey in np.atleast_1d(survey):
             for oneprogram in np.atleast_1d(program):
@@ -221,14 +227,16 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
     specprod_dir : :class:`str` or None, optional
         Override the standard specprod directory path.
     coadd_type : :class:`str`, optional
-        Coadd type: ``'healpix'``, ``'cumulative'``, ``'pernight'``, or
-        ``'perexp'``. Default is ``'healpix'``.
+        Coadd type: ``'healpix'``, ``'uniqpix'``, ``'cumulative'``,
+        ``'pernight'``, or ``'perexp'``. Default is ``'healpix'``.
     survey : :class:`str` or array-like of str, optional
         DESI survey name(s).
     program : :class:`str` or array-like of str, optional
         DESI program name(s).
     healpix : array-like or None, optional
-        Specific HEALPix pixel(s) to process.
+        Specific pixel(s) to process. Pass healpix values when
+        ``coadd_type='healpix'``, or uniqpix values when
+        ``coadd_type='uniqpix'``.
     tile : array-like or None, optional
         Specific tile ID(s) to process.
     night : array-like or None, optional
@@ -287,6 +295,8 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         # look for data in the standard location
         if coadd_type == 'healpix':
             subdir = 'healpix'
+        elif coadd_type == 'uniqpix':
+            subdir = 'spectra'
         else:
             subdir = 'tiles'
 
@@ -413,7 +423,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
                     log.info(f'Number of targets left: {np.sum(ntargets):,d}.')
                     if redrockfiles is not None:
                         redrockfiles = redrockfiles[itodo]
-                        if coadd_type == 'healpix':
+                        if coadd_type in ('healpix', 'uniqpix'):
                             maxlen = str(len(max(np.atleast_1d(survey), key=len)) +
                                          len(max(np.atleast_1d(program), key=len)))
                             for onesurvey in np.atleast_1d(survey):
@@ -538,13 +548,16 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
     specprod : :class:`str` or None, optional
         DESI spectroscopic production name.
     coadd_type : :class:`str` or None, optional
-        Coadd type: ``'healpix'``, ``'cumulative'``, ``'pernight'``, etc.
+        Coadd type: ``'healpix'``, ``'uniqpix'``, ``'cumulative'``,
+        ``'pernight'``, etc.
     survey : :class:`str` or array-like of str, optional
         DESI survey name(s).
     program : :class:`str` or array-like of str, optional
         DESI program name(s).
     healpix : array-like or None, optional
-        Specific HEALPix pixel(s) to merge.
+        Specific pixel(s) to merge. Pass healpix values when
+        ``coadd_type='healpix'``, or uniqpix values when
+        ``coadd_type='uniqpix'``.
     tile : array-like or None, optional
         Specific tile ID(s) to merge.
     night : array-like or None, optional
@@ -642,7 +655,7 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                      specprod=specprod, coadd_type=coadd_type, fastphot=fastphot,
                      split_hdu=split_hdu, nside_main=nside_main, mp=mp)
 
-    elif coadd_type == 'healpix' and sample is None:
+    elif coadd_type in ('healpix', 'uniqpix') and sample is None:
         if survey is None or program is None:
             log.warning(f'coadd_type={coadd_type} requires survey and program inputs.')
             return
@@ -654,7 +667,8 @@ def merge_fastspecfit(specprod=None, coadd_type=None, survey=None, program=None,
                 if os.path.isfile(mergefile) and not overwrite:
                     log.info(f'Merged output file {mergefile} exists!')
                     continue
-                _, _, outfiles, _ = plan(specprod=specprod, survey=survey, program=program, healpix=healpix,
+                _, _, outfiles, _ = plan(specprod=specprod, coadd_type=coadd_type,
+                                         survey=survey, program=program, healpix=healpix,
                                          merge=True, fastphot=fastphot, specprod_dir=specprod_dir,
                                          outdir_data=outdir_data, overwrite=overwrite)
                 if len(outfiles) > 0:
@@ -703,7 +717,8 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
     outfile : :class:`str`
         Path to the output FITS file (or input file for ``--makeqa``).
     sample : :class:`astropy.table.Table` or None, optional
-        Optional target sample table with columns ``{SURVEY, PROGRAM, HEALPIX, TARGETID}``.
+        Optional target sample table with columns
+        ``{SURVEY, PROGRAM, TARGETID}`` and either ``UNIQPIX`` or ``HEALPIX``.
     fastphot : :class:`bool`, optional
         If ``True``, build arguments for ``fastphot`` instead of ``fastspec``.
     input_redshifts : :class:`bool`, optional
@@ -754,10 +769,11 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
             cmdargs += f' --seed={args.seed}'
 
         if sample is not None:
-            _, survey, program, healpix = os.path.basename(redrockfile).split('-')
-            healpix = int(healpix.split('.')[0])
+            _, survey, program, pixnum = os.path.basename(redrockfile).split('-')
+            pixnum = int(pixnum.split('.')[0])
+            pixcol = 'UNIQPIX' if 'UNIQPIX' in sample.colnames else 'HEALPIX'
             I = ((sample['SURVEY'] == survey) * (sample['PROGRAM'] == program) *
-                 (sample['HEALPIX'] == healpix))
+                 (sample[pixcol] == pixnum))
             targetids = ','.join(sample[I]['TARGETID'].astype(str))
             cmdargs += f' --targetids={targetids}'
             if input_redshifts:

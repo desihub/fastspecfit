@@ -42,6 +42,7 @@ EXPFMCOLS = {
     'pernight':   ('TARGETID', 'TILEID', 'FIBER'),
     'cumulative': ('TARGETID', 'TILEID', 'FIBER'),
     'healpix':    ('TARGETID', 'TILEID'), # tileid will be an array
+    'uniqpix':    ('TARGETID', 'TILEID'), # tileid will be an array
     'custom':     ('TARGETID', 'TILEID'), # tileid will be an array
     }
 
@@ -722,15 +723,20 @@ class DESISpectra(object):
                 survey = hdr['SURVEY']
                 program = hdr['PROGRAM']
                 healpix = np.int32(hdr['SPGRPVAL'])
+                # uniqpix = np.int32(healpix + 4 * nside**2), where
+                # nside = np.int32(hdr['HPXNSIDE']) if 'HPXNSIDE' in hdr else np.int32(64)
                 thrunight = None
                 log.info('specprod={}, coadd_type={}, survey={}, program={}, healpix={}'.format(
                     self.specprod, self.coadd_type, survey, program, healpix))
-
-                # I'm not sure we need these attributes but if we end up
-                # using them then be sure to document them as attributes of
-                # the class!
-                #self.hpxnside = hdr['HPXNSIDE']
-                #self.hpxnest = hdr['HPXNEST']
+            elif self.coadd_type == 'uniqpix':
+                survey = hdr['SURVEY']
+                program = hdr['PROGRAM']
+                uniqpix = np.int32(hdr['SPGRPVAL'])
+                # healpix = np.int32(uniqpix - 4 * nside**2), where
+                # nside = 2**int(np.log2(np.sqrt(uniqpix / 4))) (i.e., uniqpix is self-decoding)
+                thrunight = None
+                log.info('specprod={}, coadd_type={}, survey={}, program={}, uniqpix={}'.format(
+                    self.specprod, self.coadd_type, survey, program, uniqpix))
             elif self.coadd_type == 'custom':
                 survey = 'custom'
                 program = 'custom'
@@ -900,19 +906,22 @@ class DESISpectra(object):
                 tileid_list.append(' '.join(np.unique(expmeta['TILEID'][I]).astype(str)))
                 #meta['TILEID_LIST'][M] = ' '.join(np.unique(expmeta['TILEID'][I]).astype(str))
                 # store just the zeroth tile for gather_targetphot, below
-                if self.coadd_type == 'healpix' or self.coadd_type == 'custom':
+                if self.coadd_type in ('healpix', 'uniqpix', 'custom'):
                     alltiles.append(expmeta['TILEID'][I][0])
                 else:
                     alltiles.append(tileid)
 
-            if self.coadd_type == 'healpix' or self.coadd_type == 'custom':
+            if self.coadd_type in ('healpix', 'uniqpix', 'custom'):
                 meta['TILEID_LIST'] = tileid_list
 
             # Gather additional info about this pixel.
-            if self.coadd_type == 'healpix' or self.coadd_type == 'custom':
+            if self.coadd_type in ('healpix', 'uniqpix', 'custom'):
                 meta['SURVEY'] = survey
                 meta['PROGRAM'] = program
-                meta['HEALPIX'] = healpix
+                if self.coadd_type == 'uniqpix':
+                    meta['UNIQPIX'] = uniqpix
+                else:
+                    meta['HEALPIX'] = healpix
             else:
                 if hasattr(self, 'tileinfo'):
                     meta['SURVEY'] = survey
@@ -1730,8 +1739,8 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
     metadata : :class:`astropy.table.Table`, :class:`astropy.table.Row`, or :class:`numpy.void`
         Metadata for one or more objects.
     coadd_type : str
-        Coadd type: ``'healpix'``, ``'cumulative'``, ``'pernight'``,
-        ``'perexp'``, ``'custom'``, or ``'stacked'``.
+        Coadd type: ``'healpix'``, ``'uniqpix'``, ``'cumulative'``,
+        ``'pernight'``, ``'perexp'``, ``'custom'``, or ``'stacked'``.
     outprefix : str or None, optional
         Filename prefix. Defaults to ``'fastspec'`` or ``'fastphot'``.
     outdir : str or None, optional
@@ -1762,6 +1771,10 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                 outprefix, _metadata['SURVEY'], _metadata['PROGRAM'],
                 _metadata['HEALPIX'], _metadata['TARGETID']))
+        elif coadd_type == 'uniqpix':
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                outprefix, _metadata['SURVEY'], _metadata['PROGRAM'],
+                _metadata['UNIQPIX'], _metadata['TARGETID']))
         elif coadd_type == 'cumulative':
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                 outprefix, _metadata['TILEID'], coadd_type, _metadata['TARGETID']))
@@ -1794,7 +1807,7 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
 
 
 def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
-                      outdir='.', overwrite=False):
+                      coadd_type='healpix', outdir='.', overwrite=False):
     """Extract and fit a single DESI spectrum from the full production.
 
     Utility function for generating paper figures or unit tests: reads a
@@ -1808,11 +1821,16 @@ def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
     program : str
         Program name (e.g., ``'dark'``, ``'bright'``).
     healpix : int
-        HEALPix pixel number.
+        Pixel number. Pass the healpix value for ``coadd_type='healpix'``
+        productions, or the uniqpix value for ``coadd_type='uniqpix'``
+        productions.
     targetid : int
         DESI TARGETID.
     specprod : str, optional
         Spectroscopic production name. Defaults to ``'fuji'``.
+    coadd_type : str, optional
+        Spectral coadd type: ``'healpix'`` (default, uses ``healpix/``
+        subdirectory) or ``'uniqpix'`` (uses ``spectra/`` subdirectory).
     outdir : str, optional
         Output directory. Defaults to the current directory.
     overwrite : bool, optional
@@ -1825,7 +1843,8 @@ def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
 
     os.environ['SPECPROD'] = specprod # needed to get write_spectra have the correct dependency
 
-    specdir = os.path.join(os.environ.get('DESI_SPECTRO_REDUX'), specprod, 'healpix',
+    subdir = 'spectra' if coadd_type == 'uniqpix' else 'healpix'
+    specdir = os.path.join(os.environ.get('DESI_SPECTRO_REDUX'), specprod, subdir,
                            survey, program, str(healpix//100), str(healpix))
     coaddfile = os.path.join(specdir, f'coadd-{survey}-{program}-{healpix}.fits')
     redrockfile = os.path.join(specdir, f'redrock-{survey}-{program}-{healpix}.fits')
@@ -1874,13 +1893,14 @@ def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
 
 def select(metadata, specphot, fastfit=None, coadd_type='healpix',
            healpixels=None, tiles=None, nights=None, return_index=False):
-    """Optionally trim to a particular healpix or tile and/or night."""
+    """Optionally trim to a particular healpix/uniqpix or tile and/or night."""
     nobj = len(metadata)
-    if coadd_type == 'healpix':
+    if coadd_type in ('healpix', 'uniqpix'):
+        pixcol = 'UNIQPIX' if coadd_type == 'uniqpix' else 'HEALPIX'
         if healpixels is not None:
             strpixels = ','.join(healpixels)
-            keep = np.isin(metadata['HEALPIX'].astype(str), healpixels)
-            log.info(f'Keeping {np.sum(keep):,d}/{nobj:,d} objects from healpixels(s) {strpixels}')
+            keep = np.isin(metadata[pixcol].astype(str), healpixels)
+            log.info(f'Keeping {np.sum(keep):,d}/{nobj:,d} objects from pixel(s) {strpixels}')
         else:
             keep = np.ones(nobj, bool)
     else:
@@ -2175,7 +2195,8 @@ def create_output_meta(input_meta, phot, fastphot=False, fitstack=False):
             colunit[f'FIBERFLUX_{band}'] = phot.photounits
             colunit[f'FIBERTOTFLUX_{band}'] = phot.photounits
 
-    skipcols = fluxcols + ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID', 'RELEASE']
+    skipcols = fluxcols + ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME',
+                           'BRICKID', 'BRICK_OBJID', 'RELEASE']
 
     if fitstack:
         redrockcols = ('Z')
@@ -2193,7 +2214,7 @@ def create_output_meta(input_meta, phot, fastphot=False, fitstack=False):
             if metacol in metacols:
                 meta[metacol] = input_meta[metacol]
     else:
-        for metacol in ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER',
+        for metacol in ('TARGETID', 'SURVEY', 'PROGRAM', 'UNIQPIX', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER',
                         'EXPID', 'TILEID_LIST', 'RA', 'DEC', 'COADD_FIBERSTATUS'):
             if metacol in metacols:
                 meta[metacol] = input_meta[metacol]
@@ -2262,7 +2283,8 @@ def create_output_table(records, meta, units, fitstack=False):
     if fitstack:
         initcols = ('STACKID', 'SURVEY', 'PROGRAM')
     else:
-        initcols = ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID')
+        initcols = ('TARGETID', 'SURVEY', 'PROGRAM', 'UNIQPIX', 'HEALPIX',
+                    'TILEID', 'NIGHT', 'FIBER', 'EXPID')
     initcols = [col for col in initcols if col in metacols]
 
     cdata = [meta[col] for col in initcols]
