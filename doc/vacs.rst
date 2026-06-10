@@ -124,12 +124,12 @@ determined by Redrock is incorrect. To mitigate this issue, the DESI team has
 developed an approach to rectify the redshift nominally measured by Redrock
 using the machine-learning algorithm ``QuasarNet``.
 
-We update the Redrock redshift ``Z`` for affected QSO targets using the
-`QuasarNet catalog`_ and `MgII catalog`_ afterburners distributed alongside
-each Redrock output file. The original Redrock redshift and ``ZWARNING``
-bitmask are preserved in the ``Z_RR`` and ``ZWARN_RR`` output columns (see the
-:ref:`fastspec data model<fastspec datamodel>`); note that only ``Z`` is
-modified, not ``ZWARN``.
+We update the Redrock redshift ``Z`` and its uncertainty ``ZERR`` for affected
+QSO targets using the `QuasarNet catalog`_ and `MgII catalog`_ afterburners
+distributed alongside each Redrock output file. The original Redrock redshift
+and ``ZWARNING`` bitmask are preserved in the ``Z_RR`` and ``ZWARN_RR`` output
+columns (see the :ref:`fastspec data model<fastspec datamodel>`). For DR2 (Loa)
+and later productions, ``ZWARN`` is also updated from the afterburner.
 
 The update is applied separately to two classes of targets:
 
@@ -143,10 +143,11 @@ threshold. For DR2 (Loa) this threshold is 0.99; for DR1 (Iron) it was 0.95.
 
 **Variable WISE QSO secondary targets** (``WISE_VAR_QSO`` secondary targeting
 bit, present in main-survey and some SV programs but not CMX data) are updated
-under a broader criterion: ``IS_QSO_QN_NEW_RR`` must be set and at least one
-of the following must hold — the Redrock spectral type is ``QSO``, the MgII
-afterburner identifies the object as a QSO (``IS_QSO_MGII``), or the maximum
-QuasarNet line confidence exceeds the threshold above.
+under a broader criterion: ``IS_QSO_QN_NEW_RR`` must be set, the QuasarNet
+confidence threshold must be exceeded, and at least one of the following must
+hold — the Redrock spectral type is ``QSO``, the MgII afterburner identifies
+the object as a QSO (``IS_QSO_MGII``), or the maximum QuasarNet line
+confidence exceeds the threshold above.
 
 
 Issues
