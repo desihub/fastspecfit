@@ -27,10 +27,10 @@ Data Content & Access
 
 Data from the ``Iron`` fastphot VAC can be accessed at any of the following links:
 
-============================ =========================================================
-Data url                     https://data.desi.lbl.gov/desi/vac/dr1/fastphot/iron/v1.0
-`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/vac/dr1/fastphot/iron/v1.0``
-============================ =========================================================
+============================ ================================================================
+Data url                     https://data.desi.lbl.gov/public/dr1/vac/dr1/fastphot/iron/v1.0
+`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/dr1/vac/dr1/fastphot/iron/v1.0``
+============================ ================================================================
 
 For more information regarding the content and organization of the VAC, please
 click on the following links:

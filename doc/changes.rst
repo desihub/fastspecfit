@@ -5,13 +5,14 @@ Change Log
 3.5.0 (not released yet)
 ------------------------
 
-* Support new hierarchical healpixels (``uniqpix``); ``METADATA`` HDU
-  now contains both ``UNIQPIX`` and ``HEALPIX`` [`PR #261`_].
+* Support new hierarchical healpixels (``uniqpix``) used for the first
+  time in the ``Matterhorn`` (DR3) spectroscopic production [`PR
+  #261`_].
 
 .. _`PR #261`: https://github.com/desihub/fastspecfit/pull/261
 
-3.4.3 (not released yet)
-------------------------
+3.4.3 (2026-06-06)
+------------------
 
 * VAC documentation overhaul: reorganize by data release; add Iron/fastphot
   and Loa/DR2 VAC pages; replace inaccurate QSO-redshift code block with
