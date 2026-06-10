@@ -15,7 +15,7 @@ os.environ.setdefault('MPLBACKEND', 'Agg')
 
 @pytest.fixture(scope='session')
 def template_version():
-    yield '2.0.0'
+    yield '2.1.0'
 
 
 @pytest.fixture(scope='session')
@@ -41,7 +41,7 @@ def templates(templatedir, template_version):
     templates_file = f'ftemplates-chabrier-{template_version}.fits'
     templates = os.path.join(templatedir, templates_file)
 
-    url = f"https://data.desi.lbl.gov/public/external/templates/fastspecfit/2.0.0/{templates_file}"
+    url = f"https://data.desi.lbl.gov/public/external/templates/fastspecfit/{template_version}/{templates_file}"
     if not os.path.isfile(templates):
         urlretrieve(url, templates)
     yield templates

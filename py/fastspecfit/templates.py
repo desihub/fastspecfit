@@ -63,7 +63,7 @@ class Templates(object):
     AGN_PIXKMS = 75.  # [km/s]
     AGN_PIXKMS_BOUNDS = (1075., 3090.)
 
-    DEFAULT_TEMPLATEVERSION = '2.0.0'
+    DEFAULT_TEMPLATEVERSION = '2.1.0'
     DEFAULT_IMF = 'chabrier'
 
     # highest vdisp for which we attempt to use cached FFTs
@@ -129,6 +129,9 @@ class Templates(object):
         self.flux_nolines_nomvdisp = self.convolve_vdisp(self.flux_nolines, vdisp_nominal)
 
         self.info = Table(templateinfo)
+
+        if 'dt' not in self.info.colnames:
+            log.warning('Template file lacks dt column; SFR will be averaged over ~30 Myr instead of 100 Myr.')
 
         if 'DUSTFLUX' in T and 'AGNFLUX' in T:
             from fastspecfit.util import trapz

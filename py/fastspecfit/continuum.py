@@ -2175,7 +2175,14 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                 zzsun = np.log10(coeff.dot(mstars * 10.**tinfo['zzsun']) / masstot) # mass-weighted
                 age = coeff.dot(tinfo['age']) / coefftot / 1e9           # luminosity-weighted [Gyr]
                 #age = coeff.dot(mstars * tinfo['age']) / masstot / 1e9  # mass-weighted [Gyr]
-                sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])          # [Msun/yr]
+                if 'dt' in tinfo.colnames:
+                    sfr_dt = 100e6  # [yr]
+                    t_near = tinfo['age'] - tinfo['dt'] / 2.
+                    frac = np.clip((np.minimum(tinfo['age'] + tinfo['dt'] / 2., sfr_dt) - t_near) / tinfo['dt'], 0., 1.)
+                    sfr = CTools.massnorm * coeff.dot(frac) / sfr_dt     # [Msun/yr], averaged over 100 Myr
+                else:
+                    # old templates (<v2.1.0) lack dt; fall back to sp.sfr-based estimate (~30 Myr)
+                    sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])      # [Msun/yr]
             else:
                 logmstar, zzsun, age, sfr = 0., 0., 0., 0.
             return age, zzsun, logmstar, sfr

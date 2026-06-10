@@ -12,10 +12,10 @@ Usage
 -----
 ::
 
-  time python bin/build-templates --version 2.0.0 \\
+  time python bin/build-templates --version 2.1.0 \\
       --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates
 
-  time python bin/build-templates --version 2.0.0 \\
+  time python bin/build-templates --version 2.1.0 \\
       --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates \\
       --logmets=-1.,0.,0.3
 
@@ -102,6 +102,8 @@ Notes
 
     micromamba create -y -n fsps python
     micromamba activate fsps
+    micromamba install -Y numpy scipy astropy
+    python -m pip install desispec fastspecfit
     cd $HOME/code
     git clone --recursive https://github.com/dfm/python-fsps.git
     export SPS_HOME=$HOME/code/python-fsps/src/fsps/libfsps
@@ -122,6 +124,7 @@ import os, time
 import numpy as np
 import numpy.ma as ma
 import fitsio
+import fsps
 from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import interpn
 
@@ -139,7 +142,6 @@ def _qa_dustem_templates(dustwave, mduste, qpah, umin, gamma, png):
     # check against FSPS using a simple (age-independent) Charlot & Fall
     # dust model
 
-    import fsps
     import seaborn as sns
 
     def attenuation(tauv, wave, alpha=-0.7):
@@ -477,6 +479,7 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
     meta['zzsun'] = models['logmet']
     meta['mstar'] = np.zeros(nsed, 'f4')
     meta['sfr'] = np.zeros(nsed, 'f4')
+    meta['dt'] = np.zeros(nsed, 'f4')   # age bin width [yr]
 
     # https://dfm.io/python-fsps/current/stellarpop_api/
     imfdict = {'salpeter': 0, 'chabrier': 1, 'kroupa': 2}
@@ -555,6 +558,7 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
 
         meta['mstar'][imodel] = sp.stellar_mass
         meta['sfr'][imodel] = sp.sfr
+        meta['dt'][imodel] = dt[0]   # [yr]
         #print(tage, sp.formed_mass, sp.stellar_mass)
         if sp.stellar_mass < 0:
             raise ValueError('Stellar mass is negative!')
@@ -605,7 +609,7 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
         single-metallicity test run. Default is ``False``.
     version : :class:`str`, optional
         Version string embedded in the output filename and FITS header,
-        e.g. ``'2.0.0'``. Default is ``'1.0.0'``.
+        e.g. ``'2.1.0'``.
     templatedir : :class:`str` or None, optional
         Root template directory. Raw input files are read from
         ``<templatedir>/original/`` and the output FITS file is written
@@ -770,7 +774,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--templatedir', required=True, help='Location of original and output templates')
-    parser.add_argument('--version', required=True, help='Version number (e.g., 2.0.0)')
+    parser.add_argument('--version', required=True, help='Version number (e.g., 2.1.0)')
 
     # DL07 parameters
     # https://python-fsps.readthedocs.io/en/latest/stellarpop_api
