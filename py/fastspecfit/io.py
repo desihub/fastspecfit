@@ -974,7 +974,7 @@ class DESISpectra(object):
             # updated for Jura, Kibo, Loa, ...
             QNthresh = 0.99
             QNCOLS = ['TARGETID', 'Z_NEW', 'ZWARN_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
-            new_zwarn = False
+            new_zwarn = True
 
         surv_target, surv_mask, surv = main_cmx_or_sv(meta, scnd=True)
         if surv == 'cmx':
@@ -1006,7 +1006,7 @@ class DESISpectra(object):
             if np.sum(IWISE_VAR_QSO) > 0:
                 mgii = Table(fitsio.read(mgiifile, 'MGII', rows=fitindx, columns=MGIICOLS))
                 assert(np.all(mgii['TARGETID'] == meta['TARGETID']))
-                iwise_var_qso = (((zb['SPECTYPE'] == 'QSO') | mgii['IS_QSO_MGII'] | qn['IS_QSO_QN_099']) & (IWISE_VAR_QSO & qn['IS_QSO_QN_NEW_RR']))
+                iwise_var_qso = (((zb['SPECTYPE'] == 'QSO') | mgii['IS_QSO_MGII'] | qn['IS_QSO_QN_099']) & (IWISE_VAR_QSO & qn['IS_QSO_QN_NEW_RR'] & qn['IS_QSO_QN_099']))
                 if np.sum(iwise_var_qso) > 0:
                     zb['Z'][iwise_var_qso] = qn['Z_NEW'][iwise_var_qso]
                     #zb['Z_ERR'][iwise_var_qso] = qn['ZERR_NEW'][iwise_var_qso]
