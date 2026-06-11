@@ -59,6 +59,8 @@ class Templates(object):
     # https://github.com/cconroy20/fsps/tree/master/SPECTRA/C3K#readme
     PIXKMS = 25.  # [km/s]
     PIXKMS_BOUNDS = (2750., 9100.)
+    # Gaussian sigma of C3K templates: R(λ/FWHM)=3000 → σ = c/(R·2√(2 ln 2))
+    SIGMA_C3K = 2.998e5 / (3000. * np.sqrt(8. * np.log(2.)))  # [km/s] ≈ 42.4
 
     AGN_PIXKMS = 75.  # [km/s]
     AGN_PIXKMS_BOUNDS = (1075., 3090.)
