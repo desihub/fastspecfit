@@ -11,7 +11,11 @@ Change Log
 * Support new hierarchical healpixels (``uniqpix``) used for the first
   time in the ``Matterhorn`` (DR3) spectroscopic production [`PR
   #261`_].
+* Fix ``WISE_VAR_QSO`` redshift update to require the QuasarNet confidence
+  threshold (matching ``LSS.qso_cat_utils.qso_catalog_maker``); also update
+  ``ZERR`` and, for DR2 and later productions, ``ZWARN`` [`PR #264`_].
 
+.. _`PR #264`: https://github.com/desihub/fastspecfit/pull/264
 .. _`PR #262`: https://github.com/desihub/fastspecfit/pull/262
 .. _`PR #261`: https://github.com/desihub/fastspecfit/pull/261
 
