@@ -2073,8 +2073,11 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
     specphot['COEFF'][CTools.agekeep] = coeff
     specphot['RCHI2_PHOT'] = rchi2_phot
     specphot['VDISP'] = vdisp # * u.kilometer/u.second
-    specphot['DN4000_MODEL'] = dn4000_model
-    specphot['DN4000_MODEL_IVAR'] = dn4000_model_ivar
+    if 0. < dn4000_model_ivar < F32MAX:
+        specphot['DN4000_MODEL'] = dn4000_model
+        specphot['DN4000_MODEL_IVAR'] = dn4000_model_ivar
+    elif coeff_monte is None:
+        specphot['DN4000_MODEL'] = dn4000_model
 
     if not fastphot:
         specphot['RCHI2_CONT'] = rchi2_cont
@@ -2188,8 +2191,11 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             return age, zzsun, logmstar, sfr
 
         age, zzsun, logmstar, sfr = _get_sps_properties(coeff)
-        specphot['TAUV'] = tauv
-        specphot['TAUV_IVAR'] = tauv_ivar
+        if 0. < tauv_ivar < F32MAX:
+            specphot['TAUV'] = tauv
+            specphot['TAUV_IVAR'] = tauv_ivar
+        elif coeff_monte is None:
+            specphot['TAUV'] = tauv
         specphot['AGE'] = age
         specphot['ZZSUN'] = zzsun
         specphot['LOGMSTAR'] = logmstar
