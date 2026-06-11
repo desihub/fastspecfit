@@ -5,16 +5,22 @@ Change Log
 3.5.0 (not released yet)
 ------------------------
 
+* Correct ``VDISP`` to intrinsic by adding the C3K template resolution
+  (~42.4 km/s) in quadrature and tighten ``can_compute_vdisp`` red-end
+  threshold to 4900 Å (z ≲ 1.0). Guard ``TAUV_IVAR`` and
+  ``DN4000_MODEL_IVAR`` against float32 overflow [`PR #265`_].
+* Fix ``WISE_VAR_QSO`` redshift update to require the QuasarNet
+  confidence threshold (matching
+  ``LSS.qso_cat_utils.qso_catalog_maker``); also update ``ZERR`` and,
+  for DR2 and later productions, ``ZWARN`` [`PR #264`_].
 * Add ``dt`` (age bin width) to template ``METADATA`` and compute the
   continuum-based ``SFR`` averaged over the most recent 100 Myr; bump
   templates to ``2.1.0`` [`PR #262`_].
 * Support new hierarchical healpixels (``uniqpix``) used for the first
   time in the ``Matterhorn`` (DR3) spectroscopic production [`PR
   #261`_].
-* Fix ``WISE_VAR_QSO`` redshift update to require the QuasarNet confidence
-  threshold (matching ``LSS.qso_cat_utils.qso_catalog_maker``); also update
-  ``ZERR`` and, for DR2 and later productions, ``ZWARN`` [`PR #264`_].
 
+.. _`PR #265`: https://github.com/desihub/fastspecfit/pull/265
 .. _`PR #264`: https://github.com/desihub/fastspecfit/pull/264
 .. _`PR #262`: https://github.com/desihub/fastspecfit/pull/262
 .. _`PR #261`: https://github.com/desihub/fastspecfit/pull/261
