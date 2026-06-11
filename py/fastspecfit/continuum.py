@@ -1332,7 +1332,7 @@ def build_stellar_continuum(coeff, tauv, redshift, templates, cosmo, igm,
     return ztemplatewave, contmodel
 
 
-def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4800.), fit_restrange=(3800., 6000.)):
+def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4900.), fit_restrange=(3800., 6000.)):
     """Determine whether the spectrum has sufficient coverage to fit velocity dispersion.
 
     Parameters
@@ -1343,9 +1343,13 @@ def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4800.), fit_rest
         Observed-frame wavelength array in Angstroms.
     min_restrange : tuple, optional
         Minimum required rest-frame wavelength range (lo, hi) in Angstroms.
-        Defaults to (3800., 4800.).
+        The low end guards against missing blue-camera data (Ca H&K would be
+        absent); the high end sets the effective redshift gate. Defaults to
+        (3800., 4900.), which requires coverage through Hβ (4861 Å) and
+        corresponds to z ≲ 1.0 for DESI.
     fit_restrange : tuple, optional
-        Rest-frame wavelength range used when fitting velocity dispersion.
+        Rest-frame wavelength range used when fitting velocity dispersion,
+        covering Ca H&K, G band, Hβ, Mg b, and the Fe complex.
         Defaults to (3800., 6000.).
 
     Returns
