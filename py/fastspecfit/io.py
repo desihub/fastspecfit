@@ -971,12 +971,14 @@ class DESISpectra(object):
 
         if specprod in ['fuji', 'guadalupe', 'himalayas', 'iron']:
             QNthresh = 0.95
-            QNCOLS = ['TARGETID', 'Z_NEW', 'ZERR_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
+            QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
+            #QNCOLS = ['TARGETID', 'Z_NEW', 'ZERR_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
             new_zwarn = False
         else:
             # updated for Jura, Kibo, Loa, ...
             QNthresh = 0.99
-            QNCOLS = ['TARGETID', 'Z_NEW', 'ZERR_NEW', 'ZWARN_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
+            QNCOLS = ['TARGETID', 'Z_NEW', 'ZWARN_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
+            #QNCOLS = ['TARGETID', 'Z_NEW', 'ZERR_NEW', 'ZWARN_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
             new_zwarn = True
 
         surv_target, surv_mask, surv = main_cmx_or_sv(meta, scnd=True)
@@ -1004,7 +1006,7 @@ class DESISpectra(object):
             iqso = IQSO * qn['IS_QSO_QN_NEW_RR'] * qn['IS_QSO_QN_099']
             if np.sum(iqso) > 0:
                 zb['Z'][iqso] = qn['Z_NEW'][iqso]
-                zb['ZERR'][iqso] = qn['ZERR_NEW'][iqso]
+                #zb['ZERR'][iqso] = qn['ZERR_NEW'][iqso]
                 if new_zwarn:
                     zb['ZWARN'][iqso] = qn['ZWARN_NEW'][iqso]
             if np.sum(IWISE_VAR_QSO) > 0:
@@ -1013,7 +1015,7 @@ class DESISpectra(object):
                 iwise_var_qso = (((zb['SPECTYPE'] == 'QSO') | mgii['IS_QSO_MGII'] | qn['IS_QSO_QN_099']) & (IWISE_VAR_QSO & qn['IS_QSO_QN_NEW_RR'] & qn['IS_QSO_QN_099']))
                 if np.sum(iwise_var_qso) > 0:
                     zb['Z'][iwise_var_qso] = qn['Z_NEW'][iwise_var_qso]
-                    zb['ZERR'][iwise_var_qso] = qn['ZERR_NEW'][iwise_var_qso]
+                    #zb['ZERR'][iwise_var_qso] = qn['ZERR_NEW'][iwise_var_qso]
                     if new_zwarn:
                         zb['ZWARN'][iwise_var_qso] = qn['ZWARN_NEW'][iwise_var_qso]
                 del mgii
