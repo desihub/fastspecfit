@@ -201,40 +201,44 @@ def print_qso_statistics(files, specprod, script):
         print()
 
 
-def gather_healpix_files(vacdir, script, sample=True):
-    """Return healpix catalog files under vacdir/healpix/.
+def gather_pixel_files(vacdir, script, sample=True):
+    """Return per-pixel catalog files under vacdir/healpix/ and vacdir/spectra/.
 
     If sample=True (default), descend one directory at a time and return the
     first file found in each (survey, program) combination — typically a few
-    dozen files read in under a second.  If sample=False, return every healpix
+    dozen files read in under a second.  If sample=False, return every pixel
     file (slow for large specprods).
     """
     ext = '.fits.gz' if script == 'fastspec' else '.fits'
-    healpix_dir = os.path.join(vacdir, 'healpix')
-    if not sample:
-        pattern = os.path.join(healpix_dir, '*', '*', '*', '*', f'{script}-*{ext}')
-        return sorted(glob(pattern))
     files = []
-    for survey_dir in sorted(glob(os.path.join(healpix_dir, '*'))):
-        for program_dir in sorted(glob(os.path.join(survey_dir, '*'))):
-            try:
-                hpixgroup = sorted(os.listdir(program_dir))[0]
-                healpix = sorted(os.listdir(os.path.join(program_dir, hpixgroup)))[0]
-                leaf = os.path.join(program_dir, hpixgroup, healpix)
-                match = next((os.path.join(leaf, f) for f in sorted(os.listdir(leaf))
-                              if f.startswith(script) and f.endswith(ext)), None)
-                if match:
-                    files.append(match)
-            except (OSError, IndexError):
-                continue
-    return files
+    for subdir in ('healpix', 'spectra'):
+        pixel_dir = os.path.join(vacdir, subdir)
+        if not os.path.isdir(pixel_dir):
+            continue
+        if not sample:
+            pattern = os.path.join(pixel_dir, '*', '*', '*', '*', f'{script}-*{ext}')
+            files.extend(glob(pattern))
+            continue
+        for survey_dir in sorted(glob(os.path.join(pixel_dir, '*'))):
+            for program_dir in sorted(glob(os.path.join(survey_dir, '*'))):
+                try:
+                    pixgroup = sorted(os.listdir(program_dir))[0]
+                    pixel = sorted(os.listdir(os.path.join(program_dir, pixgroup)))[0]
+                    leaf = os.path.join(program_dir, pixgroup, pixel)
+                    match = next((os.path.join(leaf, f) for f in sorted(os.listdir(leaf))
+                                  if f.startswith(script) and f.endswith(ext)), None)
+                    if match:
+                        files.append(match)
+                except (OSError, IndexError):
+                    continue
+    return sorted(files)
 
 
 def print_code_versions(vacdir, all_files, sample=True):
-    """Print software versions table collected from healpix catalog headers.
+    """Print software versions table collected from per-pixel catalog headers.
 
-    When sample=True (default), reads one healpix file per survey/program.
-    When sample=False, reads every healpix file (slow for large specprods).
+    When sample=True (default), reads one file per survey/program.
+    When sample=False, reads every per-pixel file (slow for large specprods).
     """
     from desiutil.depend import Dependencies
 
@@ -242,9 +246,9 @@ def print_code_versions(vacdir, all_files, sample=True):
     nread = 0
 
     for script, merged_files in all_files.items():
-        source_files = gather_healpix_files(vacdir, script, sample=sample)
+        source_files = gather_pixel_files(vacdir, script, sample=sample)
         if not source_files:
-            log.warning(f'No healpix files found for {script}; falling back to merged catalogs.')
+            log.warning(f'No per-pixel files found for {script}; falling back to merged catalogs.')
             source_files = list(merged_files)
         log.info(f'Reading code versions from {len(source_files)} {script} files.')
         for filepath in source_files:

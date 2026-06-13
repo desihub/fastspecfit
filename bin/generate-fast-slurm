@@ -109,7 +109,7 @@ _SLURM_TEMPLATE = """\
 #SBATCH --output={job_name}-%j.log
 
 echo "Starting {job_name} (job {job_index}/{njobs}) at $(date)"
-echo "Healpix pixels: {nhealpix} | Targets: {ntargets_total:,d}"
+echo "Pixels: {npixels} | Targets: {ntargets_total:,d}"
 
 source {env_script}
 
@@ -125,17 +125,17 @@ else
     cpu_bind="cores"
 fi
 
-HEALPIX="{healpix_csv}"
+PIXELS="{pixels_csv}"
 
 mpiscript=$(type -p mpi-fastspecfit)
 
 # Warm up Numba cache on a single rank before the parallel run.
 # Compiled artifacts go to $NUMBA_CACHE_DIR (shared Lustre), so all
 # subsequent ranks load from cache rather than recompiling.
-FIRST_HEALPIX=$(echo "$HEALPIX" | cut -d',' -f1)
+FIRST_PIXEL=$(echo "$PIXELS" | cut -d',' -f1)
 warmup_args="--specprod={specprod} --coadd-type={coadd_type}"
 warmup_args+=" --survey={survey} --program={program}"
-warmup_args+=" --healpix=$FIRST_HEALPIX"
+warmup_args+=" {pixel_flag}=$FIRST_PIXEL"
 warmup_args+=" --mp=1 --ntargets=1 --nmonte=0 --nompi"
 warmup_args+=" --outdir-data=/tmp/fastspecfit-warmup --overwrite"
 {stage_flag_warmup}
@@ -149,7 +149,7 @@ args+=" --survey={survey}"
 args+=" --program={program}"
 args+=" --mp=$mp"
 args+=" --outdir-data={outdir_data}"
-args+=" --healpix=$HEALPIX"
+args+=" {pixel_flag}=$PIXELS"
 {stage_flag}
 srun_args="--nodes=$N --ntasks=$ntasks --cpus-per-task=$cpus_per_task --cpu-bind=$cpu_bind"
 
@@ -260,8 +260,9 @@ def generate_slurm(args, groups, group_totals, healpix_ids, ntargets):
             continue
         job_index += 1
 
-        group_healpix = healpix_ids[group]
-        healpix_csv = ','.join(str(h) for h in sorted(group_healpix))
+        group_pixels = healpix_ids[group]
+        pixels_csv = ','.join(str(p) for p in sorted(group_pixels))
+        pixel_flag = '--uniqpix' if args.coadd_type == 'uniqpix' else '--healpix'
 
         walltime = args.time or estimate_walltime(int(total), args.nodes, args.mp, args.qos)
         job_name = f'{prefix}-{args.specprod}-job{job_index:0{idx_width}d}'
@@ -280,7 +281,7 @@ def generate_slurm(args, groups, group_totals, healpix_ids, ntargets):
             job_name=job_name,
             job_index=job_index,
             njobs=njobs,
-            nhealpix=len(group),
+            npixels=len(group),
             ntargets_total=int(total),
             env_script=env_script,
             mp=args.mp,
@@ -289,14 +290,15 @@ def generate_slurm(args, groups, group_totals, healpix_ids, ntargets):
             survey=args.survey,
             program=args.program,
             outdir_data=outdir_data,
-            healpix_csv=healpix_csv,
+            pixels_csv=pixels_csv,
+            pixel_flag=pixel_flag,
             stage_flag=stage_flag,
             stage_flag_warmup=stage_flag_warmup,
         )
 
         with open(slurm_file, 'w') as fh:
             fh.write(content)
-        print(f'  {slurm_file}  ({len(group)} healpix, {int(total):,d} targets, walltime={walltime})')
+        print(f'  {slurm_file}  ({len(group)} pixels, {int(total):,d} targets, walltime={walltime})')
         slurm_files.append(slurm_file)
 
     return slurm_files
@@ -312,11 +314,12 @@ def main():
     parser.add_argument('--specprod', required=True, help='Spectroscopic production name.')
     parser.add_argument('--stage', default='fastspec', choices=['fastspec', 'fastphot', 'makeqa'])
     parser.add_argument('--coadd-type', default='healpix',
-                        choices=['healpix', 'cumulative', 'pernight', 'perexp'])
+                        choices=['healpix', 'uniqpix', 'cumulative', 'pernight', 'perexp'])
     parser.add_argument('--survey', default='main,special,cmx,sv1,sv2,sv3', help='Comma-separated survey names.')
     parser.add_argument('--program', default='dark,bright,other,backup', help='Comma-separated program names.')
     parser.add_argument('--healpix', default=None,
-                        help='Comma-separated healpix IDs to restrict to (useful for testing).')
+                        help='Comma-separated pixel IDs to restrict to (healpix for --coadd-type healpix, '
+                             'uniqpix for --coadd-type uniqpix; useful for testing).')
 
     # Job sizing
     parser.add_argument('--njobs', type=int, default=1, help='Number of Slurm jobs to generate.')
@@ -347,9 +350,9 @@ def main():
     fastphot = args.stage == 'fastphot'
     outdir_data = os.path.expandvars(args.outdir_data)
 
-    healpix_msg = f', healpix={args.healpix}' if args.healpix else ''
+    pixel_msg = f', pixels={args.healpix}' if args.healpix else ''
     print(f'Querying remaining work: specprod={args.specprod}, stage={args.stage}, '
-          f'survey={args.survey}, program={args.program}{healpix_msg} ...')
+          f'survey={args.survey}, program={args.program}{pixel_msg} ...')
     _, healpix_ids, ntargets = query_remaining(
         specprod=args.specprod, coadd_type=args.coadd_type,
         survey=args.survey, program=args.program, healpix=args.healpix,
@@ -359,14 +362,14 @@ def main():
         requested = set(int(h) for h in args.healpix.split(','))
         mask = np.array([h in requested for h in healpix_ids])
         if not np.any(mask):
-            print(f'Warning: none of the requested healpix IDs found in remaining work.')
+            print(f'Warning: none of the requested pixel IDs found in remaining work.')
             return
         healpix_ids = healpix_ids[mask]
         ntargets = ntargets[mask]
 
     n_files = len(healpix_ids)
     n_targets = int(np.sum(ntargets)) if n_files > 0 else 0
-    print(f'Remaining: {n_files:,d} healpix files, {n_targets:,d} targets')
+    print(f'Remaining: {n_files:,d} pixel files, {n_targets:,d} targets')
 
     if n_files == 0:
         print('Nothing to do.')
@@ -386,7 +389,7 @@ def main():
           f'[imbalance: {max(totals)/max(min(totals), 1):.2f}x]:')
     for i, (g, t) in enumerate(nonempty, 1):
         est = args.time or estimate_walltime(int(t), args.nodes, args.mp, args.qos)
-        print(f'  Job {i:0{idx_width}d}: {len(g):5,d} healpix  {int(t):9,d} targets  est. walltime {est}')
+        print(f'  Job {i:0{idx_width}d}: {len(g):5,d} pixels  {int(t):9,d} targets  est. walltime {est}')
 
     if args.plan:
         return

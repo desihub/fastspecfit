@@ -81,8 +81,8 @@ def _get_ntargets_vac(filepath):
 def discover_vac_files(vacdir, surveys=None, programs=None):
     """Discover all VAC FITS files to validate.
 
-    Uses ``findfiles`` from ``fastspecfit.mpi`` for the healpix tree (supports
-    survey/program filtering) and a simple glob for the catalogs directory.
+    Uses ``findfiles`` from ``fastspecfit.mpi`` for healpix/spectra trees
+    (supports survey/program filtering) and a simple glob for catalogs/.
     Surveys and programs are auto-detected from the directory tree when not
     provided.
     """
@@ -90,25 +90,31 @@ def discover_vac_files(vacdir, surveys=None, programs=None):
 
     all_files = []
 
-    healpix_base = os.path.join(vacdir, 'healpix')
-    if os.path.isdir(healpix_base):
-        if surveys is None:
-            surveys = sorted(d for d in os.listdir(healpix_base)
-                             if os.path.isdir(os.path.join(healpix_base, d)))
-        if programs is None:
+    for subdir, coadd_type in (('healpix', 'healpix'), ('spectra', 'uniqpix')):
+        pixel_base = os.path.join(vacdir, subdir)
+        if not os.path.isdir(pixel_base):
+            continue
+
+        local_surveys = surveys
+        local_programs = programs
+
+        if local_surveys is None:
+            local_surveys = sorted(d for d in os.listdir(pixel_base)
+                                   if os.path.isdir(os.path.join(pixel_base, d)))
+        if local_programs is None:
             progs = set()
-            for survey in surveys:
-                sdir = os.path.join(healpix_base, survey)
+            for survey in local_surveys:
+                sdir = os.path.join(pixel_base, survey)
                 if os.path.isdir(sdir):
                     progs.update(d for d in os.listdir(sdir)
                                  if os.path.isdir(os.path.join(sdir, d)))
-            programs = sorted(progs)
+            local_programs = sorted(progs)
 
-        log.info(f'Searching healpix tree: surveys={surveys}, programs={programs}')
+        log.info(f'Searching {subdir} tree: surveys={local_surveys}, programs={local_programs}')
         for prefix in ('fastspec', 'fastphot'):
             for gzip in (True, False):
-                found = findfiles(healpix_base, prefix=prefix, coadd_type='healpix',
-                                  survey=surveys, program=programs, gzip=gzip)
+                found = findfiles(pixel_base, prefix=prefix, coadd_type=coadd_type,
+                                  survey=local_surveys, program=local_programs, gzip=gzip)
                 if len(found) > 0:
                     all_files.extend(found)
 
@@ -301,11 +307,11 @@ def _checksum_filename(dirpath, vacdir, dr, specprod, version):
 def discover_checksum_dirs(vacdir, dr, specprod, version):
     """Return arrays of (dirpath, total_bytes) for directories that need checksums.
 
-    Scans catalogs/ and healpix/ under vacdir.  Directories whose checksum
-    file already exists are excluded.
+    Scans catalogs/, healpix/, and spectra/ under vacdir.  Directories whose
+    checksum file already exists are excluded.
     """
     dirs = set()
-    for subdir in ('catalogs', 'healpix'):
+    for subdir in ('catalogs', 'healpix', 'spectra'):
         base = os.path.join(vacdir, subdir)
         if not os.path.isdir(base):
             continue
