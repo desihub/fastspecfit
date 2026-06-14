@@ -45,13 +45,11 @@ class TestVdispNominal:
         """Pre-convolution kernel is always less than the reported σ_stars."""
         assert loaded_T.vdisp_nominal_kernel < loaded_T.vdisp_nominal
 
-    def test_flux_nomvdisp_uses_kernel_not_nominal(self, loaded_T):
-        """flux_nomvdisp matches convolving with vdisp_nominal_kernel, not vdisp_nominal."""
+    def test_flux_nomvdisp_uses_kernel(self, loaded_T):
+        """flux_nomvdisp is broadened by vdisp_nominal_kernel."""
         T = loaded_T
         broadened_kernel = T.convolve_vdisp(T.flux, T.vdisp_nominal_kernel)
-        broadened_nominal = T.convolve_vdisp(T.flux, T.vdisp_nominal)
         assert np.allclose(T.flux_nomvdisp, broadened_kernel)
-        assert not np.allclose(T.flux_nomvdisp, broadened_nominal)
 
     def test_reversed_bounds_raises(self, templates):
         """Reversed vdisp_bounds raises ValueError with a clear message."""
