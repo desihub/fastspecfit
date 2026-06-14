@@ -14,7 +14,7 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 
-VDISP_NOMINAL = 250. # [km/s]
+VDISP_NOMINAL = 150. # [km/s]
 VDISP_BOUNDS = (50., 500.) # [km/s]
 VDISP_SIGMA_RELATION = (2.30, 0.25) # (a, b): log σ = a + b*(log M* − 11) [km/s]
 
@@ -43,11 +43,17 @@ class Templates(object):
         Maximum wavelength to load into memory (Angstroms). Default is
         400 000 Å.
     vdisp_nominal : :class:`float`, optional
-        Nominal velocity dispersion in km/s used to pre-broaden the
-        templates. Default is :data:`VDISP_NOMINAL`.
+        Nominal velocity dispersion kernel in km/s used to pre-broaden the
+        templates and as the optimizer starting point. Default is
+        :data:`VDISP_NOMINAL`.
     vdisp_bounds : tuple of float, optional
-        ``(min, max)`` velocity dispersion bounds in km/s. Default is
+        ``(min, max)`` velocity dispersion kernel bounds in km/s. Default is
         :data:`VDISP_BOUNDS`.
+    vdisp_sigma_relation : tuple of float, optional
+        Coefficients ``(a, b)`` of the σ–M* scaling relation
+        ``log σ_stars = a + b*(log M* − 11)`` used to derive a fallback
+        velocity dispersion when σ cannot be measured. Default is
+        :data:`VDISP_SIGMA_RELATION`.
     fastphot : :class:`bool`, optional
         If ``True``, load in photometry-only mode. Default is ``False``.
     read_linefluxes : :class:`bool`, optional

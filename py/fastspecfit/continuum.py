@@ -33,14 +33,16 @@ class ContinuumTools(object):
     tauv_guess : float, optional
         Initial guess for the V-band optical depth. Defaults to 0.1.
     vdisp_guess : float, optional
-        Initial guess for the velocity dispersion in km/s.
+        Initial guess for the velocity dispersion kernel in km/s.
+        Defaults to :data:`~fastspecfit.templates.VDISP_NOMINAL`.
     tauv_bounds : tuple, optional
         Lower and upper bounds on tau(V). Defaults to (0., 2.).
     vdisp_bounds : tuple, optional
-        Lower and upper bounds on the velocity dispersion in km/s.
+        Lower and upper bounds on the velocity dispersion kernel in km/s.
+        Defaults to :data:`~fastspecfit.templates.VDISP_BOUNDS`.
     vdisp_nbin : int, optional
         Number of grid points for the velocity dispersion chi2 scan.
-        Defaults to 5.
+        Defaults to 6.
     fluxnorm : float, optional
         Flux normalization factor in erg/s/cm2/A. Defaults to 1e17.
     massnorm : float, optional
@@ -1283,8 +1285,7 @@ def build_stellar_continuum(coeff, tauv, redshift, templates, cosmo, igm,
     vdisp : float or None, optional
         Velocity dispersion in km/s.  If ``None``, the raw (unbroadened)
         ``templates.flux`` is used without any convolution.  To match the
-        default production behavior, pass ``vdisp=templates.vdisp_nominal``
-        (250 km/s).
+        default production behavior, pass ``vdisp=templates.vdisp_nominal``.
     fluxnorm : float, optional
         Flux normalization factor in erg/s/cm²/Å.
         Defaults to :data:`~fastspecfit.util.FLUXNORM` (10\ :sup:`17`).
@@ -1631,7 +1632,14 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
 
 def _continuum_nominal_vdisp(CTools, templates, specflux, specwave,
                              specistd, agekeep, compute_chi2=False):
-    """Support routine to fit a spectrum at the nominal velocity dispersion.
+    """Fit a spectrum at the nominal velocity dispersion.
+
+    Used in two contexts: (1) as a quick preliminary fit whose template
+    coefficients are passed to :func:`_vdisp_from_mstar` to derive a
+    better fallback velocity dispersion via the σ–M* relation; and (2) to
+    supply the continuum model used for the aperture-correction estimate.
+    The templates used here are pre-broadened to
+    ``templates.vdisp_nominal`` (i.e., ``templates.flux_nolines_nomvdisp``).
 
     """
     tauv, vdisp, coeff, resid = CTools.fit_stellar_continuum(
