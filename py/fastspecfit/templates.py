@@ -127,6 +127,10 @@ class Templates(object):
 
         # dust attenuation curve
         self.dust_klambda = Templates.klambda(self.wave)
+        if vdisp_bounds[0] > vdisp_bounds[1]:
+            errmsg = f'vdisp_bounds must be (lo, hi) with lo <= hi; got {vdisp_bounds}'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
         self.vdisp_nominal = vdisp_nominal # [km/s] σ_stars reported when vdisp unmeasured
         self.vdisp_nominal_kernel = float(np.sqrt(max(0., vdisp_nominal**2 - Templates.SIGMA_C3K**2)))
         self.vdisp_bounds = vdisp_bounds # [km/s]
