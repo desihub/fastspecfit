@@ -15,7 +15,7 @@ from astropy.table import Table
 from fastspecfit.logger import log
 
 VDISP_NOMINAL = 250. # [km/s]
-VDISP_BOUNDS = (75., 500.) # [km/s]
+VDISP_BOUNDS = (50., 500.) # [km/s]
 
 class Templates(object):
     """Stellar population synthesis templates for continuum fitting.

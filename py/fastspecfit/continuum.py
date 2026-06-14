@@ -2101,7 +2101,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             fastfit[f'APERCORR_{band.upper()}'] = apercorrs[iband]
         specphot['DN4000_OBS'] = dn4000
         specphot['DN4000_IVAR'] = dn4000_ivar
-        specphot['VDISP_IVAR'] = vdisp_ivar * (vdisp / vdisp_intrinsic)**2
+        specphot['VDISP_IVAR'] = vdisp_ivar * (vdisp_intrinsic / vdisp)**2
 
     # Compute K-corrections, rest-frame quantities, and physical properties.
     if not np.all(coeff == 0.):
