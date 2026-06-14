@@ -43,9 +43,10 @@ class Templates(object):
         Maximum wavelength to load into memory (Angstroms). Default is
         400 000 Å.
     vdisp_nominal : :class:`float`, optional
-        Nominal velocity dispersion kernel in km/s used to pre-broaden the
-        templates and as the optimizer starting point. Default is
-        :data:`VDISP_NOMINAL`.
+        Default σ_stars (km/s) reported in the catalog when vdisp cannot be
+        measured. ``vdisp_nominal_kernel = sqrt(vdisp_nominal² − SIGMA_C3K²)``
+        is derived from this value and used for template pre-convolution and
+        as the optimizer starting point. Default is :data:`VDISP_NOMINAL`.
     vdisp_bounds : tuple of float, optional
         ``(min, max)`` velocity dispersion kernel bounds in km/s. Default is
         :data:`VDISP_BOUNDS`.
@@ -126,7 +127,8 @@ class Templates(object):
 
         # dust attenuation curve
         self.dust_klambda = Templates.klambda(self.wave)
-        self.vdisp_nominal = vdisp_nominal # [km/s]
+        self.vdisp_nominal = vdisp_nominal # [km/s] σ_stars reported when vdisp unmeasured
+        self.vdisp_nominal_kernel = float(np.sqrt(max(0., vdisp_nominal**2 - Templates.SIGMA_C3K**2)))
         self.vdisp_bounds = vdisp_bounds # [km/s]
         self.vdisp_sigma_relation = vdisp_sigma_relation # (a, b): log σ = a + b*(log M* − 11)
 
@@ -134,10 +136,10 @@ class Templates(object):
         self.pixkms_bounds = pixkms_bounds
 
         self.conv_pre = self.convolve_vdisp_pre(self.flux)
-        self.flux_nomvdisp = self.convolve_vdisp(self.flux, vdisp_nominal)
+        self.flux_nomvdisp = self.convolve_vdisp(self.flux, self.vdisp_nominal_kernel)
 
         self.conv_pre_nolines = self.convolve_vdisp_pre(self.flux_nolines)
-        self.flux_nolines_nomvdisp = self.convolve_vdisp(self.flux_nolines, vdisp_nominal)
+        self.flux_nolines_nomvdisp = self.convolve_vdisp(self.flux_nolines, self.vdisp_nominal_kernel)
 
         self.info = Table(templateinfo)
 

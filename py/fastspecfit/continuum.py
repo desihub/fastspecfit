@@ -1039,7 +1039,7 @@ class ContinuumTools(object):
         self.optimizer_saved_contmodel = coeff @ phi
         resid = Psi @ coeff - b
 
-        return tauv, self.templates.vdisp_nominal, coeff, resid
+        return tauv, self.templates.vdisp_nominal_kernel, coeff, resid
 
 
     def fit_stellar_continuum(self, templateflux, fit_vdisp=False, conv_pre=None,
@@ -1189,7 +1189,7 @@ class ContinuumTools(object):
         else:
             tauv = bestparams[0]
             templatecoeff = bestparams[1:]
-            vdisp = self.templates.vdisp_nominal
+            vdisp = self.templates.vdisp_nominal_kernel
 
         return tauv, vdisp, templatecoeff, resid
 
@@ -1285,7 +1285,7 @@ def build_stellar_continuum(coeff, tauv, redshift, templates, cosmo, igm,
     vdisp : float or None, optional
         Velocity dispersion in km/s.  If ``None``, the raw (unbroadened)
         ``templates.flux`` is used without any convolution.  To match the
-        default production behavior, pass ``vdisp=templates.vdisp_nominal``.
+        default production behavior, pass ``vdisp=templates.vdisp_nominal_kernel``.
     fluxnorm : float, optional
         Flux normalization factor in erg/s/cm²/Å.
         Defaults to :data:`~fastspecfit.util.FLUXNORM` (10\ :sup:`17`).
@@ -1413,7 +1413,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
     agekeep = CTools.agekeep
     nage = CTools.nage
 
-    vdisp = templates.vdisp_nominal
+    vdisp = templates.vdisp_nominal_kernel
 
     ndof_phot = np.sum(objflamivar > 0.)
 
@@ -1571,7 +1571,7 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
     deltachi2 = np.ptp(chi2grid)
     if deltachi2 < deltachi2min or imin == 0 or imin == ngrid-1:
         vdisp_init = CTools.vdisp_grid[imin]
-        vdisp = templates.vdisp_nominal
+        vdisp = templates.vdisp_nominal_kernel
         vdisp_ivar = 0.
         if deltachi2 < deltachi2min:
             log.info('Initial velocity dispersion fit failed: delta-chi2=' + \
@@ -1594,7 +1594,7 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
 
         # Did fitting fail?
         if vdisp < 0.:
-            vdisp = templates.vdisp_nominal
+            vdisp = templates.vdisp_nominal_kernel
             vdisp_ivar = 0.
             chi2min = 0.
         else:
@@ -1639,7 +1639,7 @@ def _continuum_nominal_vdisp(CTools, templates, specflux, specwave,
     better fallback velocity dispersion via the σ–M* relation; and (2) to
     supply the continuum model used for the aperture-correction estimate.
     The templates used here are pre-broadened to
-    ``templates.vdisp_nominal`` (i.e., ``templates.flux_nolines_nomvdisp``).
+    ``templates.vdisp_nominal_kernel`` (i.e., ``templates.flux_nolines_nomvdisp``).
 
     """
     tauv, vdisp, coeff, resid = CTools.fit_stellar_continuum(
@@ -1758,7 +1758,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
         applies log σ = a + b*(log M* − 11) to get σ_stars.  Converts to the
         convolution kernel σ_kernel = sqrt(σ_stars² − σ_C3K²) and clamps to
         vdisp_bounds.  Returns (vdisp_kernel, logmstar) on success, or
-        (vdisp_nominal, None) when M* cannot be estimated.
+        (vdisp_nominal_kernel, None) when M* cannot be estimated.
         """
         tinfo = templates.info[agekeep]
         masstot = coeff.dot(tinfo['mstar'])
@@ -1769,7 +1769,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
             vdisp_kernel = float(np.sqrt(max(0., vdisp_stars**2 - templates.SIGMA_C3K**2)))
             vdisp_kernel = float(np.clip(vdisp_kernel, *templates.vdisp_bounds))
             return vdisp_kernel, logmstar
-        return templates.vdisp_nominal, None
+        return templates.vdisp_nominal_kernel, None
 
     def _apply_mstar_vdisp_fallback(coeff, reason):
         """Set vdisp, input_templateflux, and input_templateflux_nolines for a fallback case."""
@@ -2073,7 +2073,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
 
     # Instantiate the continuum tools class.
     CTools = ContinuumTools(data, templates, phot, igm, fastphot=fastphot,
-                            vdisp_guess=templates.vdisp_nominal,
+                            vdisp_guess=templates.vdisp_nominal_kernel,
                             vdisp_bounds=templates.vdisp_bounds,
                             fluxnorm=FLUXNORM, constrain_age=constrain_age)
 
