@@ -75,7 +75,7 @@ class ContinuumTools(object):
     """
     def __init__(self, data, templates, phot, igm, tauv_guess=0.1,
                  vdisp_guess=VDISP_NOMINAL, tauv_bounds=(0., 2.),
-                 vdisp_bounds=VDISP_BOUNDS, vdisp_nbin=5,
+                 vdisp_bounds=VDISP_BOUNDS, vdisp_nbin=6,
                  fluxnorm=FLUXNORM, massnorm=MASSNORM, fastphot=False,
                  constrain_age=False):
 
