@@ -16,6 +16,7 @@ from fastspecfit.logger import log
 
 VDISP_NOMINAL = 250. # [km/s]
 VDISP_BOUNDS = (50., 500.) # [km/s]
+VDISP_SIGMA_RELATION = (2.30, 0.25) # (a, b): log σ = a + b*(log M* − 11) [km/s]
 
 class Templates(object):
     """Stellar population synthesis templates for continuum fitting.
@@ -73,7 +74,8 @@ class Templates(object):
 
     def __init__(self, template_file=None, template_version=None, imf=None,
                  mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=VDISP_NOMINAL,
-                 vdisp_bounds=VDISP_BOUNDS, fastphot=False, read_linefluxes=False):
+                 vdisp_bounds=VDISP_BOUNDS, vdisp_sigma_relation=VDISP_SIGMA_RELATION,
+                 fastphot=False, read_linefluxes=False):
         self.init_ffts()
 
         if template_file is None:
@@ -120,6 +122,7 @@ class Templates(object):
         self.dust_klambda = Templates.klambda(self.wave)
         self.vdisp_nominal = vdisp_nominal # [km/s]
         self.vdisp_bounds = vdisp_bounds # [km/s]
+        self.vdisp_sigma_relation = vdisp_sigma_relation # (a, b): log σ = a + b*(log M* − 11)
 
         pixkms_bounds = np.searchsorted(self.wave, Templates.PIXKMS_BOUNDS, 'left')
         self.pixkms_bounds = pixkms_bounds

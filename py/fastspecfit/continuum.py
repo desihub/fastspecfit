@@ -1743,19 +1743,52 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
     # Attempt to solve for the velocity dispersion based on the rest-wavelength coverage.
     compute_vdisp, (vdisp_s, vdisp_e) = can_compute_vdisp(redshift, specwave)
 
+    def _vdisp_from_mstar(coeff):
+        """Return a fallback vdisp kernel (km/s) derived from the σ–M* relation.
+
+        Uses the preliminary template coefficients to estimate log M*, then
+        applies log σ = a + b*(log M* − 11) to get σ_stars.  Converts to the
+        convolution kernel σ_kernel = sqrt(σ_stars² − σ_C3K²) and clamps to
+        vdisp_bounds.  Returns (vdisp_kernel, logmstar) on success, or
+        (vdisp_nominal, None) when M* cannot be estimated.
+        """
+        tinfo = templates.info[agekeep]
+        masstot = coeff.dot(tinfo['mstar'])
+        if masstot > 0. and np.sum(coeff) > 0.:
+            logmstar = np.log10(CTools.massnorm * masstot)
+            a, b = templates.vdisp_sigma_relation
+            vdisp_stars = 10.**(a + b * (logmstar - 11.))
+            vdisp_kernel = float(np.sqrt(max(0., vdisp_stars**2 - templates.SIGMA_C3K**2)))
+            vdisp_kernel = float(np.clip(vdisp_kernel, *templates.vdisp_bounds))
+            return vdisp_kernel, logmstar
+        return templates.vdisp_nominal, None
+
+    def _apply_mstar_vdisp_fallback(coeff, reason):
+        """Set vdisp, input_templateflux, and input_templateflux_nolines for a fallback case."""
+        vdisp_kernel, logmstar = _vdisp_from_mstar(coeff)
+        if logmstar is not None:
+            itf = templates.convolve_vdisp(templates.flux[agekeep, :], vdisp_kernel)
+            itf_nl = templates.convolve_vdisp(templates.flux_nolines[agekeep, :], vdisp_kernel)
+            log.debug(f'{reason}; adopting σ–M* vdisp={vdisp_kernel:.0f} km/s '
+                      f'(log M*≈{logmstar:.2f})')
+        else:
+            itf = templates.flux_nomvdisp[agekeep, :]
+            itf_nl = templates.flux_nolines_nomvdisp[agekeep, :]
+            log.debug(f'{reason}; adopting nominal vdisp={vdisp_kernel:.0f} km/s')
+        return vdisp_kernel, itf, itf_nl
+
     if not compute_vdisp:
-        # Fit to the cached templates at the nominal velocity dispersion.
-        tauv, vdisp, coeff, contmodel, _ = _continuum_nominal_vdisp(
+        # Fit to the cached templates at the nominal velocity dispersion to
+        # get preliminary coefficients, then derive a better fallback vdisp
+        # from the σ–M* relation.
+        tauv, _, coeff, contmodel, _ = _continuum_nominal_vdisp(
             CTools, templates, specflux, specwave,
             specistd, agekeep, compute_chi2=False)
 
         vdisp_ivar = 0.
 
-        input_templateflux = templates.flux_nomvdisp[agekeep, :]
-        input_templateflux_nolines = templates.flux_nolines_nomvdisp[agekeep, :]
-
-        log.debug('Insufficient wavelength coverage to compute velocity ' + \
-                  f'dispersion; adopting {vdisp:.0f} km/s')
+        vdisp, input_templateflux, input_templateflux_nolines = \
+            _apply_mstar_vdisp_fallback(coeff, 'Insufficient wavelength coverage to compute vdisp')
     else:
         t0 = time.time()
 
@@ -1769,15 +1802,14 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
             specistd, fitmask, agekeep, deltachi2min=25.,
             fit_for_min=False, debug_plots=debug_plots)
 
-        # If the scan is unsuccessful, adopt the nominal velocity dispersion
-        # and continue....
+        # If the scan is unsuccessful, derive a fallback from the σ–M* relation.
         if vdisp_ivar == 0.:
-            tauv, vdisp, coeff, contmodel, _ = _continuum_nominal_vdisp(
+            tauv, _, coeff, contmodel, _ = _continuum_nominal_vdisp(
                 CTools, templates, specflux, specwave,
                 specistd, agekeep, compute_chi2=False)
 
-            input_templateflux = templates.flux_nomvdisp[agekeep, :]
-            input_templateflux_nolines = templates.flux_nolines_nomvdisp[agekeep, :]
+            vdisp, input_templateflux, input_templateflux_nolines = \
+                _apply_mstar_vdisp_fallback(coeff, 'vdisp chi2 scan failed')
         else:
             # ...otherwise fit for the maximum likelihood value.
 
