@@ -5,12 +5,9 @@ Change Log
 3.5.0 (not released yet)
 ------------------------
 
-* Fix inverted ``VDISP_IVAR`` Jacobian; lower ``VDISP_BOUNDS`` floor to
-  50 km/s; increase chi2 scan to 6 grid points; use a σ–M* scaling
-  relation as a fallback when vdisp cannot be measured; report
-  ``VDISP_NOMINAL = 150`` km/s as σ_stars so unfitted objects are
-  clearly flagged; validate ``vdisp_bounds`` ordering in
-  ``Templates``; new unit tests [`PR #267`_].
+* Fix ``VDISP_IVAR`` bug; lower ``VDISP_BOUNDS`` floor to 50 km/s;
+  increase chi2 scan to 6 grid points; use a vdisp-mstar scaling
+  relation to estimate ``VDISP``; new unit tests [`PR #267`_].
 * Correct ``VDISP`` to intrinsic by adding the C3K template resolution
   (~42.4 km/s) in quadrature and tighten ``can_compute_vdisp`` red-end
   threshold to 4900 Å (z ≲ 1.0). Guard ``TAUV_IVAR`` and
