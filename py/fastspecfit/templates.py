@@ -62,14 +62,14 @@ class Templates(object):
         Default is ``False``.
 
     """
-    from fastspecfit.util import CLIGHT
+    from fastspecfit.util import C_LIGHT
 
     # SPS template constants (used by build-templates)
     # https://github.com/cconroy20/fsps/tree/master/SPECTRA/C3K#readme
     PIXKMS = 25.  # [km/s]
     PIXKMS_BOUNDS = (2750., 9100.)
     # Gaussian sigma of C3K templates: R(λ/FWHM)=3000 → σ = c/(R·2√(2 ln 2))
-    SIGMA_C3K = CLIGHT / (3000. * np.sqrt(8. * np.log(2.))) # 42.4 [km/s]
+    SIGMA_C3K = C_LIGHT / (3000. * np.sqrt(8. * np.log(2.))) # 42.4 [km/s]
 
     AGN_PIXKMS = 75.  # [km/s]
     AGN_PIXKMS_BOUNDS = (1075., 3090.)
