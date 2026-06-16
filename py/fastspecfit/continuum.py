@@ -992,6 +992,15 @@ class ContinuumTools(object):
         if synthphot:
             b[nspec:] = objflam * objflamistd
 
+        bad_b = ~np.isfinite(b)
+        if np.any(bad_b):
+            nspec_bad = np.sum(bad_b[:nspec]) if synthspec else 0
+            nphot_bad = np.sum(bad_b[nspec:]) if synthphot else 0
+            errmsg = (f'Non-finite values in fit vector: {nspec_bad} spectroscopic pixel(s), '
+                      f'{nphot_bad} photometric band(s) [{_uid(self.data)}]')
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+
         def _fill(tauv):
             A           = np.exp(-tauv * dust_kl)     # (npix,)
             Az          = A * zfactors                 # (npix,)
@@ -2061,6 +2070,12 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
 
     objflam = data['photometry']['flam'].value * FLUXNORM
     objflamivar = (data['photometry']['flam_ivar'].value / FLUXNORM**2) * phot.bands_to_fit
+
+    bad = ~np.isfinite(objflam)
+    if np.any(bad):
+        log.warning(f'Masking {np.sum(bad):,d} photometric band(s) with non-finite flux [{_uid(data)}].')
+        objflam[bad] = 0.
+        objflamivar[bad] = 0.
 
     if np.any(phot.bands_to_fit):
         # Require at least one *optical* photometric band; do not just fit the
