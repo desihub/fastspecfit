@@ -2031,9 +2031,10 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
     objflam = data['photometry']['flam'].value * FLUXNORM
     objflamivar = (data['photometry']['flam_ivar'].value / FLUXNORM**2) * phot.bands_to_fit
 
-    bad = (objflamivar > 0.) & ~np.isfinite(objflam)
+    bad = ~np.isfinite(objflam)
     if np.any(bad):
         log.warning(f'Masking {np.sum(bad):,d} photometric band(s) with non-finite flux [{_uid(data)}].')
+        objflam[bad] = 0.
         objflamivar[bad] = 0.
 
     if np.any(phot.bands_to_fit):
