@@ -2,8 +2,12 @@
 Change Log
 ==========
 
-3.5.0 (not released yet)
+3.5.1 (not released yet)
 ------------------------
+*
+
+3.5.0 (2026-06-16)
+------------------
 
 * Fix ``VDISP_IVAR`` bug; lower ``VDISP_BOUNDS`` floor to 50 km/s;
   increase chi2 scan to 6 grid points; use a vdisp-mstar scaling
