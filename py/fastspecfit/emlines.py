@@ -934,9 +934,9 @@ class EMFitTools(object):
                 limitsigma_narrow = limitsigma_narrow_default
                 limitsigma_broad = limitsigma_broad_default
                 if isbroad and isbalmer:
-                    linesigma = limitsigma_narrow
-                else:
                     linesigma = limitsigma_broad
+                else:
+                    linesigma = limitsigma_narrow
 
             linesigma_ang = linesigma * linezwave / C_LIGHT  # [observed-frame Angstrom]
 
@@ -1220,11 +1220,11 @@ class EMFitTools(object):
                     fastfit[f'{linename}_CONT_IVAR'] = cont_ivar
 
             if cont != 0. and cont_ivar > 0.:
-                # upper limit on the flux is defined by snrcut*cont_err*sqrt(2*pi)*linesigma
+                # 1-sigma upper limit on the flux is defined as cont_err*sqrt(2*pi)*linesigma
                 fluxlimit = np.sqrt(2. * np.pi) * linesigma_ang / np.sqrt(cont_ivar) # * u.erg/(u.second*u.cm**2)
                 fastfit[f'{linename}_FLUX_LIMIT'] = fluxlimit
 
-                #ewlimit = fluxlimit * cont / (1.+redshift)
+                #ewlimit = fluxlimit / cont / (1.+redshift)
                 #fastfit[f'{linename}_EW_LIMIT'] = ewlimit
 
                 if flux > 0. and flux_ivar > 0.:

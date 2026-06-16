@@ -5,6 +5,9 @@ Change Log
 3.5.0 (not released yet)
 ------------------------
 
+* Fix ``VDISP_IVAR`` bug; lower ``VDISP_BOUNDS`` floor to 50 km/s;
+  increase chi2 scan to 6 grid points; use a vdisp-mstar scaling
+  relation to estimate ``VDISP``; new unit tests [`PR #267`_].
 * Correct ``VDISP`` to intrinsic by adding the C3K template resolution
   (~42.4 km/s) in quadrature and tighten ``can_compute_vdisp`` red-end
   threshold to 4900 Å (z ≲ 1.0). Guard ``TAUV_IVAR`` and
@@ -20,6 +23,7 @@ Change Log
   time in the ``Matterhorn`` (DR3) spectroscopic production [`PR
   #261`_].
 
+.. _`PR #267`: https://github.com/desihub/fastspecfit/pull/267
 .. _`PR #265`: https://github.com/desihub/fastspecfit/pull/265
 .. _`PR #264`: https://github.com/desihub/fastspecfit/pull/264
 .. _`PR #262`: https://github.com/desihub/fastspecfit/pull/262

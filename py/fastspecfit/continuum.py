@@ -33,14 +33,16 @@ class ContinuumTools(object):
     tauv_guess : float, optional
         Initial guess for the V-band optical depth. Defaults to 0.1.
     vdisp_guess : float, optional
-        Initial guess for the velocity dispersion in km/s.
+        Initial guess for the velocity dispersion kernel in km/s.
+        Defaults to :data:`~fastspecfit.templates.VDISP_NOMINAL`.
     tauv_bounds : tuple, optional
         Lower and upper bounds on tau(V). Defaults to (0., 2.).
     vdisp_bounds : tuple, optional
-        Lower and upper bounds on the velocity dispersion in km/s.
+        Lower and upper bounds on the velocity dispersion kernel in km/s.
+        Defaults to :data:`~fastspecfit.templates.VDISP_BOUNDS`.
     vdisp_nbin : int, optional
         Number of grid points for the velocity dispersion chi2 scan.
-        Defaults to 5.
+        Defaults to 6.
     fluxnorm : float, optional
         Flux normalization factor in erg/s/cm2/A. Defaults to 1e17.
     massnorm : float, optional
@@ -75,7 +77,7 @@ class ContinuumTools(object):
     """
     def __init__(self, data, templates, phot, igm, tauv_guess=0.1,
                  vdisp_guess=VDISP_NOMINAL, tauv_bounds=(0., 2.),
-                 vdisp_bounds=VDISP_BOUNDS, vdisp_nbin=5,
+                 vdisp_bounds=VDISP_BOUNDS, vdisp_nbin=6,
                  fluxnorm=FLUXNORM, massnorm=MASSNORM, fastphot=False,
                  constrain_age=False):
 
@@ -1046,7 +1048,7 @@ class ContinuumTools(object):
         self.optimizer_saved_contmodel = coeff @ phi
         resid = Psi @ coeff - b
 
-        return tauv, self.templates.vdisp_nominal, coeff, resid
+        return tauv, self.templates.vdisp_nominal_kernel, coeff, resid
 
 
     def fit_stellar_continuum(self, templateflux, fit_vdisp=False, conv_pre=None,
@@ -1196,7 +1198,7 @@ class ContinuumTools(object):
         else:
             tauv = bestparams[0]
             templatecoeff = bestparams[1:]
-            vdisp = self.templates.vdisp_nominal
+            vdisp = self.templates.vdisp_nominal_kernel
 
         return tauv, vdisp, templatecoeff, resid
 
@@ -1292,8 +1294,7 @@ def build_stellar_continuum(coeff, tauv, redshift, templates, cosmo, igm,
     vdisp : float or None, optional
         Velocity dispersion in km/s.  If ``None``, the raw (unbroadened)
         ``templates.flux`` is used without any convolution.  To match the
-        default production behavior, pass ``vdisp=templates.vdisp_nominal``
-        (250 km/s).
+        default production behavior, pass ``vdisp=templates.vdisp_nominal_kernel``.
     fluxnorm : float, optional
         Flux normalization factor in erg/s/cm²/Å.
         Defaults to :data:`~fastspecfit.util.FLUXNORM` (10\ :sup:`17`).
@@ -1421,7 +1422,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
     agekeep = CTools.agekeep
     nage = CTools.nage
 
-    vdisp = templates.vdisp_nominal
+    vdisp = templates.vdisp_nominal_kernel
 
     ndof_phot = np.sum(objflamivar > 0.)
 
@@ -1579,7 +1580,7 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
     deltachi2 = np.ptp(chi2grid)
     if deltachi2 < deltachi2min or imin == 0 or imin == ngrid-1:
         vdisp_init = CTools.vdisp_grid[imin]
-        vdisp = templates.vdisp_nominal
+        vdisp = templates.vdisp_nominal_kernel
         vdisp_ivar = 0.
         if deltachi2 < deltachi2min:
             log.info('Initial velocity dispersion fit failed: delta-chi2=' + \
@@ -1602,7 +1603,7 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
 
         # Did fitting fail?
         if vdisp < 0.:
-            vdisp = templates.vdisp_nominal
+            vdisp = templates.vdisp_nominal_kernel
             vdisp_ivar = 0.
             chi2min = 0.
         else:
@@ -1640,7 +1641,14 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
 
 def _continuum_nominal_vdisp(CTools, templates, specflux, specwave,
                              specistd, agekeep, compute_chi2=False):
-    """Support routine to fit a spectrum at the nominal velocity dispersion.
+    """Fit a spectrum at the nominal velocity dispersion.
+
+    Used in two contexts: (1) as a quick preliminary fit whose template
+    coefficients are passed to :func:`_vdisp_from_mstar` to derive a
+    better fallback velocity dispersion via the σ–M* relation; and (2) to
+    supply the continuum model used for the aperture-correction estimate.
+    The templates used here are pre-broadened to
+    ``templates.vdisp_nominal_kernel`` (i.e., ``templates.flux_nolines_nomvdisp``).
 
     """
     tauv, vdisp, coeff, resid = CTools.fit_stellar_continuum(
@@ -1752,19 +1760,52 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
     # Attempt to solve for the velocity dispersion based on the rest-wavelength coverage.
     compute_vdisp, (vdisp_s, vdisp_e) = can_compute_vdisp(redshift, specwave)
 
+    def _vdisp_from_mstar(coeff):
+        """Return a fallback vdisp kernel (km/s) derived from the σ–M* relation.
+
+        Uses the preliminary template coefficients to estimate log M*, then
+        applies log σ = a + b*(log M* − 11) to get σ_stars.  Converts to the
+        convolution kernel σ_kernel = sqrt(σ_stars² − σ_C3K²) and clamps to
+        vdisp_bounds.  Returns (vdisp_kernel, logmstar) on success, or
+        (vdisp_nominal_kernel, None) when M* cannot be estimated.
+        """
+        tinfo = templates.info[agekeep]
+        masstot = coeff.dot(tinfo['mstar'])
+        if masstot > 0. and np.sum(coeff) > 0.:
+            logmstar = np.log10(CTools.massnorm * masstot)
+            a, b = templates.vdisp_sigma_relation
+            vdisp_stars = 10.**(a + b * (logmstar - 11.))
+            vdisp_kernel = float(np.sqrt(max(0., vdisp_stars**2 - templates.SIGMA_C3K**2)))
+            vdisp_kernel = float(np.clip(vdisp_kernel, *templates.vdisp_bounds))
+            return vdisp_kernel, logmstar
+        return templates.vdisp_nominal_kernel, None
+
+    def _apply_mstar_vdisp_fallback(coeff, reason):
+        """Set vdisp, input_templateflux, and input_templateflux_nolines for a fallback case."""
+        vdisp_kernel, logmstar = _vdisp_from_mstar(coeff)
+        if logmstar is not None:
+            itf = templates.convolve_vdisp(templates.flux[agekeep, :], vdisp_kernel)
+            itf_nl = templates.convolve_vdisp(templates.flux_nolines[agekeep, :], vdisp_kernel)
+            log.debug(f'{reason}; adopting σ–M* vdisp={vdisp_kernel:.0f} km/s '
+                      f'(log M*≈{logmstar:.2f})')
+        else:
+            itf = templates.flux_nomvdisp[agekeep, :]
+            itf_nl = templates.flux_nolines_nomvdisp[agekeep, :]
+            log.debug(f'{reason}; adopting nominal vdisp={vdisp_kernel:.0f} km/s')
+        return vdisp_kernel, itf, itf_nl
+
     if not compute_vdisp:
-        # Fit to the cached templates at the nominal velocity dispersion.
-        tauv, vdisp, coeff, contmodel, _ = _continuum_nominal_vdisp(
+        # Fit to the cached templates at the nominal velocity dispersion to
+        # get preliminary coefficients, then derive a better fallback vdisp
+        # from the σ–M* relation.
+        tauv, _, coeff, contmodel, _ = _continuum_nominal_vdisp(
             CTools, templates, specflux, specwave,
             specistd, agekeep, compute_chi2=False)
 
         vdisp_ivar = 0.
 
-        input_templateflux = templates.flux_nomvdisp[agekeep, :]
-        input_templateflux_nolines = templates.flux_nolines_nomvdisp[agekeep, :]
-
-        log.debug('Insufficient wavelength coverage to compute velocity ' + \
-                  f'dispersion; adopting {vdisp:.0f} km/s')
+        vdisp, input_templateflux, input_templateflux_nolines = \
+            _apply_mstar_vdisp_fallback(coeff, 'Insufficient wavelength coverage to compute vdisp')
     else:
         t0 = time.time()
 
@@ -1778,15 +1819,14 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
             specistd, fitmask, agekeep, deltachi2min=25.,
             fit_for_min=False, debug_plots=debug_plots)
 
-        # If the scan is unsuccessful, adopt the nominal velocity dispersion
-        # and continue....
+        # If the scan is unsuccessful, derive a fallback from the σ–M* relation.
         if vdisp_ivar == 0.:
-            tauv, vdisp, coeff, contmodel, _ = _continuum_nominal_vdisp(
+            tauv, _, coeff, contmodel, _ = _continuum_nominal_vdisp(
                 CTools, templates, specflux, specwave,
                 specistd, agekeep, compute_chi2=False)
 
-            input_templateflux = templates.flux_nomvdisp[agekeep, :]
-            input_templateflux_nolines = templates.flux_nolines_nomvdisp[agekeep, :]
+            vdisp, input_templateflux, input_templateflux_nolines = \
+                _apply_mstar_vdisp_fallback(coeff, 'vdisp chi2 scan failed')
         else:
             # ...otherwise fit for the maximum likelihood value.
 
@@ -2048,7 +2088,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
 
     # Instantiate the continuum tools class.
     CTools = ContinuumTools(data, templates, phot, igm, fastphot=fastphot,
-                            vdisp_guess=templates.vdisp_nominal,
+                            vdisp_guess=templates.vdisp_nominal_kernel,
                             vdisp_bounds=templates.vdisp_bounds,
                             fluxnorm=FLUXNORM, constrain_age=constrain_age)
 
@@ -2116,7 +2156,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             fastfit[f'APERCORR_{band.upper()}'] = apercorrs[iband]
         specphot['DN4000_OBS'] = dn4000
         specphot['DN4000_IVAR'] = dn4000_ivar
-        specphot['VDISP_IVAR'] = vdisp_ivar * (vdisp / vdisp_intrinsic)**2
+        specphot['VDISP_IVAR'] = vdisp_ivar * (vdisp_intrinsic / vdisp)**2
 
     # Compute K-corrections, rest-frame quantities, and physical properties.
     if not np.all(coeff == 0.):

@@ -14,8 +14,9 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 
-VDISP_NOMINAL = 250. # [km/s]
-VDISP_BOUNDS = (75., 500.) # [km/s]
+VDISP_NOMINAL = 150. # [km/s]
+VDISP_BOUNDS = (50., 500.) # [km/s]
+VDISP_SIGMA_RELATION = (2.30, 0.25) # (a, b): log σ = a + b*(log M* − 11) [km/s]
 
 class Templates(object):
     """Stellar population synthesis templates for continuum fitting.
@@ -42,11 +43,18 @@ class Templates(object):
         Maximum wavelength to load into memory (Angstroms). Default is
         400 000 Å.
     vdisp_nominal : :class:`float`, optional
-        Nominal velocity dispersion in km/s used to pre-broaden the
-        templates. Default is :data:`VDISP_NOMINAL`.
+        Default σ_stars (km/s) reported in the catalog when vdisp cannot be
+        measured. ``vdisp_nominal_kernel = sqrt(vdisp_nominal² − SIGMA_C3K²)``
+        is derived from this value and used for template pre-convolution and
+        as the optimizer starting point. Default is :data:`VDISP_NOMINAL`.
     vdisp_bounds : tuple of float, optional
-        ``(min, max)`` velocity dispersion bounds in km/s. Default is
+        ``(min, max)`` velocity dispersion kernel bounds in km/s. Default is
         :data:`VDISP_BOUNDS`.
+    vdisp_sigma_relation : tuple of float, optional
+        Coefficients ``(a, b)`` of the σ–M* scaling relation
+        ``log σ_stars = a + b*(log M* − 11)`` used to derive a fallback
+        velocity dispersion when σ cannot be measured. Default is
+        :data:`VDISP_SIGMA_RELATION`.
     fastphot : :class:`bool`, optional
         If ``True``, load in photometry-only mode. Default is ``False``.
     read_linefluxes : :class:`bool`, optional
@@ -54,13 +62,14 @@ class Templates(object):
         Default is ``False``.
 
     """
+    from fastspecfit.util import C_LIGHT
 
     # SPS template constants (used by build-templates)
     # https://github.com/cconroy20/fsps/tree/master/SPECTRA/C3K#readme
     PIXKMS = 25.  # [km/s]
     PIXKMS_BOUNDS = (2750., 9100.)
     # Gaussian sigma of C3K templates: R(λ/FWHM)=3000 → σ = c/(R·2√(2 ln 2))
-    SIGMA_C3K = 2.998e5 / (3000. * np.sqrt(8. * np.log(2.)))  # [km/s] ≈ 42.4
+    SIGMA_C3K = C_LIGHT / (3000. * np.sqrt(8. * np.log(2.))) # 42.4 [km/s]
 
     AGN_PIXKMS = 75.  # [km/s]
     AGN_PIXKMS_BOUNDS = (1075., 3090.)
@@ -73,7 +82,8 @@ class Templates(object):
 
     def __init__(self, template_file=None, template_version=None, imf=None,
                  mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=VDISP_NOMINAL,
-                 vdisp_bounds=VDISP_BOUNDS, fastphot=False, read_linefluxes=False):
+                 vdisp_bounds=VDISP_BOUNDS, vdisp_sigma_relation=VDISP_SIGMA_RELATION,
+                 fastphot=False, read_linefluxes=False):
         self.init_ffts()
 
         if template_file is None:
@@ -118,17 +128,23 @@ class Templates(object):
 
         # dust attenuation curve
         self.dust_klambda = Templates.klambda(self.wave)
-        self.vdisp_nominal = vdisp_nominal # [km/s]
+        if vdisp_bounds[0] > vdisp_bounds[1]:
+            errmsg = f'vdisp_bounds must be (lo, hi) with lo <= hi; got {vdisp_bounds}'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+        self.vdisp_nominal = vdisp_nominal # [km/s] σ_stars reported when vdisp unmeasured
+        self.vdisp_nominal_kernel = float(np.sqrt(max(0., vdisp_nominal**2 - Templates.SIGMA_C3K**2)))
         self.vdisp_bounds = vdisp_bounds # [km/s]
+        self.vdisp_sigma_relation = vdisp_sigma_relation # (a, b): log σ = a + b*(log M* − 11)
 
         pixkms_bounds = np.searchsorted(self.wave, Templates.PIXKMS_BOUNDS, 'left')
         self.pixkms_bounds = pixkms_bounds
 
         self.conv_pre = self.convolve_vdisp_pre(self.flux)
-        self.flux_nomvdisp = self.convolve_vdisp(self.flux, vdisp_nominal)
+        self.flux_nomvdisp = self.convolve_vdisp(self.flux, self.vdisp_nominal_kernel)
 
         self.conv_pre_nolines = self.convolve_vdisp_pre(self.flux_nolines)
-        self.flux_nolines_nomvdisp = self.convolve_vdisp(self.flux_nolines, vdisp_nominal)
+        self.flux_nolines_nomvdisp = self.convolve_vdisp(self.flux_nolines, self.vdisp_nominal_kernel)
 
         self.info = Table(templateinfo)
 
