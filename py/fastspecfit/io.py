@@ -1382,7 +1382,7 @@ class DESISpectra(object):
         uniqueid_col = self.phot.uniqueid_col
         PHOTCOLS = np.unique(np.hstack((self.phot.readcols, self.phot.fluxcols, self.phot.fluxivarcols)))
 
-        # DR9 or DR10
+        # Legacy Surveys
         if hasattr(self.phot, 'legacysurveydr'):
             from desitarget.io import releasedict
 
@@ -1400,8 +1400,8 @@ class DESISpectra(object):
                         _input_meta.remove_column(col)
                 tractor = gather_tractorphot(_input_meta, columns=PHOTCOLS, legacysurveydir=self.fphotodir)
 
-            # DR9-specific stuff
-            if legacysurveydr.lower() == 'dr9' or legacysurveydr.lower() == 'dr10':
+            # Legacy Survey-specific stuff
+            if legacysurveydr.lower() in ['dr9', 'dr10', 'dr11']:
                 metas = []
                 for meta in self.meta:
                     srt = geomask.match_to(tractor[uniqueid_col], meta[uniqueid_col])
@@ -1469,6 +1469,13 @@ class DESISpectra(object):
 
             metas = []
             for meta in self.meta:
+                inmask = np.isin(meta[uniqueid_col], phot_tbl[uniqueid_col])
+                if not np.all(inmask):
+                    log.warning(f'Dropping {np.sum(~inmask):,d} objects with {uniqueid_col} '
+                                f'not found in external photometric catalog {self.fphotodir}')
+                    meta = meta[inmask]
+                if len(meta) == 0:
+                    continue
                 srt = geomask.match_to(phot_tbl[uniqueid_col], meta[uniqueid_col])
                 assert(np.all(meta[uniqueid_col] == phot_tbl[uniqueid_col][srt]))
                 if hasattr(self.phot, 'dropcols'):
