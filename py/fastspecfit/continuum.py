@@ -2022,6 +2022,11 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
     objflam = data['photometry']['flam'].value * FLUXNORM
     objflamivar = (data['photometry']['flam_ivar'].value / FLUXNORM**2) * phot.bands_to_fit
 
+    bad = (objflamivar > 0.) & ~np.isfinite(objflam)
+    if np.any(bad):
+        log.warning(f'Masking {np.sum(bad):,d} photometric band(s) with non-finite flux [{_uid(data)}].')
+        objflamivar[bad] = 0.
+
     if np.any(phot.bands_to_fit):
         # Require at least one *optical* photometric band; do not just fit the
         # IR because we will not be able to compute the aperture correction.
