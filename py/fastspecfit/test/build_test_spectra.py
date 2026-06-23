@@ -4,6 +4,9 @@ This script extracts single-target cutouts from DESI spectroscopic reductions
 and writes them to the ``test/data/`` directory. To add a new fixture, append
 a dict to :data:`TARGETS` — no other code changes are required.
 
+Each output file is skipped if it already exists; delete a file by hand to
+force it to be regenerated.
+
 Current fixtures
 ----------------
 
@@ -50,7 +53,7 @@ from desispec.io import write_spectra, read_spectra
 # Required keys for all targets:
 #   label       short identifier used in console output
 #   specprod    DESI spectroscopic production name (e.g. 'iron', 'loa')
-#   coadd_type  'cumulative' | 'healpix'  (extend _build_spectra as needed)
+#   coadd_type  'cumulative' | 'healpix'  (extend helpers as needed)
 #   targetid    DESI TARGETID (integer)
 #   phot_type   'legacysurvey' | 'external'
 #
@@ -60,6 +63,10 @@ from desispec.io import write_spectra, read_spectra
 # Additional keys for coadd_type == 'healpix':
 #   survey, program, healpix
 #
+# Additional keys for phot_type == 'legacysurvey':
+#   phot_subpath  path of the output Tractor file relative to outdir
+#                 (used to check existence before touching DR9)
+#
 # Additional keys for phot_type == 'external':
 #   phot_infile   absolute path to the source photometric catalog
 #   phot_ext      FITS extension name containing the catalog
@@ -68,14 +75,15 @@ from desispec.io import write_spectra, read_spectra
 
 TARGETS = [
     dict(
-        label      = 'iron-tile',
-        specprod   = 'iron',
-        coadd_type = 'cumulative',
-        tile       = 80613,
-        petal      = 4,
-        night      = 20210324,
-        targetid   = 39633345008634465,
-        phot_type  = 'legacysurvey',
+        label        = 'iron-tile',
+        specprod     = 'iron',
+        coadd_type   = 'cumulative',
+        tile         = 80613,
+        petal        = 4,
+        night        = 20210324,
+        targetid     = 39633345008634465,
+        phot_type    = 'legacysurvey',
+        phot_subpath = 'north/tractor/105/tractor-1054p567.fits',
     ),
     dict(
         label        = 'loa-suprime',
@@ -102,6 +110,7 @@ def build_spectra(target, outdir='data'):
 
     Returns the fibermap subset for the target (passed to
     :func:`build_photometry` when ``phot_type == 'legacysurvey'``).
+    Skips any output file that already exists.
     """
     coadd_type = target['coadd_type']
     if coadd_type == 'cumulative':
@@ -138,6 +147,14 @@ def build_photometry(target, fibermap=None, outdir='data'):
 # Private helpers — one per (coadd_type, phot_type) combination
 # ---------------------------------------------------------------------------
 
+def _skip(path):
+    """Print a skip notice and return True if *path* already exists."""
+    if os.path.exists(path):
+        print(f'Skipping {path} (already exists)')
+        return True
+    return False
+
+
 def _build_tile_spectra(target, outdir):
     specprod = target['specprod']
     tile     = target['tile']
@@ -145,13 +162,22 @@ def _build_tile_spectra(target, outdir):
     night    = target['night']
     targetid = target['targetid']
 
-    os.environ['SPECPROD'] = specprod
+    stem            = f'{petal}-{tile}-thru{night}'
+    out_redrockfile = os.path.join(outdir, f'redrock-{stem}.fits')
+    out_coaddfile   = os.path.join(outdir, f'coadd-{stem}.fits')
+    out_tilesfile   = os.path.join(outdir, f'tiles-{specprod}.csv')
 
+    # Short-circuit: read fibermap from existing output, nothing to write.
+    if all(os.path.exists(f) for f in [out_redrockfile, out_coaddfile, out_tilesfile]):
+        print(f'{target["label"]}: all spectra outputs already exist, skipping')
+        return Table.read(out_redrockfile, 'FIBERMAP')
+
+    os.environ['SPECPROD'] = specprod
     reduxdir = os.path.join(os.environ['DESI_ROOT'], 'spectro', 'redux', specprod)
     datadir  = os.path.join(reduxdir, 'tiles', 'cumulative', str(tile), str(night))
 
-    coaddfile   = os.path.join(datadir, f'coadd-{petal}-{tile}-thru{night}.fits')
-    redrockfile = os.path.join(datadir, f'redrock-{petal}-{tile}-thru{night}.fits')
+    redrockfile = os.path.join(datadir, f'redrock-{stem}.fits')
+    coaddfile   = os.path.join(datadir, f'coadd-{stem}.fits')
 
     redhdr      = fitsio.read_header(redrockfile)
     zbest       = Table.read(redrockfile, 'REDSHIFTS')
@@ -164,26 +190,26 @@ def _build_tile_spectra(target, outdir):
     expfibermap = expfibermap[np.isin(expfibermap['TARGETID'], targetid)]
     tsnr2       = tsnr2[np.isin(tsnr2['TARGETID'], targetid)]
 
-    out_redrockfile = os.path.join(outdir, os.path.basename(redrockfile))
-    print(f'Writing {out_redrockfile}')
-    with fitsio.FITS(out_redrockfile, 'rw', clobber=True) as ff:
-        ff.write(None, header=redhdr)
-        ff.write(zbest.as_array(), extname='REDSHIFTS')
-        ff.write(fibermap.as_array(), extname='FIBERMAP')
-        ff.write(expfibermap.as_array(), extname='EXP_FIBERMAP')
-        ff.write(tsnr2.as_array(), extname='TSNR2')
+    if not _skip(out_redrockfile):
+        print(f'Writing {out_redrockfile}')
+        with fitsio.FITS(out_redrockfile, 'rw') as ff:
+            ff.write(None, header=redhdr)
+            ff.write(zbest.as_array(), extname='REDSHIFTS')
+            ff.write(fibermap.as_array(), extname='FIBERMAP')
+            ff.write(expfibermap.as_array(), extname='EXP_FIBERMAP')
+            ff.write(tsnr2.as_array(), extname='TSNR2')
 
-    spec = read_spectra(coaddfile).select(targets=targetid)
-    out_coaddfile = os.path.join(outdir, os.path.basename(coaddfile))
-    print(f'Writing {out_coaddfile}')
-    write_spectra(out_coaddfile, spec)
+    if not _skip(out_coaddfile):
+        spec = read_spectra(coaddfile).select(targets=targetid)
+        print(f'Writing {out_coaddfile}')
+        write_spectra(out_coaddfile, spec)
 
-    tilesfile     = os.path.join(reduxdir, f'tiles-{specprod}.csv')
-    tiles         = Table.read(tilesfile)
-    tiles         = tiles[tiles['TILEID'] == tile]
-    out_tilesfile = os.path.join(outdir, os.path.basename(tilesfile))
-    print(f'Writing {out_tilesfile}')
-    tiles.write(filename=out_tilesfile, format='csv', overwrite=True)
+    if not _skip(out_tilesfile):
+        tilesfile = os.path.join(reduxdir, f'tiles-{specprod}.csv')
+        tiles     = Table.read(tilesfile)
+        tiles     = tiles[tiles['TILEID'] == tile]
+        print(f'Writing {out_tilesfile}')
+        tiles.write(filename=out_tilesfile, format='csv')
 
     return fibermap
 
@@ -195,13 +221,20 @@ def _build_healpix_spectra(target, outdir):
     healpix  = target['healpix']
     targetid = target['targetid']
 
-    reduxdir = os.path.join(os.environ['DESI_ROOT'], 'spectro', 'redux', specprod)
-    datadir  = os.path.join(reduxdir, 'healpix', survey, program,
-                            str(healpix // 100), str(healpix))
+    stem            = f'{survey}-{program}-{healpix}'
+    out_redrockfile = os.path.join(outdir, f'redrock-{stem}.fits')
+    out_coaddfile   = os.path.join(outdir, f'coadd-{stem}.fits')
 
-    stem        = f'{survey}-{program}-{healpix}'
-    coaddfile   = os.path.join(datadir, f'coadd-{stem}.fits')
+    # Short-circuit: read fibermap from existing output, nothing to write.
+    if all(os.path.exists(f) for f in [out_redrockfile, out_coaddfile]):
+        print(f'{target["label"]}: all spectra outputs already exist, skipping')
+        return Table.read(out_redrockfile, 'FIBERMAP')
+
+    reduxdir    = os.path.join(os.environ['DESI_ROOT'], 'spectro', 'redux', specprod)
+    datadir     = os.path.join(reduxdir, 'healpix', survey, program,
+                               str(healpix // 100), str(healpix))
     redrockfile = os.path.join(datadir, f'redrock-{stem}.fits')
+    coaddfile   = os.path.join(datadir, f'coadd-{stem}.fits')
 
     redhdr      = fitsio.read_header(redrockfile)
     zbest       = Table.read(redrockfile, 'REDSHIFTS')
@@ -214,24 +247,28 @@ def _build_healpix_spectra(target, outdir):
     expfibermap = expfibermap[np.isin(expfibermap['TARGETID'], targetid)]
     tsnr2       = tsnr2[np.isin(tsnr2['TARGETID'], targetid)]
 
-    out_redrockfile = os.path.join(outdir, os.path.basename(redrockfile))
-    print(f'Writing {out_redrockfile}')
-    with fitsio.FITS(out_redrockfile, 'rw', clobber=True) as ff:
-        ff.write(None, header=redhdr)
-        ff.write(zbest.as_array(), extname='REDSHIFTS')
-        ff.write(fibermap.as_array(), extname='FIBERMAP')
-        ff.write(expfibermap.as_array(), extname='EXP_FIBERMAP')
-        ff.write(tsnr2.as_array(), extname='TSNR2')
+    if not _skip(out_redrockfile):
+        print(f'Writing {out_redrockfile}')
+        with fitsio.FITS(out_redrockfile, 'rw') as ff:
+            ff.write(None, header=redhdr)
+            ff.write(zbest.as_array(), extname='REDSHIFTS')
+            ff.write(fibermap.as_array(), extname='FIBERMAP')
+            ff.write(expfibermap.as_array(), extname='EXP_FIBERMAP')
+            ff.write(tsnr2.as_array(), extname='TSNR2')
 
-    spec = read_spectra(coaddfile).select(targets=targetid)
-    out_coaddfile = os.path.join(outdir, os.path.basename(coaddfile))
-    print(f'Writing {out_coaddfile}')
-    write_spectra(out_coaddfile, spec)
+    if not _skip(out_coaddfile):
+        spec = read_spectra(coaddfile).select(targets=targetid)
+        print(f'Writing {out_coaddfile}')
+        write_spectra(out_coaddfile, spec)
 
     return fibermap
 
 
 def _build_legacysurvey_photometry(target, fibermap, outdir):
+    out_tractorfile = os.path.join(outdir, target['phot_subpath'])
+    if _skip(out_tractorfile):
+        return
+
     from desispec.io import photo
 
     dr9dir  = os.path.join(os.environ['DESI_ROOT'], 'external', 'legacysurvey', 'dr9')
@@ -243,26 +280,26 @@ def _build_legacysurvey_photometry(target, fibermap, outdir):
     tractorfile = os.path.join(dr9dir, region, 'tractor', brick[:3], f'tractor-{brick}.fits')
     tractorhdr  = fitsio.read_header(tractorfile)
 
-    out_tractorfile = os.path.join(outdir, region, 'tractor', brick[:3],
-                                   os.path.basename(tractorfile))
     print(f'Writing {out_tractorfile}')
     os.makedirs(os.path.dirname(out_tractorfile), exist_ok=True)
-    fitsio.write(out_tractorfile, tractor.as_array(), header=tractorhdr, clobber=True)
+    fitsio.write(out_tractorfile, tractor.as_array(), header=tractorhdr)
 
 
 def _build_external_photometry(target, outdir):
-    targetid     = target['targetid']
-    phot_infile  = target['phot_infile']
-    phot_ext     = target['phot_ext']
     phot_outfile = os.path.join(outdir, target['phot_outfile'])
+    if _skip(phot_outfile):
+        return
 
-    phot = fitsio.read(phot_infile, ext=phot_ext)
-    row  = phot[phot['TARGETID'] == targetid]
+    phot = fitsio.read(target['phot_infile'], ext=target['phot_ext'])
+    row  = phot[phot['TARGETID'] == target['targetid']]
     if len(row) == 0:
-        raise ValueError(f'TARGETID {targetid} not found in {phot_infile}[{phot_ext}]')
+        raise ValueError(
+            f"TARGETID {target['targetid']} not found in "
+            f"{target['phot_infile']}[{target['phot_ext']}]"
+        )
 
     print(f'Writing {phot_outfile}')
-    fitsio.write(phot_outfile, row, extname=phot_ext, clobber=True)
+    fitsio.write(phot_outfile, row, extname=target['phot_ext'])
 
 
 # ---------------------------------------------------------------------------
