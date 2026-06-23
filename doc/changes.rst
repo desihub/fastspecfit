@@ -4,7 +4,11 @@ Change Log
 
 3.5.1 (not released yet)
 ------------------------
-*
+
+* New unit test and documentation of external photometric catalog
+  "mode" [`PR #269`_].
+
+.. _`PR #269`: https://github.com/desihub/fastspecfit/pull/269
 
 3.5.0 (2026-06-16)
 ------------------
