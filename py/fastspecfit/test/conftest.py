@@ -116,7 +116,7 @@ def suprime_filenames(outdir):
     datadir      = resources.files('fastspecfit').joinpath('test/data')
     redrockfile  = datadir.joinpath('redrock-special-dark-27247.fits')
     photinfofile = datadir.joinpath('suprime-photinfo.fits')
-    phoyamlfile  = datadir.joinpath('suprime-photoinfo.yaml')
+    phoyamlfile  = datadir.joinpath('suprime-photinfo.yaml')
 
     for f in [redrockfile, photinfofile]:
         if not os.path.isfile(str(f)):
