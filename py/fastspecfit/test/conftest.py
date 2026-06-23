@@ -104,3 +104,47 @@ def stackfit_output(filenames, templates):
     cmd = f'stackfit {filenames["stackfile"]} -o {outfile} --templates {templates}'
     stackfit(args=parse(options=cmd.split()[1:]))
     yield outfile
+
+
+@pytest.fixture(scope='session')
+def suprime_filenames(outdir):
+    from importlib import resources
+    from fastspecfit.test.build_test_spectra import TARGETS
+
+    target = next(t for t in TARGETS if t['label'] == 'loa-suprime')
+
+    datadir      = resources.files('fastspecfit').joinpath('test/data')
+    redrockfile  = datadir.joinpath('redrock-special-dark-27247.fits')
+    photinfofile = datadir.joinpath('suprime-photinfo.fits')
+    phoyamlfile  = datadir.joinpath('suprime-photinfo.yaml')
+
+    for f in [redrockfile, photinfofile]:
+        if not os.path.isfile(str(f)):
+            pytest.skip(f'Missing test fixture: {f}')
+
+    yield {
+        'redrockfile':      str(redrockfile),
+        'fphotodir':        f'{photinfofile}[{target["phot_ext"]}]',
+        'fphotofile':       str(phoyamlfile),
+        'mapdir':           str(datadir),
+        'targetid':         target['targetid'],
+        'input_redshift':   target['input_redshift'],
+        'fastspec_outfile': os.path.join(outdir, 'fastspec-suprime.fits'),
+    }
+
+
+@pytest.fixture(scope='session')
+def fastspec_suprime_output(suprime_filenames, templates):
+    from fastspecfit.fastspecfit import fastspec, parse
+    outfile = suprime_filenames['fastspec_outfile']
+    tid     = suprime_filenames['targetid']
+    z       = suprime_filenames['input_redshift']
+    cmd = (f'fastspec {suprime_filenames["redrockfile"]} -o {outfile} '
+           f'--redux_dir {suprime_filenames["mapdir"]} '
+           f'--fphotodir {suprime_filenames["fphotodir"]} '
+           f'--fphotofile {suprime_filenames["fphotofile"]} '
+           f'--mapdir {suprime_filenames["mapdir"]} '
+           f'--targetids {tid} --input-redshifts {z} --constrain-age '
+           f'--templates {templates}')
+    fastspec(args=parse(options=cmd.split()[1:]))
+    yield outfile
