@@ -140,6 +140,7 @@ def fastspec_suprime_output(suprime_filenames, templates):
     tid     = suprime_filenames['targetid']
     z       = suprime_filenames['input_redshift']
     cmd = (f'fastspec {suprime_filenames["redrockfile"]} -o {outfile} '
+           f'--redux_dir {suprime_filenames["mapdir"]} '
            f'--fphotodir {suprime_filenames["fphotodir"]} '
            f'--fphotofile {suprime_filenames["fphotofile"]} '
            f'--mapdir {suprime_filenames["mapdir"]} '
