@@ -68,9 +68,10 @@ from desispec.io import write_spectra, read_spectra
 #                 (used to check existence before touching DR9)
 #
 # Additional keys for phot_type == 'external':
-#   phot_infile   absolute path to the source photometric catalog
-#   phot_ext      FITS extension name containing the catalog
-#   phot_outfile  basename of the output file written to outdir
+#   phot_infile      absolute path to the source photometric catalog
+#   phot_ext         FITS extension name containing the catalog
+#   phot_outfile     basename of the output file written to outdir
+#   input_redshift   optional float; overrides Redrock Z for the target
 # ---------------------------------------------------------------------------
 
 TARGETS = [
@@ -93,10 +94,11 @@ TARGETS = [
         program      = 'dark',
         healpix      = 27247,
         targetid     = 39089837499744649,
-        phot_type    = 'external',
-        phot_infile  = '/global/cfs/cdirs/desi/users/ioannis/desihiz/suprime/v20260616/desi-suprime.fits',
-        phot_ext     = 'PHOTINFO',
-        phot_outfile = 'suprime-photinfo.fits',
+        phot_type       = 'external',
+        phot_infile     = '/global/cfs/cdirs/desi/users/ioannis/desihiz/suprime/v20260616/desi-suprime.fits',
+        phot_ext        = 'PHOTINFO',
+        phot_outfile    = 'suprime-photinfo.fits',
+        input_redshift  = 3.1484,
     ),
 ]
 

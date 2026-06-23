@@ -102,6 +102,19 @@ def test_qa_fastspec(fastspec_output, filenames, templates, outdir):
 
 
 @pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
+def test_fastspec_suprime(fastspec_suprime_output, suprime_filenames):
+    """Test fastspec with an external photometric catalog (Suprime/HSC mode)."""
+    import fitsio
+    assert os.path.exists(fastspec_suprime_output)
+    fits = fitsio.FITS(fastspec_suprime_output)
+    for hdu in fits:
+        if hdu.has_data():
+            assert hdu.get_extname() in ['METADATA', 'SPECPHOT', 'FASTSPEC', 'MODELS']
+    meta = fitsio.read(fastspec_suprime_output, ext='METADATA')
+    assert meta['TARGETID'][0] == suprime_filenames['targetid']
+
+
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
 def test_qa_stackfit(stackfit_output, filenames, templates, outdir):
     """Test that fastqa runs and produces output for a stackfit file."""
     from pathlib import Path
