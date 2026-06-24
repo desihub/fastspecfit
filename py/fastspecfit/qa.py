@@ -700,7 +700,6 @@ def _fetch_cutout(metadata, outdir, pngfile, layer, pixscale):
         Cutout height in pixels.
 
     """
-    from urllib.request import urlretrieve
     from astropy.io import fits
     from astropy.wcs import WCS
     import matplotlib.image as mpimg
@@ -726,16 +725,38 @@ def _fetch_cutout(metadata, outdir, pngfile, layer, pixscale):
 
     cutoutjpeg = os.path.join(outdir, 'tmp.'+os.path.basename(pngfile.replace('.png', '.jpeg')))
     if not os.path.isfile(cutoutjpeg):
-        import socket
-        wait = 5
-        socket.setdefaulttimeout(wait)
+        import random
+        import time
+        import urllib.request
+        import urllib.error
+
+        # Spread concurrent workers so they don't all hit the server at once.
+        time.sleep(random.uniform(0, 2))
+
         url = ('https://www.legacysurvey.org/viewer/jpeg-cutout?ra=' +
                f'{metadata["RA"]}&dec={metadata["DEC"]}&width={width}&height={height}&layer={layer}')
         log.info(url)
-        try:
-            urlretrieve(url, cutoutjpeg)
-        except:
-            log.warning(f'No viewer cutout retrieved after {wait} seconds.')
+
+        timeout = 15
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                with urllib.request.urlopen(url, timeout=timeout) as response:
+                    if response.status == 200:
+                        with open(cutoutjpeg, 'wb') as f:
+                            f.write(response.read())
+                        break
+                    else:
+                        log.warning(f'Viewer cutout returned HTTP {response.status} '
+                                    f'(attempt {attempt+1}/{max_retries}).')
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    backoff = 2**attempt + random.uniform(0, 1)
+                    log.warning(f'Viewer cutout failed (attempt {attempt+1}/{max_retries}): {e}. '
+                                f'Retrying in {backoff:.1f}s.')
+                    time.sleep(backoff)
+                else:
+                    log.warning(f'No viewer cutout retrieved after {max_retries} attempts: {e}.')
     try:
         img = mpimg.imread(cutoutjpeg)
     except:
