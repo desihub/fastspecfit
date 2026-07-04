@@ -18,31 +18,31 @@ Usage
 Grid Design
 -----------
 Each grid point is a single-age SSP (``sfh=0``) computed with FSPS's
-Charlot & Fall (2000) two-component dust screen (``dust_type=1``, with
-``dust1 = dust2``) and reradiated dust emission (``add_dust_emission=True``,
-Draine & Li 2007 templates). Nebular line and continuum emission are also
-included directly in the spectrum (``add_neb_emission=True``,
-``add_neb_continuum=True``). The grid axes (hard-coded in
-:func:`build_bayesian_grid`, taken from an earlier exploratory script,
-``k_fsps_grid_broad``) are:
+Kriek & Conroy (2013) dust attenuation curve (``dust_type=4``, with
+``dust1=0`` left at its default and ``dust2`` (``tau``) as the free
+diffuse optical depth) and reradiated dust emission
+(``add_dust_emission=True``, Draine & Li 2007 templates). Nebular line
+and continuum emission are also included directly in the spectrum
+(``add_neb_emission=True``, ``add_neb_continuum=True``). The grid axes,
+hard-coded in :func:`build_bayesian_grid`, are:
 
 ======================  ===  ========================================
 Axis                     N    Range
 ======================  ===  ========================================
-log10(age/yr)            15   7.000 to 10.349 (linear spacing)
-log10(Z/Zsun)             5   -2.0 to 0.5 (linear spacing)
-dust optical depth        4   0.0 to 3.0 (linear spacing; dust1=dust2)
-UV bump strength (uvb)    4   0.1 to 1.0 (linear spacing)
+log10(age/yr)            20   7.000 to 10.137 (linear spacing; up to 13.7 Gyr)
+log10(Z/Zsun)             4   -0.8 to 0.2 (linear spacing)
+tau (dust2 optical depth) 6   0, then log-spaced 0.05 to 3.0
+dustn (dust_index)        4   -1.0 to 0.4 (linear spacing)
 dust-emission Umin        4   0.1 to 80.0 (log spacing)
 dust-emission gamma       4   0.005 to 0.04 (linear spacing)
 dust-emission Qpah        3   0.1 to 5.0 (log spacing)
 ======================  ===  ========================================
 
-Total grid size: 15 x 5 x 4 x 4 x 4 x 4 x 3 = 57,600 models.
+Total grid size: 20 x 4 x 6 x 4 x 4 x 4 x 3 = 92,160 models.
 
-These ranges are intentionally left hard-coded for now; the plan is to
-inspect which parameters are actually informative once fitting is
-working end-to-end, and only then revisit the grid design.
+The ``tau`` axis is spaced logarithmically apart from its first grid
+point, which is fixed at exactly zero (dust-free), since a purely
+log-uniform grid cannot represent zero optical depth.
 
 Output Files
 ------------
@@ -59,9 +59,9 @@ Output Files
     Native (unmodified) FSPS vacuum wavelength array in Angstroms.
 
 ``METADATA`` (table, nmodel rows)
-    Per-model grid parameters: ``logage``, ``age`` (Gyr), ``logmet``,
-    ``zzsun``, ``dust``, ``uvb``, ``umin``, ``gamma``, ``qpah``, and
-    ``mstar`` (surviving stellar mass fraction per solar mass formed).
+    Per-model grid parameters: ``age`` (Gyr), ``zzsun`` (Z/Zsun), ``tau``,
+    ``dustn``, ``umin``, ``gamma``, ``qpah``, ``sfr``, and ``mstar``
+    (surviving stellar mass fraction per solar mass formed).
 
 Notes
 -----
@@ -112,24 +112,29 @@ def build_bayesian_grid(imf='chabrier', test=False):
     if test:
         nages, minlogage, maxlogage = 2, 8., 10.
         nmets, minlogmet, maxlogmet = 2, -1., 0.
-        ndusts, mindust, maxdust = 1, 1., 1.
-        nuvbs, minuvb, maxuvb = 1, 1., 1.
+        ntaus, taumin_nonzero, maxtau = 1, 0.05, 3.
+        ndustns, mindustn, maxdustn = 1, 0., 0.
         numins, minumin, maxumin = 1, 1., 1.
         ngammas, mingamma, maxgamma = 1, 0.01, 0.01
         nqpahs, minqpah, maxqpah = 1, 1., 1.
     else:
-        nages, minlogage, maxlogage = 15, 7., 10.349
-        nmets, minlogmet, maxlogmet = 5, -2.0, 0.5
-        ndusts, mindust, maxdust = 4, 0., 3.
-        nuvbs, minuvb, maxuvb = 4, 0.1, 1.
+        nages, minlogage, maxlogage = 20, 7., 10.137
+        nmets, minlogmet, maxlogmet = 4, -0.8, 0.2
+        ntaus, taumin_nonzero, maxtau = 6, 0.05, 3.
+        ndustns, mindustn, maxdustn = 4, -1.0, 0.4
         numins, minumin, maxumin = 4, 0.1, 80.0
         ngammas, mingamma, maxgamma = 4, 0.005, 0.04
         nqpahs, minqpah, maxqpah = 3, 0.1, 5.0
 
     logages = minlogage + (maxlogage - minlogage) * np.arange(nages) / np.float32(max(nages - 1, 1))
     logmets = minlogmet + (maxlogmet - minlogmet) * np.arange(nmets) / np.float32(max(nmets - 1, 1))
-    dusts = mindust + (maxdust - mindust) * np.arange(ndusts) / np.float32(max(ndusts - 1, 1))
-    uvbs = minuvb + (maxuvb - minuvb) * np.arange(nuvbs) / np.float32(max(nuvbs - 1, 1))
+    # tau is log-spaced except for an explicit leading zero (dust-free), since
+    # a purely log-uniform grid cannot represent zero optical depth.
+    if ntaus > 1:
+        taus = np.concatenate(([0.], np.logspace(np.log10(taumin_nonzero), np.log10(maxtau), ntaus - 1)))
+    else:
+        taus = np.array([0.])
+    dustns = mindustn + (maxdustn - mindustn) * np.arange(ndustns) / np.float32(max(ndustns - 1, 1))
     gammas = mingamma + (maxgamma - mingamma) * np.arange(ngammas) / np.float32(max(ngammas - 1, 1))
     umins = 10.**(np.log10(minumin) + (np.log10(maxumin) - np.log10(minumin)) *
                   np.arange(numins) / np.float32(max(numins - 1, 1)))
@@ -139,27 +144,27 @@ def build_bayesian_grid(imf='chabrier', test=False):
     models_dtype = np.dtype(
         [('logage', np.float32),
          ('logmet', np.float32),
-         ('dust', np.float32),
-         ('uvb', np.float32),
+         ('tau', np.float32),
+         ('dustn', np.float32),
          ('umin', np.float32),
          ('gamma', np.float32),
          ('qpah', np.float32)])
 
-    dims = (nages, nmets, ndusts, nuvbs, numins, ngammas, nqpahs)
+    dims = (nages, nmets, ntaus, ndustns, numins, ngammas, nqpahs)
     models = np.zeros(dims, dtype=models_dtype)
 
     for iage, logage in enumerate(logages):
         for imet, logmet in enumerate(logmets):
-            for idust, dust in enumerate(dusts):
-                for iuvb, uvb in enumerate(uvbs):
+            for itau, tau in enumerate(taus):
+                for idustn, dustn in enumerate(dustns):
                     for iumin, umin in enumerate(umins):
                         for igamma, gamma in enumerate(gammas):
                             for iqpah, qpah in enumerate(qpahs):
-                                model = models[iage, imet, idust, iuvb, iumin, igamma, iqpah]
+                                model = models[iage, imet, itau, idustn, iumin, igamma, iqpah]
                                 model['logage'] = logage
                                 model['logmet'] = logmet
-                                model['dust'] = dust
-                                model['uvb'] = uvb
+                                model['tau'] = tau
+                                model['dustn'] = dustn
                                 model['umin'] = umin
                                 model['gamma'] = gamma
                                 model['qpah'] = qpah
@@ -168,15 +173,14 @@ def build_bayesian_grid(imf='chabrier', test=False):
     nsed = len(models)
 
     meta = Table()
-    meta['logage'] = models['logage']
     meta['age'] = 10.**(models['logage'] - 9.) # [Gyr]
-    meta['logmet'] = models['logmet']
     meta['zzsun'] = 10.**models['logmet']
-    meta['dust'] = models['dust']
-    meta['uvb'] = models['uvb']
+    meta['tau'] = models['tau']
+    meta['dustn'] = models['dustn']
     meta['umin'] = models['umin']
     meta['gamma'] = models['gamma']
     meta['qpah'] = models['qpah']
+    meta['sfr'] = np.zeros(nsed, 'f4')
     meta['mstar'] = np.zeros(nsed, 'f4')
 
     print('Instantiating the StellarPopulation object...', end='')
@@ -188,7 +192,7 @@ def build_bayesian_grid(imf='chabrier', test=False):
         add_neb_emission=True,
         add_neb_continuum=True,
         imf_type=imfdict[imf],
-        dust_type=1, # Charlot & Fall (2000)
+        dust_type=4, # Kriek & Conroy (2013)
         sfh=0,       # SSP
     )
     print('...took {:.3f} sec'.format((time.time() - t0)))
@@ -207,9 +211,8 @@ def build_bayesian_grid(imf='chabrier', test=False):
     fluxes = None
     for imodel, model in enumerate(models):
         sp.params['logzsol'] = model['logmet']
-        sp.params['dust1'] = model['dust']
-        sp.params['dust2'] = model['dust']
-        sp.params['uvb'] = model['uvb']
+        sp.params['dust2'] = model['tau']
+        sp.params['dust_index'] = model['dustn']
         sp.params['duste_umin'] = model['umin']
         sp.params['duste_gamma'] = model['gamma']
         sp.params['duste_qpah'] = model['qpah']
@@ -224,6 +227,7 @@ def build_bayesian_grid(imf='chabrier', test=False):
             fluxes = np.zeros((nsed, npix), dtype=np.float32)
 
         fluxes[imodel, :] = flux
+        meta['sfr'][imodel] = sp.sfr
         meta['mstar'][imodel] = sp.stellar_mass
 
         if sp.stellar_mass < 0:
