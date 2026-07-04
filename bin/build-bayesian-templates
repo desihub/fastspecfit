@@ -31,7 +31,7 @@ Axis                     N    Range
 ======================  ===  ========================================
 log10(age/yr)            20   7.000 to 10.137 (linear spacing; up to 13.7 Gyr)
 log10(Z/Zsun)             4   -0.8 to 0.2 (linear spacing)
-tau (dust2 optical depth) 6   0, then log-spaced 0.05 to 3.0
+tau (dust2 optical depth) 6   0.0 to 3.0 (linear spacing)
 dustn (dust_index)        4   -1.0 to 0.4 (linear spacing)
 dust-emission Umin        4   0.1 to 80.0 (log spacing)
 dust-emission gamma       4   0.005 to 0.04 (linear spacing)
@@ -39,10 +39,6 @@ dust-emission Qpah        3   0.1 to 5.0 (log spacing)
 ======================  ===  ========================================
 
 Total grid size: 20 x 4 x 6 x 4 x 4 x 4 x 3 = 92,160 models.
-
-The ``tau`` axis is spaced logarithmically apart from its first grid
-point, which is fixed at exactly zero (dust-free), since a purely
-log-uniform grid cannot represent zero optical depth.
 
 Output Files
 ------------
@@ -112,7 +108,7 @@ def build_bayesian_grid(imf='chabrier', test=False):
     if test:
         nages, minlogage, maxlogage = 2, 8., 10.
         nmets, minlogmet, maxlogmet = 2, -1., 0.
-        ntaus, taumin_nonzero, maxtau = 1, 0.05, 3.
+        ntaus, mintau, maxtau = 1, 1., 1.
         ndustns, mindustn, maxdustn = 1, 0., 0.
         numins, minumin, maxumin = 1, 1., 1.
         ngammas, mingamma, maxgamma = 1, 0.01, 0.01
@@ -120,7 +116,7 @@ def build_bayesian_grid(imf='chabrier', test=False):
     else:
         nages, minlogage, maxlogage = 20, 7., 10.137
         nmets, minlogmet, maxlogmet = 4, -0.8, 0.2
-        ntaus, taumin_nonzero, maxtau = 6, 0.05, 3.
+        ntaus, mintau, maxtau = 6, 0., 3.
         ndustns, mindustn, maxdustn = 4, -1.0, 0.4
         numins, minumin, maxumin = 4, 0.1, 80.0
         ngammas, mingamma, maxgamma = 4, 0.005, 0.04
@@ -128,12 +124,7 @@ def build_bayesian_grid(imf='chabrier', test=False):
 
     logages = minlogage + (maxlogage - minlogage) * np.arange(nages) / np.float32(max(nages - 1, 1))
     logmets = minlogmet + (maxlogmet - minlogmet) * np.arange(nmets) / np.float32(max(nmets - 1, 1))
-    # tau is log-spaced except for an explicit leading zero (dust-free), since
-    # a purely log-uniform grid cannot represent zero optical depth.
-    if ntaus > 1:
-        taus = np.concatenate(([0.], np.logspace(np.log10(taumin_nonzero), np.log10(maxtau), ntaus - 1)))
-    else:
-        taus = np.array([0.])
+    taus = mintau + (maxtau - mintau) * np.arange(ntaus) / np.float32(max(ntaus - 1, 1))
     dustns = mindustn + (maxdustn - mindustn) * np.arange(ndustns) / np.float32(max(ndustns - 1, 1))
     gammas = mingamma + (maxgamma - mingamma) * np.arange(ngammas) / np.float32(max(ngammas - 1, 1))
     umins = 10.**(np.log10(minumin) + (np.log10(maxumin) - np.log10(minumin)) *
