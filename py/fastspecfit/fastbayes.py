@@ -30,15 +30,16 @@ from fastspecfit.photometry import Photometry
 from fastspecfit.cosmo import TabulatedDESI
 from fastspecfit.singlecopy import sc_data
 
-# Grid parameters for which point-estimate statistics are reported.
-# LOGMASS is derived per-template from the closed-form amplitude solve and
-# treated identically to the native grid parameters.
-PARAM_NAMES = ('AGE', 'LOGMET', 'DUST', 'UVB', 'UMIN', 'GAMMA', 'QPAH', 'LOGMASS')
+# Grid parameters for which point-estimate statistics are reported. LOGMASS
+# and SFR are derived per-object from the closed-form amplitude solve (see
+# fastbayes_one) and treated identically to the native grid parameters.
+PARAM_NAMES = ('AGE', 'ZZSUN', 'TAU', 'DUSTN', 'UMIN', 'GAMMA', 'QPAH', 'SFR', 'LOGMASS')
 
 # Grid-column name (lower-case, as written by bin/build-bayesian-templates)
-# for each reported parameter; LOGMASS has no grid column (computed per-object).
+# for each reported parameter; LOGMASS and SFR have no direct grid column
+# (computed per-object).
 _GRID_COLUMN = {
-    'AGE': 'age', 'LOGMET': 'logmet', 'DUST': 'dust', 'UVB': 'uvb',
+    'AGE': 'age', 'ZZSUN': 'zzsun', 'TAU': 'tau', 'DUSTN': 'dustn',
     'UMIN': 'umin', 'GAMMA': 'gamma', 'QPAH': 'qpah',
 }
 
@@ -181,9 +182,9 @@ def get_fastbayes_dtype(topk=0):
     """
     cols = []
     for pname in PARAM_NAMES:
-        cols += [(f'{pname}_BEST', 'f4'), (f'{pname}_MEAN', 'f4'), (f'{pname}_MODE', 'f4'),
+        cols += [(pname, 'f4'), (f'{pname}_MEAN', 'f4'), (f'{pname}_MODE', 'f4'),
                 (f'{pname}_P16', 'f4'), (f'{pname}_P50', 'f4'), (f'{pname}_P84', 'f4')]
-    cols += [('CHI2MIN', 'f4'), ('NBANDS', 'i2')]
+    cols += [('CHI2', 'f4'), ('NDOF', 'i2')]
     if topk > 0:
         cols += [('TOPK_INDEX', 'i4', (topk,)), ('TOPK_WEIGHT', 'f4', (topk,))]
     return np.dtype(cols)
@@ -233,6 +234,13 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
         meta[f'FLUX_{band.upper()}'] = flux[iband]
         meta[f'FLUX_IVAR_{band.upper()}'] = fluxivar[iband]
 
+    result = np.zeros(1, dtype=fastbayes_dtype)[0]
+
+    if data['redshift'] > bg_data.redshift[-1]:
+        log.warning(f'Object {iobj} [{phot.uniqueid_col.lower()} {data["uniqueid"]}] redshift '
+                   f'{data["redshift"]:.6f} exceeds the grid maximum {bg_data.redshift[-1]:.6f}; skipping the fit.')
+        return meta, result
+
     flam = np.asarray(data['photometry']['flam'], dtype='f8')
     flam_ivar = np.asarray(data['photometry']['flam_ivar'], dtype='f8') * phot.bands_to_fit
     lambda_eff = np.asarray(data['photometry']['lambda_eff'], dtype='f8')
@@ -256,10 +264,18 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
     ibest = np.argmin(chi2)
     logmass = np.log10(np.clip(amplitude, 1e-30, None))
 
-    result = np.zeros(1, dtype=fastbayes_dtype)[0]
+    # The grid stores sfr per solar mass formed (like the flux templates
+    # themselves), so scale by the fitted mass amplitude to get each
+    # template's actual SFR estimate for this object.
+    sfr = amplitude * np.asarray(bg_data.meta['sfr']) # [ntemplate], Msun/yr
+
+    derived = {'LOGMASS': logmass, 'SFR': sfr}
+
     for pname in PARAM_NAMES:
-        vals = logmass if pname == 'LOGMASS' else np.asarray(bg_data.meta[_GRID_COLUMN[pname]])
-        result[f'{pname}_BEST'] = vals[ibest]
+        vals = derived.get(pname)
+        if vals is None:
+            vals = np.asarray(bg_data.meta[_GRID_COLUMN[pname]])
+        result[pname] = vals[ibest]
         result[f'{pname}_MEAN'] = np.sum(weight * vals)
         result[f'{pname}_MODE'] = _weighted_mode(vals, weight)
         p16, p50, p84 = _weighted_percentile(vals, weight, (16., 50., 84.))
@@ -267,8 +283,11 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
         result[f'{pname}_P50'] = p50
         result[f'{pname}_P84'] = p84
 
-    result['CHI2MIN'] = chi2min
-    result['NBANDS'] = int(np.sum(flam_ivar > 0.))
+    # dof = number of fitted bands minus the one continuous free parameter
+    # (the per-template mass amplitude) solved for above.
+    nbands_used = int(np.sum(flam_ivar > 0.))
+    result['CHI2'] = chi2min
+    result['NDOF'] = max(nbands_used - 1, 0)
 
     if topk > 0:
         idx = np.argsort(weight)[::-1][:topk]
@@ -299,6 +318,12 @@ def write_fastbayes(meta, results, outfile, gridfile, fphotofile, topk=0):
     """
     from astropy.io import fits
 
+    outdir = os.path.dirname(os.path.abspath(os.path.expanduser(os.path.expandvars(outfile))))
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir, exist_ok=True)
+
+    tmpfile = outfile + '.tmp'
+
     hduprim = fits.PrimaryHDU()
     hduprim.header['GRIDFILE'] = os.path.abspath(str(gridfile))
     hduprim.header['FPHOTO'] = os.path.abspath(str(fphotofile)) if fphotofile else ''
@@ -312,12 +337,15 @@ def write_fastbayes(meta, results, outfile, gridfile, fphotofile, topk=0):
 
     hx = fits.HDUList([hduprim, hdumeta, hduresults])
 
-    outdir = os.path.dirname(outfile)
-    if outdir and not os.path.isdir(outdir):
-        os.makedirs(outdir, exist_ok=True)
+    nobj = len(meta)
+    if nobj == 1:
+        log.info(f'Writing 1 object to {outfile}')
+    else:
+        log.info(f'Writing {nobj:,d} objects to {outfile}')
 
-    log.info(f'Writing results for {len(meta)} objects to {outfile}')
-    hx.writeto(outfile, overwrite=True)
+    # write to a tempfile, then atomically rename into place
+    hx.writeto(tmpfile, overwrite=True, checksum=True)
+    os.rename(tmpfile, outfile)
 
 
 def parse(options=None):
@@ -479,7 +507,8 @@ def fastbayes(args=None, mp_pool=None):
 
     outmeta = create_output_meta(vstack(out[0]), phot=phot, fastphot=True)
 
-    units = {f'AGE_{stat}': 'Gyr' for stat in ('BEST', 'MEAN', 'MODE', 'P16', 'P50', 'P84')}
+    units = {'AGE': 'Gyr'}
+    units.update({f'AGE_{stat}': 'Gyr' for stat in ('MEAN', 'MODE', 'P16', 'P50', 'P84')})
     results = create_output_table(out[1], outmeta, units)
 
     if _own_pool:
