@@ -1,0 +1,313 @@
+#!/usr/bin/env python
+
+"""Build a large grid of FSPS single stellar population (SSP) templates
+for FastSpecFit's Bayesian grid-based, broadband-photometry-only fitting
+mode.
+
+Each grid point is a complete, fully specified SSP model: dust
+attenuation and dust re-emission are computed by FSPS itself and baked
+directly into the output spectrum.
+
+Usage
+-----
+::
+
+  time python bin/build-bayesian-templates --gridnumber 001 \\
+      --templatedir $DESI_ROOT/fastspecfit/templates/bayesian
+
+Grid Design
+-----------
+Each grid point is a single-age SSP (``sfh=0``) computed with FSPS's
+Charlot & Fall (2000) two-component dust screen (``dust_type=1``, with
+``dust1 = dust2``) and reradiated dust emission (``add_dust_emission=True``,
+Draine & Li 2007 templates). Nebular line and continuum emission are also
+included directly in the spectrum (``add_neb_emission=True``,
+``add_neb_continuum=True``). The grid axes (hard-coded in
+:func:`build_bayesian_grid`, taken from an earlier exploratory script,
+``k_fsps_grid_broad``) are:
+
+======================  ===  ========================================
+Axis                     N    Range
+======================  ===  ========================================
+log10(age/yr)            15   7.000 to 10.349 (linear spacing)
+log10(Z/Zsun)             5   -2.0 to 0.5 (linear spacing)
+dust optical depth        4   0.0 to 3.0 (linear spacing; dust1=dust2)
+UV bump strength (uvb)    4   0.1 to 1.0 (linear spacing)
+dust-emission Umin        4   0.1 to 80.0 (log spacing)
+dust-emission gamma       4   0.005 to 0.04 (linear spacing)
+dust-emission Qpah        3   0.1 to 5.0 (log spacing)
+======================  ===  ========================================
+
+Total grid size: 15 x 5 x 4 x 4 x 4 x 4 x 3 = 57,600 models.
+
+These ranges are intentionally left hard-coded for now; the plan is to
+inspect which parameters are actually informative once fitting is
+working end-to-end, and only then revisit the grid design.
+
+Output Files
+------------
+``<templatedir>/<gridnumber>/bayesian-templates-{imf}-{gridnumber}.fits``
+
+``FLUX`` (Primary HDU, float64 [nwave x nmodel])
+    SSP spectra (stellar continuum + nebular emission + dust attenuation
+    + reradiated dust emission) in units of erg/s/cm2/Angstrom at 10 pc
+    per solar mass formed. Header keywords record the IMF, grid number,
+    python-fsps version and commit hash, and the FSPS isochrone,
+    spectral, and dust-emission libraries in use.
+
+``WAVE`` (float64 [nwave])
+    Native (unmodified) FSPS vacuum wavelength array in Angstroms.
+
+``METADATA`` (table, nmodel rows)
+    Per-model grid parameters: ``logage``, ``age`` (Gyr), ``logmet``,
+    ``zzsun``, ``dust``, ``uvb``, ``umin``, ``gamma``, ``qpah``, and
+    ``mstar`` (surviving stellar mass fraction per solar mass formed).
+
+Notes
+-----
+* See ``bin/build-templates`` for FSPS/python-fsps installation
+  instructions.
+
+"""
+import os, time
+import numpy as np
+import fitsio
+import fsps
+
+from astropy.io import fits
+from astropy.table import Table
+
+
+def build_bayesian_grid(imf='chabrier', test=False):
+    """Build the Bayesian SSP template grid.
+
+    Parameters
+    ----------
+    imf : :class:`str`, optional
+        Initial mass function passed to ``python-fsps``. One of
+        ``'chabrier'`` (default), ``'salpeter'``, or ``'kroupa'``.
+    test : :class:`bool`, optional
+        If ``True``, build a tiny grid for quick testing. Default is
+        ``False``.
+
+    Returns
+    -------
+    meta : :class:`astropy.table.Table`
+        Per-model grid parameters and derived quantities (see module
+        docstring).
+    wave : :class:`numpy.ndarray`
+        Native FSPS vacuum wavelength array in Angstroms.
+    fluxes : :class:`numpy.ndarray`
+        Model spectra of shape (nmodel, nwave) in units of
+        erg/s/cm2/Angstrom at 10 pc per solar mass formed.
+    libraries : :class:`tuple` of :class:`str`
+        FSPS isochrone, spectral, and dust-emission library names, as
+        reported by ``fsps.StellarPopulation.libraries``.
+
+    """
+    # https://dfm.io/python-fsps/current/stellarpop_api/
+    imfdict = {'salpeter': 0, 'chabrier': 1, 'kroupa': 2}
+
+    # Grid axes; see the module docstring for the full design.
+    if test:
+        nages, minlogage, maxlogage = 2, 8., 10.
+        nmets, minlogmet, maxlogmet = 2, -1., 0.
+        ndusts, mindust, maxdust = 1, 1., 1.
+        nuvbs, minuvb, maxuvb = 1, 1., 1.
+        numins, minumin, maxumin = 1, 1., 1.
+        ngammas, mingamma, maxgamma = 1, 0.01, 0.01
+        nqpahs, minqpah, maxqpah = 1, 1., 1.
+    else:
+        nages, minlogage, maxlogage = 15, 7., 10.349
+        nmets, minlogmet, maxlogmet = 5, -2.0, 0.5
+        ndusts, mindust, maxdust = 4, 0., 3.
+        nuvbs, minuvb, maxuvb = 4, 0.1, 1.
+        numins, minumin, maxumin = 4, 0.1, 80.0
+        ngammas, mingamma, maxgamma = 4, 0.005, 0.04
+        nqpahs, minqpah, maxqpah = 3, 0.1, 5.0
+
+    logages = minlogage + (maxlogage - minlogage) * np.arange(nages) / np.float32(max(nages - 1, 1))
+    logmets = minlogmet + (maxlogmet - minlogmet) * np.arange(nmets) / np.float32(max(nmets - 1, 1))
+    dusts = mindust + (maxdust - mindust) * np.arange(ndusts) / np.float32(max(ndusts - 1, 1))
+    uvbs = minuvb + (maxuvb - minuvb) * np.arange(nuvbs) / np.float32(max(nuvbs - 1, 1))
+    gammas = mingamma + (maxgamma - mingamma) * np.arange(ngammas) / np.float32(max(ngammas - 1, 1))
+    umins = 10.**(np.log10(minumin) + (np.log10(maxumin) - np.log10(minumin)) *
+                  np.arange(numins) / np.float32(max(numins - 1, 1)))
+    qpahs = 10.**(np.log10(minqpah) + (np.log10(maxqpah) - np.log10(minqpah)) *
+                  np.arange(nqpahs) / np.float32(max(nqpahs - 1, 1)))
+
+    models_dtype = np.dtype(
+        [('logage', np.float32),
+         ('logmet', np.float32),
+         ('dust', np.float32),
+         ('uvb', np.float32),
+         ('umin', np.float32),
+         ('gamma', np.float32),
+         ('qpah', np.float32)])
+
+    dims = (nages, nmets, ndusts, nuvbs, numins, ngammas, nqpahs)
+    models = np.zeros(dims, dtype=models_dtype)
+
+    for iage, logage in enumerate(logages):
+        for imet, logmet in enumerate(logmets):
+            for idust, dust in enumerate(dusts):
+                for iuvb, uvb in enumerate(uvbs):
+                    for iumin, umin in enumerate(umins):
+                        for igamma, gamma in enumerate(gammas):
+                            for iqpah, qpah in enumerate(qpahs):
+                                model = models[iage, imet, idust, iuvb, iumin, igamma, iqpah]
+                                model['logage'] = logage
+                                model['logmet'] = logmet
+                                model['dust'] = dust
+                                model['uvb'] = uvb
+                                model['umin'] = umin
+                                model['gamma'] = gamma
+                                model['qpah'] = qpah
+
+    models = models.flatten()
+    nsed = len(models)
+
+    meta = Table()
+    meta['logage'] = models['logage']
+    meta['age'] = 10.**(models['logage'] - 9.) # [Gyr]
+    meta['logmet'] = models['logmet']
+    meta['zzsun'] = 10.**models['logmet']
+    meta['dust'] = models['dust']
+    meta['uvb'] = models['uvb']
+    meta['umin'] = models['umin']
+    meta['gamma'] = models['gamma']
+    meta['qpah'] = models['qpah']
+    meta['mstar'] = np.zeros(nsed, 'f4')
+
+    print('Instantiating the StellarPopulation object...', end='')
+    t0 = time.time()
+    sp = fsps.StellarPopulation(
+        compute_vega_mags=False,
+        zcontinuous=1,
+        add_dust_emission=True,
+        add_neb_emission=True,
+        add_neb_continuum=True,
+        imf_type=imfdict[imf],
+        dust_type=1, # Charlot & Fall (2000)
+        sfh=0,       # SSP
+    )
+    print('...took {:.3f} sec'.format((time.time() - t0)))
+    libraries = tuple(lib.decode() for lib in sp.libraries)
+    print('FSPS libraries: {}'.format(', '.join(libraries)))
+
+    print(f'Creating {nsed} model spectra...')
+    t0 = time.time()
+
+    lodot = 3.828e33               # [erg/s]
+    tenpc2 = (10. * 3.085678e18)**2 # [cm2]
+
+    # log progress roughly every 5% of the grid (at least every model, at most every 500)
+    logevery = int(np.clip(nsed // 20, 1, 500))
+
+    fluxes = None
+    for imodel, model in enumerate(models):
+        sp.params['logzsol'] = model['logmet']
+        sp.params['dust1'] = model['dust']
+        sp.params['dust2'] = model['dust']
+        sp.params['uvb'] = model['uvb']
+        sp.params['duste_umin'] = model['umin']
+        sp.params['duste_gamma'] = model['gamma']
+        sp.params['duste_qpah'] = model['qpah']
+
+        tage = 10.**(model['logage'] - 9.) # [Gyr]
+        wave, flux = sp.get_spectrum(tage=tage, peraa=True)
+
+        flux = flux * lodot / (4. * np.pi * tenpc2) # [erg/s/cm2/A/Msun at 10pc]
+
+        if fluxes is None:
+            npix = len(wave)
+            fluxes = np.zeros((nsed, npix), dtype=np.float64)
+
+        fluxes[imodel, :] = flux
+        meta['mstar'][imodel] = sp.stellar_mass
+
+        if sp.stellar_mass < 0:
+            raise ValueError('Stellar mass is negative!')
+
+        ndone = imodel + 1
+        if ndone % logevery == 0 or ndone == nsed:
+            rate = ndone / (time.time() - t0) # [models/sec]
+            remaining = (nsed - ndone) / rate / 60. # [min]
+            print('  {}/{} models ({:.1f}%) done in {:.1f} min; ~{:.1f} min remaining'.format(
+                ndone, nsed, 100. * ndone / nsed, (time.time() - t0) / 60., remaining))
+
+    print('Finished {} models in {:.3f} min'.format(nsed, (time.time() - t0) / 60.))
+
+    return meta, wave, fluxes, libraries
+
+
+def main(imf='chabrier', gridnumber=None, templatedir=None, test=False):
+    """Build the Bayesian template grid and write the output FITS file.
+
+    Parameters
+    ----------
+    imf : :class:`str`, optional
+        Initial mass function. One of ``'chabrier'`` (default),
+        ``'salpeter'``, or ``'kroupa'``.
+    gridnumber : :class:`str`
+        Grid identifier (e.g., ``'001'``), embedded in the output
+        directory and filename in place of a version string.
+    templatedir : :class:`str`
+        Root output directory; the FITS file is written to
+        ``<templatedir>/<gridnumber>/``.
+    test : :class:`bool`, optional
+        If ``True``, build a tiny test grid. Default is ``False``.
+
+    """
+    meta, wave, fluxes, libraries = build_bayesian_grid(imf=imf, test=test)
+
+    outdir = os.path.join(templatedir, gridnumber)
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir, exist_ok=True)
+    outfile = os.path.join(outdir, f'bayesian-templates-{imf}-{gridnumber}.fits')
+
+    hduflux = fits.PrimaryHDU(fluxes)
+    hduflux.header['EXTNAME'] = 'FLUX'
+    hduflux.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+    hduflux.header['IMF'] = imf
+    hduflux.header['GRIDNUM'] = gridnumber
+    hduflux.header['PYFSPSV'] = (fsps.__version__, 'python-fsps version')
+    hduflux.header['FSPSHASH'] = (fsps.fsps_version.commit_id, 'python-fsps/FSPS git commit')
+    hduflux.header['ISOCHRON'] = (libraries[0], 'FSPS isochrone library')
+    hduflux.header['SPECLIB'] = (libraries[1], 'FSPS stellar spectral library')
+    hduflux.header['DUSTLIB'] = (libraries[2], 'FSPS dust-emission library')
+
+    hduwave = fits.ImageHDU(wave)
+    hduwave.header['EXTNAME'] = 'WAVE'
+    hduwave.header['BUNIT'] = 'Angstrom'
+    hduwave.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+
+    hdutable = fits.convenience.table_to_hdu(meta)
+    hdutable.header['EXTNAME'] = 'METADATA'
+    hdutable.header['IMF'] = imf
+
+    hx = fits.HDUList([hduflux, hduwave, hdutable])
+
+    print(f'Writing {len(meta)} model spectra to {outfile}')
+    hx.writeto(outfile, overwrite=True)
+
+
+if __name__ == '__main__':
+
+    import argparse
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--templatedir', default=None,
+                        help='Output directory (default $DESI_ROOT/fastspecfit/templates/bayesian)')
+    parser.add_argument('--gridnumber', required=True, help='Grid number/identifier (e.g., 001)')
+    parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
+                        help='Initial mass function')
+    parser.add_argument('--test', action='store_true', help='Generate a tiny test grid.')
+    args = parser.parse_args()
+
+    templatedir = args.templatedir
+    if templatedir is None:
+        templatedir = os.path.join(os.environ['DESI_ROOT'], 'fastspecfit', 'templates', 'bayesian')
+    templatedir = os.path.expandvars(templatedir)
+
+    main(imf=args.imf, gridnumber=args.gridnumber, templatedir=templatedir, test=args.test)
