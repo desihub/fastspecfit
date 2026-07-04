@@ -99,7 +99,21 @@ class BayesianGrid(object):
         self._wave = None
 
 
-    def load(self, gridfile):
+    @staticmethod
+    def get_templates_filename(gridnumber, imf, templatedir=None):
+        """Build the raw templates FITS filename from ``FTEMPLATES_DIR`` (or an
+        explicit override), grid number, and IMF, mirroring
+        :func:`fastspecfit.templates.Templates.get_templates_filename`.
+
+        """
+        if templatedir is None:
+            templatedir = os.path.join(os.path.expandvars(os.environ.get('FTEMPLATES_DIR')), 'bayesian')
+        else:
+            templatedir = os.path.expandvars(templatedir)
+        return os.path.join(templatedir, str(gridnumber), f'bayesian-templates-{imf}-{gridnumber}.fits')
+
+
+    def load(self, gridfile, templatedir=None):
         """Load a ``bayesian-photometry-*.fits`` grid file (idempotent)."""
         if self.file == gridfile:
             return
@@ -110,7 +124,7 @@ class BayesianGrid(object):
         self.gridnumber = prihdr.get('GRIDNUM')
         self.imf = prihdr.get('IMF')
         self.fphotofile = prihdr.get('FPHOTO')
-        self.templates_file = prihdr.get('TEMPFILE')
+        self.templates_file = self.get_templates_filename(self.gridnumber, self.imf, templatedir=templatedir)
         self.logspace = bool(prihdr.get('LOGSPACE'))
 
         photsys_hdr = prihdr.get('PHOTSYS')
@@ -219,7 +233,7 @@ _igm = None
 _cosmo = None
 
 
-def _initialize_fastbayes_workers(fphotofile=None, gridfile=None):
+def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=None):
     """MPPool initializer: populate ``sc_data.photometry``, ``bg_data``, the
     IGM model, and the cosmology in each worker.
 
@@ -231,7 +245,7 @@ def _initialize_fastbayes_workers(fphotofile=None, gridfile=None):
     global _igm, _cosmo
 
     sc_data.photometry = Photometry(fphotofile=fphotofile)
-    bg_data.load(gridfile)
+    bg_data.load(gridfile, templatedir=templatedir)
 
     if list(bg_data.bands) != list(sc_data.photometry.bands):
         errmsg = (f"Band mismatch between the photometry configuration {sc_data.photometry.fphotofile} "
@@ -862,6 +876,9 @@ def parse(options=None):
     parser.add_argument('--gridfile', type=str, required=True,
                         help='Full path to the Bayesian photometry grid file '
                         '(output of bin/build-bayesian-photometry).')
+    parser.add_argument('--templatedir', type=str, default=None,
+                        help='Top-level location of the raw Bayesian templates file '
+                        '(default: $FTEMPLATES_DIR/bayesian).')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to process in each file, zero-indexed.')
@@ -877,7 +894,7 @@ def parse(options=None):
                         help='Use QuasarNet to improve QSO redshifts.')
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
     parser.add_argument('--fphotofile', type=str, default=None,
-                        help='Photometric configuration file (default: taken from the grid file header).')
+                        help='Photometric configuration file (default: bundled fastspecfit configuration).')
     parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
@@ -925,6 +942,8 @@ def fastbayes(args=None, mp_pool=None):
         envlist.append('DUST_DIR')
     if args.fphotodir is None:
         envlist.append('FPHOTO_DIR')
+    if args.templatedir is None:
+        envlist.append('FTEMPLATES_DIR')
     for env in envlist:
         if env not in os.environ:
             errmsg = f'Mandatory environment variable {env} missing.'
@@ -951,7 +970,7 @@ def fastbayes(args=None, mp_pool=None):
         log.critical(errmsg)
         raise IOError(errmsg)
 
-    init_argdict = {'fphotofile': args.fphotofile, 'gridfile': gridfile}
+    init_argdict = {'fphotofile': args.fphotofile, 'gridfile': gridfile, 'templatedir': args.templatedir}
 
     t0 = time.time()
     _initialize_fastbayes_workers(**init_argdict)

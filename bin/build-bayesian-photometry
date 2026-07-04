@@ -18,8 +18,8 @@ Usage
 ::
 
   time python bin/build-bayesian-photometry --gridnumber 001 \\
-      --templatedir $DESI_ROOT/fastspecfit/templates/bayesian \\
-      --outfile $DESI_ROOT/fastspecfit/templates/bayesian/001/bayesian-photometry-chabrier-001.fits
+      --templatedir $FTEMPLATES_DIR/bayesian \\
+      --outfile $FTEMPLATES_DIR/bayesian/001/bayesian-photometry-chabrier-001.fits
 
 Output Files
 ------------
@@ -262,7 +262,7 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
     hduprim = fits.PrimaryHDU()
     hduprim.header['GRIDNUM'] = gridnumber
     hduprim.header['IMF'] = imf
-    hduprim.header['TEMPFILE'] = (os.path.abspath(tempfile), 'source templates file')
+    hduprim.header['TEMPFILE'] = (os.path.basename(tempfile), 'source templates file')
     hduprim.header['FPHOTO'] = os.path.basename(str(phot.fphotofile))
     hduprim.header['PHOTSYS'] = (','.join(photsys_keys) if any(photsys_keys) else 'NONE',
                                  'available photsys key(s)')
@@ -307,7 +307,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--templatedir', default=None,
-                        help='Input template directory (default $DESI_ROOT/fastspecfit/templates/bayesian)')
+                        help='Input template directory (default $FTEMPLATES_DIR/bayesian)')
     parser.add_argument('--outfile', required=True,
                         help='Full path to the output FITS file, e.g., '
                         './001/bayesian-photometry-chabrier-001.fits (include the grid number yourself if desired)')
@@ -327,7 +327,7 @@ if __name__ == '__main__':
 
     templatedir = args.templatedir
     if templatedir is None:
-        templatedir = os.path.join(os.environ['DESI_ROOT'], 'fastspecfit', 'templates', 'bayesian')
+        templatedir = os.path.join(os.environ['FTEMPLATES_DIR'], 'bayesian')
     templatedir = os.path.expandvars(templatedir)
     outfile = os.path.expandvars(args.outfile)
 

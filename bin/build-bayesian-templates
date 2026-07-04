@@ -13,7 +13,7 @@ Usage
 ::
 
   time python bin/build-bayesian-templates --gridnumber 001 \\
-      --templatedir $DESI_ROOT/fastspecfit/templates/bayesian
+      --templatedir $FTEMPLATES_DIR/bayesian
 
 Grid Design
 -----------
@@ -293,7 +293,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--templatedir', default=None,
-                        help='Output directory (default $DESI_ROOT/fastspecfit/templates/bayesian)')
+                        help='Output directory (default $FTEMPLATES_DIR/bayesian)')
     parser.add_argument('--gridnumber', required=True, help='Grid number/identifier (e.g., 001)')
     parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
                         help='Initial mass function')
@@ -302,7 +302,7 @@ if __name__ == '__main__':
 
     templatedir = args.templatedir
     if templatedir is None:
-        templatedir = os.path.join(os.environ['DESI_ROOT'], 'fastspecfit', 'templates', 'bayesian')
+        templatedir = os.path.join(os.environ['FTEMPLATES_DIR'], 'bayesian')
     templatedir = os.path.expandvars(templatedir)
 
     main(imf=args.imf, gridnumber=args.gridnumber, templatedir=templatedir, test=args.test)
