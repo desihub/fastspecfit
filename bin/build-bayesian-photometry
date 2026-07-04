@@ -262,6 +262,7 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
     hduprim = fits.PrimaryHDU()
     hduprim.header['GRIDNUM'] = gridnumber
     hduprim.header['IMF'] = imf
+    hduprim.header['TEMPFILE'] = (os.path.abspath(tempfile), 'source templates file')
     hduprim.header['FPHOTO'] = os.path.abspath(str(phot.fphotofile))
     hduprim.header['PHOTSYS'] = (','.join(photsys_keys) if any(photsys_keys) else 'NONE',
                                  'available photsys key(s)')
