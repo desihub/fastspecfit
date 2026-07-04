@@ -18,18 +18,20 @@ Usage
 ::
 
   time python bin/build-bayesian-photometry --gridnumber 001 \\
-      --templatedir $DESI_ROOT/fastspecfit/templates/bayesian
+      --templatedir $DESI_ROOT/fastspecfit/templates/bayesian \\
+      --outfile $DESI_ROOT/fastspecfit/templates/bayesian/001/bayesian-photometry-chabrier-001.fits
 
 Output Files
 ------------
-``<templatedir>/<gridnumber>/bayesian-photometry-{imf}-{gridnumber}.fits``
+Written to the full path given by ``--outfile``.
 
-``REDSHIFT`` (float64 [nz])
+``REDSHIFT`` (float32 [nz])
     Redshift grid.
 
-``MAGGIES_<photsys>`` (float32 [nmodel x nz x nband]), one per
-photometric system key in the photometry configuration file (e.g.
-``MAGGIES_N``, ``MAGGIES_S``)
+``MAGGIES`` or ``MAGGIES_<photsys>`` (float32 [nmodel x nz x nband]), one
+per photometric-system key in the photometry configuration file (e.g.
+``MAGGIES_N``, ``MAGGIES_S``; just ``MAGGIES`` when the configuration
+does not distinguish photometric systems, e.g. no ``PHOTSYS``)
     Synthesized AB maggies per solar mass formed.
 
 ``FILTERS`` (table, nband rows)
@@ -90,6 +92,17 @@ def build_redshift_grid(zmin, zmax, dz=None, nz=None, logspace=False):
         zgrid = np.linspace(zmin, zmax, nz)
 
     return zgrid
+
+
+def _photsys_suffix(key):
+    """Return an EXTNAME/column-name suffix for a photsys key.
+
+    Some photometry configurations (e.g. non-Legacy-Survey surveys with
+    a single filter set) have no PHOTSYS concept at all, represented by
+    a single empty-string key; in that case, no suffix is used.
+
+    """
+    return '' if key == '' else f'_{key}'
 
 
 def _get_ab_maggies_pre_batch(filters, wave):
@@ -195,7 +208,7 @@ def synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm):
     return maggies
 
 
-def main(gridnumber, imf='chabrier', templatedir=None, fphotofile=None,
+def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
          zmin=0.001, zmax=1.6, dz=0.01, nz=None, logspace=False):
     """Synthesize the photometry grid and write the output FITS file.
 
@@ -204,12 +217,15 @@ def main(gridnumber, imf='chabrier', templatedir=None, fphotofile=None,
     gridnumber : :class:`str`
         Grid identifier matching the one used with
         ``bin/build-bayesian-templates``.
+    outfile : :class:`str`
+        Full path of the output FITS file. Independent of
+        ``templatedir``.
     imf : :class:`str`, optional
         Initial mass function, matching the templates file. Default is
         ``'chabrier'``.
     templatedir : :class:`str`
-        Root template directory; the templates are read from and the
-        output is written to ``<templatedir>/<gridnumber>/``.
+        Root template directory; the templates are read from
+        ``<templatedir>/<gridnumber>/``.
     fphotofile : :class:`str` or None, optional
         Path to the photometry configuration YAML file. Defaults to the
         bundled DR9 configuration.
@@ -237,34 +253,39 @@ def main(gridnumber, imf='chabrier', templatedir=None, fphotofile=None,
 
     maggies = synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm)
 
-    outdir = os.path.join(templatedir, gridnumber)
-    outfile = os.path.join(outdir, f'bayesian-photometry-{imf}-{gridnumber}.fits')
+    outdir = os.path.dirname(outfile)
+    if outdir and not os.path.isdir(outdir):
+        os.makedirs(outdir, exist_ok=True)
+
+    photsys_keys = list(phot.filters.keys())
 
     hduprim = fits.PrimaryHDU()
     hduprim.header['GRIDNUM'] = gridnumber
     hduprim.header['IMF'] = imf
-    hduprim.header['FPHOTO'] = os.path.basename(phot.fphotofile)
+    hduprim.header['FPHOTO'] = os.path.abspath(str(phot.fphotofile))
+    hduprim.header['PHOTSYS'] = (','.join(photsys_keys) if any(photsys_keys) else 'NONE',
+                                 'available photsys key(s)')
     hduprim.header['ZMIN'] = zmin
     hduprim.header['ZMAX'] = zmax
     hduprim.header['NZ'] = len(zgrid)
     hduprim.header['LOGSPACE'] = logspace
     hduprim.header['GRIDHASH'] = (fluxhdr.get('FSPSHASH', ''), 'python-fsps/FSPS git commit of the templates')
 
-    hduz = fits.ImageHDU(zgrid)
+    hduz = fits.ImageHDU(zgrid.astype(np.float32))
     hduz.header['EXTNAME'] = 'REDSHIFT'
 
     hdus = [hduprim, hduz]
 
     for key in maggies:
         hdumaggies = fits.ImageHDU(maggies[key])
-        hdumaggies.header['EXTNAME'] = f'MAGGIES_{key}'
+        hdumaggies.header['EXTNAME'] = f'MAGGIES{_photsys_suffix(key)}'
         hdumaggies.header['BUNIT'] = 'maggies per solar mass formed'
         hdus.append(hdumaggies)
 
     filters_table = Table()
     filters_table['band'] = phot.bands
     for key in phot.filters:
-        filters_table[f'filter_{key}'] = [f.name for f in phot.filters[key]]
+        filters_table[f'filter{_photsys_suffix(key)}'] = [f.name for f in phot.filters[key]]
     hdufilt = fits.convenience.table_to_hdu(filters_table)
     hdufilt.header['EXTNAME'] = 'FILTERS'
     hdus.append(hdufilt)
@@ -285,7 +306,10 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--templatedir', default=None,
-                        help='Template/output directory (default $DESI_ROOT/fastspecfit/templates/bayesian)')
+                        help='Input template directory (default $DESI_ROOT/fastspecfit/templates/bayesian)')
+    parser.add_argument('--outfile', required=True,
+                        help='Full path to the output FITS file, e.g., '
+                        './001/bayesian-photometry-chabrier-001.fits (include the grid number yourself if desired)')
     parser.add_argument('--gridnumber', required=True, help='Grid number/identifier (e.g., 001)')
     parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
                         help='Initial mass function (must match the templates file)')
@@ -304,10 +328,11 @@ if __name__ == '__main__':
     if templatedir is None:
         templatedir = os.path.join(os.environ['DESI_ROOT'], 'fastspecfit', 'templates', 'bayesian')
     templatedir = os.path.expandvars(templatedir)
+    outfile = os.path.expandvars(args.outfile)
 
     zmin, zmax, dz, nz = args.zmin, args.zmax, args.dz, args.nz
     if args.test:
         zmin, zmax, dz, nz = 0.01, 0.2, None, 5
 
-    main(args.gridnumber, imf=args.imf, templatedir=templatedir, fphotofile=args.fphotofile,
+    main(args.gridnumber, outfile, imf=args.imf, templatedir=templatedir, fphotofile=args.fphotofile,
         zmin=zmin, zmax=zmax, dz=dz, nz=nz, logspace=args.logspace)

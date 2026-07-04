@@ -48,7 +48,7 @@ Output Files
 ------------
 ``<templatedir>/<gridnumber>/bayesian-templates-{imf}-{gridnumber}.fits``
 
-``FLUX`` (Primary HDU, float64 [nwave x nmodel])
+``FLUX`` (Primary HDU, float32 [nwave x nmodel])
     SSP spectra (stellar continuum + nebular emission + dust attenuation
     + reradiated dust emission) in units of erg/s/cm2/Angstrom at 10 pc
     per solar mass formed. Header keywords record the IMF, grid number,
@@ -221,7 +221,7 @@ def build_bayesian_grid(imf='chabrier', test=False):
 
         if fluxes is None:
             npix = len(wave)
-            fluxes = np.zeros((nsed, npix), dtype=np.float64)
+            fluxes = np.zeros((nsed, npix), dtype=np.float32)
 
         fluxes[imodel, :] = flux
         meta['mstar'][imodel] = sp.stellar_mass
