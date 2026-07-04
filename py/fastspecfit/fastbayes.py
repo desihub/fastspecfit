@@ -234,8 +234,10 @@ def _initialize_fastbayes_workers(fphotofile=None, gridfile=None):
     bg_data.load(gridfile)
 
     if list(bg_data.bands) != list(sc_data.photometry.bands):
-        errmsg = ('Band mismatch between the photometry configuration and the Bayesian grid file; '
-                 'they must be built from the same (or a compatible) fphoto configuration file.')
+        errmsg = (f"Band mismatch between the photometry configuration {sc_data.photometry.fphotofile} "
+                  f"and the Bayesian grid file {gridfile}, which was built with fphoto file "
+                  f"'{bg_data.fphotofile}'; they must be built from the same (or a compatible) "
+                  "fphoto configuration file.")
         log.critical(errmsg)
         raise ValueError(errmsg)
 
@@ -796,7 +798,7 @@ def write_fastbayes(meta, results, modelwave, modelspectra, outfile, gridfile, f
 
     hduprim = fits.PrimaryHDU()
     hduprim.header['GRIDFILE'] = os.path.abspath(str(gridfile))
-    hduprim.header['FPHOTO'] = os.path.abspath(str(fphotofile)) if fphotofile else ''
+    hduprim.header['FPHOTO'] = os.path.basename(str(fphotofile)) if fphotofile else ''
     hduprim.header['TOPK'] = topk
 
     hdumeta = fits.convenience.table_to_hdu(meta)
@@ -949,12 +951,7 @@ def fastbayes(args=None, mp_pool=None):
         log.critical(errmsg)
         raise IOError(errmsg)
 
-    fphotofile = args.fphotofile
-    if fphotofile is None:
-        with fitsio.FITS(gridfile) as F:
-            fphotofile = F[0].read_header().get('FPHOTO')
-
-    init_argdict = {'fphotofile': fphotofile, 'gridfile': gridfile}
+    init_argdict = {'fphotofile': args.fphotofile, 'gridfile': gridfile}
 
     t0 = time.time()
     _initialize_fastbayes_workers(**init_argdict)
