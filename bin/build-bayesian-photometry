@@ -1,0 +1,313 @@
+#!/usr/bin/env python
+
+"""Pre-synthesize broadband photometry for a Bayesian SSP template grid
+(as built by ``bin/build-bayesian-templates``) on a fixed redshift grid,
+including IGM attenuation and cosmological dimming.
+
+For each redshift on the grid, every template is redshifted, attenuated
+by the Inoue et al. (2014) IGM model, dimmed by the appropriate
+luminosity distance, and passed through the broadband filter curves
+defined by a FastSpecFit photometry configuration file (e.g., the
+bundled ``legacysurvey-dr9.yaml``). The output maggies are normalized
+per solar mass formed (i.e., no arbitrary flux amplitude is applied) so
+that, at fit time, the stellar-mass normalization of each grid point can
+be solved for analytically given an object's observed photometry.
+
+Usage
+-----
+::
+
+  time python bin/build-bayesian-photometry --gridnumber 001 \\
+      --templatedir $DESI_ROOT/fastspecfit/templates/bayesian
+
+Output Files
+------------
+``<templatedir>/<gridnumber>/bayesian-photometry-{imf}-{gridnumber}.fits``
+
+``REDSHIFT`` (float64 [nz])
+    Redshift grid.
+
+``MAGGIES_<photsys>`` (float32 [nmodel x nz x nband]), one per
+photometric system key in the photometry configuration file (e.g.
+``MAGGIES_N``, ``MAGGIES_S``)
+    Synthesized AB maggies per solar mass formed.
+
+``FILTERS`` (table, nband rows)
+    Band name and the actual filter name used for each photometric
+    system.
+
+``METADATA`` (table, nmodel rows)
+    Copied unchanged from the input template file, for convenience.
+
+"""
+import os, time
+import numpy as np
+import fitsio
+from astropy.io import fits
+from astropy.table import Table
+
+from fastspecfit.photometry import Photometry
+from fastspecfit.cosmo import TabulatedDESI
+from fastspecfit.igm import Inoue14
+
+
+def build_redshift_grid(zmin, zmax, dz=None, nz=None, logspace=False):
+    """Build the fixed redshift grid.
+
+    Parameters
+    ----------
+    zmin : :class:`float`
+        Minimum redshift. Must be greater than zero, since the
+        luminosity-distance normalization used here is singular at
+        z=0.
+    zmax : :class:`float`
+        Maximum redshift.
+    dz : :class:`float` or None, optional
+        Approximate redshift spacing, used to derive the number of grid
+        points when ``nz`` is not given.
+    nz : :class:`int` or None, optional
+        Number of grid points. Overrides ``dz`` when given.
+    logspace : :class:`bool`, optional
+        If ``True``, space grid points uniformly in log10(1+z) instead
+        of linearly in z. Default is ``False``.
+
+    Returns
+    -------
+    zgrid : :class:`numpy.ndarray`
+        Redshift grid of length ``nz``.
+
+    """
+    if zmin <= 0.:
+        errmsg = 'zmin must be > 0 (the 10pc-normalized flux scaling is singular at z=0).'
+        raise ValueError(errmsg)
+
+    if nz is None:
+        nz = int(round((zmax - zmin) / dz)) + 1
+
+    if logspace:
+        zgrid = np.geomspace(1. + zmin, 1. + zmax, nz) - 1.
+    else:
+        zgrid = np.linspace(zmin, zmax, nz)
+
+    return zgrid
+
+
+def _get_ab_maggies_pre_batch(filters, wave):
+    """Precompute per-filter trapezoidal weights for fast batched synthesis.
+
+    Mirrors the ``phot_pre`` / ``phot_batch_weights`` construction in
+    ``ContinuumTools.__init__`` (see ``continuum.py``), which enables
+    synthesizing photometry for many spectra sharing a common wavelength
+    grid via a single matrix-vector product per filter.
+
+    Parameters
+    ----------
+    filters : :class:`speclite.filters.FilterSequence`
+        Filter sequence whose response functions lie strictly within
+        ``wave``.
+    wave : :class:`numpy.ndarray`
+        Observed-frame wavelength array in Angstroms.
+
+    Returns
+    -------
+    maggies_pre : :class:`tuple`
+        Per-filter ``(lo, hi, resp, idenom)`` tuples from
+        :meth:`Photometry.get_ab_maggies_pre`.
+    rtw : :class:`tuple`
+        Per-filter response-weighted trapezoidal integration vectors.
+
+    """
+    maggies_pre = Photometry.get_ab_maggies_pre(filters, wave)
+
+    rtw = []
+    for lo, hi, resp, _ in maggies_pre:
+        dwave = np.diff(wave[lo:hi])
+        r_tw = np.zeros(hi - lo)
+        r_tw[:-1] += 0.5 * resp[:-1] * dwave
+        r_tw[1:] += 0.5 * resp[1:] * dwave
+        rtw.append(r_tw)
+
+    return maggies_pre, tuple(rtw)
+
+
+def synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm):
+    """Synthesize broadband photometry for every template on the redshift grid.
+
+    Parameters
+    ----------
+    wave : :class:`numpy.ndarray`
+        Common rest-frame wavelength array (Angstroms) shared by every
+        template.
+    flux : :class:`numpy.ndarray`
+        Template spectra of shape (nmodel, nwave) in erg/s/cm2/A at
+        10 pc per solar mass formed.
+    zgrid : :class:`numpy.ndarray`
+        Redshift grid.
+    phot : :class:`fastspecfit.photometry.Photometry`
+        Photometry configuration (filters, bands).
+    cosmo : :class:`fastspecfit.cosmo.TabulatedDESI`
+        Cosmology used for the luminosity distance.
+    igm : :class:`fastspecfit.igm.Inoue14`
+        IGM attenuation model.
+
+    Returns
+    -------
+    maggies : :class:`dict`
+        Mapping of photometric-system key (e.g. ``'N'``, ``'S'``) to an
+        array of shape (nmodel, nz, nband) of synthesized AB maggies per
+        solar mass formed.
+
+    """
+    nsed = flux.shape[0]
+    nz = len(zgrid)
+    photsys_keys = list(phot.filters.keys())
+    nband = len(phot.bands)
+
+    maggies = {key: np.zeros((nsed, nz, nband), dtype=np.float32) for key in photsys_keys}
+
+    print(f'Synthesizing photometry for {nsed} templates x {nz} redshifts x '
+          f'{len(photsys_keys)} photometric system(s)...')
+    t0 = time.time()
+    logevery = int(np.clip(nz // 20, 1, 50))
+
+    for iz, z in enumerate(zgrid):
+        wave_obs = wave * (1. + z)
+        igm_trans = igm.full_IGM(z, wave_obs)
+        dlum = cosmo.luminosity_distance(z) # [Mpc]
+        distfactor = (10. / (1e6 * dlum))**2 / (1. + z)
+        zfactor = igm_trans * distfactor # [nwave]
+
+        for key in photsys_keys:
+            maggies_pre, rtw = _get_ab_maggies_pre_batch(phot.filters[key], wave_obs)
+            for iband, ((lo, hi, _, idenom), r_tw) in enumerate(zip(maggies_pre, rtw)):
+                r_tw_z = r_tw * zfactor[lo:hi] # fold in the redshift/IGM/distance factor
+                maggies[key][:, iz, iband] = (flux[:, lo:hi] @ r_tw_z) * idenom
+
+        ndone = iz + 1
+        if ndone % logevery == 0 or ndone == nz:
+            rate = ndone / (time.time() - t0)
+            remaining = (nz - ndone) / rate / 60. # [min]
+            print('  {}/{} redshifts ({:.1f}%) done in {:.1f} min; ~{:.1f} min remaining'.format(
+                ndone, nz, 100. * ndone / nz, (time.time() - t0) / 60., remaining))
+
+    print('Finished {} redshifts in {:.3f} min'.format(nz, (time.time() - t0) / 60.))
+
+    return maggies
+
+
+def main(gridnumber, imf='chabrier', templatedir=None, fphotofile=None,
+         zmin=0.001, zmax=1.6, dz=0.01, nz=None, logspace=False):
+    """Synthesize the photometry grid and write the output FITS file.
+
+    Parameters
+    ----------
+    gridnumber : :class:`str`
+        Grid identifier matching the one used with
+        ``bin/build-bayesian-templates``.
+    imf : :class:`str`, optional
+        Initial mass function, matching the templates file. Default is
+        ``'chabrier'``.
+    templatedir : :class:`str`
+        Root template directory; the templates are read from and the
+        output is written to ``<templatedir>/<gridnumber>/``.
+    fphotofile : :class:`str` or None, optional
+        Path to the photometry configuration YAML file. Defaults to the
+        bundled DR9 configuration.
+    zmin, zmax, dz, nz, logspace
+        See :func:`build_redshift_grid`.
+
+    """
+    tempfile = os.path.join(templatedir, gridnumber, f'bayesian-templates-{imf}-{gridnumber}.fits')
+    if not os.path.isfile(tempfile):
+        errmsg = f'Templates file {tempfile} not found.'
+        raise IOError(errmsg)
+
+    print(f'Reading {tempfile}')
+    T = fitsio.FITS(tempfile)
+    wave = T['WAVE'].read()
+    flux = T['FLUX'].read()
+    meta = T['METADATA'].read()
+    fluxhdr = T['FLUX'].read_header()
+
+    phot = Photometry(fphotofile=fphotofile)
+    cosmo = TabulatedDESI()
+    igm = Inoue14()
+
+    zgrid = build_redshift_grid(zmin, zmax, dz=dz, nz=nz, logspace=logspace)
+
+    maggies = synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm)
+
+    outdir = os.path.join(templatedir, gridnumber)
+    outfile = os.path.join(outdir, f'bayesian-photometry-{imf}-{gridnumber}.fits')
+
+    hduprim = fits.PrimaryHDU()
+    hduprim.header['GRIDNUM'] = gridnumber
+    hduprim.header['IMF'] = imf
+    hduprim.header['FPHOTO'] = os.path.basename(phot.fphotofile)
+    hduprim.header['ZMIN'] = zmin
+    hduprim.header['ZMAX'] = zmax
+    hduprim.header['NZ'] = len(zgrid)
+    hduprim.header['LOGSPACE'] = logspace
+    hduprim.header['GRIDHASH'] = (fluxhdr.get('FSPSHASH', ''), 'python-fsps/FSPS git commit of the templates')
+
+    hduz = fits.ImageHDU(zgrid)
+    hduz.header['EXTNAME'] = 'REDSHIFT'
+
+    hdus = [hduprim, hduz]
+
+    for key in maggies:
+        hdumaggies = fits.ImageHDU(maggies[key])
+        hdumaggies.header['EXTNAME'] = f'MAGGIES_{key}'
+        hdumaggies.header['BUNIT'] = 'maggies per solar mass formed'
+        hdus.append(hdumaggies)
+
+    filters_table = Table()
+    filters_table['band'] = phot.bands
+    for key in phot.filters:
+        filters_table[f'filter_{key}'] = [f.name for f in phot.filters[key]]
+    hdufilt = fits.convenience.table_to_hdu(filters_table)
+    hdufilt.header['EXTNAME'] = 'FILTERS'
+    hdus.append(hdufilt)
+
+    hdumeta = fits.convenience.table_to_hdu(Table(meta))
+    hdumeta.header['EXTNAME'] = 'METADATA'
+    hdus.append(hdumeta)
+
+    hx = fits.HDUList(hdus)
+
+    print(f'Writing {outfile}')
+    hx.writeto(outfile, overwrite=True)
+
+
+if __name__ == '__main__':
+
+    import argparse
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--templatedir', default=None,
+                        help='Template/output directory (default $DESI_ROOT/fastspecfit/templates/bayesian)')
+    parser.add_argument('--gridnumber', required=True, help='Grid number/identifier (e.g., 001)')
+    parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
+                        help='Initial mass function (must match the templates file)')
+    parser.add_argument('--fphotofile', default=None, help='Photometry configuration YAML file')
+
+    parser.add_argument('--zmin', type=float, default=0.001, help='Minimum redshift')
+    parser.add_argument('--zmax', type=float, default=1.6, help='Maximum redshift')
+    parser.add_argument('--dz', type=float, default=0.01, help='Approximate redshift spacing')
+    parser.add_argument('--nz', type=int, default=None, help='Number of redshift grid points (overrides --dz)')
+    parser.add_argument('--logspace', action='store_true', help='Space the redshift grid uniformly in log10(1+z)')
+
+    parser.add_argument('--test', action='store_true', help='Generate a tiny test grid.')
+    args = parser.parse_args()
+
+    templatedir = args.templatedir
+    if templatedir is None:
+        templatedir = os.path.join(os.environ['DESI_ROOT'], 'fastspecfit', 'templates', 'bayesian')
+    templatedir = os.path.expandvars(templatedir)
+
+    zmin, zmax, dz, nz = args.zmin, args.zmax, args.dz, args.nz
+    if args.test:
+        zmin, zmax, dz, nz = 0.01, 0.2, None, 5
+
+    main(args.gridnumber, imf=args.imf, templatedir=templatedir, fphotofile=args.fphotofile,
+        zmin=zmin, zmax=zmax, dz=dz, nz=nz, logspace=args.logspace)
