@@ -71,9 +71,9 @@ _AXIS_OUTNAME = {
 }
 _OUTNAME_TO_AXIS = {v: k for k, v in _AXIS_OUTNAME.items()}
 
-# All reported parameters: the 7 grid axes, plus LOGMASS and SFR, which are
-# derived per-object from the closed-form amplitude solve.
-PARAM_NAMES = tuple(_AXIS_OUTNAME[col] for col in GRID_AXIS_COLUMNS) + ('LOGMASS', 'SFR')
+# All reported parameters: the 7 grid axes, plus LOGMSTAR and LOGSFR, which
+# are derived per-object from the closed-form amplitude solve.
+PARAM_NAMES = tuple(_AXIS_OUTNAME[col] for col in GRID_AXIS_COLUMNS) + ('LOGMSTAR', 'LOGSFR')
 
 # Rest-frame luminosity output keys and reference wavelengths (Angstrom),
 # matching the LOGL_*/LOGLNU_* columns in fastspecfit's own SPECPHOT schema
@@ -246,6 +246,12 @@ def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=No
 
     sc_data.photometry = Photometry(fphotofile=fphotofile)
     bg_data.load(gridfile, templatedir=templatedir)
+
+    if not os.path.isfile(bg_data.templates_file):
+        errmsg = (f'Bayesian templates file {bg_data.templates_file} not found; '
+                  'check $FTEMPLATES_DIR or --templatedir.')
+        log.critical(errmsg)
+        raise IOError(errmsg)
 
     if list(bg_data.bands) != list(sc_data.photometry.bands):
         errmsg = (f"Band mismatch between the photometry configuration {sc_data.photometry.fphotofile} "
@@ -448,11 +454,14 @@ def get_fastbayes_dtype(phot, topk=0):
         cols += [(pname, 'f4'), (f'{pname}_MEAN', 'f4'), (f'{pname}_MODE', 'f4'),
                 (f'{pname}_P16', 'f4'), (f'{pname}_P50', 'f4'), (f'{pname}_P84', 'f4')]
 
-    # Formal delta-chi2=1 uncertainties for the 7 native grid axes only;
-    # LOGMASS/SFR are derived quantities without a directly fit chi2(x)
-    # curve, so no formal uncertainty is reported for them yet.
+    # Formal delta-chi2=1 uncertainties for the 7 native grid axes.
     for col in GRID_AXIS_COLUMNS:
         cols += [(f'{_AXIS_OUTNAME[col]}_IVAR', 'f4')]
+
+    # LOGMSTAR/LOGSFR are derived quantities without a directly fit chi2(x)
+    # curve, so their uncertainty is instead estimated from the weighted
+    # variance of their discrete-grid posterior.
+    cols += [('LOGMSTAR_IVAR', 'f4'), ('LOGSFR_IVAR', 'f4')]
 
     cols += [('CHI2', 'f4'), ('NDOF', 'i2')]
 
@@ -566,12 +575,15 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
     weight /= weight.sum()
 
     ibest = np.argmin(chi2)
-    logmass = np.log10(np.clip(amplitude, 1e-30, None))
+    logmstar = np.log10(np.clip(amplitude, 1e-30, None))
 
     # The grid stores sfr per solar mass formed (like the flux templates
     # themselves), so scale by the fitted mass amplitude to get each
-    # template's actual SFR estimate for this object.
+    # template's actual SFR estimate for this object. Guard against
+    # zero/negative SFR (e.g., old, passively evolving SSPs) before taking
+    # the log, given LOGSFR's large dynamic range.
     sfr_per_template = amplitude * np.asarray(bg_data.meta['sfr'], dtype='f8') # [ntemplate], Msun/yr
+    logsfr_per_template = np.log10(np.clip(sfr_per_template, 1e-30, None))
 
     # --- local refinement of the maximum-likelihood point -----------------
     fit_value, fit_ivar, frac, frac_dir = _refine_grid_axes(ibest, chi2)
@@ -588,9 +600,10 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
     refined_resid = flam - refined_amplitude * refined_model_flam
     chi2_refined = np.sum(flam_ivar * refined_resid**2)
 
-    refined_logmass = np.log10(max(refined_amplitude, 1e-30))
+    refined_logmstar = np.log10(max(refined_amplitude, 1e-30))
     refined_sfr_per_msun = np.sum(corner_weight * np.asarray(bg_data.meta['sfr'], dtype='f8')[corner_idx])
     refined_sfr = refined_amplitude * refined_sfr_per_msun
+    refined_logsfr = np.log10(max(refined_sfr, 1e-30))
 
     # --- refined rest-frame spectrum (N-linear combination of the
     # neighboring raw template spectra), scaled by the refined mass -------
@@ -628,8 +641,8 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
         lums[key] = np.log10(val) if val > 0. else 0.
 
     # --- fill the output row ------------------------------------------------
-    derived = {'LOGMASS': refined_logmass, 'SFR': refined_sfr}
-    posterior = {'LOGMASS': logmass, 'SFR': sfr_per_template}
+    derived = {'LOGMSTAR': refined_logmstar, 'LOGSFR': refined_logsfr}
+    posterior = {'LOGMSTAR': logmstar, 'LOGSFR': logsfr_per_template}
 
     for col in GRID_AXIS_COLUMNS:
         pname = _AXIS_OUTNAME[col]
@@ -644,12 +657,20 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
         else:
             vals = _axis_posterior_values(_OUTNAME_TO_AXIS[pname])
         posterior_arrays[pname] = (vals, weight)
-        result[f'{pname}_MEAN'] = np.sum(weight * vals)
+        mean = np.sum(weight * vals)
+        result[f'{pname}_MEAN'] = mean
         result[f'{pname}_MODE'] = _weighted_mode(vals, weight)
         p16, p50, p84 = _weighted_percentile(vals, weight, (16., 50., 84.))
         result[f'{pname}_P16'] = p16
         result[f'{pname}_P50'] = p50
         result[f'{pname}_P84'] = p84
+
+        # LOGMSTAR/LOGSFR have no direct grid axis (and hence no delta-chi2=1
+        # parabola fit), so estimate their formal uncertainty from the
+        # weighted variance of their discrete-grid posterior instead.
+        if pname in derived:
+            var = np.sum(weight * (vals - mean)**2)
+            result[f'{pname}_IVAR'] = 1. / var if var > 0. else 0.
 
     # dof = number of fitted bands minus the one continuous free parameter
     # (the per-template mass amplitude) solved for above.
@@ -673,14 +694,15 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
         result['TOPK_WEIGHT'][:len(idx)] = weight[idx].astype('f4')
 
     if qa:
+        synth_maggies = refined_model_maggies * refined_amplitude # [nband], observed-frame maggies
         _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
-                          zwave, zflux, redshift, coadd_type=coadd_type, outdir=qadir)
+                          zwave, zflux, synth_maggies, redshift, coadd_type=coadd_type, outdir=qadir)
 
     return meta, result, restflux.astype('f4')
 
 
 def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
-                      zwave, zflux, redshift, coadd_type='healpix', outdir='.'):
+                      zwave, zflux, synth_maggies, redshift, coadd_type='healpix', outdir='.'):
     """Generate a QA figure for one Bayesian-fit object.
 
     Reuses :func:`fastspecfit.qa._target_label` and
@@ -706,6 +728,9 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     zwave, zflux : :class:`numpy.ndarray`
         The same spectrum redshifted (and IGM/distance-attenuated) to the
         observed frame.
+    synth_maggies : :class:`numpy.ndarray`
+        Observed-frame photometry (AB maggies) synthesized from the refined
+        maximum-likelihood model in each band.
     redshift : :class:`float`
     coadd_type : :class:`str`, optional
     outdir : :class:`str`, optional
@@ -714,6 +739,8 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
+    import matplotlib.ticker as ticker
+    from matplotlib import colors
     from fastspecfit.io import get_qa_filename
     from fastspecfit.qa import _target_label, _fetch_cutout
 
@@ -735,21 +762,85 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         cutax.set_xlabel('RA')
         cutax.set_ylabel('Dec')
 
-    # SED panel: observed photometry vs. the refined maximum-likelihood model
+    # SED panel: observed photometry (filled markers, upper limits where
+    # undetected) vs. the refined maximum-likelihood model (curve) and its
+    # synthesized photometry (open markers), all in AB mag.
     sedax = fig.add_subplot(gs[0:2, 0:6])
-    lambda_obs = np.asarray(data['photometry']['lambda_eff']) / 1e4 # [micron]
-    flam = np.asarray(data['photometry']['flam'])
-    flam_ivar = np.asarray(data['photometry']['flam_ivar'])
-    good = flam_ivar > 0.
-    ferr = np.zeros_like(flam)
-    ferr[good] = 1. / np.sqrt(flam_ivar[good])
+    photcol1 = colors.to_hex('darkorange')
 
-    sedax.plot(zwave / 1e4, zflux, color='firebrick', alpha=0.8, lw=1, label='Best-fit model', zorder=1)
-    sedax.errorbar(lambda_obs[good], flam[good], yerr=ferr[good], fmt='o', color='k',
-                   markersize=6, label='Observed', zorder=2)
+    @ticker.FuncFormatter
+    def major_formatter(x, pos):
+        if (x >= 0.01) and (x < 0.1):
+            return f'{x:.2f}'
+        elif (x >= 0.1) and (x < 1):
+            return f'{x:.1f}'
+        else:
+            return f'{x:.0f}'
+
+    nanomaggies = np.asarray(data['photometry']['nanomaggies'], dtype='f8')
+    nanomaggies_ivar = np.asarray(data['photometry']['nanomaggies_ivar'], dtype='f8')
+    lambda_eff = np.asarray(data['photometry']['lambda_eff'], dtype='f8')
+
+    phot_tbl = Photometry.parse_photometry(
+        phot.bands, maggies=nanomaggies, ivarmaggies=nanomaggies_ivar,
+        lambda_eff=lambda_eff, min_uncertainty=phot.min_uncertainty, get_abmag=True)
+
+    # best-fit model curve, converted from erg/s/cm2/A to AB mag
+    factor = 10**(0.4 * 48.6) * zwave**2 / (C_LIGHT * 1e13) # [erg/s/cm2/A --> maggies]
+    mgood = zflux > 0.
+    sedmodel_abmag = np.full_like(zflux, np.nan)
+    sedmodel_abmag[mgood] = -2.5 * np.log10(zflux[mgood] * factor[mgood])
+    sedax.plot(zwave[mgood] / 1e4, sedmodel_abmag[mgood], color='grey', alpha=0.9,
+              zorder=1, label='Best-fit model')
+
+    # synthesized photometry (open markers)
+    synth_good = synth_maggies > 0.
+    synth_abmag = np.full_like(synth_maggies, np.nan, dtype='f8')
+    synth_abmag[synth_good] = -2.5 * np.log10(synth_maggies[synth_good])
+    sedax.scatter(lambda_eff[synth_good] / 1e4, synth_abmag[synth_good], marker='D', s=200,
+                 edgecolor='k', facecolor='none', linewidth=1.5, zorder=3,
+                 label='Synthesized photometry')
+
+    # observed photometry: filled markers (fitted bands) or hollow markers
+    # (bands not used in the fit) for detections, upper limits (lolims)
+    # for non-detections
+    abmag = np.asarray(phot_tbl['abmag'])
+    abmag_limit = np.asarray(phot_tbl['abmag_limit'])
+    yerr = np.vstack((np.asarray(phot_tbl['abmag_brighterr']), np.asarray(phot_tbl['abmag_fainterr'])))
+
+    def _plot_obs(idx, facecolor, alpha, label=None):
+        idx = np.asarray(idx)
+        if len(idx) == 0:
+            return
+        good = idx[(abmag[idx] > 0.) & (abmag_limit[idx] == 0.)]
+        upper = idx[abmag_limit[idx] > 0.]
+        if len(good) > 0:
+            sedax.errorbar(lambda_eff[good] / 1e4, abmag[good], yerr=yerr[:, good], fmt='o',
+                           markersize=8, markeredgewidth=1, markeredgecolor='k',
+                           markerfacecolor=facecolor, elinewidth=1.5, ecolor=photcol1,
+                           capsize=3, zorder=2, alpha=alpha, label=label)
+        if len(upper) > 0:
+            sedax.errorbar(lambda_eff[upper] / 1e4, abmag_limit[upper], lolims=True, yerr=0.75,
+                           fmt='o', markersize=8, markeredgewidth=1.5, markeredgecolor='k',
+                           markerfacecolor=facecolor, elinewidth=1.5, ecolor=photcol1,
+                           capsize=3, zorder=2, alpha=alpha)
+
+    _plot_obs(np.where(phot.bands_to_fit)[0], photcol1, 1.0, label='Observed')
+    _plot_obs(np.where(~phot.bands_to_fit)[0], 'none', 0.7)
+
+    # y-axis limits (AB mag; brighter/smaller values at the top)
+    allmags = [arr[mask] for arr, mask in (
+        (abmag, abmag > 0.), (abmag_limit, abmag_limit > 0.),
+        (synth_abmag, synth_good), (sedmodel_abmag, mgood)) if np.any(mask)]
+    if allmags:
+        allmags = np.concatenate(allmags)
+        dm = 0.75
+        sedax.set_ylim(np.nanmax(allmags) + dm, np.nanmin(allmags) - dm)
+
     sedax.set_xscale('log')
-    sedax.set_xlabel(r'Observed-frame wavelength ($\mu$m)')
-    sedax.set_ylabel(r'$F_\lambda$ (erg s$^{-1}$ cm$^{-2}$ $\AA^{-1}$)')
+    sedax.xaxis.set_major_formatter(major_formatter)
+    sedax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
+    sedax.set_ylabel('AB mag')
     sedax.legend(fontsize=9, loc='best')
     sedax.set_title(' / '.join(_target_label(meta, coadd_type)) + f'  (z={redshift:.4f})', fontsize=10)
 
@@ -798,7 +889,8 @@ def write_fastbayes(meta, results, modelwave, modelspectra, outfile, gridfile, f
         Number of top-weight grid templates stored per object, if any.
 
     """
-    import gzip, shutil
+    import gzip, shutil, warnings
+    import astropy.units as u
     from astropy.io import fits
 
     outdir = os.path.dirname(os.path.abspath(os.path.expanduser(os.path.expandvars(outfile))))
@@ -815,10 +907,12 @@ def write_fastbayes(meta, results, modelwave, modelspectra, outfile, gridfile, f
     hduprim.header['FPHOTO'] = os.path.basename(str(fphotofile)) if fphotofile else ''
     hduprim.header['TOPK'] = topk
 
-    hdumeta = fits.convenience.table_to_hdu(meta)
+    with warnings.catch_warnings():
+        # e.g., 'dex(Gyr)' cannot be represented in native FITS format.
+        warnings.filterwarnings('ignore', category=u.UnitsWarning)
+        hdumeta = fits.convenience.table_to_hdu(meta)
+        hduresults = fits.convenience.table_to_hdu(results)
     hdumeta.header['EXTNAME'] = 'METADATA'
-
-    hduresults = fits.convenience.table_to_hdu(results)
     hduresults.header['EXTNAME'] = 'FASTBAYES'
 
     hduwave = fits.ImageHDU(modelwave.astype('f4'))
