@@ -761,13 +761,13 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     from fastspecfit.io import get_qa_filename
     from fastspecfit.qa import _target_label, _fetch_cutout
 
-    sns.set(context='talk', style='ticks', font_scale=1.3)
+    sns.set(context='talk', style='ticks', font_scale=1.1)
 
     phot = sc_data.photometry
     phot_wavelims = (0.1, 35.) # [micron]
 
     photcol1 = colors.to_hex('darkorange')
-    fontsize1, fontsize2 = 16, 22
+    fontsize1, fontsize2 = 12, 18
     legxpos, legypos2, legfntsz1, legfntsz = 0.98, 0.05, 16, 18
     bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.15)
     bbox2 = dict(boxstyle='round', facecolor='lightgray', alpha=0.7)
@@ -794,9 +794,13 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     # 7 rows x 8 cols: rows 0:3 are the SED/cutout block (matching the
     # column proportions of fastqa's fastphot layout: sedax 5/8, cutax
     # 3/8, so labels/legends sized for that layout still fit), row 3 is
-    # a blank gap, and rows 4:7 hold the posterior-histogram grid.
-    fig = plt.figure(figsize=(18, 14))
-    gs = fig.add_gridspec(7, 8)
+    # a (shrunk) blank gap, and rows 4:7 hold the posterior-histogram grid.
+    # Explicit margins mirror fastqa's own fastphot subplots_adjust (tight
+    # left/bottom, generous right/top for the fig.text labels/legends).
+    fig = plt.figure(figsize=(18, 15))
+    gs = fig.add_gridspec(7, 8, height_ratios=[1, 1, 1, 0.5, 1, 1, 1],
+                          left=0.07, right=0.86, top=0.85, bottom=0.05,
+                          hspace=0.6, wspace=0.3)
 
     sedax = fig.add_subplot(gs[0:3, 0:5])
 
@@ -948,13 +952,13 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     fig.text((spos.x0 + spos.x1) / 2., spos.y1 + 0.055, r'Rest-frame Wavelength ($\mu$m)',
              ha='center', va='bottom', fontsize=fontsize2)
 
-    # z / Dn(4000) and absolute-magnitude boxes below the cutout (below its
-    # RA/Dec axis label and tick labels, not just its image edge)
-    ytext = cpos.y0 - 0.09
+    # z / Dn(4000) / absolute-magnitude box below the cutout (below its
+    # RA/Dec axis label and tick labels, not just its image edge). A single
+    # combined box (rather than two side-by-side ones) avoids collisions in
+    # the relatively narrow cutout column.
+    ytext = cpos.y0 - 0.06
     txt = [r'$z={:.7f}$'.format(redshift), '',
-          r'$D_{{n}}(4000)_{{\mathrm{{model}}}}={:.3f}$'.format(result['DN4000_MODEL'])]
-    fig.text(cpos.x0, ytext, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz,
-             bbox=bbox, linespacing=1.4)
+          r'$D_{{n}}(4000)_{{\mathrm{{model}}}}={:.3f}$'.format(result['DN4000_MODEL']), '']
 
     gindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1. + phot.band_shift) - 4300))
     rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1. + phot.band_shift) - 5600))
@@ -965,7 +969,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     def _absmag_col(band, shift):
         return f'ABSMAG{int(10 * shift):02d}_{band.upper()}'
 
-    txt = [r'$M_{{{}{}}}={:.2f}$'.format(
+    txt += [r'$M_{{{}{}}}={:.2f}$'.format(
         str(shift_rband), absmag_rband.lower().replace('decam_', '').replace('sdss_', ''),
         result[_absmag_col(absmag_rband, shift_rband)])]
     if gindx != rindx:
@@ -978,8 +982,8 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         txt += [r'$M_{{{}{}}}-M_{{{}{}}}={:.3f}$'.format(
             str(shift_rband), absmag_rband.lower(), str(shift_zband), absmag_zband.lower(),
             rz).replace('decam_', '').replace('sdss_', '')]
-    fig.text(cpos.x0 + (cpos.x1 - cpos.x0) * 0.5, ytext, '\n'.join(txt), ha='left', va='top',
-             fontsize=legfntsz, bbox=bbox, linespacing=1.4)
+    fig.text(cpos.x0, ytext, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz,
+             bbox=bbox, linespacing=1.4)
 
     # --- posterior panel: weighted 1D marginal histogram per parameter -----
     nparam = len(PARAM_NAMES)
