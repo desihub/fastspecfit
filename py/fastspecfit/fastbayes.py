@@ -741,32 +741,23 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     import matplotlib.pyplot as plt
     import matplotlib.ticker as ticker
     from matplotlib import colors
+    from matplotlib.patches import Circle
+    from matplotlib.lines import Line2D
+    import seaborn as sns
+
     from fastspecfit.io import get_qa_filename
     from fastspecfit.qa import _target_label, _fetch_cutout
 
+    sns.set(context='talk', style='ticks', font_scale=1.3)
+
     phot = sc_data.photometry
+    phot_wavelims = (0.1, 35.) # [micron]
 
-    pngfile = get_qa_filename(meta, coadd_type, outprefix='fastbayes', outdir=outdir)
-    figdir = os.path.dirname(pngfile)
-    if figdir and not os.path.isdir(figdir):
-        os.makedirs(figdir, exist_ok=True)
-
-    fig = plt.figure(figsize=(18, 14))
-    gs = fig.add_gridspec(5, 9)
-
-    # image cutout, only if this photometry configuration has viewer info
-    if hasattr(phot, 'viewer_layer') and hasattr(phot, 'viewer_pixscale'):
-        img, wcs, _, _ = _fetch_cutout(meta, figdir, pngfile, phot.viewer_layer, phot.viewer_pixscale)
-        cutax = fig.add_subplot(gs[0:2, 6:9], projection=wcs)
-        cutax.imshow(img, origin='lower')
-        cutax.set_xlabel('RA')
-        cutax.set_ylabel('Dec')
-
-    # SED panel: observed photometry (filled markers, upper limits where
-    # undetected) vs. the refined maximum-likelihood model (curve) and its
-    # synthesized photometry (open markers), all in AB mag.
-    sedax = fig.add_subplot(gs[0:2, 0:6])
     photcol1 = colors.to_hex('darkorange')
+    fontsize1, fontsize2 = 16, 22
+    legxpos, legypos2, legfntsz1, legfntsz = 0.98, 0.05, 16, 18
+    bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.15)
+    bbox2 = dict(boxstyle='round', facecolor='lightgray', alpha=0.7)
 
     @ticker.FuncFormatter
     def major_formatter(x, pos):
@@ -777,6 +768,53 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         else:
             return f'{x:.0f}'
 
+    def _fmt(val, ivar, fmt):
+        if ivar > 0.:
+            return fmt.format(val) + r'\pm' + fmt.format(1. / np.sqrt(ivar))
+        return fmt.format(val)
+
+    pngfile = get_qa_filename(meta, coadd_type, outprefix='fastbayes', outdir=outdir)
+    figdir = os.path.dirname(pngfile)
+    if figdir and not os.path.isdir(figdir):
+        os.makedirs(figdir, exist_ok=True)
+
+    fig = plt.figure(figsize=(18, 14))
+    gs = fig.add_gridspec(6, 9)
+
+    sedax = fig.add_subplot(gs[0:3, 0:6])
+
+    # image cutout, only if this photometry configuration has viewer info
+    have_cutout = hasattr(phot, 'viewer_layer') and hasattr(phot, 'viewer_pixscale')
+    if have_cutout:
+        img, wcs, _, _ = _fetch_cutout(meta, figdir, pngfile, phot.viewer_layer, phot.viewer_pixscale)
+        cutax = fig.add_subplot(gs[0:2, 6:9], projection=wcs)
+        cutax.imshow(img, origin='lower')
+        cutax.set_xlabel('RA [J2000]')
+        cutax.set_ylabel('Dec [J2000]')
+        cutax.invert_yaxis()
+        cutax.coords[1].set_ticks_position('r')
+        cutax.coords[1].set_ticklabel_position('r')
+        cutax.coords[1].set_axislabel_position('r')
+        sgn = '+' if meta['DEC'] > 0 else ''
+        cutax.text(0.04, 0.95, '$(\\alpha,\\delta)$=({:.7f}, {}{:.6f})'.format(
+                   meta['RA'], sgn, meta['DEC']), ha='left', va='top', color='k',
+                   fontsize=fontsize1, bbox=bbox2, transform=cutax.transAxes)
+        sz = img.shape
+        pixscale = phot.viewer_pixscale
+        cutax.add_artist(Circle((sz[1]/2, sz[0]/2), radius=1.5/2/pixscale,
+                                facecolor='none', edgecolor='yellow', ls='-', alpha=0.8))
+        cutax.add_artist(Circle((sz[1]/2, sz[0]/2), radius=10/2/pixscale,
+                                facecolor='none', edgecolor='yellow', ls='--', alpha=0.8))
+        handles = [Line2D([0], [0], color='yellow', lw=2, ls='-', label='1.5 arcsec'),
+                  Line2D([0], [0], color='yellow', lw=2, ls='--', label='10 arcsec')]
+        cutax.legend(handles=handles, loc='lower left', fontsize=fontsize1, facecolor='lightgray')
+    else:
+        cutax = fig.add_subplot(gs[0:2, 6:9])
+        cutax.axis('off')
+
+    # --- SED panel: observed photometry (filled markers, upper limits where
+    # undetected) vs. the refined maximum-likelihood model (curve) and its
+    # synthesized photometry (open markers), all in AB mag ------------------
     nanomaggies = np.asarray(data['photometry']['nanomaggies'], dtype='f8')
     nanomaggies_ivar = np.asarray(data['photometry']['nanomaggies_ivar'], dtype='f8')
     lambda_eff = np.asarray(data['photometry']['lambda_eff'], dtype='f8')
@@ -785,30 +823,31 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         phot.bands, maggies=nanomaggies, ivarmaggies=nanomaggies_ivar,
         lambda_eff=lambda_eff, min_uncertainty=phot.min_uncertainty, get_abmag=True)
 
+    abmag = np.asarray(phot_tbl['abmag'])
+    abmag_limit = np.asarray(phot_tbl['abmag_limit'])
+    abmag_ivar = np.asarray(phot_tbl['abmag_ivar'])
+    yerr = np.vstack((np.asarray(phot_tbl['abmag_brighterr']), np.asarray(phot_tbl['abmag_fainterr'])))
+
     # best-fit model curve, converted from erg/s/cm2/A to AB mag
     factor = 10**(0.4 * 48.6) * zwave**2 / (C_LIGHT * 1e13) # [erg/s/cm2/A --> maggies]
     mgood = zflux > 0.
     sedmodel_abmag = np.full_like(zflux, np.nan)
     sedmodel_abmag[mgood] = -2.5 * np.log10(zflux[mgood] * factor[mgood])
-    sedax.plot(zwave[mgood] / 1e4, sedmodel_abmag[mgood], color='grey', alpha=0.9,
-              zorder=1, label='Best-fit model')
+    sedax.plot(zwave[mgood] / 1e4, sedmodel_abmag[mgood], color='grey', alpha=0.9, zorder=1)
 
-    # synthesized photometry (open markers)
+    # synthesized photometry (open diamonds)
     synth_good = synth_maggies > 0.
     synth_abmag = np.full_like(synth_maggies, np.nan, dtype='f8')
     synth_abmag[synth_good] = -2.5 * np.log10(synth_maggies[synth_good])
-    sedax.scatter(lambda_eff[synth_good] / 1e4, synth_abmag[synth_good], marker='D', s=200,
-                 edgecolor='k', facecolor='none', linewidth=1.5, zorder=3,
-                 label='Synthesized photometry')
+    sedax.scatter(lambda_eff[synth_good] / 1e4, synth_abmag[synth_good], marker='D',
+                 s=450, color='k', facecolor='none', linewidth=2, alpha=1.0, zorder=2)
 
     # observed photometry: filled markers (fitted bands) or hollow markers
     # (bands not used in the fit) for detections, upper limits (lolims)
     # for non-detections
-    abmag = np.asarray(phot_tbl['abmag'])
-    abmag_limit = np.asarray(phot_tbl['abmag_limit'])
-    yerr = np.vstack((np.asarray(phot_tbl['abmag_brighterr']), np.asarray(phot_tbl['abmag_fainterr'])))
+    markersize = 14
 
-    def _plot_obs(idx, facecolor, alpha, label=None):
+    def _plot_obs(idx, facecolor, alpha):
         idx = np.asarray(idx)
         if len(idx) == 0:
             return
@@ -816,39 +855,116 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         upper = idx[abmag_limit[idx] > 0.]
         if len(good) > 0:
             sedax.errorbar(lambda_eff[good] / 1e4, abmag[good], yerr=yerr[:, good], fmt='o',
-                           markersize=8, markeredgewidth=1, markeredgecolor='k',
-                           markerfacecolor=facecolor, elinewidth=1.5, ecolor=photcol1,
-                           capsize=3, zorder=2, alpha=alpha, label=label)
+                           markersize=markersize, markeredgewidth=1, markeredgecolor='k',
+                           markerfacecolor=facecolor, elinewidth=3, ecolor=photcol1,
+                           capsize=4, alpha=alpha)
         if len(upper) > 0:
             sedax.errorbar(lambda_eff[upper] / 1e4, abmag_limit[upper], lolims=True, yerr=0.75,
-                           fmt='o', markersize=8, markeredgewidth=1.5, markeredgecolor='k',
-                           markerfacecolor=facecolor, elinewidth=1.5, ecolor=photcol1,
-                           capsize=3, zorder=2, alpha=alpha)
+                           fmt='o', markersize=markersize, markeredgewidth=3, markeredgecolor='k',
+                           markerfacecolor=facecolor, elinewidth=3, ecolor=photcol1,
+                           capsize=4, alpha=alpha)
 
-    _plot_obs(np.where(phot.bands_to_fit)[0], photcol1, 1.0, label='Observed')
+    _plot_obs(np.where(phot.bands_to_fit)[0], photcol1, 1.0)
     _plot_obs(np.where(~phot.bands_to_fit)[0], 'none', 0.7)
 
     # y-axis limits (AB mag; brighter/smaller values at the top)
-    allmags = [arr[mask] for arr, mask in (
-        (abmag, abmag > 0.), (abmag_limit, abmag_limit > 0.),
-        (synth_abmag, synth_good), (sedmodel_abmag, mgood)) if np.any(mask)]
-    if allmags:
-        allmags = np.concatenate(allmags)
-        dm = 0.75
-        sedax.set_ylim(np.nanmax(allmags) + dm, np.nanmin(allmags) - dm)
+    dm = 1.5
+    candidates = []
+    if np.any(abmag_ivar > 0.):
+        candidates.append(abmag[abmag_ivar > 0.])
+    if np.any(abmag_limit > 0.):
+        candidates.append(abmag_limit[abmag_limit > 0.])
+    if np.any(mgood):
+        candidates.append(sedmodel_abmag[mgood])
+    if candidates:
+        allmags = np.concatenate(candidates)
+        sed_ymin = np.nanmax(allmags) + dm
+        sed_ymax = np.nanmin(allmags) - dm
+    else:
+        sed_ymin, sed_ymax = 30., 20.
 
+    sedax.set_xlim(phot_wavelims[0], phot_wavelims[1])
+    sedax.set_ylim(sed_ymin, sed_ymax)
     sedax.set_xscale('log')
-    sedax.xaxis.set_major_formatter(major_formatter)
-    sedax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
     sedax.set_ylabel('AB mag')
-    sedax.legend(fontsize=9, loc='best')
-    sedax.set_title(' / '.join(_target_label(meta, coadd_type)) + f'  (z={redshift:.4f})', fontsize=10)
+    sedax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
+    sedax.xaxis.set_major_formatter(major_formatter)
+    obsticks = np.array([0.1, 0.2, 0.5, 1.0, 1.5, 3.0, 5.0, 10.0, 20.0])
+    obsticks = obsticks[(obsticks >= phot_wavelims[0]) * (obsticks <= phot_wavelims[1])]
+    sedax.set_xticks(obsticks)
 
-    # posterior panel: weighted 1D marginal histogram per parameter
+    sedax_twin = sedax.twiny()
+    sedax_twin.set_xlim(phot_wavelims[0] / (1. + redshift), phot_wavelims[1] / (1. + redshift))
+    sedax_twin.set_xscale('log')
+    sedax_twin.xaxis.set_major_formatter(major_formatter)
+    restticks = np.array([0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 1.5, 3.0, 5.0, 10.0, 15.0, 20.0])
+    restticks = restticks[(restticks >= phot_wavelims[0] / (1. + redshift)) *
+                         (restticks <= phot_wavelims[1] / (1. + redshift))]
+    sedax_twin.set_xticks(restticks)
+
+    # reduced chi2 (top-left, no box)
+    rchi2 = result['CHI2'] / result['NDOF'] if result['NDOF'] > 0 else result['CHI2']
+    sedax.text(0.02, 0.94, r'$\chi^{2}_{\nu,\mathrm{phot}}=$' + r'${:.2f}$'.format(rchi2),
+              ha='left', va='top', transform=sedax.transAxes, fontsize=legfntsz)
+
+    # basic fitting info (bottom-right, shaded box)
+    txt = '\n'.join((
+        r'$\log_{{10}}(Z/Z_{{\odot}})={}$'.format(_fmt(result['LOGZZSUN'], result['LOGZZSUN_IVAR'], '{:.2f}')),
+        r'$\tau={}$'.format(_fmt(result['TAU'], result['TAU_IVAR'], '{:.2f}')),
+        r'$\log_{{10}}(\mathrm{{SFR}}/[M_{{\odot}}/\mathrm{{yr}}])={}$'.format(
+            _fmt(result['LOGSFR'], result['LOGSFR_IVAR'], '{:.2f}')),
+        r'$\log_{{10}}(\mathrm{{Age}}/\mathrm{{Gyr}})={}$'.format(
+            _fmt(result['LOGAGE'], result['LOGAGE_IVAR'], '{:.2f}')),
+        r'$\log_{{10}}(M/M_{{\odot}})={}$'.format(_fmt(result['LOGMSTAR'], result['LOGMSTAR_IVAR'], '{:.2f}')),
+    ))
+    sedax.text(legxpos, legypos2, txt, ha='right', va='bottom', transform=sedax.transAxes,
+              fontsize=legfntsz1, bbox=bbox, linespacing=1.4)
+
+    # target label above the cutout, and rest-frame wavelength label above the SED
+    cpos = cutax.get_position()
+    spos = sedax.get_position()
+    fig.text(cpos.x0, cpos.y1 + 0.02, '\n'.join(_target_label(meta, coadd_type)),
+             ha='left', va='bottom', fontsize=fontsize2, linespacing=1.4)
+    fig.text((spos.x0 + spos.x1) / 2., spos.y1 + 0.055, r'Rest-frame Wavelength ($\mu$m)',
+             ha='center', va='bottom', fontsize=fontsize2)
+
+    # z / Dn(4000) and absolute-magnitude boxes below the cutout
+    ytext = cpos.y0 - 0.03
+    txt = [r'$z={:.7f}$'.format(redshift), '',
+          r'$D_{{n}}(4000)_{{\mathrm{{model}}}}={:.3f}$'.format(result['DN4000_MODEL'])]
+    fig.text(cpos.x0, ytext, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz,
+             bbox=bbox, linespacing=1.4)
+
+    gindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1. + phot.band_shift) - 4300))
+    rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1. + phot.band_shift) - 5600))
+    zindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1. + phot.band_shift) - 8100))
+    absmag_gband, absmag_rband, absmag_zband = phot.absmag_bands[gindx], phot.absmag_bands[rindx], phot.absmag_bands[zindx]
+    shift_gband, shift_rband, shift_zband = phot.band_shift[gindx], phot.band_shift[rindx], phot.band_shift[zindx]
+
+    def _absmag_col(band, shift):
+        return f'ABSMAG{int(10 * shift):02d}_{band.upper()}'
+
+    txt = [r'$M_{{{}{}}}={:.2f}$'.format(
+        str(shift_rband), absmag_rband.lower().replace('decam_', '').replace('sdss_', ''),
+        result[_absmag_col(absmag_rband, shift_rband)])]
+    if gindx != rindx:
+        gr = result[_absmag_col(absmag_gband, shift_gband)] - result[_absmag_col(absmag_rband, shift_rband)]
+        txt += [r'$M_{{{}{}}}-M_{{{}{}}}={:.3f}$'.format(
+            str(shift_gband), absmag_gband.lower(), str(shift_rband), absmag_rband.lower(),
+            gr).replace('decam_', '').replace('sdss_', '')]
+    if zindx != rindx:
+        rz = result[_absmag_col(absmag_rband, shift_rband)] - result[_absmag_col(absmag_zband, shift_zband)]
+        txt += [r'$M_{{{}{}}}-M_{{{}{}}}={:.3f}$'.format(
+            str(shift_rband), absmag_rband.lower(), str(shift_zband), absmag_zband.lower(),
+            rz).replace('decam_', '').replace('sdss_', '')]
+    fig.text(cpos.x0 + (cpos.x1 - cpos.x0) * 0.5, ytext, '\n'.join(txt), ha='left', va='top',
+             fontsize=legfntsz, bbox=bbox, linespacing=1.4)
+
+    # --- posterior panel: weighted 1D marginal histogram per parameter -----
     nparam = len(PARAM_NAMES)
     ncols = 3
     nrows = int(np.ceil(nparam / ncols))
-    post_gs = gs[2:5, 0:9].subgridspec(nrows, ncols, hspace=0.5, wspace=0.3)
+    post_gs = gs[3:6, 0:9].subgridspec(nrows, ncols, hspace=0.5, wspace=0.3)
     for i, pname in enumerate(PARAM_NAMES):
         ax = fig.add_subplot(post_gs[i // ncols, i % ncols])
         vals, w = posterior_arrays[pname]
@@ -859,7 +975,6 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         ax.set_xlabel(pname, fontsize=9)
         ax.tick_params(labelleft=False, labelsize=7)
 
-    fig.tight_layout()
     fig.savefig(pngfile)
     plt.close(fig)
     log.info(f'Wrote {pngfile}')
