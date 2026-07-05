@@ -952,13 +952,17 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     fig.text((spos.x0 + spos.x1) / 2., spos.y1 + 0.05, r'Rest-frame Wavelength ($\mu$m)',
              ha='center', va='bottom', fontsize=fontsize2)
 
-    # z / Dn(4000) / absolute-magnitude box below the cutout (below its
-    # RA/Dec axis label and tick labels, not just its image edge). A single
-    # combined box (rather than two side-by-side ones) avoids collisions in
-    # the relatively narrow cutout column.
+    # z / Dn(4000) and absolute-magnitude boxes below the cutout (below its
+    # RA/Dec axis label and tick labels, not just its image edge). Anchoring
+    # the left box at the column's left edge (ha='left') and the right box
+    # at the column's right edge (ha='right') maximizes the gap between them
+    # for a given cutout column width, rather than splitting at a fixed
+    # fraction that can overlap if either box's text runs long.
     ytext = cpos.y0 - 0.06
     txt = [r'$z={:.7f}$'.format(redshift), '',
-          r'$D_{{n}}(4000)_{{\mathrm{{model}}}}={:.3f}$'.format(result['DN4000_MODEL']), '']
+          r'$D_{{n}}(4000)_{{\mathrm{{model}}}}={:.3f}$'.format(result['DN4000_MODEL'])]
+    fig.text(cpos.x0, ytext, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz,
+             bbox=bbox, linespacing=1.4)
 
     gindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1. + phot.band_shift) - 4300))
     rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1. + phot.band_shift) - 5600))
@@ -969,7 +973,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     def _absmag_col(band, shift):
         return f'ABSMAG{int(10 * shift):02d}_{band.upper()}'
 
-    txt += [r'$M_{{{}{}}}={:.2f}$'.format(
+    txt = [r'$M_{{{}{}}}={:.2f}$'.format(
         str(shift_rband), absmag_rband.lower().replace('decam_', '').replace('sdss_', ''),
         result[_absmag_col(absmag_rband, shift_rband)])]
     if gindx != rindx:
@@ -982,7 +986,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         txt += [r'$M_{{{}{}}}-M_{{{}{}}}={:.3f}$'.format(
             str(shift_rband), absmag_rband.lower(), str(shift_zband), absmag_zband.lower(),
             rz).replace('decam_', '').replace('sdss_', '')]
-    fig.text(cpos.x0, ytext, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz,
+    fig.text(cpos.x1, ytext, '\n'.join(txt), ha='right', va='top', fontsize=legfntsz,
              bbox=bbox, linespacing=1.4)
 
     # --- posterior panel: weighted 1D marginal histogram per parameter -----
@@ -993,9 +997,24 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     for i, pname in enumerate(PARAM_NAMES):
         ax = fig.add_subplot(post_gs[i // ncols, i % ncols])
         vals, w = posterior_arrays[pname]
-        lo, hi = np.min(vals), np.max(vals)
-        if hi > lo:
-            ax.hist(vals, bins=20, range=(lo, hi), weights=w, color='gray', edgecolor='k', alpha=0.8)
+        uniq, inv = np.unique(vals, return_inverse=True)
+
+        if len(uniq) <= 25:
+            # native grid axis: only a handful of discrete values exist, so
+            # a bar per actual grid value avoids mostly-empty uniform bins
+            binweight = np.bincount(inv, weights=w, minlength=len(uniq))
+            width = np.min(np.diff(uniq)) * 0.8 if len(uniq) > 1 else 1.
+            ax.bar(uniq, binweight, width=width, color='gray', edgecolor='k', alpha=0.8)
+        else:
+            # derived quantity (LOGMSTAR/LOGSFR): continuous across the
+            # grid, so zoom the range to where the posterior weight
+            # actually is rather than the full (often much wider) range
+            lo, hi = _weighted_percentile(vals, w, (0.5, 99.5))
+            if hi > lo:
+                pad = 0.05 * (hi - lo)
+                ax.hist(vals, bins=30, range=(lo - pad, hi + pad), weights=w,
+                        color='gray', edgecolor='k', alpha=0.8)
+
         ax.axvline(result[pname], color='C0', lw=1.5)
         ax.set_xlabel(_PARAM_LABELS.get(pname, pname), fontsize=10)
         ax.tick_params(labelleft=False, labelsize=9)
