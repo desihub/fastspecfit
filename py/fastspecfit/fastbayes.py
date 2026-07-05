@@ -767,7 +767,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     phot_wavelims = (0.1, 35.) # [micron]
 
     photcol1 = colors.to_hex('darkorange')
-    fontsize1, fontsize2 = 12, 18
+    fontsize1, fontsize2 = 14, 20
     legxpos, legypos2, legfntsz1, legfntsz = 0.98, 0.05, 16, 18
     bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.15)
     bbox2 = dict(boxstyle='round', facecolor='lightgray', alpha=0.7)
@@ -798,8 +798,8 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     # Explicit margins mirror fastqa's own fastphot subplots_adjust (tight
     # left/bottom, generous right/top for the fig.text labels/legends).
     fig = plt.figure(figsize=(18, 15))
-    gs = fig.add_gridspec(7, 8, height_ratios=[1, 1, 1, 0.5, 1, 1, 1],
-                          left=0.07, right=0.86, top=0.85, bottom=0.05,
+    gs = fig.add_gridspec(7, 8, height_ratios=[1, 1, 1, 0.2, 1.1, 1.1, 1.1],
+                          left=0.09, right=0.88, top=0.9, bottom=0.06,
                           hspace=0.6, wspace=0.3)
 
     sedax = fig.add_subplot(gs[0:3, 0:5])
@@ -949,7 +949,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     spos = sedax.get_position()
     fig.text(cpos.x0, cpos.y1 + 0.02, '\n'.join(_target_label(meta, coadd_type)),
              ha='left', va='bottom', fontsize=fontsize2, linespacing=1.4)
-    fig.text((spos.x0 + spos.x1) / 2., spos.y1 + 0.055, r'Rest-frame Wavelength ($\mu$m)',
+    fig.text((spos.x0 + spos.x1) / 2., spos.y1 + 0.05, r'Rest-frame Wavelength ($\mu$m)',
              ha='center', va='bottom', fontsize=fontsize2)
 
     # z / Dn(4000) / absolute-magnitude box below the cutout (below its
@@ -989,7 +989,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     nparam = len(PARAM_NAMES)
     ncols = 3
     nrows = int(np.ceil(nparam / ncols))
-    post_gs = gs[4:7, 0:8].subgridspec(nrows, ncols, hspace=0.5, wspace=0.3)
+    post_gs = gs[4:7, 0:8].subgridspec(nrows, ncols, hspace=0.5, wspace=0.1)
     for i, pname in enumerate(PARAM_NAMES):
         ax = fig.add_subplot(post_gs[i // ncols, i % ncols])
         vals, w = posterior_arrays[pname]
@@ -997,8 +997,8 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         if hi > lo:
             ax.hist(vals, bins=20, range=(lo, hi), weights=w, color='gray', edgecolor='k', alpha=0.8)
         ax.axvline(result[pname], color='C0', lw=1.5)
-        ax.set_xlabel(_PARAM_LABELS.get(pname, pname), fontsize=9)
-        ax.tick_params(labelleft=False, labelsize=7)
+        ax.set_xlabel(_PARAM_LABELS.get(pname, pname), fontsize=10)
+        ax.tick_params(labelleft=False, labelsize=9)
 
     fig.savefig(pngfile)
     plt.close(fig)
