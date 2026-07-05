@@ -75,6 +75,19 @@ _OUTNAME_TO_AXIS = {v: k for k, v in _AXIS_OUTNAME.items()}
 # are derived per-object from the closed-form amplitude solve.
 PARAM_NAMES = tuple(_AXIS_OUTNAME[col] for col in GRID_AXIS_COLUMNS) + ('LOGMSTAR', 'LOGSFR')
 
+# Human-friendly axis labels for the QA posterior-histogram grid.
+_PARAM_LABELS = {
+    'LOGAGE': r'$\log_{10}({\rm Age/Gyr})$',
+    'LOGZZSUN': r'$\log_{10}(Z/Z_{\odot})$',
+    'TAU': r'$\tau$',
+    'DUSTN': r'$n_{\rm dust}$',
+    'LOGUMIN': r'$\log_{10}(U_{\rm min})$',
+    'GAMMA': r'$\gamma$',
+    'LOGQPAH': r'$\log_{10}(Q_{\rm PAH})$',
+    'LOGMSTAR': r'$\log_{10}(M/M_{\odot})$',
+    'LOGSFR': r'$\log_{10}({\rm SFR}/[M_{\odot}/{\rm yr}])$',
+}
+
 # Rest-frame luminosity output keys and reference wavelengths (Angstrom),
 # matching the LOGL_*/LOGLNU_* columns in fastspecfit's own SPECPHOT schema
 # (see fastspecfit.continuum.ContinuumTools.lums_keys).
@@ -778,16 +791,20 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     if figdir and not os.path.isdir(figdir):
         os.makedirs(figdir, exist_ok=True)
 
+    # 7 rows x 8 cols: rows 0:3 are the SED/cutout block (matching the
+    # column proportions of fastqa's fastphot layout: sedax 5/8, cutax
+    # 3/8, so labels/legends sized for that layout still fit), row 3 is
+    # a blank gap, and rows 4:7 hold the posterior-histogram grid.
     fig = plt.figure(figsize=(18, 14))
-    gs = fig.add_gridspec(6, 9)
+    gs = fig.add_gridspec(7, 8)
 
-    sedax = fig.add_subplot(gs[0:3, 0:6])
+    sedax = fig.add_subplot(gs[0:3, 0:5])
 
     # image cutout, only if this photometry configuration has viewer info
     have_cutout = hasattr(phot, 'viewer_layer') and hasattr(phot, 'viewer_pixscale')
     if have_cutout:
         img, wcs, _, _ = _fetch_cutout(meta, figdir, pngfile, phot.viewer_layer, phot.viewer_pixscale)
-        cutax = fig.add_subplot(gs[0:2, 6:9], projection=wcs)
+        cutax = fig.add_subplot(gs[0:2, 5:8], projection=wcs)
         cutax.imshow(img, origin='lower')
         cutax.set_xlabel('RA [J2000]')
         cutax.set_ylabel('Dec [J2000]')
@@ -809,7 +826,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
                   Line2D([0], [0], color='yellow', lw=2, ls='--', label='10 arcsec')]
         cutax.legend(handles=handles, loc='lower left', fontsize=fontsize1, facecolor='lightgray')
     else:
-        cutax = fig.add_subplot(gs[0:2, 6:9])
+        cutax = fig.add_subplot(gs[0:2, 5:8])
         cutax.axis('off')
 
     # --- SED panel: observed photometry (filled markers, upper limits where
@@ -828,12 +845,15 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     abmag_ivar = np.asarray(phot_tbl['abmag_ivar'])
     yerr = np.vstack((np.asarray(phot_tbl['abmag_brighterr']), np.asarray(phot_tbl['abmag_fainterr'])))
 
-    # best-fit model curve, converted from erg/s/cm2/A to AB mag
+    # best-fit model curve, converted from erg/s/cm2/A to AB mag; restrict to
+    # the plotted wavelength range so that, e.g., far-IR dust emission well
+    # beyond phot_wavelims doesn't skew the y-axis limits below.
     factor = 10**(0.4 * 48.6) * zwave**2 / (C_LIGHT * 1e13) # [erg/s/cm2/A --> maggies]
-    mgood = zflux > 0.
+    zwave_um = zwave / 1e4
+    mgood = (zflux > 0.) & (zwave_um >= phot_wavelims[0]) & (zwave_um <= phot_wavelims[1])
     sedmodel_abmag = np.full_like(zflux, np.nan)
     sedmodel_abmag[mgood] = -2.5 * np.log10(zflux[mgood] * factor[mgood])
-    sedax.plot(zwave[mgood] / 1e4, sedmodel_abmag[mgood], color='grey', alpha=0.9, zorder=1)
+    sedax.plot(zwave_um[mgood], sedmodel_abmag[mgood], color='grey', alpha=0.9, zorder=1)
 
     # synthesized photometry (open diamonds)
     synth_good = synth_maggies > 0.
@@ -928,8 +948,9 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     fig.text((spos.x0 + spos.x1) / 2., spos.y1 + 0.055, r'Rest-frame Wavelength ($\mu$m)',
              ha='center', va='bottom', fontsize=fontsize2)
 
-    # z / Dn(4000) and absolute-magnitude boxes below the cutout
-    ytext = cpos.y0 - 0.03
+    # z / Dn(4000) and absolute-magnitude boxes below the cutout (below its
+    # RA/Dec axis label and tick labels, not just its image edge)
+    ytext = cpos.y0 - 0.09
     txt = [r'$z={:.7f}$'.format(redshift), '',
           r'$D_{{n}}(4000)_{{\mathrm{{model}}}}={:.3f}$'.format(result['DN4000_MODEL'])]
     fig.text(cpos.x0, ytext, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz,
@@ -964,7 +985,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     nparam = len(PARAM_NAMES)
     ncols = 3
     nrows = int(np.ceil(nparam / ncols))
-    post_gs = gs[3:6, 0:9].subgridspec(nrows, ncols, hspace=0.5, wspace=0.3)
+    post_gs = gs[4:7, 0:8].subgridspec(nrows, ncols, hspace=0.5, wspace=0.3)
     for i, pname in enumerate(PARAM_NAMES):
         ax = fig.add_subplot(post_gs[i // ncols, i % ncols])
         vals, w = posterior_arrays[pname]
@@ -972,7 +993,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         if hi > lo:
             ax.hist(vals, bins=20, range=(lo, hi), weights=w, color='gray', edgecolor='k', alpha=0.8)
         ax.axvline(result[pname], color='C0', lw=1.5)
-        ax.set_xlabel(pname, fontsize=9)
+        ax.set_xlabel(_PARAM_LABELS.get(pname, pname), fontsize=9)
         ax.tick_params(labelleft=False, labelsize=7)
 
     fig.savefig(pngfile)
