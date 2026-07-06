@@ -1730,6 +1730,7 @@ def parse(options=None):
     parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
 
     parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
+    parser.add_argument('--constraintsfile', type=str, default=None, help='Emission line constraints file.')
     parser.add_argument('--emline-snrmin', type=float, default=0.0, help='Minimum emission-line S/N to be displayed.')
     parser.add_argument('--nsmoothspec', type=int, default=0, help='Smoothing pixel value.')
 
@@ -1873,6 +1874,7 @@ def fastqa(args=None, comm=None):
     # initialize single-copy objects im main process
     init_sc_args = {
         'emlines_file':      args.emlinesfile,
+        'constraints_file':  args.constraintsfile,
         'fphotofile':        args.fphotofile,
         'fastphot':          fastphot,
         'fitstack':          coadd_type == 'stacked',
