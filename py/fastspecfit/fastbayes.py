@@ -999,7 +999,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         vals, w = posterior_arrays[pname]
         uniq, inv = np.unique(vals, return_inverse=True)
 
-        if len(uniq) <= 25:
+        if len(uniq) <= 5:
             # native grid axis: only a handful of discrete values exist, so
             # a bar per actual grid value avoids mostly-empty uniform bins
             binweight = np.bincount(inv, weights=w, minlength=len(uniq))
