@@ -5,9 +5,11 @@ Change Log
 3.5.1 (not released yet)
 ------------------------
 
+* Pass ``constraintsfile`` argument to ``fastqa`` [`PR #270`_].
 * New unit test and documentation of external photometric catalog
   "mode" [`PR #269`_].
 
+.. _`PR #270`: https://github.com/desihub/fastspecfit/pull/270
 .. _`PR #269`: https://github.com/desihub/fastspecfit/pull/269
 
 3.5.0 (2026-06-16)
