@@ -88,6 +88,23 @@ def test_qa_fastphot(fastphot_output, filenames, templates, outdir):
 
 
 @pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
+def test_qa_constraintsfile(fastphot_output, filenames, templates, outdir):
+    """Test that fastqa accepts a custom --constraintsfile argument."""
+    from pathlib import Path
+    from importlib import resources
+    from fastspecfit.qa import fastqa, parse as qa_parse
+    constraintsfile = str(resources.files('fastspecfit').joinpath('data/emline-constraints.yaml'))
+    qa_outdir = str(outdir / 'qa_constraintsfile')
+    cmd = (f'fastqa {fastphot_output} '
+           f'--redrockfiles {filenames["redrockfile"]} '
+           f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
+           f'--templates {templates} --constraintsfile {constraintsfile} '
+           f'--outdir {qa_outdir} --overwrite')
+    fastqa(args=qa_parse(options=cmd.split()[1:]))
+    assert len(list(Path(qa_outdir).glob('*.png'))) > 0
+
+
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
 def test_qa_fastspec(fastspec_output, filenames, templates, outdir):
     """Test that fastqa runs and produces output for a fastspec file."""
     from pathlib import Path
