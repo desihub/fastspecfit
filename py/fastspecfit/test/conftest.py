@@ -41,9 +41,27 @@ def templates(templatedir, template_version):
     templates_file = f'ftemplates-chabrier-{template_version}.fits'
     templates = os.path.join(templatedir, templates_file)
 
-    url = f"https://data.desi.lbl.gov/public/external/templates/fastspecfit/{template_version}/{templates_file}"
     if not os.path.isfile(templates):
-        urlretrieve(url, templates)
+        if os.path.islink(templates):  # stale symlink from a prior cached run
+            os.remove(templates)
+
+        # Prefer a local FTEMPLATES_DIR checkout (e.g. a template version not
+        # yet published to the public URL) over hitting the network; symlink
+        # it into templatedir so it's still found at the usual
+        # <templatedir>/<file> location expected elsewhere (e.g.
+        # get_templates_filename's FTEMPLATES_DIR auto-detection).
+        ftemplates_dir = os.environ.get('FTEMPLATES_DIR')
+        local = os.path.join(ftemplates_dir, template_version, templates_file) if ftemplates_dir else None
+        if local and os.path.isfile(local):
+            os.symlink(local, templates)
+        else:
+            url = f"https://data.desi.lbl.gov/public/external/templates/fastspecfit/{template_version}/{templates_file}"
+            try:
+                urlretrieve(url, templates)
+            except Exception as e:
+                pytest.skip(f'{url} unreachable ({e}) and no local copy at '
+                            f'$FTEMPLATES_DIR/{template_version}/{templates_file}')
+
     yield templates
 
     # Skip cleanup when using a persistent cache directory.
