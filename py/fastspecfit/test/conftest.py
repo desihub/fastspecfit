@@ -15,7 +15,7 @@ os.environ.setdefault('MPLBACKEND', 'Agg')
 
 @pytest.fixture(scope='session')
 def template_version():
-    yield '2.1.0'
+    yield '3.0.0'
 
 
 @pytest.fixture(scope='session')
