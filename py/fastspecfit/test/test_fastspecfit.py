@@ -59,6 +59,17 @@ def test_fastspec(fastspec_output):
 
 
 @pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
+def test_fastspec_fixedvdisp(fastspec_fixedvdisp_output):
+    """--vdisp-bounds 0 0 fixes the convolution kernel to 0 (native template
+    resolution): VDISP == SIGMA_C3K and VDISP_IVAR == 0 (see issue #266)."""
+    import fitsio
+    from fastspecfit.templates import Templates
+    data = fitsio.read(fastspec_fixedvdisp_output, ext='SPECPHOT')
+    assert np.allclose(data['VDISP'], Templates.SIGMA_C3K, atol=0.01)
+    assert np.all(data['VDISP_IVAR'] == 0.)
+
+
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
 def test_sfr_values(fastspec_output, fastphot_output):
     """SFR in SPECPHOT must be finite and non-negative for all objects."""
     import fitsio

@@ -116,6 +116,21 @@ def fastspec_output(filenames, templates):
 
 
 @pytest.fixture(scope='session')
+def fastspec_fixedvdisp_output(filenames, templates, outdir):
+    """fastspec with equal --vdisp-bounds: fixed convolution kernel, no
+    chi2 scan/optimizer (see issue #266)."""
+    from fastspecfit.fastspecfit import fastspec, parse
+    outfile = os.path.join(outdir, 'fastspec-fixedvdisp.fits')
+    cmd = (f'fastspec {filenames["redrockfile"]} -o {outfile} '
+           f'--redux_dir {filenames["redux_dir"]} '
+           f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
+           f'--specproddir {filenames["specproddir"]} --templates {templates} '
+           f'--vdisp-bounds 0 0')
+    fastspec(args=parse(options=cmd.split()[1:]))
+    yield outfile
+
+
+@pytest.fixture(scope='session')
 def stackfit_output(filenames, templates):
     from fastspecfit.fastspecfit import stackfit, parse
     outfile = filenames['stackfit_outfile']
