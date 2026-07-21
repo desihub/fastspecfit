@@ -56,6 +56,21 @@ TSNR2COLS = ('TSNR2_BGS', 'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA')
 QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha', ]
 MGIICOLS = ['TARGETID', 'IS_QSO_MGII']
 
+# FITS binary tables cap out at 999 columns (TFIELDS). Past that, per-line
+# columns for isstrong=False lines move from FASTSPEC into a MORELINES HDU
+# (see write_fastspecfit/read_fastspecfit). Must match the per-line fields
+# added in get_output_dtype's line loop.
+MAX_FASTSPEC_COLUMNS = 999
+LINE_COLUMN_SUFFIXES = ('_MODELAMP', '_AMP', '_AMP_IVAR', '_FLUX', '_FLUX_IVAR',
+                        '_BOXFLUX', '_BOXFLUX_IVAR', '_VSHIFT', '_VSHIFT_IVAR',
+                        '_SIGMA', '_SIGMA_IVAR', '_CONT', '_CONT_IVAR', '_EW',
+                        '_EW_IVAR', '_FLUX_LIMIT', '_CHI2', '_NPIX')
+
+# identifying columns copied into MORELINES so it can be read/verified
+# independently of FASTSPEC/METADATA row order
+MORELINES_IDCOLS = ('TARGETID', 'STACKID', 'SURVEY', 'PROGRAM', 'TILEID',
+                    'NIGHT', 'FIBER', 'EXPID')
+
 def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
                  init_sigma_uv=None, init_sigma_narrow=None,
                  init_sigma_balmer=None, init_vshift_uv=None,
@@ -1491,6 +1506,50 @@ class DESISpectra(object):
         return metas
 
 
+def read_fastspec_table(F, rows=None, columns=None):
+    """Read the FASTSPEC extension, transparently merging in MORELINES (the
+    isstrong=False emission-line columns, split out at write time when
+    FASTSPEC would otherwise exceed the FITS 999-column limit) if present.
+
+    Parameters
+    ----------
+    F : :class:`fitsio.FITS`
+        Open fastspecfit output file.
+    rows : array-like or None, optional
+        Row indices to read. If ``None``, read all rows.
+    columns : list of str or None, optional
+        Column names to read (from either FASTSPEC or MORELINES). If
+        ``None``, read all columns from both.
+
+    Returns
+    -------
+    fastfit : :class:`astropy.table.Table`
+        FASTSPEC and MORELINES columns merged into a single table.
+
+    """
+    if 'MORELINES' in F:
+        fastspec_avail = F['FASTSPEC'].get_colnames()
+        morelines_avail = F['MORELINES'].get_colnames()
+        if columns is not None:
+            fastspec_columns = [col for col in columns if col in fastspec_avail]
+            morelines_columns = [col for col in columns if col in morelines_avail
+                                 and col not in fastspec_avail]
+        else:
+            fastspec_columns = None
+            morelines_columns = None
+
+        fastfit = Table(F['FASTSPEC'].read(rows=rows, columns=fastspec_columns))
+        morelines = Table(F['MORELINES'].read(rows=rows, columns=morelines_columns))
+        keep = [col for col in morelines.colnames if col not in MORELINES_IDCOLS]
+        if keep:
+            from astropy.table import hstack
+            fastfit = hstack([fastfit, morelines[keep]], join_type='exact')
+    else:
+        fastfit = Table(F['FASTSPEC'].read(rows=rows, columns=columns))
+
+    return fastfit
+
+
 def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_columns=None,
                      fastspec_columns=None, read_models=False):
     """Read fastspecfit fitting results from a FITS file.
@@ -1534,7 +1593,7 @@ def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_col
 
         if 'FASTSPEC' in F:
             fastphot = False
-            fastfit = Table(F['FASTSPEC'].read(rows=rows, columns=fastspec_columns))
+            fastfit = read_fastspec_table(F, rows=rows, columns=fastspec_columns)
             if read_models:
                 models = F['MODELS'].read()
                 if rows is not None:
@@ -1643,8 +1702,40 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
 
     meta.meta['EXTNAME'] = 'METADATA'
     specphot.meta['EXTNAME'] = 'SPECPHOT'
+
+    morelines = None
     if fastfit is not None:
         fastfit.meta['EXTNAME'] = 'FASTSPEC'
+
+        if len(fastfit.colnames) > MAX_FASTSPEC_COLUMNS:
+            from fastspecfit.linetable import LineTable
+            linetable = LineTable(emlines_file=emlinesfile).table
+
+            weaklines = set(name.upper() for name, isstrong in
+                            zip(linetable['name'], linetable['isstrong']) if not isstrong)
+
+            morelines_cols = [f'{line}{suffix}' for line in weaklines
+                              for suffix in LINE_COLUMN_SUFFIXES
+                              if f'{line}{suffix}' in fastfit.colnames]
+
+            if morelines_cols:
+                idcols = [col for col in MORELINES_IDCOLS if col in meta.colnames]
+                morelines = Table()
+                for col in idcols:
+                    morelines[col] = meta[col]
+                for col in morelines_cols:
+                    morelines[col] = fastfit[col]
+                morelines.meta['EXTNAME'] = 'MORELINES'
+
+                # select (not remove_columns), so the caller's fastfit Table
+                # is not mutated in place
+                keepcols = [col for col in fastfit.colnames if col not in morelines_cols]
+                fastfit = fastfit[keepcols]
+                fastfit.meta['EXTNAME'] = 'FASTSPEC'
+
+                log.info(f'FASTSPEC would have {len(fastfit.colnames)+len(morelines_cols):,d} columns '
+                        f'(>{MAX_FASTSPEC_COLUMNS}); moved {len(morelines_cols):,d} columns for '
+                        f'{len(weaklines):,d} weak lines to a MORELINES HDU.')
 
     hdu_primary = fits.PrimaryHDU(None, primhdr)
 
@@ -1654,6 +1745,8 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         hdu_specphot = fits.convenience.table_to_hdu(specphot)
         if fastfit is not None:
             hdu_fastfit = fits.convenience.table_to_hdu(fastfit)
+        if morelines is not None:
+            hdu_morelines = fits.convenience.table_to_hdu(morelines)
 
         if modelspectra is not None:
             hdu_data = fits.ImageHDU(name='MODELS')
@@ -1701,6 +1794,9 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
             if fastfit is not None:
                 hdu_fastfit = fits.convenience.table_to_hdu(fastfit[I])
                 hdus.append(hdu_fastfit)
+            if morelines is not None:
+                hdu_morelines = fits.convenience.table_to_hdu(morelines[I])
+                hdus.append(hdu_morelines)
             if outfile.endswith('.gz'):
                 outfile_pixel = outfile.replace('.fits.gz', f'-nside{nside}-hp{upixel:02}.fits.gz')
             else:
@@ -1713,6 +1809,9 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         if fastfit is not None:
             hdu_list.append(hdu_fastfit)
             suffix_list.append('fastspec')
+        if morelines is not None:
+            hdu_list.append(hdu_morelines)
+            suffix_list.append('morelines')
         if modelspectra is not None:
             hdu_list.append(hdu_data)
             suffix_list.append('models')
@@ -1734,6 +1833,8 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         hdus.append(hdu_specphot)
         if fastfit is not None:
             hdus.append(hdu_fastfit)
+        if morelines is not None:
+            hdus.append(hdu_morelines)
         if modelspectra is not None:
             hdus.append(hdu_data)
         write(hdus, tmpfile, outfile)
