@@ -65,16 +65,17 @@ class Templates(object):
     from fastspecfit.util import C_LIGHT
 
     # SPS template constants (used by build-templates)
-    # https://github.com/cconroy20/fsps/tree/master/SPECTRA/C3K#readme
-    PIXKMS = 25.  # [km/s]
-    PIXKMS_BOUNDS = (2750., 9100.)
-    # Gaussian sigma of C3K templates: R(λ/FWHM)=3000 → σ = c/(R·2√(2 ln 2))
-    SIGMA_C3K = C_LIGHT / (3000. * np.sqrt(8. * np.log(2.))) # 42.4 [km/s]
+    # https://github.com/moustakas/fsps/tree/master/SPECTRA/C3K_R10K#readme
+    R_C3K = 10000.  # [lambda/FWHM]; C3K_R10K resolution in the rest-frame optical
+    PIXKMS = C_LIGHT / (R_C3K * 2.)  # [km/s]; native pixel spacing (oversample=2)
+    PIXKMS_BOUNDS = (3500., 9800.)
+    # Gaussian sigma of C3K templates: σ = c/(R·2√(2 ln 2))
+    SIGMA_C3K = C_LIGHT / (R_C3K * np.sqrt(8. * np.log(2.))) # 12.7 [km/s]
 
     AGN_PIXKMS = 75.  # [km/s]
     AGN_PIXKMS_BOUNDS = (1075., 3090.)
 
-    DEFAULT_TEMPLATEVERSION = '2.1.0'
+    DEFAULT_TEMPLATEVERSION = '3.0.0'
     DEFAULT_IMF = 'chabrier'
 
     # highest vdisp for which we attempt to use cached FFTs
@@ -113,6 +114,16 @@ class Templates(object):
 
         self.version = T[0].read_header()['VERSION']
 
+        # Templates <3.0.0 were built on the C3K_a (R~3000) grid with a
+        # different segment/pixel-size convention; use the values that
+        # actually match how those files were resampled (bin/build-templates
+        # was technically wrong to resample to 25 km/s pixels for that R,
+        # but this matches what's actually baked into those files).
+        if int(self.version.split('.')[0]) < 3:
+            self.PIXKMS = 25.  # [km/s]
+            self.PIXKMS_BOUNDS = (2750., 9100.)
+            self.SIGMA_C3K = Templates.C_LIGHT / (3000. * np.sqrt(8. * np.log(2.))) # 42.4 [km/s]
+
         self.imf = templatehdr['IMF']
         self.ntemplates = len(templateinfo)
 
@@ -133,11 +144,11 @@ class Templates(object):
             log.critical(errmsg)
             raise ValueError(errmsg)
         self.vdisp_nominal = vdisp_nominal # [km/s] σ_stars reported when vdisp unmeasured
-        self.vdisp_nominal_kernel = float(np.sqrt(max(0., vdisp_nominal**2 - Templates.SIGMA_C3K**2)))
+        self.vdisp_nominal_kernel = float(np.sqrt(max(0., vdisp_nominal**2 - self.SIGMA_C3K**2)))
         self.vdisp_bounds = vdisp_bounds # [km/s]
         self.vdisp_sigma_relation = vdisp_sigma_relation # (a, b): log σ = a + b*(log M* − 11)
 
-        pixkms_bounds = np.searchsorted(self.wave, Templates.PIXKMS_BOUNDS, 'left')
+        pixkms_bounds = np.searchsorted(self.wave, self.PIXKMS_BOUNDS, 'left')
         self.pixkms_bounds = pixkms_bounds
 
         self.conv_pre = self.convolve_vdisp_pre(self.flux)
@@ -243,7 +254,7 @@ class Templates(object):
 
         # determine largest kernel we will support
         # based on the maximum supported vdisp.
-        pixsize_kms = Templates.PIXKMS
+        pixsize_kms = self.PIXKMS
         sigma = Templates.MAX_PRE_VDISP / pixsize_kms # [pixels]
         radius = Templates._gaussian_radius(sigma)
         kernel_size = 2*radius + 1
@@ -323,7 +334,7 @@ class Templates(object):
 
         output = np.empty(flux_len)
 
-        pixsize_kms = Templates.PIXKMS
+        pixsize_kms = self.PIXKMS
         sigma = vdisp / pixsize_kms # [pixels]
 
         radius = Templates._gaussian_radius(sigma)
@@ -374,7 +385,7 @@ class Templates(object):
             output = templateflux.copy()
         else:
             output = np.empty_like(templateflux)
-            pixsize_kms = Templates.PIXKMS
+            pixsize_kms = self.PIXKMS
             sigma = vdisp / pixsize_kms # [pixels]
 
             radius = Templates._gaussian_radius(sigma)

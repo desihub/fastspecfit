@@ -15,7 +15,7 @@ os.environ.setdefault('MPLBACKEND', 'Agg')
 
 @pytest.fixture(scope='session')
 def template_version():
-    yield '2.1.0'
+    yield '3.0.0'
 
 
 @pytest.fixture(scope='session')
@@ -41,9 +41,27 @@ def templates(templatedir, template_version):
     templates_file = f'ftemplates-chabrier-{template_version}.fits'
     templates = os.path.join(templatedir, templates_file)
 
-    url = f"https://data.desi.lbl.gov/public/external/templates/fastspecfit/{template_version}/{templates_file}"
     if not os.path.isfile(templates):
-        urlretrieve(url, templates)
+        if os.path.islink(templates):  # stale symlink from a prior cached run
+            os.remove(templates)
+
+        # Prefer a local FTEMPLATES_DIR checkout (e.g. a template version not
+        # yet published to the public URL) over hitting the network; symlink
+        # it into templatedir so it's still found at the usual
+        # <templatedir>/<file> location expected elsewhere (e.g.
+        # get_templates_filename's FTEMPLATES_DIR auto-detection).
+        ftemplates_dir = os.environ.get('FTEMPLATES_DIR')
+        local = os.path.join(ftemplates_dir, template_version, templates_file) if ftemplates_dir else None
+        if local and os.path.isfile(local):
+            os.symlink(local, templates)
+        else:
+            url = f"https://data.desi.lbl.gov/public/external/templates/fastspecfit/{template_version}/{templates_file}"
+            try:
+                urlretrieve(url, templates)
+            except Exception as e:
+                pytest.skip(f'{url} unreachable ({e}) and no local copy at '
+                            f'$FTEMPLATES_DIR/{template_version}/{templates_file}')
+
     yield templates
 
     # Skip cleanup when using a persistent cache directory.
@@ -98,6 +116,7 @@ def fastspec_output(filenames, templates):
 
 
 @pytest.fixture(scope='session')
+<<<<<<< HEAD
 def fastspec_hii_output(filenames, templates, outdir):
     """fastspec with the HII-region maximal line list (--emlinesfile/
     --constraintsfile): 63 lines, enough to exceed the FITS 999-column limit
@@ -107,11 +126,22 @@ def fastspec_hii_output(filenames, templates, outdir):
     emlinesfile = str(resources.files('fastspecfit').joinpath('data/emlines-hii.ecsv'))
     constraintsfile = str(resources.files('fastspecfit').joinpath('data/emline-constraints-hii.yaml'))
     outfile = os.path.join(outdir, 'fastspec-hii.fits')
+=======
+def fastspec_fixedvdisp_output(filenames, templates, outdir):
+    """fastspec with equal --vdisp-bounds: fixed convolution kernel, no
+    chi2 scan/optimizer (see issue #266)."""
+    from fastspecfit.fastspecfit import fastspec, parse
+    outfile = os.path.join(outdir, 'fastspec-fixedvdisp.fits')
+>>>>>>> main
     cmd = (f'fastspec {filenames["redrockfile"]} -o {outfile} '
            f'--redux_dir {filenames["redux_dir"]} '
            f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
            f'--specproddir {filenames["specproddir"]} --templates {templates} '
+<<<<<<< HEAD
            f'--emlinesfile {emlinesfile} --constraintsfile {constraintsfile}')
+=======
+           f'--vdisp-bounds 0 0')
+>>>>>>> main
     fastspec(args=parse(options=cmd.split()[1:]))
     yield outfile
 

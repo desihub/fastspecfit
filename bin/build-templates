@@ -12,10 +12,10 @@ Usage
 -----
 ::
 
-  time python bin/build-templates --version 2.1.0 \\
+  time python bin/build-templates --version 3.0.0 \\
       --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates
 
-  time python bin/build-templates --version 2.1.0 \\
+  time python bin/build-templates --version 3.0.0 \\
       --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates \\
       --logmets=-1.,0.,0.3
 
@@ -38,7 +38,7 @@ Stellar spectra are computed with ``python-fsps`` using:
 - Chabrier (2003) IMF (default; Salpeter and Kroupa also supported via
   ``--imf``)
 - MIST isochrones
-- C3K_a stellar spectral library (R ~ 3000 at 2750-9100 A)
+- C3K_10K stellar spectral library (R ~ 10000 at 3500-9800 A)
 - Tabular SFH: 5 variable-width age bins from 30 Myr to 13.7 Gyr with
   constant star formation within each bin, following the Prospector
   ``adjust_continuity_agebins`` prescription
@@ -96,25 +96,37 @@ following extensions (in order):
 
 Notes
 -----
-* To switch stellar libraries (e.g., MILES vs. C3K_a), edit
-  ``$SPS_HOME/src/sps_vars.f90`` and reinstall ``python-fsps`` from
-  scratch in a clean environment::
+
+* To use the higher-resolution ``C3K_R10K`` library, see
+  https://github.com/moustakas/c3k/blob/main/README.md for the full
+  recipe. This library has R(lambda/FWHM) = 10000 or
+  R(lambda/dlambda) = 23550 (13 km/s), over 3500-9800 A:
+  https://github.com/moustakas/fsps/tree/master/SPECTRA/C3K_R10K#readme
+
+  The original C3K_a library has resolution R(lambda/FWHM) = 3000 or
+  R(lambda/dlambda) = 7065 (42 km/s), over 2750-9100 A:
+  https://github.com/cconroy20/fsps/tree/master/SPECTRA/C3K#readme
+
+  The R~10000 models are already built, so there's no need to rerun
+  that pipeline -- just clone the pre-built forks and reinstall::
 
     micromamba create -y -n fsps python
     micromamba activate fsps
-    micromamba install -Y numpy scipy astropy
+    micromamba install -y numpy scipy astropy
     python -m pip install desispec fastspecfit
     cd $HOME/code
-    git clone --recursive https://github.com/dfm/python-fsps.git
+    git clone --recursive https://github.com/moustakas/python-fsps.git
     export SPS_HOME=$HOME/code/python-fsps/src/fsps/libfsps
     cd python-fsps
     python -m pip install . --no-cache-dir --force-reinstall
     cd
     python -c "import fsps; sp = fsps.StellarPopulation(); print(sp.libraries)"
 
-* The C3K_a library has resolution R(lambda/FWHM) = 3000, equivalently
-  R(lambda/dlambda) = 7065 (42 km/s), over 2750-9100 A:
-  https://github.com/cconroy20/fsps/tree/master/SPECTRA/C3K#readme
+  Note: the ``.spectra.bin`` binary files under ``SPECTRA/C3K_R10K/``
+  in the ``fsps`` fork are git-ignored (too large for git) -- make
+  sure they're present at ``$SPS_HOME/SPECTRA/C3K_R10K/`` before
+  reinstalling (see the "Install into FSPS" step in the README linked
+  above if they need to be copied in separately).
 
 * Figure 3 of Leja et al. (2017) illustrates how the various free SPS
   parameters affect the resulting SED.
@@ -245,7 +257,7 @@ def build_dustem_templates(qpah=3.5, umin=1., gamma=0.01, png=None):
     """
     # Umin and qpah parameter grids
     umin_grid = np.array([0.10, 0.15, 0.20, 0.30, 0.40, 0.50, 0.70, 0.80,
-                          1.00, 1.20, 1.50, 2.00, 2.50, 3.00, 4.00, 5.00, 
+                          1.00, 1.20, 1.50, 2.00, 2.50, 3.00, 4.00, 5.00,
                           7.00, 8.00, 12.0, 15.0, 20.0, 25.0])
     numin = len(umin_grid)
 
@@ -534,15 +546,11 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
 
         flux = flux * lodot / (4. * np.pi * tenpc2) # [erg/s/cm2/A/Msun at 10pc]
 
-        # Resample to constant log-lambda / velocity. In the IR (starting at ~1
-        # micron), take every fourth sampling, to save space.
+        # C3K_R10K is already uniformly sampled at Templates.PIXKMS within
+        # PIXKMS_BOUNDS (and natively sampled outside it), so just keep
+        # FSPS's native grid as-is -- no resampling needed.
         if imodel == 0:
-            lo = np.searchsorted(wave, Templates.PIXKMS_BOUNDS[0], 'left')
-            hi = np.searchsorted(wave, Templates.PIXKMS_BOUNDS[1], 'left')
-
-            dlogwave = Templates.PIXKMS / C_LIGHT / np.log(10) # pixel size [log-lambda]
-            optwave = 10.**np.arange(np.log10(wave[lo]), np.log10(wave[hi]), dlogwave)
-            newwave = np.hstack((wave[:lo], optwave, wave[hi+1:]))
+            newwave = wave
             npix = len(newwave)
 
             fluxes = np.zeros((npix, nsed), dtype=np.float64)
@@ -730,7 +738,7 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
     hduwave1.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
     hduwave1.header['PIXWAVLO'] = (Templates.PIXKMS_BOUNDS[0], 'min(wave) where pixel size is PIXKMS [Angstrom]')
     hduwave1.header['PIXWAVHI'] = (Templates.PIXKMS_BOUNDS[1], 'max(wave) where pixel size is PIXKMS [Angstrom]')
-    hduwave1.header['PIXKMS'] = (Templates.PIXKMS, 'pixel size blueward of PIXSZSPT [km/s]')
+    hduwave1.header['PIXKMS'] = (Templates.PIXKMS, 'pixel size within PIXWAVLO-PIXWAVHI [km/s]')
 
     hduwave2 = fits.ImageHDU(agnwave)
     hduwave2.header['EXTNAME'] = 'AGNWAVE'
@@ -774,7 +782,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--templatedir', required=True, help='Location of original and output templates')
-    parser.add_argument('--version', required=True, help='Version number (e.g., 2.1.0)')
+    parser.add_argument('--version', required=True, help='Version number (e.g., 3.0.0)')
 
     # DL07 parameters
     # https://python-fsps.readthedocs.io/en/latest/stellarpop_api
