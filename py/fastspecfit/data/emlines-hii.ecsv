@@ -73,13 +73,13 @@ hepsilon_broad 3971.198  k True  False True  False H$\epsilon$+[NeIII]-$\lambda$
       hei_7281 7283.356  v False True  False False [ArIII]-$\lambda$7135+[OII]-$\lambda\lambda$7320,30       ariii_7135_oii_7320_30
       oii_7320 7321.94   v False False False False [ArIII]-$\lambda$7135+[OII]-$\lambda\lambda$7320,30       ariii_7135_oii_7320_30
       oii_7330 7332.21   v False False False False [ArIII]-$\lambda$7135+[OII]-$\lambda\lambda$7320,30       ariii_7135_oii_7320_30
-          pa15 8547.727  w True  False False False P8-15                                                     paschen_series
-          pa14 8600.752  w True  False False False P8-15                                                     paschen_series
-          pa13 8667.4    w True  False False False P8-15                                                     paschen_series
-          pa12 8752.863  w True  False False False P8-15                                                     paschen_series
-          pa11 8865.323  w True  False False False P8-15                                                     paschen_series
-          pa10 9017.774  w True  False False False P8-15                                                     paschen_series
+          pa15 8547.727  w True  False False False P8--P15                                                   paschen_series
+          pa14 8600.752  w True  False False False P8--P15                                                   paschen_series
+          pa13 8667.4    w True  False False False P8--P15                                                   paschen_series
+          pa12 8752.863  w True  False False False P8--P15                                                   paschen_series
+          pa11 8865.323  w True  False False False P8--P15                                                   paschen_series
+          pa10 9017.774  w True  False False False P8--P15                                                   paschen_series
      siii_9069 9071.1    w False False False False [SIII]-$\lambda$9069                                      siii_9069
-           pa9 9232.232  w True  False False False P8-15                                                     paschen_series
+           pa9 9232.232  w True  False False False P8--P15                                                   paschen_series
      siii_9532 9533.2    w False False False False [SIII]-$\lambda$9532                                      siii_9532
-           pa8 9548.818  w True  False False False P8-15                                                     paschen_series
+           pa8 9548.818  w True  False False False P8--P15                                                   paschen_series
