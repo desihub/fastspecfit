@@ -180,6 +180,32 @@ class TestConsistencyCheck:
             EmlineConstraints(constraints_file=str(bad_yaml), line_table=line_table)
 
 
+class TestHIIConsistencyCheck:
+    """The HII-region maximal line list (data/emlines-hii.ecsv) and its
+    constraints file (data/emline-constraints-hii.yaml) must be consistent
+    with one another, same as the default files above."""
+
+    @pytest.fixture(scope='class')
+    def hii_line_table(self):
+        from importlib import resources
+        from fastspecfit.linetable import LineTable
+        emlines_file = str(resources.files('fastspecfit').joinpath('data/emlines-hii.ecsv'))
+        return LineTable(emlines_file=emlines_file).table
+
+    @pytest.fixture(scope='class')
+    def hii_constraints_file(self):
+        from importlib import resources
+        return str(resources.files('fastspecfit').joinpath('data/emline-constraints-hii.yaml'))
+
+    def test_hii_files_exist(self, hii_constraints_file):
+        assert os.path.isfile(hii_constraints_file)
+
+    def test_hii_bundled_files_pass(self, hii_line_table, hii_constraints_file):
+        from fastspecfit.emlines import EmlineConstraints
+        EmlineConstraints(constraints_file=hii_constraints_file,
+                           line_table=hii_line_table)   # must not raise
+
+
 # ── Group 3: line_bounds ──────────────────────────────────────────────────────
 
 class TestLineBounds:

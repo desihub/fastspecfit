@@ -59,6 +59,38 @@ def test_fastspec(fastspec_output):
 
 
 @pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
+def test_fastspec_hii_morelines(fastspec_hii_output):
+    """The HII-region maximal line list (63 lines) exceeds the FITS 999-column
+    limit, triggering the FASTSPEC/MORELINES HDU split (see issue #236)."""
+    import fitsio
+    from fastspecfit.io import read_fastspecfit, MAX_FASTSPEC_COLUMNS, MORELINES_IDCOLS
+
+    fits = fitsio.FITS(fastspec_hii_output)
+    extnames = [fits[i].get_extname() for i in range(1, len(fits))]
+    assert 'MORELINES' in extnames
+
+    fastspec_cols = fits['FASTSPEC'].get_colnames()
+    morelines_cols = fits['MORELINES'].get_colnames()
+    assert len(fastspec_cols) <= MAX_FASTSPEC_COLUMNS
+    assert 'TARGETID' in morelines_cols
+
+    # a known strong line stays in FASTSPEC; a known weak/auroral line moves
+    # to MORELINES
+    assert 'OIII_5007_AMP' in fastspec_cols
+    assert 'HEI_4471_AMP' in morelines_cols
+    assert 'HEI_4471_AMP' not in fastspec_cols
+
+    # reading transparently merges FASTSPEC+MORELINES back into one table
+    _, _, fastfit, _, _ = read_fastspecfit(fastspec_hii_output)
+    idcols_in_morelines = [c for c in morelines_cols if c in MORELINES_IDCOLS]
+    expected_ncols = len(fastspec_cols) + len(morelines_cols) - len(idcols_in_morelines)
+    assert len(fastfit.colnames) == expected_ncols
+    assert 'HEI_4471_AMP' in fastfit.colnames
+    assert 'OIII_5007_AMP' in fastfit.colnames
+    assert np.all(np.isfinite(fastfit['HEI_4471_AMP']))
+
+
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
 def test_fastspec_fixedvdisp(fastspec_fixedvdisp_output):
     """--vdisp-bounds 0 0 fixes the convolution kernel to 0 (native template
     resolution): VDISP == SIGMA_C3K and VDISP_IVAR == 0 (see issue #266)."""

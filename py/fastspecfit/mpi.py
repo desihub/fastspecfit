@@ -455,13 +455,15 @@ def _read_to_merge_one(args):
 
 def read_to_merge_one(filename, fastphot):
     """Read metadata, specphot, and fastfit tables from one output file."""
+    from fastspecfit.io import read_fastspec_table
+
     info = fitsio.FITS(filename)
     meta = Table(info['METADATA'].read())
     specphot = Table(info['SPECPHOT'].read())
     if fastphot:
         fastfit = None
     else:
-        fastfit = Table(info['FASTSPEC'].read())
+        fastfit = read_fastspec_table(info)
     return meta, specphot, fastfit
 
 

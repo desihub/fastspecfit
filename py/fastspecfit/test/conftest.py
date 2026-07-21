@@ -116,6 +116,25 @@ def fastspec_output(filenames, templates):
 
 
 @pytest.fixture(scope='session')
+def fastspec_hii_output(filenames, templates, outdir):
+    """fastspec with the HII-region maximal line list (--emlinesfile/
+    --constraintsfile): 63 lines, enough to exceed the FITS 999-column limit
+    and trigger the FASTSPEC/MORELINES HDU split (see issue #236)."""
+    from importlib import resources
+    from fastspecfit.fastspecfit import fastspec, parse
+    emlinesfile = str(resources.files('fastspecfit').joinpath('data/emlines-hii.ecsv'))
+    constraintsfile = str(resources.files('fastspecfit').joinpath('data/emline-constraints-hii.yaml'))
+    outfile = os.path.join(outdir, 'fastspec-hii.fits')
+    cmd = (f'fastspec {filenames["redrockfile"]} -o {outfile} '
+           f'--redux_dir {filenames["redux_dir"]} '
+           f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
+           f'--specproddir {filenames["specproddir"]} --templates {templates} '
+           f'--emlinesfile {emlinesfile} --constraintsfile {constraintsfile}')
+    fastspec(args=parse(options=cmd.split()[1:]))
+    yield outfile
+
+
+@pytest.fixture(scope='session')
 def fastspec_fixedvdisp_output(filenames, templates, outdir):
     """fastspec with equal --vdisp-bounds: fixed convolution kernel, no
     chi2 scan/optimizer (see issue #266)."""

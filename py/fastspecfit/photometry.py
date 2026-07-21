@@ -1349,7 +1349,8 @@ def gather_tractorphot(input_cat, racolumn='TARGET_RA', deccolumn='TARGET_DEC',
         legacysurveydir = os.path.join(desi_root, 'external', 'legacysurvey', 'dr9')
 
     if not os.path.isdir(legacysurveydir):
-        errmsg = f'Legacy Surveys directory {legacysurveydir} not found.'
+        errmsg = (f'Legacy Surveys directory {legacysurveydir} not found; set the correct '
+                  f'path via --fphotodir or the $FPHOTO_DIR environment variable.')
         log.critical(errmsg)
         raise IOError(errmsg)
 
