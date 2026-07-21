@@ -1760,6 +1760,13 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
     # Attempt to solve for the velocity dispersion based on the rest-wavelength coverage.
     compute_vdisp, (vdisp_s, vdisp_e) = can_compute_vdisp(redshift, specwave)
 
+    # Equal vdisp_bounds signals a fixed convolution kernel (e.g. 0 for
+    # native template resolution, with no extra broadening); skip the chi2
+    # scan/optimizer and the sigma-M* fallback entirely (see issue #266).
+    fixed_vdisp = (templates.vdisp_bounds[0] == templates.vdisp_bounds[1])
+    if fixed_vdisp:
+        compute_vdisp = False
+
     def _vdisp_from_mstar(coeff):
         """Return a fallback vdisp kernel (km/s) derived from the σ–M* relation.
 
@@ -1804,8 +1811,14 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
 
         vdisp_ivar = 0.
 
-        vdisp, input_templateflux, input_templateflux_nolines = \
-            _apply_mstar_vdisp_fallback(coeff, 'Insufficient wavelength coverage to compute vdisp')
+        if fixed_vdisp:
+            vdisp = templates.vdisp_bounds[0]
+            input_templateflux = templates.convolve_vdisp(templates.flux[agekeep, :], vdisp)
+            input_templateflux_nolines = templates.convolve_vdisp(templates.flux_nolines[agekeep, :], vdisp)
+            log.debug(f'Fixed vdisp_bounds={templates.vdisp_bounds}; using constant kernel={vdisp:.0f} km/s')
+        else:
+            vdisp, input_templateflux, input_templateflux_nolines = \
+                _apply_mstar_vdisp_fallback(coeff, 'Insufficient wavelength coverage to compute vdisp')
     else:
         t0 = time.time()
 
@@ -2156,7 +2169,12 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
             fastfit[f'APERCORR_{band.upper()}'] = apercorrs[iband]
         specphot['DN4000_OBS'] = dn4000
         specphot['DN4000_IVAR'] = dn4000_ivar
-        specphot['VDISP_IVAR'] = vdisp_ivar * (vdisp_intrinsic / vdisp)**2
+        # Avoid a divide-by-zero (e.g. a fixed vdisp=0 kernel; see issue
+        # #266) when there is no uncertainty to propagate in the first place.
+        if vdisp_ivar > 0.:
+            specphot['VDISP_IVAR'] = vdisp_ivar * (vdisp_intrinsic / vdisp)**2
+        else:
+            specphot['VDISP_IVAR'] = 0.
 
     # Compute K-corrections, rest-frame quantities, and physical properties.
     if not np.all(coeff == 0.):
