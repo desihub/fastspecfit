@@ -1721,6 +1721,9 @@ def parse(options=None):
     parser.add_argument('--night', default=None, type=str, nargs='*', help="""Generate QA for all objects observed on this
         night (only defined for coadd-type 'pernight' and 'perexp').""")
     parser.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
+    parser.add_argument('--specprod', type=str, default=None, help="""Optional override of the on-disk spectroscopic
+        production directory name under --redux_dir, when it differs from the SPECPROD recorded in the fastspecfit
+        output file (e.g., a relocated or "mini" production tree).""")
     parser.add_argument('--redrockfiles', nargs='*', help='Optional full path to redrock file(s).')
     parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
     parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
@@ -2000,7 +2003,7 @@ def fastqa(args=None, comm=None):
                                             (program == allprograms) * (pixel == allpixels))[0]
                             if len(indx) == 0:
                                 continue
-                            redrockfile = os.path.join(args.redux_dir, specprod, 'healpix', str(survey), str(program), str(pixel // 100),
+                            redrockfile = os.path.join(args.redux_dir, args.specprod or specprod, 'healpix', str(survey), str(program), str(pixel // 100),
                                                        str(pixel), 'redrock-{}-{}-{}.fits'.format(survey, program, pixel))
                             _wrap_qa(redrockfile, indx)
     elif coadd_type == 'uniqpix':
@@ -2020,7 +2023,7 @@ def fastqa(args=None, comm=None):
                                             (program == allprograms) * (pixel == allpixels))[0]
                             if len(indx) == 0:
                                 continue
-                            redrockfile = os.path.join(args.redux_dir, specprod, 'spectra', str(survey), str(program), str(pixel // 100),
+                            redrockfile = os.path.join(args.redux_dir, args.specprod or specprod, 'spectra', str(survey), str(program), str(pixel // 100),
                                                        str(pixel), 'redrock-{}-{}-{}.fits'.format(survey, program, pixel))
                             _wrap_qa(redrockfile, indx)
     elif coadd_type == 'custom':
@@ -2047,7 +2050,7 @@ def fastqa(args=None, comm=None):
                                 #log.warning('No object found with tileid={} and petal={}!'.format(
                                 #    tile, petal))
                                 continue
-                            redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'cumulative', str(tile), allnights[indx[0]],
+                            redrockfile = os.path.join(args.redux_dir, args.specprod or specprod, 'tiles', 'cumulative', str(tile), allnights[indx[0]],
                                                        'redrock-{}-{}-thru{}.fits'.format(petal, tile, allnights[indx[0]]))
                             _wrap_qa(redrockfile, indx)
             elif coadd_type == 'pernight':
@@ -2059,7 +2062,7 @@ def fastqa(args=None, comm=None):
                                                 (tile == alltiles) * (petal == allpetals))[0]
                                 if len(indx) == 0:
                                     continue
-                                redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'pernight', str(tile), str(night),
+                                redrockfile = os.path.join(args.redux_dir, args.specprod or specprod, 'tiles', 'pernight', str(tile), str(night),
                                                            'redrock-{}-{}-{}.fits'.format(petal, tile, night))
                                 _wrap_qa(redrockfile, indx)
             elif coadd_type == 'perexp':
@@ -2074,7 +2077,7 @@ def fastqa(args=None, comm=None):
                                                     (petal == allpetals))[0]
                                     if len(indx) == 0:
                                         continue
-                                    redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'perexp', str(tile), '{:08d}'.format(expid),
+                                    redrockfile = os.path.join(args.redux_dir, args.specprod or specprod, 'tiles', 'perexp', str(tile), '{:08d}'.format(expid),
                                                                'redrock-{}-{}-exp{:08d}.fits'.format(petal, tile, expid))
                                     _wrap_qa(redrockfile, indx)
 

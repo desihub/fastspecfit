@@ -599,7 +599,7 @@ class DESISpectra(object):
 
     def gather_metadata(self, redrockfiles, zmin=None, zmax=None, zwarnmax=None,
                         targetids=None, firsttarget=0, ntargets=None,
-                        input_redshifts=None, specprod_dir=None, use_quasarnet=True,
+                        input_redshifts=None, specprod=None, use_quasarnet=True,
                         redrockfile_prefix='redrock-', specfile_prefix='coadd-',
                         qnfile_prefix='qso_qn-', mgiifile_prefix='qso_mgii-'):
         """Select targets for fitting and gather spectroscopic metadata.
@@ -627,8 +627,15 @@ class DESISpectra(object):
         input_redshifts : float or array-like or None, optional
             Override redshifts for each entry in ``targetids``. If ``None``,
             use Redrock (or QuasarNet) redshifts.
-        specprod_dir : str or None, optional
-            Override the spectroscopic production directory.
+        specprod : str or None, optional
+            Override the on-disk spectroscopic production *directory name*
+            under ``redux_dir``, for cases where it differs from the
+            ``SPECPROD`` dependency recorded in the Redrock/coadd file
+            headers (e.g., a relocated or "mini" production tree). This is
+            independent of the instance attribute ``self.specprod``, which
+            is always read from the file headers and used to pick the
+            correct QuasarNet-afterburner column schema; this parameter only
+            affects where the ``tiles-{specprod}.csv`` file is looked up.
         use_quasarnet : bool, optional
             Use QuasarNet afterburner redshifts for QSOs when available.
             Defaults to ``True``.
@@ -718,14 +725,14 @@ class DESISpectra(object):
             # only compatible with Fuji & Guadalupe headers and later.
             hdr = fitsio.read_header(specfile, ext=0)
 
-            specprod = getdep(hdr, 'SPECPROD')
+            file_specprod = getdep(hdr, 'SPECPROD')
             if hasattr(self, 'specprod'):
-                if self.specprod != specprod:
-                    errmsg = f'specprod must be the same for all input redrock files! {specprod}!={self.specprod}'
+                if self.specprod != file_specprod:
+                    errmsg = f'specprod must be the same for all input redrock files! {file_specprod}!={self.specprod}'
                     log.critical(errmsg)
                     raise ValueError(errmsg)
 
-            self.specprod = specprod
+            self.specprod = file_specprod
 
             if 'SPGRP' in hdr:
                 self.coadd_type = hdr['SPGRP']
@@ -775,8 +782,12 @@ class DESISpectra(object):
                 # cache the tiles file so we can grab the survey and program name
                 # appropriate for this tile; silently skip if redux_dir is unavailable
                 if not hasattr(self, 'tileinfo') and self.redux_dir is not None:
-                    if specprod_dir is None:
-                        specprod_dir = os.path.join(self.redux_dir, self.specprod)
+                    # NB: the on-disk directory name (specprod, an optional
+                    # override) can differ from self.specprod, the "real"
+                    # production name recorded in the file headers (e.g., a
+                    # relocated or "mini" production tree); the CSV filename
+                    # always uses the latter.
+                    specprod_dir = os.path.join(self.redux_dir, specprod if specprod else self.specprod)
                     infofile = os.path.join(specprod_dir, f'tiles-{self.specprod}.csv')
                     if os.path.isfile(infofile):
                         self.tileinfo = Table.read(infofile)
