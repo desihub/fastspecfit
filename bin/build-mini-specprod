@@ -202,19 +202,30 @@ def build_photometry(dr9dir, outdir, fibermaps):
             continue
         for brick in sorted(set(R['BRICKNAME'])):
             B = R[R['BRICKNAME'] == brick].copy()
+            B.remove_columns([col for col in ('TARGETID', 'LS_ID') if col in B.colnames])
 
             outfile = os.path.join(outdir, 'external', 'legacysurvey', 'dr9',
                                    oneregion, 'tractor', brick[:3], f'tractor-{brick}.fits')
-            if _skip(outfile):
-                continue
+
+            # Bricks can be shared across separate invocations of this script
+            # (different samplefiles, healpix vs. cumulative, etc.), so merge
+            # in any new objects rather than skipping outright.
+            if os.path.isfile(outfile):
+                existing = Table.read(outfile)
+                new = B[~np.isin(B['OBJID'], existing['OBJID'])]
+                if len(new) == 0:
+                    print(f'Skipping {outfile} (no new objects)')
+                    continue
+                print(f'Updating {outfile} (+{len(new):,d} object(s))')
+                B = vstack([existing, new])
+            else:
+                print(f'Writing {outfile}')
 
             infile = os.path.join(dr9dir, oneregion, 'tractor', brick[:3], f'tractor-{brick}.fits')
             hdr = fitsio.read_header(infile)
-            B.remove_columns([col for col in ('TARGETID', 'LS_ID') if col in B.colnames])
 
             os.makedirs(os.path.dirname(outfile), exist_ok=True)
-            print(f'Writing {outfile}')
-            fitsio.write(outfile, B.as_array(), header=hdr)
+            fitsio.write(outfile, B.as_array(), header=hdr, clobber=True)
 
 
 def main():
