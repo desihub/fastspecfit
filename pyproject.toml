@@ -69,6 +69,7 @@ zip-safe = true
 package-dir = {"" = "py"}
 script-files = [
     "bin/build-templates",
+    "bin/build-mini-specprod",
     "bin/generate-fast-slurm",
     "bin/get-cutouts",
     "bin/mpi-fastspecfit",

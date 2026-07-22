@@ -1,0 +1,283 @@
+#!/usr/bin/env python
+"""Build a mini "specprod" directory tree containing only a sample of TARGETIDs.
+
+Given a samplefile of TARGETIDs (the same format read by ``mpi-fastspecfit
+--samplefile``, or its cumulative-tile equivalent), this script subsets the
+corresponding Redrock, coadd, and QuasarNet/MgII afterburner files -- plus the
+matching Legacy Survey DR9 Tractor photometry -- down to just the rows for
+those targets, and writes the result into a directory tree that mirrors the
+real ``$DESI_ROOT`` layout:
+
+    $outdir/spectro/redux/{output-specprod}/healpix/{survey}/{program}/{healpix//100}/{healpix}/{redrock,coadd,qso_qn,qso_mgii}-{survey}-{program}-{healpix}.fits
+    $outdir/spectro/redux/{output-specprod}/tiles/cumulative/{tile}/{night}/{redrock,coadd,qso_qn,qso_mgii}-{petal}-{tile}-thru{night}.fits
+    $outdir/spectro/redux/{output-specprod}/tiles-{specprod}.csv               (cumulative mode only)
+    $outdir/external/legacysurvey/dr9/{region}/tractor/{brick[:3]}/tractor-{brick}.fits
+
+Run this at NERSC (or wherever ``$DESI_ROOT`` is mounted); it reads directly
+from the filesystem. Copy the resulting ``$outdir`` tree to another machine
+and point ``DESI_SPECTRO_REDUX`` at ``$outdir/spectro/redux`` and
+``FPHOTO_DIR`` at ``$outdir/external/legacysurvey/dr9`` there.
+
+Note on ``--output-specprod``: only the top-level *directory* name is
+changed. The Redrock file headers keep the real, input ``--specprod`` name
+(e.g. ``iron``, ``loa``) as their ``SPECPROD`` dependency, because
+fastspecfit uses that string to pick the correct QuasarNet-afterburner column
+schema (see ``update_qso_redshifts`` in ``fastspecfit/io.py``); renaming it
+would silently break that logic for older productions. One consequence: for
+cumulative-tile samples, ``tiles-{specprod}.csv`` keeps the *input* specprod
+name in its filename, and downstream ``fastspec``/``fastqa`` runs against the
+mini tree should pass ``--specproddir $outdir/spectro/redux/{output-specprod}``
+explicitly so that file is found.
+
+Examples
+--------
+# Healpix/uniqpix sample (samplefile has SURVEY, PROGRAM, TARGETID, HEALPIX or UNIQPIX):
+build-mini-specprod --samplefile sample.fits --specprod loa --output-specprod loa-mini \\
+    --outdir $SCRATCH/mini-specprod
+
+# Cumulative-tile sample (samplefile has SURVEY, PROGRAM, TARGETID, TILEID):
+build-mini-specprod --samplefile tile-sample.fits --specprod iron --output-specprod iron-mini \\
+    --outdir $SCRATCH/mini-specprod
+
+"""
+import os
+import argparse
+from glob import glob
+
+import numpy as np
+import fitsio
+from astropy.table import Table, vstack
+
+from desispec.io import read_spectra, write_spectra
+
+
+def _skip(path):
+    """Print a skip notice and return True if *path* already exists."""
+    if os.path.exists(path):
+        print(f'Skipping {path} (already exists)')
+        return True
+    return False
+
+
+def _subset_table_file(infile, outfile, extnames, targetids):
+    """Subset one or more TARGETID-keyed binary-table extensions of *infile*
+    and write the result to *outfile*, preserving the primary header.
+
+    Returns a dict {extname: subsetted astropy Table}.
+    """
+    hdr = fitsio.read_header(infile, ext=0)
+    out_tables = {}
+    with fitsio.FITS(outfile, 'rw', clobber=True) as ff:
+        ff.write(None, header=hdr)
+        for extname in extnames:
+            tab = Table.read(infile, extname)
+            tab = tab[np.isin(tab['TARGETID'], targetids)]
+            ff.write(tab.as_array(), extname=extname)
+            out_tables[extname] = tab
+    return out_tables
+
+
+def subset_spectro_files(in_dir, out_dir, stem, targetids):
+    """Subset the redrock/coadd/afterburner files for one healpix pixel or
+    petal-tile-night, writing the results to *out_dir*.
+
+    Returns the subsetted FIBERMAP table (for gathering photometry later), or
+    None if the redrock/coadd pair isn't present in *in_dir*.
+    """
+    redrockfile = os.path.join(in_dir, f'redrock-{stem}.fits')
+    coaddfile   = os.path.join(in_dir, f'coadd-{stem}.fits')
+    if not os.path.isfile(redrockfile) or not os.path.isfile(coaddfile):
+        print(f'WARNING: missing redrock/coadd for {stem} in {in_dir}; skipping.')
+        return None
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    out_redrockfile = os.path.join(out_dir, f'redrock-{stem}.fits')
+    out_coaddfile   = os.path.join(out_dir, f'coadd-{stem}.fits')
+
+    if not _skip(out_redrockfile):
+        print(f'Writing {out_redrockfile}')
+        tabs = _subset_table_file(redrockfile, out_redrockfile,
+                                  ['REDSHIFTS', 'FIBERMAP', 'EXP_FIBERMAP', 'TSNR2'], targetids)
+        fibermap = tabs['FIBERMAP']
+    else:
+        fibermap = Table.read(out_redrockfile, 'FIBERMAP')
+
+    if not _skip(out_coaddfile):
+        print(f'Writing {out_coaddfile}')
+        spec = read_spectra(coaddfile).select(targets=targetids)
+        write_spectra(out_coaddfile, spec)
+
+    for prefix, extname in (('qso_qn', 'QN_RR'), ('qso_mgii', 'MGII')):
+        infile = os.path.join(in_dir, f'{prefix}-{stem}.fits')
+        if not os.path.isfile(infile):
+            continue
+        outfile = os.path.join(out_dir, f'{prefix}-{stem}.fits')
+        if _skip(outfile):
+            continue
+        print(f'Writing {outfile}')
+        _subset_table_file(infile, outfile, [extname], targetids)
+
+    return fibermap
+
+
+def build_healpix_groups(sample):
+    """Group a healpix/uniqpix sample by (survey, program, pixel)."""
+    pixcol = 'UNIQPIX' if 'UNIQPIX' in sample.colnames else 'HEALPIX'
+    groups = []
+    for survey in sorted(set(sample['SURVEY'])):
+        S = sample[sample['SURVEY'] == survey]
+        for program in sorted(set(S['PROGRAM'])):
+            P = S[S['PROGRAM'] == program]
+            for pix in sorted(set(P[pixcol])):
+                targetids = np.unique(P['TARGETID'][P[pixcol] == pix])
+                groups.append(dict(survey=str(survey), program=str(program),
+                                   pix=int(pix), targetids=targetids))
+    return groups
+
+
+def build_cumulative_groups(reduxdir, sample):
+    """Group a cumulative-tile sample by TILEID, resolving each tile to its
+    most recent on-disk night and to the specific petal file(s) that contain
+    each target (no PETAL column required in the samplefile)."""
+    groups = []
+    for tile in sorted(set(sample['TILEID'])):
+        targetids = np.unique(sample['TARGETID'][sample['TILEID'] == tile])
+        tiledir = os.path.join(reduxdir, 'tiles', 'cumulative', str(tile))
+        nightdirs = sorted(glob(os.path.join(tiledir, '????????')))
+        if len(nightdirs) == 0:
+            print(f'WARNING: no night directories found for tile {tile}; skipping.')
+            continue
+        night = os.path.basename(nightdirs[-1]) # most recent
+
+        petalfiles = sorted(glob(os.path.join(tiledir, night, f'redrock-?-{tile}-thru{night}.fits')))
+        for petalfile in petalfiles:
+            petal = os.path.basename(petalfile).split('-')[1]
+            fm_targetids = fitsio.read(petalfile, 'FIBERMAP', columns=['TARGETID'])['TARGETID']
+            these = np.intersect1d(fm_targetids, targetids)
+            if len(these) == 0:
+                continue
+            groups.append(dict(tile=int(tile), night=night, petal=petal, targetids=these))
+    return groups
+
+
+def copy_tiles_csv(reduxdir, out_specprod_dir, specprod, tileids):
+    """Copy the rows of tiles-{specprod}.csv for the relevant tiles.
+
+    Keeps the *input* specprod name in the filename; see the module
+    docstring for why.
+    """
+    infile = os.path.join(reduxdir, f'tiles-{specprod}.csv')
+    if not os.path.isfile(infile):
+        print(f'WARNING: {infile} not found; skipping tiles CSV.')
+        return
+
+    outfile = os.path.join(out_specprod_dir, f'tiles-{specprod}.csv')
+    if _skip(outfile):
+        return
+
+    tiles = Table.read(infile)
+    tiles = tiles[np.isin(tiles['TILEID'], tileids)]
+    print(f'Writing {outfile}')
+    tiles.write(outfile, format='csv')
+
+
+def build_photometry(dr9dir, outdir, fibermaps):
+    """Gather and write the Tractor photometry matching *fibermaps*."""
+    from desispec.io.photo import gather_tractorphot
+
+    combined = vstack(fibermaps)
+    _, uidx = np.unique(combined['TARGETID'], return_index=True)
+    combined = combined[np.sort(uidx)]
+
+    tractor = gather_tractorphot(combined, legacysurveydir=dr9dir)
+    # gather_tractorphot's output is row-aligned with its input, but the
+    # returned Tractor catalog columns do not include PHOTSYS (a targeting
+    # column, not part of the Tractor datamodel), so read it from combined.
+    region = np.where(combined['PHOTSYS'] == 'S', 'south', 'north')
+
+    for oneregion in ('north', 'south'):
+        R = tractor[region == oneregion]
+        if len(R) == 0:
+            continue
+        for brick in sorted(set(R['BRICKNAME'])):
+            B = R[R['BRICKNAME'] == brick].copy()
+
+            outfile = os.path.join(outdir, 'external', 'legacysurvey', 'dr9',
+                                   oneregion, 'tractor', brick[:3], f'tractor-{brick}.fits')
+            if _skip(outfile):
+                continue
+
+            infile = os.path.join(dr9dir, oneregion, 'tractor', brick[:3], f'tractor-{brick}.fits')
+            hdr = fitsio.read_header(infile)
+            B.remove_columns([col for col in ('TARGETID', 'LS_ID') if col in B.colnames])
+
+            os.makedirs(os.path.dirname(outfile), exist_ok=True)
+            print(f'Writing {outfile}')
+            fitsio.write(outfile, B.as_array(), header=hdr)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--samplefile', required=True, type=str,
+                        help='FITS samplefile with SURVEY, PROGRAM, TARGETID, and either '
+                             'HEALPIX/UNIQPIX (healpix mode) or TILEID (cumulative mode).')
+    parser.add_argument('--specprod', default='loa', type=str, help='Input spectroscopic production to read from.')
+    parser.add_argument('--output-specprod', default=None, type=str,
+                        help='Output specprod name (top-level directory); defaults to "{specprod}-mini".')
+    parser.add_argument('--outdir', default='.', type=str, help='Root output directory.')
+    parser.add_argument('--no-photometry', default=False, action='store_true',
+                        help='Do not gather Tractor photometry.')
+    args = parser.parse_args()
+
+    output_specprod = args.output_specprod or f'{args.specprod}-mini'
+
+    desi_root = os.environ['DESI_ROOT']
+    reduxdir = os.path.join(desi_root, 'spectro', 'redux', args.specprod)
+    dr9dir   = os.path.join(desi_root, 'external', 'legacysurvey', 'dr9')
+
+    out_specprod_dir = os.path.join(args.outdir, 'spectro', 'redux', output_specprod)
+
+    colnames = fitsio.FITS(args.samplefile)[1].get_colnames()
+    has_pix  = 'HEALPIX' in colnames or 'UNIQPIX' in colnames
+    has_tile = 'TILEID' in colnames
+
+    if has_pix and has_tile:
+        raise ValueError(f'{args.samplefile} contains both a pixel column and TILEID; ambiguous.')
+    if not has_pix and not has_tile:
+        raise ValueError(f'{args.samplefile} must contain HEALPIX/UNIQPIX or TILEID.')
+
+    pixcol = 'UNIQPIX' if 'UNIQPIX' in colnames else 'HEALPIX'
+    readcols = ['SURVEY', 'PROGRAM', 'TARGETID', pixcol if has_pix else 'TILEID']
+    sample = Table(fitsio.read(args.samplefile, columns=readcols))
+    print(f'Read {len(sample):,d} rows from {args.samplefile}')
+
+    fibermaps = []
+    if has_pix:
+        for g in build_healpix_groups(sample):
+            in_dir  = os.path.join(reduxdir, 'healpix', g['survey'], g['program'],
+                                   str(g['pix'] // 100), str(g['pix']))
+            out_dir = os.path.join(out_specprod_dir, 'healpix', g['survey'], g['program'],
+                                   str(g['pix'] // 100), str(g['pix']))
+            stem = f"{g['survey']}-{g['program']}-{g['pix']}"
+            fibermap = subset_spectro_files(in_dir, out_dir, stem, g['targetids'])
+            if fibermap is not None:
+                fibermaps.append(fibermap)
+    else:
+        for g in build_cumulative_groups(reduxdir, sample):
+            in_dir  = os.path.join(reduxdir, 'tiles', 'cumulative', str(g['tile']), g['night'])
+            out_dir = os.path.join(out_specprod_dir, 'tiles', 'cumulative', str(g['tile']), g['night'])
+            stem = f"{g['petal']}-{g['tile']}-thru{g['night']}"
+            fibermap = subset_spectro_files(in_dir, out_dir, stem, g['targetids'])
+            if fibermap is not None:
+                fibermaps.append(fibermap)
+        copy_tiles_csv(reduxdir, out_specprod_dir, args.specprod, np.unique(sample['TILEID']))
+
+    if len(fibermaps) > 0 and not args.no_photometry:
+        build_photometry(dr9dir, args.outdir, fibermaps)
+
+    print('Done.')
+
+
+if __name__ == '__main__':
+    main()
