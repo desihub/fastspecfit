@@ -11,6 +11,11 @@ from fastspecfit.templates import Templates
 from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import MPPool
 
+# Sticky per-process flag: once the Legacy Survey viewer is found
+# unreachable, stop retrying it for every subsequent object in this process
+# (see _fetch_cutout).
+_cutout_unreachable = False
+
 
 def _corner_plot(plotdata, bins, ranges, labels, titles, truths, sigmas,
                  suptitle, pngfile, subplots_adjust=None):
@@ -723,8 +728,10 @@ def _fetch_cutout(metadata, outdir, pngfile, layer, pixscale):
     hdr['CD2_2'] = +pixscale/3600
     wcs = WCS(hdr)
 
+    global _cutout_unreachable
+
     cutoutjpeg = os.path.join(outdir, 'tmp.'+os.path.basename(pngfile.replace('.png', '.jpeg')))
-    if not os.path.isfile(cutoutjpeg):
+    if not os.path.isfile(cutoutjpeg) and not _cutout_unreachable:
         import random
         import time
         import urllib.request
@@ -756,7 +763,9 @@ def _fetch_cutout(metadata, outdir, pngfile, layer, pixscale):
                                 f'Retrying in {backoff:.1f}s.')
                     time.sleep(backoff)
                 else:
-                    log.warning(f'No viewer cutout retrieved after {max_retries} attempts: {e}.')
+                    log.warning(f'No viewer cutout retrieved after {max_retries} attempts: {e}. '
+                                f'Skipping further cutout fetches for the remainder of this run.')
+                    _cutout_unreachable = True
     try:
         img = mpimg.imread(cutoutjpeg)
     except:
