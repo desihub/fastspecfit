@@ -220,6 +220,16 @@ def build_photometry(dr9dir, outdir, fibermaps):
             continue
         for brick in sorted(set(R['BRICKNAME'])):
             B = R[R['BRICKNAME'] == brick].copy()
+
+            if brick == '':
+                # gather_tractorphot couldn't resolve a brick for these
+                # targets even via its RA/Dec fallback (e.g. outside the DR9
+                # footprint, or bad coordinates); skip rather than write a
+                # bogus 'tractor-.fits'.
+                print(f"WARNING: no Tractor brick match for {len(B):,d} TARGETID(s), "
+                     f"skipping: {list(B['TARGETID'])}")
+                continue
+
             B.remove_columns([col for col in ('TARGETID', 'LS_ID') if col in B.colnames])
 
             outfile = os.path.join(outdir, 'external', 'legacysurvey', 'dr9',
