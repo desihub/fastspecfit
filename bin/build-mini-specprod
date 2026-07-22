@@ -184,11 +184,29 @@ def copy_tiles_csv(reduxdir, out_specprod_dir, specprod, tileids):
 
 def build_photometry(dr9dir, outdir, fibermaps):
     """Gather and write the Tractor photometry matching *fibermaps*."""
+    from astropy.table import MaskedColumn
     from desispec.io.photo import gather_tractorphot
+
+    # Each fibermap carries per-file FITS metadata (CHECKSUM, DATASUM, ...)
+    # that vstack otherwise complains about merging; it's meaningless once
+    # combined, so drop it.
+    for fibermap in fibermaps:
+        fibermap.meta = {}
 
     combined = vstack(fibermaps)
     _, uidx = np.unique(combined['TARGETID'], return_index=True)
     combined = combined[np.sort(uidx)]
+
+    # Different pixels/tiles can disagree on whether these columns need
+    # masking, which turns them into MaskedColumns in the stacked table;
+    # gather_tractorphot chokes on masked values (e.g. `set()` over a
+    # MaskedConstant), so fill them with the same "unknown" defaults it
+    # already uses for missing columns, which triggers its own RA/Dec
+    # positional-matching fallback.
+    for col, fillval in (('BRICKNAME', ''), ('PHOTSYS', ''),
+                        ('RELEASE', 0), ('BRICKID', 0), ('BRICK_OBJID', 0)):
+        if col in combined.colnames and isinstance(combined[col], MaskedColumn):
+            combined[col] = combined[col].filled(fillval)
 
     tractor = gather_tractorphot(combined, legacysurveydir=dr9dir)
     # gather_tractorphot's output is row-aligned with its input, but the
