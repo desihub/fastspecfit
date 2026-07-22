@@ -209,51 +209,56 @@ def build_photometry(dr9dir, outdir, fibermaps):
             combined[col] = combined[col].filled(fillval)
 
     tractor = gather_tractorphot(combined, legacysurveydir=dr9dir)
-    # gather_tractorphot's output is row-aligned with its input, but the
-    # returned Tractor catalog columns do not include PHOTSYS (a targeting
-    # column, not part of the Tractor datamodel), so read it from combined.
-    region = np.where(combined['PHOTSYS'] == 'S', 'south', 'north')
 
-    for oneregion in ('north', 'south'):
-        R = tractor[region == oneregion]
-        if len(R) == 0:
+    for brick in sorted(set(tractor['BRICKNAME'])):
+        B = tractor[tractor['BRICKNAME'] == brick].copy()
+
+        if brick == '':
+            # gather_tractorphot couldn't resolve a brick for these
+            # targets even via its RA/Dec fallback (e.g. outside the DR9
+            # footprint, or bad coordinates); skip rather than write a
+            # bogus 'tractor-.fits'.
+            print(f"WARNING: no Tractor brick match for {len(B):,d} TARGETID(s), "
+                 f"skipping: {list(B['TARGETID'])}")
             continue
-        for brick in sorted(set(R['BRICKNAME'])):
-            B = R[R['BRICKNAME'] == brick].copy()
 
-            if brick == '':
-                # gather_tractorphot couldn't resolve a brick for these
-                # targets even via its RA/Dec fallback (e.g. outside the DR9
-                # footprint, or bad coordinates); skip rather than write a
-                # bogus 'tractor-.fits'.
-                print(f"WARNING: no Tractor brick match for {len(B):,d} TARGETID(s), "
-                     f"skipping: {list(B['TARGETID'])}")
-                continue
-
-            B.remove_columns([col for col in ('TARGETID', 'LS_ID') if col in B.colnames])
-
-            outfile = os.path.join(outdir, 'external', 'legacysurvey', 'dr9',
-                                   oneregion, 'tractor', brick[:3], f'tractor-{brick}.fits')
-
-            # Bricks can be shared across separate invocations of this script
-            # (different samplefiles, healpix vs. cumulative, etc.), so merge
-            # in any new objects rather than skipping outright.
-            if os.path.isfile(outfile):
-                existing = Table.read(outfile)
-                new = B[~np.isin(B['OBJID'], existing['OBJID'])]
-                if len(new) == 0:
-                    print(f'Skipping {outfile} (no new objects)')
-                    continue
-                print(f'Updating {outfile} (+{len(new):,d} object(s))')
-                B = vstack([existing, new])
-            else:
-                print(f'Writing {outfile}')
-
+        # Determine which region (north/south) actually contains this brick
+        # by checking the filesystem directly, rather than trusting the
+        # targeting-time PHOTSYS: for positionally-matched objects (blank or
+        # zero-valued BRICKID/BRICK_OBJID, e.g. secondary targets) the real
+        # match can land in either region regardless of the nominal PHOTSYS
+        # value, and the two can disagree near the north/south boundary.
+        for oneregion in ('north', 'south'):
             infile = os.path.join(dr9dir, oneregion, 'tractor', brick[:3], f'tractor-{brick}.fits')
-            hdr = fitsio.read_header(infile)
+            if os.path.isfile(infile):
+                break
+        else:
+            print(f'WARNING: could not locate a north or south Tractor file for brick {brick}; skipping.')
+            continue
 
-            os.makedirs(os.path.dirname(outfile), exist_ok=True)
-            fitsio.write(outfile, B.as_array(), header=hdr, clobber=True)
+        B.remove_columns([col for col in ('TARGETID', 'LS_ID') if col in B.colnames])
+
+        outfile = os.path.join(outdir, 'external', 'legacysurvey', 'dr9',
+                               oneregion, 'tractor', brick[:3], f'tractor-{brick}.fits')
+
+        # Bricks can be shared across separate invocations of this script
+        # (different samplefiles, healpix vs. cumulative, etc.), so merge
+        # in any new objects rather than skipping outright.
+        if os.path.isfile(outfile):
+            existing = Table.read(outfile)
+            new = B[~np.isin(B['OBJID'], existing['OBJID'])]
+            if len(new) == 0:
+                print(f'Skipping {outfile} (no new objects)')
+                continue
+            print(f'Updating {outfile} (+{len(new):,d} object(s))')
+            B = vstack([existing, new])
+        else:
+            print(f'Writing {outfile}')
+
+        hdr = fitsio.read_header(infile)
+
+        os.makedirs(os.path.dirname(outfile), exist_ok=True)
+        fitsio.write(outfile, B.as_array(), header=hdr, clobber=True)
 
 
 def main():
