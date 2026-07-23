@@ -13,8 +13,42 @@ from fastspecfit.util import MPPool
 
 # Sticky per-process flag: once the Legacy Survey viewer is found
 # unreachable, stop retrying it for every subsequent object in this process
-# (see _fetch_cutout).
+# (see _fetch_cutout). Seeded once per fastqa() call by _probe_cutout_host()
+# and propagated to multiprocessing workers via their pool initializer, so
+# a single probe covers the whole call regardless of --mp.
 _cutout_unreachable = False
+
+
+def _probe_cutout_host(timeout=5):
+    """One-shot reachability check for the Legacy Survey viewer host.
+
+    Cheap up-front alternative to letting every worker separately discover
+    an outage via _fetch_cutout()'s multi-attempt retry/backoff loop. Unlike
+    socket.create_connection(), which tries *every* address getaddrinfo
+    returns (this host round-robins across several backend IPs, so that can
+    multiply the effective timeout severalfold), this only ever attempts the
+    first resolved address, so the wall-clock cost is bounded by `timeout`.
+    """
+    import socket
+    host, port = 'www.legacysurvey.org', 443
+    try:
+        family, socktype, proto, _, sockaddr = socket.getaddrinfo(
+            host, port, socket.AF_UNSPEC, socket.SOCK_STREAM)[0]
+        with socket.socket(family, socktype, proto) as sock:
+            sock.settimeout(timeout)
+            sock.connect(sockaddr)
+        return True
+    except OSError as e:
+        log.warning(f'Legacy Survey viewer unreachable ({e}); skipping image cutouts for this run.')
+        return False
+
+
+def _qa_worker_init(cutout_unreachable=False, **init_sc_args):
+    """Pool initializer: seed this worker's cutout-reachability state, then
+    initialize the single-copy objects as usual."""
+    global _cutout_unreachable
+    _cutout_unreachable = cutout_unreachable
+    sc_data.initialize(**init_sc_args)
 
 
 def _corner_plot(plotdata, bins, ranges, labels, titles, truths, sigmas,
@@ -1899,6 +1933,13 @@ def fastqa(args=None, comm=None):
 
     sc_data.initialize(**init_sc_args)
 
+    # Probe the Legacy Survey viewer once for this call and seed the
+    # (per-process) cutout-reachability flag, both here in the main process
+    # (covers the args.mp<=1 case) and via the pool initializer below (covers
+    # each multiprocessing worker).
+    global _cutout_unreachable
+    _cutout_unreachable = not _probe_cutout_host()
+
     # if multiprocessing, create a pool of worker processes
     # and initialize single-copy objects in each worker
     if args.mp > 1 and not 'NERSC_HOST' in os.environ:
@@ -1906,8 +1947,8 @@ def fastqa(args=None, comm=None):
         multiprocessing.set_start_method('fork')
 
     mp_pool = MPPool(args.mp,
-                     initializer=sc_data.initialize,
-                     init_argdict=init_sc_args)
+                     initializer=_qa_worker_init,
+                     init_argdict=dict(cutout_unreachable=_cutout_unreachable, **init_sc_args))
 
     log.info(f'Cached stellar templates {sc_data.templates.file}')
     log.info(f'Cached emission-line table {sc_data.emlines.file}')
