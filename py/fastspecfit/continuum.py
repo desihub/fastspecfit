@@ -982,6 +982,19 @@ class ContinuumTools(object):
         # Precompute quantities that are independent of tauv.
         wave_diff    = np.diff(wave)
         dustflux_zf  = dustflux * zfactors
+        if dust_emission:
+            # Trapezoidal-quadrature weights on the (fixed) template
+            # wavelength grid, so that trapz(f, wave) == f @ trapz_weights
+            # for any f. The energy-balance term is
+            #   d = trapz(templateflux * (1 - A), wave)
+            #     = trapz(templateflux, wave) - trapz(templateflux * A, wave)
+            #     = template_wave_integral - templateflux @ (A * trapz_weights)
+            # and since templateflux doesn't depend on tauv, the first term
+            # can be computed once here instead of on every _fill(tauv) call.
+            trapz_weights = np.zeros_like(wave)
+            trapz_weights[:-1] += 0.5 * wave_diff
+            trapz_weights[1:]  += 0.5 * wave_diff
+            template_wave_integral = templateflux @ trapz_weights   # (ntemplates,)
 
         b   = np.empty(nrows)
         Psi = np.empty((nrows, ntemplates))
@@ -1008,9 +1021,8 @@ class ContinuumTools(object):
         A_buf  = np.empty(npix)
         Az_buf = np.empty(npix)
         if dust_emission:
-            dterm_buf  = np.empty((ntemplates, npix - 1))
-            dterm_buf2 = np.empty((ntemplates, npix - 1))
-            outer_buf  = np.empty((ntemplates, npix))
+            Aw_buf    = np.empty(npix)
+            outer_buf = np.empty((ntemplates, npix))
 
         def _fill(tauv):
             np.multiply(dust_kl, -tauv, out=A_buf)
@@ -1018,12 +1030,8 @@ class ContinuumTools(object):
             np.multiply(A_buf, zfactors, out=Az_buf)       # Az_buf: Az
             np.multiply(templateflux, Az_buf, out=phi)     # phi = templateflux * Az
             if dust_emission:
-                np.subtract(1., A_buf, out=A_buf)          # A_buf: one_minus_A
-                np.multiply(templateflux[:, :-1], A_buf[:-1], out=dterm_buf)
-                np.multiply(templateflux[:, 1:],  A_buf[1:],  out=dterm_buf2)
-                dterm_buf[:] += dterm_buf2
-                dterm_buf[:] *= 0.5
-                d = dterm_buf @ wave_diff                  # (ntemplates,)
+                np.multiply(A_buf, trapz_weights, out=Aw_buf)
+                d = template_wave_integral - templateflux @ Aw_buf  # (ntemplates,)
                 np.multiply(d[:, None], dustflux_zf, out=outer_buf)
                 phi[:] += outer_buf
             if synthspec:
