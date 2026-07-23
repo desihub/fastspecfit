@@ -1929,6 +1929,7 @@ def fastqa(args=None, comm=None):
         'template_version':  args.templateversion,
         'template_imf':      args.imf,
         'log_verbose':       False,
+        'mapdir':            args.mapdir,
     }
 
     sc_data.initialize(**init_sc_args)
@@ -1958,8 +1959,7 @@ def fastqa(args=None, comm=None):
 
     # Initialize the I/O class.
     Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
-                       redux_dir=args.redux_dir, fphotodir=args.fphotodir,
-                       mapdir=args.mapdir)
+                       redux_dir=args.redux_dir, fphotodir=args.fphotodir)
 
     def _wrap_qa(redrockfile, indx=None, fitstack=False):
         if indx is None:

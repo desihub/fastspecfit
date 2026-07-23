@@ -207,6 +207,7 @@ def build_init_args(paths, templates, mode):
         'template_version':  TEMPLATE_VERSION,
         'template_imf':      'chabrier',
         'log_verbose':       False,
+        'mapdir':            paths['mapdir'],
     }
 
 
@@ -258,7 +259,6 @@ def phase_io(paths, mode, args, timer):
         phot=sc_data.photometry,
         cosmo=sc_data.cosmology,
         fphotodir=paths['fphotodir'],
-        mapdir=paths['mapdir'],
         redux_dir=paths['redux_dir'],
     )
 

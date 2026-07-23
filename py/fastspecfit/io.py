@@ -471,13 +471,10 @@ class DESISpectra(object):
     fphotodir : str or None, optional
         Top-level directory of the source photometry (Legacy Survey). Defaults
         to ``$FPHOTO_DIR``.
-    mapdir : str or None, optional
-        Directory containing the Milky Way dust maps. Defaults to
-        ``$DUST_DIR/maps``.
 
     """
 
-    def __init__(self, phot, cosmo, redux_dir=None, fphotodir=None, mapdir=None):
+    def __init__(self, phot, cosmo, redux_dir=None, fphotodir=None):
         if redux_dir is None:
             redux_env = os.environ.get('DESI_SPECTRO_REDUX')
             self.redux_dir = os.path.expandvars(redux_env) if redux_env else None
@@ -503,12 +500,6 @@ class DESISpectra(object):
                     pass
             self.fphotoext = fphotoext
             self.fphotodir = fphotodir
-
-        if mapdir is None:
-            dust_env = os.environ.get('DUST_DIR')
-            self.mapdir = os.path.join(os.path.expandvars(dust_env), 'maps') if dust_env else None
-        else:
-            self.mapdir = mapdir
 
         self.phot = phot
         self.cosmo = cosmo
@@ -1080,13 +1071,10 @@ class DESISpectra(object):
         from desitarget.geomask import match_to
         from desispec.coaddition import coadd_cameras
         from desispec.io import read_spectra
-        from desiutil.dust import SFDMap
         from fastspecfit.resolution import Resolution
         from fastspecfit.util import mwdust_transmission
 
         t0 = time.time()
-
-        SFD = SFDMap(scaling=1.0, mapdir=self.mapdir)
 
         uniqueid_col = self.phot.uniqueid_col
 
@@ -1115,7 +1103,7 @@ class DESISpectra(object):
                 tuniv = np.full_like(redshift, 100.)
 
             # Populate 'meta' with dust and filter-related quantities.
-            ebv = SFD.ebv(meta['RA'], meta['DEC'])
+            ebv = sc_data.sfdmap.ebv(meta['RA'], meta['DEC'])
             meta['EBV'] = ebv
 
             if 'PHOTSYS' in meta.colnames:

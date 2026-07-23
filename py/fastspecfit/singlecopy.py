@@ -22,7 +22,8 @@ class Singletons(object):
 
     """
     def __init__(self):
-        pass
+        self._mapdir = None
+        self._sfdmap = None
 
     def initialize(self,
                    emlines_file=None,
@@ -37,6 +38,7 @@ class Singletons(object):
                    template_version=None,
                    template_imf=None,
                    log_verbose=False,
+                   mapdir=None,
     ):
         """Load all singleton data structures from disk.
 
@@ -75,6 +77,12 @@ class Singletons(object):
         log_verbose : :class:`bool`, optional
             If ``True``, set the logger level to ``DEBUG``. Default is
             ``False``.
+        mapdir : :class:`str` or None, optional
+            Directory containing the Milky Way dust maps; defaults to
+            ``$DUST_DIR/maps``. Only consulted if something actually
+            accesses :attr:`sfdmap` (the map itself is loaded lazily, on
+            first access, not here); stacked-spectra fits and other callers
+            that never touch dust corrections never require it.
 
         """
         if log_verbose:
@@ -82,10 +90,13 @@ class Singletons(object):
 
         key = (emlines_file, constraints_file, fphotofile, fastphot, fitstack,
                ignore_photometry, template_file, template_version, template_imf,
-               vdisp_nominal, tuple(vdisp_bounds) if vdisp_bounds is not None else None)
+               vdisp_nominal, tuple(vdisp_bounds) if vdisp_bounds is not None else None,
+               mapdir)
         if getattr(self, '_init_key', None) == key:
             return
         self._init_key = key
+        self._mapdir = mapdir
+        self._sfdmap = None
 
         # templates for continuum fitting
         self.templates = Templates(template_file=template_file,
@@ -119,6 +130,22 @@ class Singletons(object):
         # IGM model
         self.igm = Inoue14()
         log.debug(f'Cached {self.igm.reference} IGM attenuation parameters.')
+
+    @property
+    def sfdmap(self):
+        """Milky Way dust map (:class:`desiutil.dust.SFDMap`), shared across
+        every :meth:`~fastspecfit.io.DESISpectra.read` call in this process.
+
+        Built lazily on first access rather than in :meth:`initialize`, so
+        that stacked-spectra fits and any other caller that never touches
+        dust corrections neither pay the load cost nor require ``$DUST_DIR``
+        to be set.
+        """
+        if self._sfdmap is None:
+            from desiutil.dust import SFDMap
+            self._sfdmap = SFDMap(scaling=1.0, mapdir=self._mapdir)
+            log.debug(f'Cached Milky Way dust map {self._sfdmap.mapdir}')
+        return self._sfdmap
 
 
 # global structure with single-copy data, initially empty
