@@ -13,7 +13,7 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data
-from fastspecfit.photometry import Photometry
+from fastspecfit.photometry import Photometry, release_to_photsys, desitarget_resolve_dec, releasedict
 from fastspecfit.util import FLUXNORM, ZWarningMask, fsftime, _uid
 from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
 
@@ -551,7 +551,6 @@ class DESISpectra(object):
             return northern
 
         # ADM retrieve the photometric system from the RELEASE.
-        from desitarget.io import release_to_photsys, desitarget_resolve_dec
         if 'PHOTSYS' in targets.dtype.names:
             photsys = targets["PHOTSYS"]
         else:
@@ -660,7 +659,7 @@ class DESISpectra(object):
         """
         from astropy.table import vstack, hstack
         from desiutil.depend import getdep
-        from desitarget import geomask
+        from desitarget.geomask import match_to
 
         if zmin is None:
             zmin = 1e-3
@@ -911,7 +910,7 @@ class DESISpectra(object):
 
             # make sure we're sorted
             if targetids is not None:
-                srt = geomask.match_to(meta['TARGETID'], targetids)
+                srt = match_to(meta['TARGETID'], targetids)
                 meta = meta[srt]
                 assert(np.all(meta['TARGETID'] == targetids))
 
@@ -961,7 +960,7 @@ class DESISpectra(object):
                 if 'FIBER' in expmeta.colnames:
                     meta['FIBER'] = np.zeros(len(meta), dtype=expmeta['FIBER'].dtype)
                     _, uindx = np.unique(expmeta['TARGETID'], return_index=True)
-                    I = geomask.match_to(expmeta[uindx]['TARGETID'], meta['TARGETID'])
+                    I = match_to(expmeta[uindx]['TARGETID'], meta['TARGETID'])
                     assert(np.all(expmeta[uindx][I]['TARGETID'] == meta['TARGETID']))
                     meta['FIBER'] = expmeta[uindx[I]]['FIBER']
 
@@ -1078,7 +1077,7 @@ class DESISpectra(object):
 
         """
         from astropy.table import vstack
-        from desitarget import geomask
+        from desitarget.geomask import match_to
         from desispec.coaddition import coadd_cameras
         from desispec.io import read_spectra
         from desiutil.dust import SFDMap
@@ -1163,7 +1162,7 @@ class DESISpectra(object):
                 os.environ['DESI_LOGLEVEL'] = 'warning'
                 spec = read_spectra(specfile)#.select(targets=meta[uniqueid])
 
-                srt = geomask.match_to(spec.fibermap[uniqueid_col], meta['TARGETID'])
+                srt = match_to(spec.fibermap[uniqueid_col], meta['TARGETID'])
                 spec = spec[srt]
                 assert(np.all(spec.fibermap[uniqueid_col] == meta[uniqueid_col]))
 
@@ -1400,7 +1399,7 @@ class DESISpectra(object):
     def _gather_photometry(self, specprod=None, alltiles=None):
         """Gather Tractor photometry from disk and merge into the metadata tables."""
         from astropy.table import vstack
-        from desitarget import geomask
+        from desitarget.geomask import match_to
         from fastspecfit.photometry import gather_tractorphot
 
         input_meta = vstack(self.meta).copy()
@@ -1410,8 +1409,6 @@ class DESISpectra(object):
 
         # Legacy Surveys
         if hasattr(self.phot, 'legacysurveydr'):
-            from desitarget.io import releasedict
-
             legacysurveydr = self.phot.legacysurveydr
 
             # targeting and Tractor columns to read from disk but need
@@ -1430,7 +1427,7 @@ class DESISpectra(object):
             if legacysurveydr.lower() in ['dr9', 'dr10', 'dr11']:
                 metas = []
                 for meta in self.meta:
-                    srt = geomask.match_to(tractor[uniqueid_col], meta[uniqueid_col])
+                    srt = match_to(tractor[uniqueid_col], meta[uniqueid_col])
                     assert(np.all(meta[uniqueid_col] == tractor[uniqueid_col][srt]))
 
                     # The fibermaps in fuji and guadalupe (plus earlier productions) had a
@@ -1456,7 +1453,7 @@ class DESISpectra(object):
                                     log.warning('Updating column {} in metadata table: {}-->{}.'.format(
                                         col, meta[col][0], targets[col][0]))
                                     meta[col][diffcol] = targets[col][diffcol]
-                    srt = geomask.match_to(tractor[uniqueid_col], meta[uniqueid_col])
+                    srt = match_to(tractor[uniqueid_col], meta[uniqueid_col])
                     assert(np.all(meta[uniqueid_col] == tractor[uniqueid_col][srt]))
 
                     # Add the tractor catalog quantities (overwriting columns if necessary).
@@ -1502,7 +1499,7 @@ class DESISpectra(object):
                     meta = meta[inmask]
                 if len(meta) == 0:
                     continue
-                srt = geomask.match_to(phot_tbl[uniqueid_col], meta[uniqueid_col])
+                srt = match_to(phot_tbl[uniqueid_col], meta[uniqueid_col])
                 assert(np.all(meta[uniqueid_col] == phot_tbl[uniqueid_col][srt]))
                 if hasattr(self.phot, 'dropcols'):
                     meta.remove_columns(self.phot.dropcols)
