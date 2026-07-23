@@ -1001,23 +1001,37 @@ class ContinuumTools(object):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
+        # Scratch buffers reused across every _fill(tauv) call (Brent's method
+        # evaluates this ~10-15 times per fit) so the outer-product-sized
+        # arrays aren't reallocated on every trial tauv.
+        npix   = templateflux.shape[1]
+        A_buf  = np.empty(npix)
+        Az_buf = np.empty(npix)
+        if dust_emission:
+            dterm_buf  = np.empty((ntemplates, npix - 1))
+            dterm_buf2 = np.empty((ntemplates, npix - 1))
+            outer_buf  = np.empty((ntemplates, npix))
+
         def _fill(tauv):
-            A           = np.exp(-tauv * dust_kl)     # (npix,)
-            Az          = A * zfactors                 # (npix,)
-            phi[:]      = templateflux * Az            # (ntemplates, npix)
+            np.multiply(dust_kl, -tauv, out=A_buf)
+            np.exp(A_buf, out=A_buf)                       # A_buf: A = exp(-tauv*dust_kl)
+            np.multiply(A_buf, zfactors, out=Az_buf)       # Az_buf: Az
+            np.multiply(templateflux, Az_buf, out=phi)     # phi = templateflux * Az
             if dust_emission:
-                one_minus_A = 1. - A
-                d = 0.5 * (
-                    templateflux[:, :-1] * one_minus_A[:-1] +
-                    templateflux[:, 1:]  * one_minus_A[1:]
-                ) @ wave_diff                          # (ntemplates,)
-                phi[:] += d[:, None] * dustflux_zf
+                np.subtract(1., A_buf, out=A_buf)          # A_buf: one_minus_A
+                np.multiply(templateflux[:, :-1], A_buf[:-1], out=dterm_buf)
+                np.multiply(templateflux[:, 1:],  A_buf[1:],  out=dterm_buf2)
+                dterm_buf[:] += dterm_buf2
+                dterm_buf[:] *= 0.5
+                d = dterm_buf @ wave_diff                  # (ntemplates,)
+                np.multiply(d[:, None], dustflux_zf, out=outer_buf)
+                phi[:] += outer_buf
             if synthspec:
                 spec_batch = self.continuum_to_spectroscopy_batch(phi)  # (ntemplates, nspec)
-                Psi[:nspec, :] = spec_batch.T * specistd[:, None]
+                np.multiply(spec_batch.T, specistd[:, None], out=Psi[:nspec, :])
             if synthphot:
                 phot_batch = self.continuum_to_photometry_batch(phi)    # (ntemplates, nphot)
-                Psi[nspec:, :] = phot_batch.T * objflamistd[:, None]
+                np.multiply(phot_batch.T, objflamistd[:, None], out=Psi[nspec:, :])
 
         def objective(tauv):
             _fill(tauv)
