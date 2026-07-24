@@ -269,7 +269,7 @@ _cosmo = None
 
 
 def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=None,
-                                  require_templates=True, mapdir=None):
+                                  require_templates=True, mapdir=None, cutout_unreachable=None):
     """MPPool initializer: populate ``sc_data.photometry``, ``bg_data``, the
     IGM model, and the cosmology in each worker.
 
@@ -298,6 +298,14 @@ def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=No
         ``MODELS`` extension instead -- so it passes ``False`` here to avoid
         requiring the (multi-GB) raw templates file to be present just to
         regenerate plots.
+    cutout_unreachable : :class:`bool` or None, optional
+        Seeds this worker's copy of :data:`fastspecfit.qa._cutout_unreachable`
+        (same sticky per-process mechanism ``fastqa`` uses to detect an
+        unreachable Legacy Survey viewer once, up front, rather than letting
+        every object separately discover the outage via
+        :func:`fastspecfit.qa._fetch_cutout`'s retry/backoff loop). Left
+        untouched (``None``, the default) for the plain fitting path, which
+        only imports ``fastspecfit.qa`` at all when ``--qa`` is requested.
 
     """
     global _igm, _cosmo
@@ -305,6 +313,10 @@ def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=No
     sc_data.photometry = Photometry(fphotofile=fphotofile)
     sc_data.set_mapdir(mapdir)
     bg_data.load(gridfile, templatedir=templatedir)
+
+    if cutout_unreachable is not None:
+        import fastspecfit.qa as qa_module
+        qa_module._cutout_unreachable = cutout_unreachable
 
     if require_templates and not os.path.isfile(bg_data.templates_file):
         errmsg = (f'Bayesian templates file {bg_data.templates_file} not found; '
@@ -1698,7 +1710,15 @@ def fastbayes_qa(args=None, mp_pool=None):
         log.warning('No objects to process.')
         return 0
 
-    init_argdict = {'fphotofile': fphotofile, 'gridfile': gridfile, 'require_templates': False}
+    # Probe the Legacy Survey viewer once for this call and seed the
+    # (per-process) cutout-reachability flag, both here in the main process
+    # (covers the args.mp<=1 case) and via the pool initializer below (covers
+    # each multiprocessing worker) -- same mechanism as fastqa().
+    from fastspecfit.qa import _probe_cutout_host
+    cutout_unreachable = not _probe_cutout_host()
+
+    init_argdict = {'fphotofile': fphotofile, 'gridfile': gridfile, 'require_templates': False,
+                    'cutout_unreachable': cutout_unreachable}
 
     t0 = time.time()
     _initialize_fastbayes_workers(**init_argdict)
