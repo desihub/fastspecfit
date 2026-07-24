@@ -9,39 +9,15 @@ and ``bin/build-bayesian-photometry``), fit each object's observed broadband
 photometry by interpolating the grid to the object's (Redrock) redshift,
 solving for the chi2-minimizing stellar-mass amplitude of every grid template
 in closed form, and building up the posterior probability distribution of
-every grid parameter by weighting each template by its likelihood. Point
-estimates (mean, mode, and 16/50/84th percentiles) are reported for every
-parameter from this discrete-grid posterior.
+every grid parameter by weighting each template by its likelihood. The
+discrete maximum-likelihood point is then refined to sub-grid precision via
+a local parabola fit along each of the 7 grid axes and an N-linear
+interpolation over the neighboring templates, so that the reported
+parameters, CHI2, and model spectrum are all mutually consistent.
 
-Because the underlying grid has finite resolution, the maximum-likelihood
-point is additionally refined: since the grid is a full factorial design
-(every combination of its 7 axes exists), the templates neighboring the
-discrete chi2 minimum are known exactly via index arithmetic, with no need
-for scattered-data interpolation. A local parabola fit to chi2 along each
-axis independently (:func:`fastspecfit.util.minfit`, the same utility used
-elsewhere in this package to refine a velocity-dispersion grid minimum)
-gives a sub-grid-resolution parameter estimate and a formal (delta-chi2=1)
-uncertainty for each of the 7 grid axes. The same local fractional offsets
-feed an N-linear interpolation over the (up to 2**7) neighboring templates,
-which is used to build a refined model spectrum, re-solve the mass
-amplitude, and recompute chi2 for that refined model -- so the reported
-CHI2 corresponds to the same model as the reported parameters, not the
-unrefined discrete grid point. K-corrections, absolute magnitudes,
-rest-frame luminosities, and the model Dn(4000) index are computed from
-that refined rest-frame spectrum, which is also written to a MODELS
-extension for later QA/analysis without needing to re-read the templates
-file.
-
-Axes built log-uniform (age, zzsun, umin, qpah) are refined and reported in
-log10 space (as LOGAGE, LOGZZSUN, LOGUMIN, LOGQPAH) so that their formal
-uncertainties are symmetric; axes built linear-uniform (tau, dustn, gamma)
-are refined and reported in linear space.
-
-IGM attenuation and cosmological dimming for the *grid* photometry are
-already baked into the photometry grid (see ``bin/build-bayesian-
-photometry``); this module only needs the IGM model and cosmology directly
-to redshift the one refined rest-frame spectrum per object for the K-
-correction/absolute-magnitude calculation.
+See ``doc/technote/fastbayes.tex`` for the full grid design, statistical
+methodology, sub-grid refinement algorithm, and derived-quantity
+definitions.
 
 """
 import os, sys, time, logging
@@ -50,7 +26,7 @@ import fitsio
 from astropy.table import Table
 
 from fastspecfit.logger import log
-from fastspecfit.util import MPPool, fsftime, minfit, C_LIGHT
+from fastspecfit.util import MPPool, fsftime, ZWarningMask, C_LIGHT
 from fastspecfit.photometry import Photometry
 from fastspecfit.singlecopy import sc_data
 
@@ -110,6 +86,7 @@ class BayesianGrid(object):
         self.file = None
         self._templates_fits = None
         self._wave = None
+        self._axis_cache = {}
 
 
     @staticmethod
@@ -148,6 +125,8 @@ class BayesianGrid(object):
 
         self.meta = Table(T['METADATA'].read())
         self.ntemplate = len(self.meta)
+        self.sfr = np.asarray(self.meta['sfr'], dtype='f8') # [ntemplate], Msun/yr per Msun formed
+        self._axis_cache = {}
 
         # Recover the grid's N-D axis structure. The grid is a full
         # factorial/Cartesian-product design (every combination of the 7
@@ -240,6 +219,40 @@ class BayesianGrid(object):
         return maggies[:, idx - 1, :] + frac * (maggies[:, idx, :] - maggies[:, idx - 1, :])
 
 
+    def axis_posterior_cache(self, col):
+        """Lazily cache per-grid-axis posterior statistics for grid-axis column
+        ``col``. These depend only on ``self.meta`` (identical for every
+        object fit against this grid), so they are computed once per worker
+        rather than once per object.
+
+        Returns
+        -------
+        vals : :class:`numpy.ndarray`
+            Per-template values of ``col`` in its fit coordinate (log10 for
+            :data:`LOG_AXES`, linear otherwise).
+        order : :class:`numpy.ndarray`
+            ``np.argsort(vals)``.
+        sorted_vals : :class:`numpy.ndarray`
+            ``vals[order]``.
+        uniq : :class:`numpy.ndarray`
+            Unique values of ``vals``, from ``np.unique``.
+        inv : :class:`numpy.ndarray`
+            Inverse-index mapping from ``np.unique(vals, return_inverse=True)``.
+
+        """
+        cached = self._axis_cache.get(col)
+        if cached is None:
+            vals = np.asarray(self.meta[col], dtype='f8')
+            if col in LOG_AXES:
+                vals = np.log10(vals)
+            order = np.argsort(vals)
+            sorted_vals = vals[order]
+            uniq, inv = np.unique(vals, return_inverse=True)
+            cached = (vals, order, sorted_vals, uniq, inv)
+            self._axis_cache[col] = cached
+        return cached
+
+
 # global structures with single-copy data, initially empty
 bg_data = BayesianGrid()
 _igm = None
@@ -282,19 +295,34 @@ def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=No
         _cosmo = TabulatedDESI()
 
 
-def _weighted_percentile(values, weights, percentiles):
-    """Weighted percentiles of ``values`` via linear interpolation of the weighted CDF."""
-    order = np.argsort(values)
-    v = values[order]
+def _weighted_percentile(values, weights, percentiles, order=None, sorted_values=None):
+    """Weighted percentiles of ``values`` via linear interpolation of the weighted CDF.
+
+    ``order``/``sorted_values`` (``np.argsort(values)`` and ``values[order]``)
+    may be passed in when already known -- e.g. because ``values`` is
+    grid-only data, identical for every object -- to skip the O(n log n)
+    argsort.
+
+    """
+    if order is None:
+        order = np.argsort(values)
+        sorted_values = values[order]
     w = weights[order]
     cw = np.cumsum(w)
     cw /= cw[-1]
-    return np.interp(np.asarray(percentiles) / 100., cw, v)
+    return np.interp(np.asarray(percentiles) / 100., cw, sorted_values)
 
 
-def _weighted_mode(values, weights):
-    """Weighted mode: the (exact) grid value with the largest total weight."""
-    uniq, inv = np.unique(values, return_inverse=True)
+def _weighted_mode(values, weights, uniq=None, inv=None):
+    """Weighted mode: the (exact) grid value with the largest total weight.
+
+    ``uniq``/``inv`` (from ``np.unique(values, return_inverse=True)``) may be
+    passed in when already known -- e.g. because ``values`` is grid-only
+    data, identical for every object -- to skip the redundant call.
+
+    """
+    if uniq is None:
+        uniq, inv = np.unique(values, return_inverse=True)
     binweights = np.bincount(inv, weights=weights)
     return uniq[np.argmax(binweights)]
 
@@ -302,8 +330,55 @@ def _weighted_mode(values, weights):
 def _axis_posterior_values(col):
     """Per-template values of grid-axis column ``col``, in its fit coordinate
     (log10 for :data:`LOG_AXES`, linear otherwise)."""
-    vals = np.asarray(bg_data.meta[col], dtype='f8')
-    return np.log10(vals) if col in LOG_AXES else vals
+    return bg_data.axis_posterior_cache(col)[0]
+
+
+def _parabola_vertex3(x, y):
+    """Closed-form vertex of the unique parabola through 3 ``(x, y)`` points.
+
+    Equivalent to :func:`fastspecfit.util.minfit` specialized to exactly 3
+    points: with 3 points and a 2nd-degree polynomial the fit is an exact
+    interpolation (not a least-squares approximation), so the coefficients
+    have a direct algebraic solution (Newton's divided-difference form)
+    instead of paying for a generic least-squares/SVD solve
+    (:func:`numpy.polyfit`) on every call. ``x`` is assumed strictly
+    increasing, guaranteed by its grid-neighbor construction in
+    :func:`_refine_grid_axes`.
+
+    Returns
+    -------
+    x0, xerr, y0, zwarn : Same meaning and edge-case semantics as
+        :func:`fastspecfit.util.minfit`.
+
+    """
+    x0v, x1v, x2v = x
+    y0v, y1v, y2v = y
+
+    f01 = (y1v - y0v) / (x1v - x0v)
+    f12 = (y2v - y1v) / (x2v - x1v)
+    a = (f12 - f01) / (x2v - x0v)
+    b = f01 - a * (x0v + x1v)
+    c = y0v - a * x0v**2 - b * x0v
+
+    if a == 0.:
+        return -1, -1, -1, ZWarningMask.BAD_MINFIT
+
+    x0 = -b / (2. * a)
+    y0 = -(b**2) / (4. * a) + c
+
+    zwarn = 0
+    if (x0 <= x0v) or (x2v <= x0):
+        zwarn |= ZWarningMask.BAD_MINFIT
+    if y0 <= 0.:
+        zwarn |= ZWarningMask.BAD_MINFIT
+
+    if a > 0.:
+        xerr = 1. / np.sqrt(a)
+    else:
+        xerr = 1. / np.sqrt(-a)
+        zwarn |= ZWarningMask.BAD_MINFIT
+
+    return x0, xerr, y0, zwarn
 
 
 def _refine_grid_axes(ibest, chi2):
@@ -370,7 +445,7 @@ def _refine_grid_axes(ibest, chi2):
             xs.append(np.log10(v) if log_axis else v)
             ys.append(chi2[flat])
 
-        x0, xerr, y0, zwarn = minfit(np.array(xs), np.array(ys))
+        x0, xerr, y0, zwarn = _parabola_vertex3(xs, ys)
 
         if zwarn != 0 or not (xs[0] < x0 < xs[2]):
             fit_value[col] = center_coord
@@ -420,28 +495,24 @@ def _corner_weights(ibest, frac, frac_dir):
         Corresponding non-negative weights, summing to 1.
 
     """
-    multi_index = list(np.unravel_index(ibest, bg_data.dims))
+    multi_index = np.array(np.unravel_index(ibest, bg_data.dims))
     naxes = len(GRID_AXIS_COLUMNS)
+    t = np.array([frac[col] for col in GRID_AXIS_COLUMNS])
+    direction = np.array([frac_dir[col] for col in GRID_AXIS_COLUMNS])
 
-    indices, weights = [], []
-    for corner in range(2**naxes):
-        idx = list(multi_index)
-        w = 1.
-        for axis_pos, col in enumerate(GRID_AXIS_COLUMNS):
-            t = frac[col]
-            if (corner >> axis_pos) & 1:
-                w *= t
-                idx[axis_pos] = multi_index[axis_pos] + frac_dir[col]
-            else:
-                w *= (1. - t)
-        if w <= 0.:
-            continue
-        indices.append(np.ravel_multi_index(tuple(idx), bg_data.dims))
-        weights.append(w)
+    # bits[corner, axis_pos] is the axis_pos-th bit of `corner`, for every
+    # corner of the 2**naxes hypercube at once.
+    bits = (np.arange(2**naxes)[:, np.newaxis] >> np.arange(naxes)[np.newaxis, :]) & 1
 
-    indices = np.array(indices, dtype='i8')
-    weights = np.array(weights, dtype='f8')
-    weights /= weights.sum()
+    per_axis_weight = np.where(bits == 1, t[np.newaxis, :], 1. - t[np.newaxis, :])
+    corner_weight = np.prod(per_axis_weight, axis=1)
+
+    keep = corner_weight > 0.
+    corner_multi_index = multi_index[np.newaxis, :] + bits[keep] * direction[np.newaxis, :]
+
+    indices = np.ravel_multi_index(tuple(corner_multi_index.T), bg_data.dims).astype('i8')
+    weights = corner_weight[keep]
+    weights = weights / weights.sum()
 
     return indices, weights
 
@@ -595,7 +666,7 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
     # template's actual SFR estimate for this object. Guard against
     # zero/negative SFR (e.g., old, passively evolving SSPs) before taking
     # the log, given LOGSFR's large dynamic range.
-    sfr_per_template = amplitude * np.asarray(bg_data.meta['sfr'], dtype='f8') # [ntemplate], Msun/yr
+    sfr_per_template = amplitude * bg_data.sfr # [ntemplate], Msun/yr
     logsfr_per_template = np.log10(np.clip(sfr_per_template, 1e-30, None))
 
     # --- local refinement of the maximum-likelihood point -----------------
@@ -614,7 +685,7 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
     chi2_refined = np.sum(flam_ivar * refined_resid**2)
 
     refined_logmstar = np.log10(max(refined_amplitude, 1e-30))
-    refined_sfr_per_msun = np.sum(corner_weight * np.asarray(bg_data.meta['sfr'], dtype='f8')[corner_idx])
+    refined_sfr_per_msun = np.sum(corner_weight * bg_data.sfr[corner_idx])
     refined_sfr = refined_amplitude * refined_sfr_per_msun
     refined_logsfr = np.log10(max(refined_sfr, 1e-30))
 
@@ -664,16 +735,19 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
 
     posterior_arrays = {}
     for pname in PARAM_NAMES:
+        order = sorted_vals = uniq = inv = None
         if pname in derived:
             result[pname] = derived[pname]
             vals = posterior[pname]
         else:
-            vals = _axis_posterior_values(_OUTNAME_TO_AXIS[pname])
+            # Grid-only data, identical for every object -- fetch the
+            # cached argsort/unique instead of recomputing them here.
+            vals, order, sorted_vals, uniq, inv = bg_data.axis_posterior_cache(_OUTNAME_TO_AXIS[pname])
         posterior_arrays[pname] = (vals, weight)
         mean = np.sum(weight * vals)
         result[f'{pname}_MEAN'] = mean
-        result[f'{pname}_MODE'] = _weighted_mode(vals, weight)
-        p16, p50, p84 = _weighted_percentile(vals, weight, (16., 50., 84.))
+        result[f'{pname}_MODE'] = _weighted_mode(vals, weight, uniq=uniq, inv=inv)
+        p16, p50, p84 = _weighted_percentile(vals, weight, (16., 50., 84.), order=order, sorted_values=sorted_vals)
         result[f'{pname}_P16'] = p16
         result[f'{pname}_P50'] = p50
         result[f'{pname}_P84'] = p84
