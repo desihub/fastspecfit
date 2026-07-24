@@ -51,6 +51,10 @@ _OUTNAME_TO_AXIS = {v: k for k, v in _AXIS_OUTNAME.items()}
 # are derived per-object from the closed-form amplitude solve.
 PARAM_NAMES = tuple(_AXIS_OUTNAME[col] for col in GRID_AXIS_COLUMNS) + ('LOGMSTAR', 'LOGSFR')
 
+# Subset (and display order) of PARAM_NAMES shown in the QA posterior panel;
+# the full 9-parameter grid is overkill for a quick-look figure.
+QA_POSTERIOR_PARAMS = ('LOGAGE', 'LOGZZSUN', 'LOGMSTAR', 'LOGSFR')
+
 # Human-friendly axis labels for the QA posterior-histogram grid.
 _PARAM_LABELS = {
     'LOGAGE': r'$\log_{10}({\rm Age/Gyr})$',
@@ -1051,7 +1055,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
 
     photcol1 = colors.to_hex('darkorange')
     fontsize1, fontsize2 = 14, 20
-    legxpos, legypos2, legfntsz1, legfntsz = 0.98, 0.05, 16, 18
+    legfntsz = 18
     bbox = dict(boxstyle='round', facecolor='lightgray', alpha=0.15)
     bbox2 = dict(boxstyle='round', facecolor='lightgray', alpha=0.7)
 
@@ -1074,24 +1078,25 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     if figdir and not os.path.isdir(figdir):
         os.makedirs(figdir, exist_ok=True)
 
-    # 7 rows x 8 cols: rows 0:3 are the SED/cutout block (matching the
+    # 5 rows x 8 cols: rows 0:3 are the SED/cutout block (matching the
     # column proportions of fastqa's fastphot layout: sedax 5/8, cutax
     # 3/8, so labels/legends sized for that layout still fit), row 3 is
-    # a (shrunk) blank gap, and rows 4:7 hold the posterior-histogram grid.
+    # a blank gap (also hosting the z/Dn4000/absmag boxes below the
+    # cutout), and row 4 holds the (single-row, 4-parameter) posterior grid.
     # Explicit margins mirror fastqa's own fastphot subplots_adjust (tight
     # left/bottom, generous right/top for the fig.text labels/legends).
-    fig = plt.figure(figsize=(18, 15))
-    gs = fig.add_gridspec(7, 8, height_ratios=[1, 1, 1, 0.2, 1.1, 1.1, 1.1],
-                          left=0.09, right=0.88, top=0.9, bottom=0.06,
+    fig = plt.figure(figsize=(18, 14))
+    gs = fig.add_gridspec(5, 8, height_ratios=[1, 1, 1, 0.5, 2.8],
+                          left=0.09, right=0.88, top=0.9, bottom=0.07,
                           hspace=0.6, wspace=0.3)
 
-    sedax = fig.add_subplot(gs[0:3, 0:5])
+    sedax = fig.add_subplot(gs[0:3, 0:4])
 
     # image cutout, only if this photometry configuration has viewer info
     have_cutout = hasattr(phot, 'viewer_layer') and hasattr(phot, 'viewer_pixscale')
     if have_cutout:
         img, wcs, _, _ = _fetch_cutout(meta, figdir, pngfile, phot.viewer_layer, phot.viewer_pixscale)
-        cutax = fig.add_subplot(gs[0:2, 5:8], projection=wcs)
+        cutax = fig.add_subplot(gs[0:2, 4:8], projection=wcs)
         cutax.imshow(img, origin='lower')
         cutax.set_xlabel('RA [J2000]')
         cutax.set_ylabel('Dec [J2000]')
@@ -1113,7 +1118,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
                   Line2D([0], [0], color='yellow', lw=2, ls='--', label='10 arcsec')]
         cutax.legend(handles=handles, loc='lower left', fontsize=fontsize1, facecolor='lightgray')
     else:
-        cutax = fig.add_subplot(gs[0:2, 5:8])
+        cutax = fig.add_subplot(gs[0:2, 4:8])
         cutax.axis('off')
 
     # --- SED panel: observed photometry (filled markers, upper limits where
@@ -1140,6 +1145,31 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     mgood = (zflux > 0.) & (zwave_um >= phot_wavelims[0]) & (zwave_um <= phot_wavelims[1])
     sedmodel_abmag = np.full_like(zflux, np.nan)
     sedmodel_abmag[mgood] = -2.5 * np.log10(zflux[mgood] * factor[mgood])
+
+    # y-axis limits (AB mag; brighter/smaller values at the top) -- set
+    # *before* any errorbar(lolims=True) calls below: matplotlib bakes in
+    # the upper-limit caret's orientation using the axis's inversion state
+    # at call time, so setting (and thus inverting) the y-axis afterward
+    # leaves the caret pointing the wrong way (toward the point instead of
+    # away from it, into the fainter/undetected region).
+    dm = 1.5
+    candidates = []
+    if np.any(abmag_ivar > 0.):
+        candidates.append(abmag[abmag_ivar > 0.])
+    if np.any(abmag_limit > 0.):
+        candidates.append(abmag_limit[abmag_limit > 0.])
+    if np.any(mgood):
+        candidates.append(sedmodel_abmag[mgood])
+    if candidates:
+        allmags = np.concatenate(candidates)
+        sed_ymin = min(np.nanmax(allmags) + dm, 32.) # never fainter than AB=32
+        sed_ymax = np.nanmin(allmags) - dm
+    else:
+        sed_ymin, sed_ymax = 30., 20.
+
+    sedax.set_xlim(phot_wavelims[0], phot_wavelims[1])
+    sedax.set_ylim(sed_ymin, sed_ymax)
+
     sedax.plot(zwave_um[mgood], sedmodel_abmag[mgood], color='grey', alpha=0.9, zorder=1)
 
     # synthesized photometry (open diamonds)
@@ -1173,25 +1203,6 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
 
     _plot_obs(np.where(phot.bands_to_fit)[0], photcol1, 1.0)
     _plot_obs(np.where(~phot.bands_to_fit)[0], 'none', 0.7)
-
-    # y-axis limits (AB mag; brighter/smaller values at the top)
-    dm = 1.5
-    candidates = []
-    if np.any(abmag_ivar > 0.):
-        candidates.append(abmag[abmag_ivar > 0.])
-    if np.any(abmag_limit > 0.):
-        candidates.append(abmag_limit[abmag_limit > 0.])
-    if np.any(mgood):
-        candidates.append(sedmodel_abmag[mgood])
-    if candidates:
-        allmags = np.concatenate(candidates)
-        sed_ymin = np.nanmax(allmags) + dm
-        sed_ymax = np.nanmin(allmags) - dm
-    else:
-        sed_ymin, sed_ymax = 30., 20.
-
-    sedax.set_xlim(phot_wavelims[0], phot_wavelims[1])
-    sedax.set_ylim(sed_ymin, sed_ymax)
     sedax.set_xscale('log')
     sedax.set_ylabel('AB mag')
     sedax.set_xlabel(r'Observed-frame Wavelength ($\mu$m)')
@@ -1214,19 +1225,6 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     sedax.text(0.02, 0.94, r'$\chi^{2}_{\nu,\mathrm{phot}}=$' + r'${:.2f}$'.format(rchi2),
               ha='left', va='top', transform=sedax.transAxes, fontsize=legfntsz)
 
-    # basic fitting info (bottom-right, shaded box)
-    txt = '\n'.join((
-        r'$\log_{{10}}(Z/Z_{{\odot}})={}$'.format(_fmt(result['LOGZZSUN'], result['LOGZZSUN_IVAR'], '{:.2f}')),
-        r'$\tau={}$'.format(_fmt(result['TAU'], result['TAU_IVAR'], '{:.2f}')),
-        r'$\log_{{10}}(\mathrm{{SFR}}/[M_{{\odot}}/\mathrm{{yr}}])={}$'.format(
-            _fmt(result['LOGSFR'], result['LOGSFR_IVAR'], '{:.2f}')),
-        r'$\log_{{10}}(\mathrm{{Age}}/\mathrm{{Gyr}})={}$'.format(
-            _fmt(result['LOGAGE'], result['LOGAGE_IVAR'], '{:.2f}')),
-        r'$\log_{{10}}(M/M_{{\odot}})={}$'.format(_fmt(result['LOGMSTAR'], result['LOGMSTAR_IVAR'], '{:.2f}')),
-    ))
-    sedax.text(legxpos, legypos2, txt, ha='right', va='bottom', transform=sedax.transAxes,
-              fontsize=legfntsz1, bbox=bbox, linespacing=1.4)
-
     # target label above the cutout, and rest-frame wavelength label above the SED
     cpos = cutax.get_position()
     spos = sedax.get_position()
@@ -1235,17 +1233,16 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     fig.text((spos.x0 + spos.x1) / 2., spos.y1 + 0.05, r'Rest-frame Wavelength ($\mu$m)',
              ha='center', va='bottom', fontsize=fontsize2)
 
-    # z / Dn(4000) and absolute-magnitude boxes below the cutout (below its
-    # RA/Dec axis label and tick labels, not just its image edge). Anchoring
-    # the left box at the column's left edge (ha='left') and the right box
-    # at the column's right edge (ha='right') maximizes the gap between them
-    # for a given cutout column width, rather than splitting at a fixed
-    # fraction that can overlap if either box's text runs long.
-    ytext = cpos.y0 - 0.06
-    txt = [r'$z={:.7f}$'.format(redshift), '',
-          r'$D_{{n}}(4000)_{{\mathrm{{model}}}}={:.3f}$'.format(result['DN4000_MODEL'])]
-    fig.text(cpos.x0, ytext, '\n'.join(txt), ha='left', va='top', fontsize=legfntsz,
-             bbox=bbox, linespacing=1.4)
+    # Two shaded info boxes below the cutout (below its RA/Dec axis label and
+    # tick labels, not just its image edge): observed/spectrum-derived
+    # quantities on the left (z, Dn(4000), rest-frame absolute magnitude and
+    # colors), Bayesian fitting results on the right (age, metallicity,
+    # stellar mass, SFR -- in the same order as the posterior panel below).
+    # Anchoring the left box at the column's left edge (ha='left') and the
+    # right box at the column's right edge (ha='right') maximizes the gap
+    # between them for a given cutout column width, rather than splitting at
+    # a fixed fraction that can overlap if either box's text runs long.
+    ytext = cpos.y0 - 0.10
 
     gindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1. + phot.band_shift) - 4300))
     rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1. + phot.band_shift) - 5600))
@@ -1256,7 +1253,9 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     def _absmag_col(band, shift):
         return f'ABSMAG{int(10 * shift):02d}_{band.upper()}'
 
-    txt = [r'$M_{{{}{}}}={:.2f}$'.format(
+    txt = [r'$z={:.7f}$'.format(redshift),
+          r'$D_{{n}}(4000)_{{\mathrm{{model}}}}={:.3f}$'.format(result['DN4000_MODEL']), '']
+    txt += [r'$M_{{{}{}}}={:.2f}$'.format(
         str(shift_rband), absmag_rband.lower().replace('decam_', '').replace('sdss_', ''),
         result[_absmag_col(absmag_rband, shift_rband)])]
     if gindx != rindx:
@@ -1269,16 +1268,27 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         txt += [r'$M_{{{}{}}}-M_{{{}{}}}={:.3f}$'.format(
             str(shift_rband), absmag_rband.lower(), str(shift_zband), absmag_zband.lower(),
             rz).replace('decam_', '').replace('sdss_', '')]
-    fig.text(cpos.x1, ytext, '\n'.join(txt), ha='right', va='top', fontsize=legfntsz,
+    fig.text(cpos.x0, ytext, '\n'.join(txt), ha='left', va='top', fontsize=fontsize1 - 3,
              bbox=bbox, linespacing=1.4)
 
-    # --- posterior panel: weighted 1D marginal histogram per parameter -----
-    nparam = len(PARAM_NAMES)
-    ncols = 3
-    nrows = int(np.ceil(nparam / ncols))
-    post_gs = gs[4:7, 0:8].subgridspec(nrows, ncols, hspace=0.5, wspace=0.1)
-    for i, pname in enumerate(PARAM_NAMES):
-        ax = fig.add_subplot(post_gs[i // ncols, i % ncols])
+    txt = [
+        r'$\log_{{10}}(\mathrm{{Age}}/\mathrm{{Gyr}})={}$'.format(
+            _fmt(result['LOGAGE'], result['LOGAGE_IVAR'], '{:.2f}')),
+        r'$\log_{{10}}(Z/Z_{{\odot}})={}$'.format(_fmt(result['LOGZZSUN'], result['LOGZZSUN_IVAR'], '{:.2f}')),
+        r'$\log_{{10}}(M/M_{{\odot}})={}$'.format(_fmt(result['LOGMSTAR'], result['LOGMSTAR_IVAR'], '{:.2f}')),
+        r'$\log_{{10}}(\mathrm{{SFR}}/[M_{{\odot}}/\mathrm{{yr}}])={}$'.format(
+            _fmt(result['LOGSFR'], result['LOGSFR_IVAR'], '{:.2f}')),
+    ]
+    fig.text(cpos.x1, ytext, '\n'.join(txt), ha='right', va='top', fontsize=fontsize1 - 3,
+             bbox=bbox, linespacing=1.4)
+
+    # --- posterior panel: weighted 1D marginal histogram, one row of
+    # QA_POSTERIOR_PARAMS (age, Z/Zsun, LOGMSTAR, LOGSFR) --------------------
+    ncols = len(QA_POSTERIOR_PARAMS)
+    post_gs = gs[4, 0:8].subgridspec(1, ncols, wspace=0.08)
+    for i, pname in enumerate(QA_POSTERIOR_PARAMS):
+        ax = fig.add_subplot(post_gs[0, i])
+        ax.set_box_aspect(1)
         vals, w = posterior_arrays[pname]
         uniq, inv = np.unique(vals, return_inverse=True)
 
@@ -1299,8 +1309,8 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
                         color='gray', edgecolor='k', alpha=0.8)
 
         ax.axvline(result[pname], color='C0', lw=1.5)
-        ax.set_xlabel(_PARAM_LABELS.get(pname, pname), fontsize=10)
-        ax.tick_params(labelleft=False, labelsize=9)
+        ax.set_xlabel(_PARAM_LABELS.get(pname, pname), fontsize=16)
+        ax.tick_params(labelleft=False, labelsize=13)
 
     fig.savefig(pngfile)
     plt.close(fig)
