@@ -1,0 +1,196 @@
+\documentclass[12pt]{article}
+
+\usepackage{amsmath,amssymb}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{microtype}
+
+% ── notation shortcuts ─────────────────────────────────────────────────────────
+\newcommand{\chisq}{\chi^2}
+\newcommand{\amp}{\mathcal{A}}
+\newcommand{\iamp}{\mathcal{I}}
+
+\title{FastSpecFit Bayesian Photometric SED Fitting}
+\author{John Moustakas%
+  \thanks{Grid design and fitting-algorithm derivations assisted by
+    Claude Code (Claude Sonnet 5, Anthropic).}}
+\date{\today}
+
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+\label{sec:intro}
+
+This note documents \texttt{fastbayes}, \textsc{FastSpecFit}'s grid-based
+Bayesian mode for fitting broadband photometry alone (no spectroscopy). It
+is intended for samples where only photometry is available, or as a fast,
+fully marginalized alternative to the gradient-based continuum fit in
+\texttt{fastphot}. Rather than optimizing a handful of continuous stellar
+population parameters, \texttt{fastbayes} evaluates every object against a
+large, pre-synthesized grid of fully specified single stellar population
+(SSP) models --- stellar continuum, nebular emission, dust attenuation, and
+dust re-emission all baked in by FSPS --- and builds up the full discrete
+posterior over the grid by likelihood weighting. The grid is built once by
+\texttt{bin/build-bayesian-templates} (raw model spectra) and
+\texttt{bin/build-bayesian-photometry} (synthesized broadband photometry on
+a redshift grid, with IGM attenuation and cosmological dimming already
+applied); \texttt{fastbayes} itself never touches FSPS or reads a raw
+model spectrum for more than the one refined template needed for a given
+object (Section~\ref{sec:refine}).
+
+\section{Grid Design}
+\label{sec:grid}
+
+Each grid point is a single-age SSP (\texttt{sfh=0}) computed with FSPS's
+Kriek \& Conroy (2013) dust attenuation curve (\texttt{dust\_type=4}, with
+\texttt{dust1=0} and \texttt{dust2} $\equiv\tau$ as the free diffuse optical
+depth) and reradiated dust emission (\texttt{add\_dust\_emission=True},
+Draine \& Li 2007 templates). Nebular line and continuum emission are
+included directly in the spectrum. The grid is a full factorial design over
+the seven axes in Table~\ref{tab:grid}: every combination of the seven axis
+values exists, so the flattened grid's $N$-dimensional structure --- and the
+flat index of any neighboring grid point --- is recoverable directly from
+the per-axis values via index arithmetic, with no separate shape bookkeeping
+required.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}llrl@{}}
+\toprule
+Axis & Symbol & $N$ & Range (spacing) \\
+\midrule
+Age & $\log_{10}(\mathrm{age/yr})$ & 20 & 7.000 to 10.137 (linear) \\
+Metallicity & $\log_{10}(Z/Z_\odot)$ & 4 & $-0.8$ to $0.2$ (linear) \\
+Dust optical depth & $\tau$ (\texttt{dust2}) & 6 & 0.0 to 3.0 (linear) \\
+Dust index & $n_{\rm dust}$ (\texttt{dust\_index}) & 4 & $-1.0$ to $0.4$ (linear) \\
+Dust-emission $U_{\rm min}$ & $\log_{10}(U_{\rm min})$ & 4 & 0.1 to 80.0 (log) \\
+Dust-emission $\gamma$ & $\gamma$ & 4 & 0.005 to 0.04 (linear) \\
+Dust-emission $Q_{\rm PAH}$ & $\log_{10}(Q_{\rm PAH})$ & 3 & 0.1 to 5.0 (log) \\
+\bottomrule
+\end{tabular}
+\caption{The seven Bayesian grid axes (\texttt{GRID\_AXIS\_COLUMNS} in
+  \texttt{fastspecfit.fastbayes}), in full-factorial nested-loop order.
+  Total grid size $20\times4\times6\times4\times4\times4\times3 = 92{,}160$
+  models. Axes built log-uniform (age, metallicity, $U_{\rm min}$,
+  $Q_{\rm PAH}$) are refined and reported in $\log_{10}$ space so that
+  their formal uncertainties (Section~\ref{sec:refine}) are symmetric;
+  the remaining axes ($\tau$, $n_{\rm dust}$, $\gamma$) are refined and
+  reported in linear space.}
+\label{tab:grid}
+\end{table}
+
+\section{Fitting Methodology}
+\label{sec:fit}
+
+For an object at redshift $z$, the grid's precomputed maggies
+$m_b(t, z)$ --- per unit stellar mass formed, in band $b$, for template $t$
+--- are linearly interpolated in $z$ to the object's redshift, and converted
+to flux density $F_b(t)$ using the effective wavelength of band $b$. Because
+the model is linear in stellar mass, the $\chisq$-minimizing, non-negative
+mass amplitude $\amp(t)$ for every template is available in closed form:
+\begin{equation}
+  \boxed{
+  \amp(t) \;=\; \max\!\left(0,\;
+  \frac{\sum_b \iamp_b\, f_b\, F_b(t)}{\sum_b \iamp_b\, F_b(t)^2}
+  \right),
+  }
+  \label{eq:amplitude}
+\end{equation}
+where $f_b$ is the observed flux density and $\iamp_b$ its inverse variance
+in band $b$. The corresponding $\chisq$ for every template,
+\begin{equation}
+  \chisq(t) \;=\; \sum_b \iamp_b\,\bigl[f_b - \amp(t)\,F_b(t)\bigr]^2,
+  \label{eq:chi2}
+\end{equation}
+is evaluated for the entire grid at once (a single vectorized pass over all
+92{,}160 templates), giving the discrete maximum-likelihood template
+$t_{\rm best} = \arg\min_t \chisq(t)$ and, via Gaussian likelihood weighting,
+\begin{equation}
+  w(t) \;\propto\; \exp\!\left[-\tfrac{1}{2}\bigl(\chisq(t) - \chisq_{\rm min}\bigr)\right],
+  \qquad \sum_t w(t) = 1,
+  \label{eq:weight}
+\end{equation}
+the full discrete posterior over every grid parameter (and over the derived
+quantities $\log_{10} M_\star$ and $\log_{10}\mathrm{SFR}$, obtained by
+scaling each template's tabulated per-unit-mass values by $\amp(t)$). Point
+estimates --- mean, mode, and the 16th/50th/84th percentiles --- are reported
+for every parameter directly from this weighted posterior.
+
+\section{Sub-Grid Refinement}
+\label{sec:refine}
+
+Because the grid has finite resolution, the discrete maximum-likelihood
+point $t_{\rm best}$ is refined to sub-grid precision before its parameters,
+model spectrum, and $\chisq$ are reported. The refinement exploits the
+grid's full-factorial structure: for axis $a$ with best-fit index $i_0$
+(not at a grid edge), the three already-computed $\chisq$ values at indices
+$i_0-1, i_0, i_0+1$ --- holding every other axis fixed at its
+$t_{\rm best}$ index --- define an exact quadratic interpolant (three points
+determine a unique parabola, so no least-squares fit is needed; see the
+closed-form coefficients in \texttt{fastbayes.\_parabola\_vertex3}).
+Recasting that parabola as
+\begin{equation}
+  \chisq(x) \;=\; \chisq_0 + \left(\frac{x - x_0}{\delta x}\right)^2
+  \label{eq:parabola}
+\end{equation}
+gives both the refined coordinate $x_0$ along axis $a$ and its formal
+$\Delta\chisq=1$ uncertainty $\delta x$ directly from the quadratic
+coefficient ($\delta x = 1/\sqrt{a}$ for $\chisq = a x^2 + bx + c$). The
+refinement is skipped
+(falling back to the discrete grid value, with zero formal uncertainty)
+whenever $i_0$ is at a grid edge, the fit is degenerate or concave-down, or
+the vertex $x_0$ falls outside the three-point bracket.
+
+\paragraph{N-linear interpolation.} The same per-axis fractional offset
+$f_a \in [0,1)$ toward the nearer neighbor (zero when unrefined) feeds an
+N-linear interpolation over the $2^7=128$ grid corners bracketing the
+refined point: corner $\kappa$, defined by one bit per axis, carries weight
+\begin{equation}
+  w_\kappa \;=\; \prod_{a=1}^{7} \bigl[\kappa_a\, f_a + (1-\kappa_a)(1-f_a)\bigr],
+  \qquad \kappa_a \in \{0, 1\},
+  \label{eq:corner_weight}
+\end{equation}
+computed for all 128 corners at once via array broadcasting over the bit
+pattern, rather than a nested loop. Corners with $w_\kappa \le 0$ (any axis
+exactly on a grid point) are dropped and the remaining weights renormalized.
+The refined model photometry, mass amplitude, and $\chisq$
+(equations~\ref{eq:amplitude}--\ref{eq:chi2}) are then recomputed from the
+$w_\kappa$-weighted combination of the corner templates' photometry, so the
+reported \texttt{CHI2} corresponds to the same refined model as the reported
+parameters, not the unrefined discrete grid point. The corner templates'
+raw rest-frame spectra are combined the same way (weighted by $w_\kappa$ and
+scaled by the refined mass amplitude) to build the one refined rest-frame
+spectrum used for the derived quantities in Section~\ref{sec:derived} and
+written to the \texttt{MODELS} output extension.
+
+\section{Derived Quantities}
+\label{sec:derived}
+
+IGM attenuation and cosmological dimming for the \emph{grid} photometry are
+already baked into the photometry grid by \texttt{bin/build-bayesian-photometry};
+\texttt{fastbayes} only needs the IGM model and cosmology directly to redshift
+the one refined rest-frame spectrum per object, for:
+\begin{itemize}
+\item \textbf{K-corrections and absolute magnitudes}, via
+  \texttt{Photometry.kcorr\_and\_absmag} (the same routine used by
+  \texttt{fastspec}/\texttt{fastphot});
+\item \textbf{Rest-frame luminosities} at a fixed set of reference
+  wavelengths (1450, 1500, 1700, 2800, 3000, 5100~\AA), by linear
+  interpolation of the refined rest-frame spectrum;
+\item \textbf{The model $D_n(4000)$ index}, from the refined rest-frame
+  spectrum directly.
+\end{itemize}
+These are point estimates only; no Monte Carlo/uncertainty propagation
+analogous to \textsc{FastSpecFit}'s \texttt{nmonte} machinery exists yet for
+this mode.
+
+\section*{Acknowledgments}
+
+The grid-based fitting approach and sub-grid refinement scheme described
+here were developed for \textsc{FastSpecFit}'s Bayesian photometric mode.
+
+\end{document}
