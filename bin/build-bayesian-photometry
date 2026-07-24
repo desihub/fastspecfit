@@ -18,7 +18,7 @@ Usage
 ::
 
   time python bin/build-bayesian-photometry --gridnumber 001 \\
-      --templatedir $FTEMPLATES_DIR/bayesian \\
+      --templatedir $FTEMPLATES_DIR/bayesian --logspace \\
       --outfile $FTEMPLATES_DIR/bayesian/001/bayesian-photometry-chabrier-001.fits
 
 Output Files
@@ -316,7 +316,7 @@ if __name__ == '__main__':
                         help='Initial mass function (must match the templates file)')
     parser.add_argument('--fphotofile', default=None, help='Photometry configuration YAML file')
 
-    parser.add_argument('--zmin', type=float, default=0.001, help='Minimum redshift')
+    parser.add_argument('--zmin', type=float, default=1e-5, help='Minimum redshift')
     parser.add_argument('--zmax', type=float, default=1.6, help='Maximum redshift')
     parser.add_argument('--dz', type=float, default=0.01, help='Approximate redshift spacing')
     parser.add_argument('--nz', type=int, default=None, help='Number of redshift grid points (overrides --dz)')

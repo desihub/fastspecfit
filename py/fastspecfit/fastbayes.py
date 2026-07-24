@@ -1320,11 +1320,12 @@ def write_fastbayes(meta, results, modelwave, modelspectra, outfile, gridfile, f
 
     hduprim = fits.PrimaryHDU()
     hduprim.header['GRIDFILE'] = os.path.abspath(str(gridfile))
-    # Full path (not just the basename) so that fastbayes_qa can reload the
-    # exact same Photometry configuration later, including for bundled
-    # (importlib.resources) configs, which Photometry.__init__ cannot
-    # resolve from a bare filename.
-    hduprim.header['FPHOTO'] = os.path.abspath(str(fphotofile)) if fphotofile else ''
+    # Basename only (not the full path): grids are often built on one
+    # machine and fit/QA'd on another (e.g. laptop -> NERSC), so an absolute
+    # path recorded here would not generally be reloadable. This is purely a
+    # diagnostic/provenance record -- fastbayes_qa requires --fphotofile to
+    # be passed explicitly rather than reading it back from here.
+    hduprim.header['FPHOTO'] = os.path.basename(str(fphotofile)) if fphotofile else ''
     hduprim.header['TOPK'] = topk
 
     with warnings.catch_warnings():
@@ -1567,6 +1568,15 @@ def parse_qa(options=None):
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('fastbayesfile', help='Full path to an existing FASTBAYES output FITS file.')
+    parser.add_argument('--gridfile', type=str, required=True,
+                        help='Full path to the Bayesian photometry grid file used to produce '
+                        '--fastbayesfile (not read back from its header, since that path may not '
+                        'resolve on this machine, e.g. if the fit was run elsewhere -- pass the '
+                        'same --gridfile used at fit time).')
+    parser.add_argument('--fphotofile', type=str, default=None,
+                        help='Photometric configuration file used to produce --fastbayesfile '
+                        '(default: bundled fastspecfit configuration; pass the same --fphotofile '
+                        'used at fit time if a custom one was used).')
     parser.add_argument('--qadir', type=str, default='.', help='Output directory for QA figures.')
     parser.add_argument('--coadd-type', dest='coadd_type', type=str, default='healpix',
                         choices=['healpix', 'uniqpix', 'cumulative', 'pernight', 'perexp', 'custom', 'stacked'],
@@ -1590,14 +1600,21 @@ def fastbayes_qa(args=None, mp_pool=None):
     """Regenerate QA figures for a FASTBAYES output file, without repeating the fit.
 
     Reads back an already-written FASTBAYES output file's ``METADATA``,
-    ``FASTBAYES``, ``WAVE``, and ``MODELS`` extensions and primary header
-    (``GRIDFILE``/``FPHOTO``), then calls :func:`fastbayes_qa_one` for each
-    requested object. The only work redone is the cheap, vectorized
-    :func:`_solve_grid` solve needed to rebuild the per-template posterior
-    weights (the one thing not stored in the output file); no raw DESI
-    spectra or individual raw template rows are read, so this does not need
-    ``$FTEMPLATES_DIR`` (or the original redrock/spectra files) to be
-    available.
+    ``FASTBAYES``, ``WAVE``, and ``MODELS`` extensions, then calls
+    :func:`fastbayes_qa_one` for each requested object. The only work redone
+    is the cheap, vectorized :func:`_solve_grid` solve needed to rebuild the
+    per-template posterior weights (the one thing not stored in the output
+    file); no raw DESI spectra or individual raw template rows are read, so
+    this does not need ``$FTEMPLATES_DIR`` (or the original redrock/spectra
+    files) to be available.
+
+    ``--gridfile``/``--fphotofile`` must be passed explicitly (matching
+    whatever was used to build the grid and run the fit) rather than being
+    read back from the output file's header: the header's ``GRIDFILE`` is an
+    absolute path that may not exist on this machine (e.g. the fit ran on a
+    different machine than this QA regeneration), and ``FPHOTO`` deliberately
+    stores only a basename for the same reason (see commit ``ad3df20``) --
+    neither is reliably reloadable without user input.
 
     Parameters
     ----------
@@ -1628,16 +1645,16 @@ def fastbayes_qa(args=None, mp_pool=None):
         log.critical(errmsg)
         raise IOError(errmsg)
 
-    F = fitsio.FITS(fastbayesfile)
-    prihdr = F[0].read_header()
-    gridfile = prihdr.get('GRIDFILE')
-    fphotofile = prihdr.get('FPHOTO') or None
-
-    if not gridfile or not os.path.isfile(gridfile):
-        errmsg = f'Bayesian grid file {gridfile} (from {fastbayesfile} header GRIDFILE) not found.'
+    gridfile = os.path.expandvars(args.gridfile)
+    if not os.path.isfile(gridfile):
+        errmsg = (f'Bayesian grid file {gridfile} not found. Pass the same --gridfile that was '
+                  'used to produce this FASTBAYES output file.')
         log.critical(errmsg)
         raise IOError(errmsg)
 
+    fphotofile = args.fphotofile
+
+    F = fitsio.FITS(fastbayesfile)
     meta = Table(F['METADATA'].read())
     results = F['FASTBAYES'].read()
     restwave = F['WAVE'].read()
