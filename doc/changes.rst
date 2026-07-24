@@ -5,6 +5,8 @@ Change Log
 3.6.0 (not released yet)
 ------------------------
 
+* Faster continuum fitting and I/O by caching the SFD dust map [`PR
+  #275`_].
 * Support analysis of mini-specprod datasets [`PR #274`_].
 * Dynamically split ``FASTSPEC`` HDU into an additional ``MORELINES``
   HDU [`PR #273`_].
@@ -14,6 +16,7 @@ Change Log
 * New unit test and documentation of external photometric catalog
   "mode" [`PR #269`_].
 
+.. _`PR #275`: https://github.com/desihub/fastspecfit/pull/275
 .. _`PR #274`: https://github.com/desihub/fastspecfit/pull/274
 .. _`PR #273`: https://github.com/desihub/fastspecfit/pull/273
 .. _`PR #271`: https://github.com/desihub/fastspecfit/pull/271
