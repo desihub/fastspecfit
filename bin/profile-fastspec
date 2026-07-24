@@ -10,12 +10,17 @@ Phases timed independently:
   3. fastspec_one cold run(s)     -- first pass; JIT compilation may fire here
   4. fastspec_one warm run(s)     -- subsequent passes; steady-state throughput
 
+The I/O phase (2) is cProfile'd by default, writing <mode>-io.prof (pass
+--no-cprofile-io to skip). The fitting loop (3-4) is only cProfile'd (into
+<mode>.prof) when --cprofile is passed explicitly.
+
 Usage examples
 --------------
-# Basic timing breakdown (fastspec mode, bundled test spectrum):
+# Basic timing breakdown (fastspec mode, bundled test spectrum); I/O cProfile
+# is written automatically:
   profile-fastspecfit
 
-# fastphot mode with 3 warm repeats, save cProfile output:
+# fastphot mode with 3 warm repeats, also cProfile the fitting loop:
   profile-fastspecfit --mode fastphot --nwarm 3 --cprofile
 
 # Use a pre-downloaded template file:
@@ -80,6 +85,9 @@ def parse_args(argv=None):
                    help='Monte Carlo realizations per object (default: 10).')
     p.add_argument('--cprofile', action='store_true',
                    help='Run cProfile on the warm fitting loop and write <mode>.prof.')
+    p.add_argument('--no-cprofile-io', dest='cprofile_io', default=True, action='store_false',
+                   help='Do not run cProfile on the DESISpectra I/O phase '
+                        '(on by default; writes <mode>-io.prof).')
     p.add_argument('--cprofile-top', type=int, default=30,
                    help='Number of top cProfile entries to print (default: 30).')
     p.add_argument('--outdir', default=None,
@@ -199,6 +207,7 @@ def build_init_args(paths, templates, mode):
         'template_version':  TEMPLATE_VERSION,
         'template_imf':      'chabrier',
         'log_verbose':       False,
+        'mapdir':            paths['mapdir'],
     }
 
 
@@ -250,7 +259,6 @@ def phase_io(paths, mode, args, timer):
         phot=sc_data.photometry,
         cosmo=sc_data.cosmology,
         fphotodir=paths['fphotodir'],
-        mapdir=paths['mapdir'],
         redux_dir=paths['redux_dir'],
     )
 
@@ -320,6 +328,27 @@ def build_fitargs(Spec, data, meta, mode, nmonte):
     ]
 
 
+def run_cprofile(callable_, prof_path, cprofile_top, label):
+    """Run cProfile around callable_() (no args), dump stats to prof_path,
+    print the top-N cumulative-time entries, and return callable_()'s result."""
+    pr = cProfile.Profile()
+    pr.enable()
+    result = callable_()
+    pr.disable()
+
+    pr.dump_stats(str(prof_path))
+
+    buf = io.StringIO()
+    ps  = pstats.Stats(pr, stream=buf).sort_stats('cumulative')
+    ps.print_stats(cprofile_top)
+    print(buf.getvalue())
+    print(f'Full {label} profile saved to: {prof_path}')
+    print(f'  View with:  python -m snakeviz {prof_path}')
+    print(f'  Or:         python -m pstats {prof_path}')
+
+    return result
+
+
 def run_fitting_loop(fitargs):
     """Run fastspec_one for every object; return wall-clock seconds.
 
@@ -359,7 +388,14 @@ def main(argv=None):
     phase_init(sc_data, init_args, timer)
 
     # Phase 2: I/O
-    Spec, data, meta = phase_io(paths, mode, args, timer)
+    if args.cprofile_io:
+        io_prof_path = outdir / f'{mode}-io.prof'
+        print(f'Running cProfile on I/O -> {io_prof_path} ...', flush=True)
+        Spec, data, meta = run_cprofile(
+            lambda: phase_io(paths, mode, args, timer),
+            io_prof_path, args.cprofile_top, 'I/O')
+    else:
+        Spec, data, meta = phase_io(paths, mode, args, timer)
     fitargs = build_fitargs(Spec, data, meta, mode, args.nmonte)
     nobj    = len(fitargs)
 
@@ -385,26 +421,16 @@ def main(argv=None):
 
     timer.report()
 
+    if args.cprofile_io:
+        print('Note: "DESISpectra I/O" above includes cProfile instrumentation '
+              'overhead (mostly one-time lazy imports, e.g. desitarget/healpy); '
+              'pass --no-cprofile-io for an uninstrumented wall-clock number.\n')
+
     # Optional: cProfile on one warm pass
     if args.cprofile:
         prof_path = outdir / f'{mode}.prof'
         print(f'Running cProfile (1 warm pass) -> {prof_path} ...', flush=True)
-
-        pr = cProfile.Profile()
-        pr.enable()
-        run_fitting_loop(fitargs)
-        pr.disable()
-
-        pr.dump_stats(str(prof_path))
-
-        # Print top-N to stdout
-        buf = io.StringIO()
-        ps  = pstats.Stats(pr, stream=buf).sort_stats('cumulative')
-        ps.print_stats(args.cprofile_top)
-        print(buf.getvalue())
-        print(f'Full profile saved to: {prof_path}')
-        print(f'  View with:  python -m snakeviz {prof_path}')
-        print(f'  Or:         python -m pstats {prof_path}')
+        run_cprofile(lambda: run_fitting_loop(fitargs), prof_path, args.cprofile_top, 'fit-loop')
 
     return 0
 

@@ -47,6 +47,7 @@ def make_init_sc_args(args, fastphot=False, fitstack=False):
         'log_verbose':       getattr(args, 'verbose', False),
         'vdisp_nominal':     getattr(args, 'vdisp_nominal', VDISP_NOMINAL),
         'vdisp_bounds':      getattr(args, 'vdisp_bounds', VDISP_BOUNDS),
+        'mapdir':            getattr(args, 'mapdir', None),
     }
 
 
@@ -347,8 +348,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
         # Read the data.
         Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
-                           fphotodir=args.fphotodir, mapdir=args.mapdir,
-                           redux_dir=args.redux_dir)
+                           fphotodir=args.fphotodir, redux_dir=args.redux_dir)
 
         if fitstack:
             data, meta = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
