@@ -304,8 +304,10 @@ def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=No
         unreachable Legacy Survey viewer once, up front, rather than letting
         every object separately discover the outage via
         :func:`fastspecfit.qa._fetch_cutout`'s retry/backoff loop). Left
-        untouched (``None``, the default) for the plain fitting path, which
-        only imports ``fastspecfit.qa`` at all when ``--qa`` is requested.
+        untouched (``None``, the default) by the plain fitting path
+        (:func:`fastbayes`), which never generates QA figures and so never
+        imports ``fastspecfit.qa`` at all; only :func:`fastbayes_qa` passes
+        this.
 
     """
     global _igm, _cosmo
@@ -688,8 +690,7 @@ def get_fastbayes_dtype(phot, topk=0):
     return np.dtype(cols)
 
 
-def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0.01,
-                  qa=False, qadir='.', coadd_type='healpix'):
+def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0.01):
     """Fit one object's broadband photometry against the Bayesian grid.
 
     Parameters
@@ -707,16 +708,6 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
         Number of top-weight grid templates to store (0 disables).
     uncertainty_floor : :class:`float`, optional
         Minimum fractional photometric uncertainty added in quadrature.
-    qa : :class:`bool`, optional
-        If ``True``, generate a QA figure for this object. Generated
-        inline (rather than as a separate post-processing pass) because
-        the full per-template posterior weights only exist in memory
-        during fitting. Default is ``False``.
-    qadir : :class:`str`, optional
-        Output directory for the QA figure. Default is ``'.'``.
-    coadd_type : :class:`str`, optional
-        Coadd type, used to build the QA target label/filename. Default
-        is ``'healpix'``.
 
     Returns
     -------
@@ -835,7 +826,6 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
         result[pname] = fit_value[col]
         result[f'{pname}_IVAR'] = fit_ivar[col]
 
-    posterior_arrays = {}
     for pname in PARAM_NAMES:
         order = sorted_vals = uniq = inv = None
         if pname in derived:
@@ -845,7 +835,6 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
             # Grid-only data, identical for every object -- fetch the
             # cached argsort/unique instead of recomputing them here.
             vals, order, sorted_vals, uniq, inv = bg_data.axis_posterior_cache(_OUTNAME_TO_AXIS[pname])
-        posterior_arrays[pname] = (vals, weight)
         mean = np.sum(weight * vals)
         result[f'{pname}_MEAN'] = mean
         result[f'{pname}_MODE'] = _weighted_mode(vals, weight, uniq=uniq, inv=inv)
@@ -881,11 +870,6 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
         idx = np.argsort(weight)[::-1][:topk]
         result['TOPK_INDEX'][:len(idx)] = idx.astype('i4')
         result['TOPK_WEIGHT'][:len(idx)] = weight[idx].astype('f4')
-
-    if qa:
-        synth_maggies = refined_model_maggies * refined_amplitude # [nband], observed-frame maggies
-        _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
-                          zwave, zflux, synth_maggies, redshift, coadd_type=coadd_type, outdir=qadir)
 
     return meta, result, restflux.astype('f4')
 
@@ -998,12 +982,10 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
 
     Reuses :func:`fastspecfit.qa._target_label` and
     :func:`fastspecfit.qa._fetch_cutout`, which are generic utilities with
-    no fastspec/fastphot-specific coupling. Called either inline from
-    :func:`fastbayes_one` during fitting (``--qa``), or from
+    no fastspec/fastphot-specific coupling. Called from
     :func:`fastbayes_qa_one` to regenerate QA from an already-written
-    FASTBAYES output file without repeating the fit -- both callers build
-    the same ``posterior_arrays``/``zwave``/``zflux``/``synth_maggies``
-    inputs, just from different sources.
+    FASTBAYES output file (``bin/fastbayes-qa``) -- QA generation is no
+    longer available inline from :func:`fastbayes_one` during fitting.
 
     Parameters
     ----------
@@ -1432,8 +1414,6 @@ def parse(options=None):
     parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
     parser.add_argument('--topk', type=int, default=0,
                         help='Number of top-weight grid templates to save per object (sparse joint posterior); 0 disables.')
-    parser.add_argument('--qa', action='store_true', help='Generate a QA figure for each object.')
-    parser.add_argument('--qadir', type=str, default='.', help='Output directory for QA figures.')
     parser.add_argument('--use-quasarnet', dest='use_quasarnet', default=False, action='store_true',
                         help='Use QuasarNet to improve QSO redshifts.')
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
@@ -1553,9 +1533,6 @@ def fastbayes(args=None, mp_pool=None):
         'fastbayes_dtype': fastbayes_dtype,
         'topk': args.topk,
         'uncertainty_floor': args.uncertainty_floor,
-        'qa': args.qa,
-        'qadir': args.qadir,
-        'coadd_type': Spec.coadd_type,
     } for iobj in range(nobj)]
 
     t0 = time.time()
