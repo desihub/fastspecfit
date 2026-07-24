@@ -982,6 +982,19 @@ class ContinuumTools(object):
         # Precompute quantities that are independent of tauv.
         wave_diff    = np.diff(wave)
         dustflux_zf  = dustflux * zfactors
+        if dust_emission:
+            # Trapezoidal-quadrature weights on the (fixed) template
+            # wavelength grid, so that trapz(f, wave) == f @ trapz_weights
+            # for any f. The energy-balance term is
+            #   d = trapz(templateflux * (1 - A), wave)
+            #     = trapz(templateflux, wave) - trapz(templateflux * A, wave)
+            #     = template_wave_integral - templateflux @ (A * trapz_weights)
+            # and since templateflux doesn't depend on tauv, the first term
+            # can be computed once here instead of on every _fill(tauv) call.
+            trapz_weights = np.zeros_like(wave)
+            trapz_weights[:-1] += 0.5 * wave_diff
+            trapz_weights[1:]  += 0.5 * wave_diff
+            template_wave_integral = templateflux @ trapz_weights   # (ntemplates,)
 
         b   = np.empty(nrows)
         Psi = np.empty((nrows, ntemplates))
@@ -1001,23 +1014,32 @@ class ContinuumTools(object):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
+        # Scratch buffers reused across every _fill(tauv) call (Brent's method
+        # evaluates this ~10-15 times per fit) so the outer-product-sized
+        # arrays aren't reallocated on every trial tauv.
+        npix   = templateflux.shape[1]
+        A_buf  = np.empty(npix)
+        Az_buf = np.empty(npix)
+        if dust_emission:
+            Aw_buf    = np.empty(npix)
+            outer_buf = np.empty((ntemplates, npix))
+
         def _fill(tauv):
-            A           = np.exp(-tauv * dust_kl)     # (npix,)
-            Az          = A * zfactors                 # (npix,)
-            phi[:]      = templateflux * Az            # (ntemplates, npix)
+            np.multiply(dust_kl, -tauv, out=A_buf)
+            np.exp(A_buf, out=A_buf)                       # A_buf: A = exp(-tauv*dust_kl)
+            np.multiply(A_buf, zfactors, out=Az_buf)       # Az_buf: Az
+            np.multiply(templateflux, Az_buf, out=phi)     # phi = templateflux * Az
             if dust_emission:
-                one_minus_A = 1. - A
-                d = 0.5 * (
-                    templateflux[:, :-1] * one_minus_A[:-1] +
-                    templateflux[:, 1:]  * one_minus_A[1:]
-                ) @ wave_diff                          # (ntemplates,)
-                phi[:] += d[:, None] * dustflux_zf
+                np.multiply(A_buf, trapz_weights, out=Aw_buf)
+                d = template_wave_integral - templateflux @ Aw_buf  # (ntemplates,)
+                np.multiply(d[:, None], dustflux_zf, out=outer_buf)
+                phi[:] += outer_buf
             if synthspec:
                 spec_batch = self.continuum_to_spectroscopy_batch(phi)  # (ntemplates, nspec)
-                Psi[:nspec, :] = spec_batch.T * specistd[:, None]
+                np.multiply(spec_batch.T, specistd[:, None], out=Psi[:nspec, :])
             if synthphot:
                 phot_batch = self.continuum_to_photometry_batch(phi)    # (ntemplates, nphot)
-                Psi[nspec:, :] = phot_batch.T * objflamistd[:, None]
+                np.multiply(phot_batch.T, objflamistd[:, None], out=Psi[nspec:, :])
 
         def objective(tauv):
             _fill(tauv)
@@ -1511,6 +1533,13 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
                 msg.append(f'{label}={val:.3f}{var_msg}{units}')
             msg.append(f'vdisp={vdisp:.0f} km/s')
             log.info(' '.join(msg))
+        else:
+            coeff_monte = None
+            tauv_monte = None
+            sedmodel_monte = None
+            sedmodel_nolines_monte = None
+            tauv_ivar = 0.
+            dn4000_model_ivar = 0.
 
     return (coeff, coeff_monte, rchi2_phot, tauv, tauv_monte, tauv_ivar, vdisp,
             dn4000_model, dn4000_model_ivar, sedmodel, sedmodel_monte,

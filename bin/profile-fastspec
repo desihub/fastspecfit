@@ -10,12 +10,17 @@ Phases timed independently:
   3. fastspec_one cold run(s)     -- first pass; JIT compilation may fire here
   4. fastspec_one warm run(s)     -- subsequent passes; steady-state throughput
 
+The I/O phase (2) is cProfile'd by default, writing <mode>-io.prof (pass
+--no-cprofile-io to skip). The fitting loop (3-4) is only cProfile'd (into
+<mode>.prof) when --cprofile is passed explicitly.
+
 Usage examples
 --------------
-# Basic timing breakdown (fastspec mode):
+# Basic timing breakdown (fastspec mode, bundled test spectrum); I/O cProfile
+# is written automatically:
   profile-fastspecfit
 
-# fastphot mode with 3 warm repeats, save cProfile output:
+# fastphot mode with 3 warm repeats, also cProfile the fitting loop:
   profile-fastspecfit --mode fastphot --nwarm 3 --cprofile
 
 # Use a pre-downloaded template file:
@@ -24,10 +29,22 @@ Usage examples
 # Point py-spy at this script (no --cprofile needed):
   py-spy record -o profile.svg -- profile-fastspecfit --mode fastspec --nwarm 5
 
+# Profile real spectra on disk (uses $DESI_SPECTRO_REDUX, $FPHOTO_DIR,
+# $DUST_DIR unless overridden below):
+  profile-fastspecfit --redrockfiles $DESI_SPECTRO_REDUX/iron/healpix/.../redrock-....fits \
+      --ntargets 5
+
+# Same, restricted to specific targets and a non-default production tree:
+  profile-fastspecfit --redrockfiles /path/to/redrock-....fits \
+      --targetids 39633345008634465,39633345008634466 --specprod iron
+
 Environment variables
 ---------------------
-FTEMPLATES_CACHE_DIR  Directory where template files are cached between runs.
-                      If set, the template is not deleted after the run.
+FTEMPLATES_DIR        Local template checkout, checked before any network
+                      download (e.g. $FTEMPLATES_DIR/3.0.0/ftemplates-chabrier-3.0.0.fits).
+FTEMPLATES_CACHE_DIR  Directory where downloaded template files are cached
+                      between runs. If set, the template is not deleted
+                      after the run.
 """
 import argparse
 import cProfile
@@ -42,7 +59,7 @@ from importlib import resources
 from urllib.request import urlretrieve
 
 
-TEMPLATE_VERSION = '2.0.0'
+TEMPLATE_VERSION = '3.0.0'
 TEMPLATE_FILENAME = f'ftemplates-chabrier-{TEMPLATE_VERSION}.fits'
 TEMPLATE_URL = (
     f'https://data.desi.lbl.gov/public/external/templates/fastspecfit/'
@@ -68,10 +85,42 @@ def parse_args(argv=None):
                    help='Monte Carlo realizations per object (default: 10).')
     p.add_argument('--cprofile', action='store_true',
                    help='Run cProfile on the warm fitting loop and write <mode>.prof.')
+    p.add_argument('--no-cprofile-io', dest='cprofile_io', default=True, action='store_false',
+                   help='Do not run cProfile on the DESISpectra I/O phase '
+                        '(on by default; writes <mode>-io.prof).')
     p.add_argument('--cprofile-top', type=int, default=30,
                    help='Number of top cProfile entries to print (default: 30).')
     p.add_argument('--outdir', default=None,
                    help='Directory for output FITS and .prof files.  Defaults to a temp dir.')
+    p.add_argument('--redrockfiles', nargs='+', default=None,
+                   help='Full path to one or more real Redrock file(s), for --mode fastspec/fastphot. '
+                        'If not given, use the bundled test spectrum.')
+    p.add_argument('--stackfiles', nargs='+', default=None,
+                   help='Full path to one or more real stacked-spectra file(s), for --mode stackfit. '
+                        'If not given, use the bundled test stack file.')
+    p.add_argument('--redux_dir', type=str, default=None,
+                   help='Optional full path $DESI_SPECTRO_REDUX; only used with --redrockfiles/--stackfiles.')
+    p.add_argument('--fphotodir', type=str, default=None,
+                   help='Top-level location of the source photometry; only used with --redrockfiles/--stackfiles.')
+    p.add_argument('--mapdir', type=str, default=None,
+                   help='Optional directory name for the dust maps; only used with --redrockfiles/--stackfiles.')
+    p.add_argument('--specprod', type=str, default=None,
+                   help='Optional override of the on-disk specprod directory name (see fastspec --specprod).')
+    p.add_argument('--targetids', type=str, default=None,
+                   help='Comma-separated list of TARGETIDs to process.')
+    p.add_argument('-n', '--ntargets', type=int, default=None,
+                   help='Number of targets to process in each file (default: all).')
+    p.add_argument('--firsttarget', type=int, default=0,
+                   help='Index of first object to process in each file, zero-indexed.')
+    p.add_argument('--redrockfile-prefix', type=str, default='redrock-',
+                   help='Prefix of the input Redrock file name(s).')
+    p.add_argument('--specfile-prefix', type=str, default='coadd-',
+                   help='Prefix of the spectral file(s).')
+    p.add_argument('--qnfile-prefix', type=str, default='qso_qn-',
+                   help='Prefix of the QuasarNet afterburner file(s).')
+    p.add_argument('--use-quasarnet', action='store_true',
+                   help='Use QuasarNet to improve QSO redshifts (default: off, since the '
+                        'bundled test spectrum has no QuasarNet afterburner file).')
     args = p.parse_args(argv)
     if args.fastphot:
         args.mode = 'fastphot'
@@ -86,6 +135,13 @@ def get_template_path(args):
     """Return a path to the template file, downloading if necessary."""
     if args.templates:
         return args.templates
+
+    ftemplates_dir = os.environ.get('FTEMPLATES_DIR')
+    if ftemplates_dir:
+        local = pathlib.Path(ftemplates_dir) / TEMPLATE_VERSION / TEMPLATE_FILENAME
+        if local.is_file():
+            print(f'Using local $FTEMPLATES_DIR templates: {local}', flush=True)
+            return str(local)
 
     cache_dir = os.environ.get('FTEMPLATES_CACHE_DIR')
     if cache_dir:
@@ -111,16 +167,33 @@ def get_template_path(args):
 # Setup helpers (mirror conftest.py)
 # ---------------------------------------------------------------------------
 
-def get_test_paths():
+def get_paths(args, mode):
+    """Return the input paths/files to use, either the bundled test data or
+    real spectra pointed to by --redrockfiles/--stackfiles."""
     base = resources.files('fastspecfit').joinpath('test/data')
-    return {
-        'redux_dir':   base,
-        'specproddir': base,
-        'mapdir':      base,
-        'fphotodir':   base,
-        'redrockfile': base.joinpath('redrock-4-80613-thru20210324.fits'),
-        'stackfile':   base.joinpath('stack-LRG.fits'),
+    fitstack = (mode == 'stackfit')
+
+    using_real_data = bool(args.stackfiles) if fitstack else bool(args.redrockfiles)
+
+    if fitstack:
+        files = list(args.stackfiles) if args.stackfiles else [str(base.joinpath('stack-LRG.fits'))]
+    else:
+        files = list(args.redrockfiles) if args.redrockfiles else [str(base.joinpath('redrock-4-80613-thru20210324.fits'))]
+
+    paths = {
+        'redux_dir': args.redux_dir or (None if using_real_data else str(base)),
+        'mapdir':    args.mapdir or (None if using_real_data else str(base)),
+        'fphotodir': args.fphotodir or (None if using_real_data else str(base)),
+        # bundled test data recorded a bogus SPECPROD in its file headers;
+        # passing the test-data directory itself as an absolute override
+        # makes gather_metadata() look for tiles-*.csv there (see conftest.py).
+        'specprod':  args.specprod or (None if using_real_data else str(base)),
     }
+    if fitstack:
+        paths['stackfile'] = files
+    else:
+        paths['redrockfile'] = files
+    return paths
 
 
 def build_init_args(paths, templates, mode):
@@ -134,6 +207,7 @@ def build_init_args(paths, templates, mode):
         'template_version':  TEMPLATE_VERSION,
         'template_imf':      'chabrier',
         'log_verbose':       False,
+        'mapdir':            paths['mapdir'],
     }
 
 
@@ -174,7 +248,7 @@ def phase_init(sc_data, init_args, timer):
     timer.mark('sc_data.initialize (templates + JIT warmup)')
 
 
-def phase_io(paths, mode, timer):
+def phase_io(paths, mode, args, timer):
     from fastspecfit.io import DESISpectra, get_output_dtype
     from fastspecfit.singlecopy import sc_data
 
@@ -184,25 +258,30 @@ def phase_io(paths, mode, timer):
     Spec = DESISpectra(
         phot=sc_data.photometry,
         cosmo=sc_data.cosmology,
-        fphotodir=str(paths['fphotodir']),
-        mapdir=str(paths['mapdir']),
-        redux_dir=str(paths['redux_dir']),
+        fphotodir=paths['fphotodir'],
+        redux_dir=paths['redux_dir'],
     )
+
+    targetids = None
+    if args.targetids:
+        targetids = [int(t) for t in args.targetids.split(',')]
 
     if fitstack:
         data, meta = Spec.read_stacked(
-            [str(paths['stackfile'])],
-            firsttarget=0, ntargets=None,
+            paths['stackfile'],
+            firsttarget=args.firsttarget, ntargets=args.ntargets,
+            stackids=targetids,
         )
     else:
         Spec.gather_metadata(
-            [str(paths['redrockfile'])],
-            firsttarget=0,
-            redrockfile_prefix='redrock-',
-            specfile_prefix='coadd-',
-            qnfile_prefix='qso_qn-',
-            use_quasarnet=False,
-            specprod_dir=str(paths['specproddir']),
+            paths['redrockfile'],
+            firsttarget=args.firsttarget, ntargets=args.ntargets,
+            targetids=targetids,
+            redrockfile_prefix=args.redrockfile_prefix,
+            specfile_prefix=args.specfile_prefix,
+            qnfile_prefix=args.qnfile_prefix,
+            use_quasarnet=args.use_quasarnet,
+            specprod=paths['specprod'],
         )
         data, meta = Spec.read(sc_data.photometry, fastphot=fastphot)
 
@@ -249,6 +328,27 @@ def build_fitargs(Spec, data, meta, mode, nmonte):
     ]
 
 
+def run_cprofile(callable_, prof_path, cprofile_top, label):
+    """Run cProfile around callable_() (no args), dump stats to prof_path,
+    print the top-N cumulative-time entries, and return callable_()'s result."""
+    pr = cProfile.Profile()
+    pr.enable()
+    result = callable_()
+    pr.disable()
+
+    pr.dump_stats(str(prof_path))
+
+    buf = io.StringIO()
+    ps  = pstats.Stats(pr, stream=buf).sort_stats('cumulative')
+    ps.print_stats(cprofile_top)
+    print(buf.getvalue())
+    print(f'Full {label} profile saved to: {prof_path}')
+    print(f'  View with:  python -m snakeviz {prof_path}')
+    print(f'  Or:         python -m pstats {prof_path}')
+
+    return result
+
+
 def run_fitting_loop(fitargs):
     """Run fastspec_one for every object; return wall-clock seconds.
 
@@ -274,8 +374,8 @@ def main(argv=None):
     outdir.mkdir(parents=True, exist_ok=True)
 
     templates = get_template_path(args)
-    paths     = get_test_paths()
     mode      = args.mode
+    paths     = get_paths(args, mode)
 
     print(f'\n--- FastSpecFit profiling harness  (mode={mode}) ---\n')
 
@@ -288,7 +388,14 @@ def main(argv=None):
     phase_init(sc_data, init_args, timer)
 
     # Phase 2: I/O
-    Spec, data, meta = phase_io(paths, mode, timer)
+    if args.cprofile_io:
+        io_prof_path = outdir / f'{mode}-io.prof'
+        print(f'Running cProfile on I/O -> {io_prof_path} ...', flush=True)
+        Spec, data, meta = run_cprofile(
+            lambda: phase_io(paths, mode, args, timer),
+            io_prof_path, args.cprofile_top, 'I/O')
+    else:
+        Spec, data, meta = phase_io(paths, mode, args, timer)
     fitargs = build_fitargs(Spec, data, meta, mode, args.nmonte)
     nobj    = len(fitargs)
 
@@ -314,26 +421,16 @@ def main(argv=None):
 
     timer.report()
 
+    if args.cprofile_io:
+        print('Note: "DESISpectra I/O" above includes cProfile instrumentation '
+              'overhead (mostly one-time lazy imports, e.g. desitarget/healpy); '
+              'pass --no-cprofile-io for an uninstrumented wall-clock number.\n')
+
     # Optional: cProfile on one warm pass
     if args.cprofile:
         prof_path = outdir / f'{mode}.prof'
         print(f'Running cProfile (1 warm pass) -> {prof_path} ...', flush=True)
-
-        pr = cProfile.Profile()
-        pr.enable()
-        run_fitting_loop(fitargs)
-        pr.disable()
-
-        pr.dump_stats(str(prof_path))
-
-        # Print top-N to stdout
-        buf = io.StringIO()
-        ps  = pstats.Stats(pr, stream=buf).sort_stats('cumulative')
-        ps.print_stats(args.cprofile_top)
-        print(buf.getvalue())
-        print(f'Full profile saved to: {prof_path}')
-        print(f'  View with:  python -m snakeviz {prof_path}')
-        print(f'  Or:         python -m pstats {prof_path}')
+        run_cprofile(lambda: run_fitting_loop(fitargs), prof_path, args.cprofile_top, 'fit-loop')
 
     return 0
 

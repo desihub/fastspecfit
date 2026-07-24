@@ -13,7 +13,7 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data
-from fastspecfit.photometry import Photometry
+from fastspecfit.photometry import Photometry, release_to_photsys, desitarget_resolve_dec, releasedict
 from fastspecfit.util import FLUXNORM, ZWarningMask, fsftime, _uid
 from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
 
@@ -471,13 +471,10 @@ class DESISpectra(object):
     fphotodir : str or None, optional
         Top-level directory of the source photometry (Legacy Survey). Defaults
         to ``$FPHOTO_DIR``.
-    mapdir : str or None, optional
-        Directory containing the Milky Way dust maps. Defaults to
-        ``$DUST_DIR/maps``.
 
     """
 
-    def __init__(self, phot, cosmo, redux_dir=None, fphotodir=None, mapdir=None):
+    def __init__(self, phot, cosmo, redux_dir=None, fphotodir=None):
         if redux_dir is None:
             redux_env = os.environ.get('DESI_SPECTRO_REDUX')
             self.redux_dir = os.path.expandvars(redux_env) if redux_env else None
@@ -503,12 +500,6 @@ class DESISpectra(object):
                     pass
             self.fphotoext = fphotoext
             self.fphotodir = fphotodir
-
-        if mapdir is None:
-            dust_env = os.environ.get('DUST_DIR')
-            self.mapdir = os.path.join(os.path.expandvars(dust_env), 'maps') if dust_env else None
-        else:
-            self.mapdir = mapdir
 
         self.phot = phot
         self.cosmo = cosmo
@@ -551,7 +542,6 @@ class DESISpectra(object):
             return northern
 
         # ADM retrieve the photometric system from the RELEASE.
-        from desitarget.io import release_to_photsys, desitarget_resolve_dec
         if 'PHOTSYS' in targets.dtype.names:
             photsys = targets["PHOTSYS"]
         else:
@@ -599,7 +589,7 @@ class DESISpectra(object):
 
     def gather_metadata(self, redrockfiles, zmin=None, zmax=None, zwarnmax=None,
                         targetids=None, firsttarget=0, ntargets=None,
-                        input_redshifts=None, specprod_dir=None, use_quasarnet=True,
+                        input_redshifts=None, specprod=None, use_quasarnet=True,
                         redrockfile_prefix='redrock-', specfile_prefix='coadd-',
                         qnfile_prefix='qso_qn-', mgiifile_prefix='qso_mgii-'):
         """Select targets for fitting and gather spectroscopic metadata.
@@ -627,8 +617,15 @@ class DESISpectra(object):
         input_redshifts : float or array-like or None, optional
             Override redshifts for each entry in ``targetids``. If ``None``,
             use Redrock (or QuasarNet) redshifts.
-        specprod_dir : str or None, optional
-            Override the spectroscopic production directory.
+        specprod : str or None, optional
+            Override the on-disk spectroscopic production *directory name*
+            under ``redux_dir``, for cases where it differs from the
+            ``SPECPROD`` dependency recorded in the Redrock/coadd file
+            headers (e.g., a relocated or "mini" production tree). This is
+            independent of the instance attribute ``self.specprod``, which
+            is always read from the file headers and used to pick the
+            correct QuasarNet-afterburner column schema; this parameter only
+            affects where the ``tiles-{specprod}.csv`` file is looked up.
         use_quasarnet : bool, optional
             Use QuasarNet afterburner redshifts for QSOs when available.
             Defaults to ``True``.
@@ -653,7 +650,7 @@ class DESISpectra(object):
         """
         from astropy.table import vstack, hstack
         from desiutil.depend import getdep
-        from desitarget import geomask
+        from desitarget.geomask import match_to
 
         if zmin is None:
             zmin = 1e-3
@@ -718,14 +715,14 @@ class DESISpectra(object):
             # only compatible with Fuji & Guadalupe headers and later.
             hdr = fitsio.read_header(specfile, ext=0)
 
-            specprod = getdep(hdr, 'SPECPROD')
+            file_specprod = getdep(hdr, 'SPECPROD')
             if hasattr(self, 'specprod'):
-                if self.specprod != specprod:
-                    errmsg = f'specprod must be the same for all input redrock files! {specprod}!={self.specprod}'
+                if self.specprod != file_specprod:
+                    errmsg = f'specprod must be the same for all input redrock files! {file_specprod}!={self.specprod}'
                     log.critical(errmsg)
                     raise ValueError(errmsg)
 
-            self.specprod = specprod
+            self.specprod = file_specprod
 
             if 'SPGRP' in hdr:
                 self.coadd_type = hdr['SPGRP']
@@ -775,8 +772,12 @@ class DESISpectra(object):
                 # cache the tiles file so we can grab the survey and program name
                 # appropriate for this tile; silently skip if redux_dir is unavailable
                 if not hasattr(self, 'tileinfo') and self.redux_dir is not None:
-                    if specprod_dir is None:
-                        specprod_dir = os.path.join(self.redux_dir, self.specprod)
+                    # NB: the on-disk directory name (specprod, an optional
+                    # override) can differ from self.specprod, the "real"
+                    # production name recorded in the file headers (e.g., a
+                    # relocated or "mini" production tree); the CSV filename
+                    # always uses the latter.
+                    specprod_dir = os.path.join(self.redux_dir, specprod if specprod else self.specprod)
                     infofile = os.path.join(specprod_dir, f'tiles-{self.specprod}.csv')
                     if os.path.isfile(infofile):
                         self.tileinfo = Table.read(infofile)
@@ -900,7 +901,7 @@ class DESISpectra(object):
 
             # make sure we're sorted
             if targetids is not None:
-                srt = geomask.match_to(meta['TARGETID'], targetids)
+                srt = match_to(meta['TARGETID'], targetids)
                 meta = meta[srt]
                 assert(np.all(meta['TARGETID'] == targetids))
 
@@ -950,7 +951,7 @@ class DESISpectra(object):
                 if 'FIBER' in expmeta.colnames:
                     meta['FIBER'] = np.zeros(len(meta), dtype=expmeta['FIBER'].dtype)
                     _, uindx = np.unique(expmeta['TARGETID'], return_index=True)
-                    I = geomask.match_to(expmeta[uindx]['TARGETID'], meta['TARGETID'])
+                    I = match_to(expmeta[uindx]['TARGETID'], meta['TARGETID'])
                     assert(np.all(expmeta[uindx][I]['TARGETID'] == meta['TARGETID']))
                     meta['FIBER'] = expmeta[uindx[I]]['FIBER']
 
@@ -1067,16 +1068,13 @@ class DESISpectra(object):
 
         """
         from astropy.table import vstack
-        from desitarget import geomask
+        from desitarget.geomask import match_to
         from desispec.coaddition import coadd_cameras
         from desispec.io import read_spectra
-        from desiutil.dust import SFDMap
         from fastspecfit.resolution import Resolution
         from fastspecfit.util import mwdust_transmission
 
         t0 = time.time()
-
-        SFD = SFDMap(scaling=1.0, mapdir=self.mapdir)
 
         uniqueid_col = self.phot.uniqueid_col
 
@@ -1105,7 +1103,7 @@ class DESISpectra(object):
                 tuniv = np.full_like(redshift, 100.)
 
             # Populate 'meta' with dust and filter-related quantities.
-            ebv = SFD.ebv(meta['RA'], meta['DEC'])
+            ebv = sc_data.sfdmap.ebv(meta['RA'], meta['DEC'])
             meta['EBV'] = ebv
 
             if 'PHOTSYS' in meta.colnames:
@@ -1152,7 +1150,7 @@ class DESISpectra(object):
                 os.environ['DESI_LOGLEVEL'] = 'warning'
                 spec = read_spectra(specfile)#.select(targets=meta[uniqueid])
 
-                srt = geomask.match_to(spec.fibermap[uniqueid_col], meta['TARGETID'])
+                srt = match_to(spec.fibermap[uniqueid_col], meta['TARGETID'])
                 spec = spec[srt]
                 assert(np.all(spec.fibermap[uniqueid_col] == meta[uniqueid_col]))
 
@@ -1389,7 +1387,7 @@ class DESISpectra(object):
     def _gather_photometry(self, specprod=None, alltiles=None):
         """Gather Tractor photometry from disk and merge into the metadata tables."""
         from astropy.table import vstack
-        from desitarget import geomask
+        from desitarget.geomask import match_to
         from fastspecfit.photometry import gather_tractorphot
 
         input_meta = vstack(self.meta).copy()
@@ -1399,8 +1397,6 @@ class DESISpectra(object):
 
         # Legacy Surveys
         if hasattr(self.phot, 'legacysurveydr'):
-            from desitarget.io import releasedict
-
             legacysurveydr = self.phot.legacysurveydr
 
             # targeting and Tractor columns to read from disk but need
@@ -1419,7 +1415,7 @@ class DESISpectra(object):
             if legacysurveydr.lower() in ['dr9', 'dr10', 'dr11']:
                 metas = []
                 for meta in self.meta:
-                    srt = geomask.match_to(tractor[uniqueid_col], meta[uniqueid_col])
+                    srt = match_to(tractor[uniqueid_col], meta[uniqueid_col])
                     assert(np.all(meta[uniqueid_col] == tractor[uniqueid_col][srt]))
 
                     # The fibermaps in fuji and guadalupe (plus earlier productions) had a
@@ -1445,7 +1441,7 @@ class DESISpectra(object):
                                     log.warning('Updating column {} in metadata table: {}-->{}.'.format(
                                         col, meta[col][0], targets[col][0]))
                                     meta[col][diffcol] = targets[col][diffcol]
-                    srt = geomask.match_to(tractor[uniqueid_col], meta[uniqueid_col])
+                    srt = match_to(tractor[uniqueid_col], meta[uniqueid_col])
                     assert(np.all(meta[uniqueid_col] == tractor[uniqueid_col][srt]))
 
                     # Add the tractor catalog quantities (overwriting columns if necessary).
@@ -1491,7 +1487,7 @@ class DESISpectra(object):
                     meta = meta[inmask]
                 if len(meta) == 0:
                     continue
-                srt = geomask.match_to(phot_tbl[uniqueid_col], meta[uniqueid_col])
+                srt = match_to(phot_tbl[uniqueid_col], meta[uniqueid_col])
                 assert(np.all(meta[uniqueid_col] == phot_tbl[uniqueid_col][srt]))
                 if hasattr(self.phot, 'dropcols'):
                     meta.remove_columns(self.phot.dropcols)

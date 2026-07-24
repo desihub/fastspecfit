@@ -156,8 +156,8 @@ Set these variables and download the required external files::
 
   wget -r -np -nH --cut-dirs 5 -A fits -P $DUST_DIR \
     https://portal.nersc.gov/project/cosmo/data/dust/v0_1/maps
-  wget -O $FTEMPLATES_DIR/ftemplates-chabrier-2.0.0.fits \
-    https://data.desi.lbl.gov/public/external/templates/fastspecfit/2.0.0/ftemplates-chabrier-2.0.0.fits
+  wget -O $FTEMPLATES_DIR/ftemplates-chabrier-3.0.0.fits \
+    https://data.desi.lbl.gov/public/external/templates/fastspecfit/3.0.0/ftemplates-chabrier-3.0.0.fits
 
 Building the Documentation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

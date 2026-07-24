@@ -47,6 +47,7 @@ def make_init_sc_args(args, fastphot=False, fitstack=False):
         'log_verbose':       getattr(args, 'verbose', False),
         'vdisp_nominal':     getattr(args, 'vdisp_nominal', VDISP_NOMINAL),
         'vdisp_bounds':      getattr(args, 'vdisp_bounds', VDISP_BOUNDS),
+        'mapdir':            getattr(args, 'mapdir', None),
     }
 
 
@@ -103,7 +104,9 @@ def parse(options=None, rank=0):
     parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
     parser.add_argument('--constraintsfile', type=str, default=None, help='Emission-line kinematic constraint YAML file.')
     parser.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
-    parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
+    parser.add_argument('--specprod', type=str, default=None, help="""Optional override of the on-disk spectroscopic
+        production directory name under --redux_dir, when it differs from the SPECPROD dependency recorded in the
+        Redrock/coadd file headers (e.g., a relocated or "mini" production tree).""")
     parser.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum.')
     parser.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
     parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
@@ -345,8 +348,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
 
         # Read the data.
         Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
-                           fphotodir=args.fphotodir, mapdir=args.mapdir,
-                           redux_dir=args.redux_dir)
+                           fphotodir=args.fphotodir, redux_dir=args.redux_dir)
 
         if fitstack:
             data, meta = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
@@ -358,7 +360,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
                                  ntargets=args.ntargets, zmin=args.zmin,
                                  redrockfile_prefix=args.redrockfile_prefix,
                                  specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
-                                 use_quasarnet=args.use_quasarnet, specprod_dir=args.specproddir)
+                                 use_quasarnet=args.use_quasarnet, specprod=args.specprod)
             if len(Spec.specfiles) == 0:
                 return 0
 
