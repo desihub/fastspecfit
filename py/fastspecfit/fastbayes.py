@@ -1317,8 +1317,8 @@ def write_fastbayes(meta, results, modelwave, modelspectra, outfile, gridfile, f
 
     """
     import gzip, shutil, warnings
-    import astropy.units as u
     from astropy.io import fits
+    from astropy.utils.exceptions import AstropyUserWarning
 
     outdir = os.path.dirname(os.path.abspath(os.path.expanduser(os.path.expandvars(outfile))))
     if not os.path.isdir(outdir):
@@ -1340,8 +1340,14 @@ def write_fastbayes(meta, results, modelwave, modelspectra, outfile, gridfile, f
     hduprim.header['TOPK'] = topk
 
     with warnings.catch_warnings():
-        # e.g., 'dex(Gyr)' cannot be represented in native FITS format.
-        warnings.filterwarnings('ignore', category=u.UnitsWarning)
+        # e.g., 'dex(Gyr)' cannot be represented in native FITS format. This
+        # is raised by fits.convenience.table_to_hdu as AstropyUserWarning
+        # (not units.UnitsWarning, which is a different category and does
+        # not actually match this warning); scope the filter to this
+        # specific, expected message so other AstropyUserWarnings still
+        # surface normally.
+        warnings.filterwarnings('ignore', message="The unit .* could not be saved in native FITS format",
+                               category=AstropyUserWarning)
         hdumeta = fits.convenience.table_to_hdu(meta)
         hduresults = fits.convenience.table_to_hdu(results)
     hdumeta.header['EXTNAME'] = 'METADATA'
