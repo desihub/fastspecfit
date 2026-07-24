@@ -1533,6 +1533,13 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
                 msg.append(f'{label}={val:.3f}{var_msg}{units}')
             msg.append(f'vdisp={vdisp:.0f} km/s')
             log.info(' '.join(msg))
+        else:
+            coeff_monte = None
+            tauv_monte = None
+            sedmodel_monte = None
+            sedmodel_nolines_monte = None
+            tauv_ivar = 0.
+            dn4000_model_ivar = 0.
 
     return (coeff, coeff_monte, rchi2_phot, tauv, tauv_monte, tauv_ivar, vdisp,
             dn4000_model, dn4000_model_ivar, sedmodel, sedmodel_monte,
