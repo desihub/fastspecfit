@@ -95,9 +95,18 @@ class BayesianGrid(object):
         explicit override), grid number, and IMF, mirroring
         :func:`fastspecfit.templates.Templates.get_templates_filename`.
 
+        Returns ``None`` (rather than raising) when ``templatedir`` is not
+        given and ``$FTEMPLATES_DIR`` is unset, so that QA-only workflows
+        (:func:`fastbayes_qa`), which never need the raw templates file, are
+        not forced to have it configured; :meth:`templates_fits` raises a
+        clear error if raw template access is actually attempted without it.
+
         """
         if templatedir is None:
-            templatedir = os.path.join(os.path.expandvars(os.environ.get('FTEMPLATES_DIR')), 'bayesian')
+            templatedir = os.environ.get('FTEMPLATES_DIR')
+            if templatedir is None:
+                return None
+            templatedir = os.path.join(os.path.expandvars(templatedir), 'bayesian')
         else:
             templatedir = os.path.expandvars(templatedir)
         return os.path.join(templatedir, str(gridnumber), f'bayesian-templates-{imf}-{gridnumber}.fits')
@@ -259,7 +268,7 @@ _igm = None
 _cosmo = None
 
 
-def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=None):
+def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=None, require_templates=True):
     """MPPool initializer: populate ``sc_data.photometry``, ``bg_data``, the
     IGM model, and the cosmology in each worker.
 
@@ -267,13 +276,26 @@ def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=No
     ``sc_data.initialize()``) so this mode never loads the stellar template
     basis or emission-line tables, neither of which it needs.
 
+    Parameters
+    ----------
+    require_templates : :class:`bool`, optional
+        If ``True`` (default), require the raw templates FITS file (used by
+        :meth:`BayesianGrid.template_flux_row` to build the refined rest-frame
+        spectrum during fitting) to be present. QA regeneration from an
+        already-written FASTBAYES output file
+        (:func:`fastbayes_qa`/:func:`fastbayes_qa_one`) never reads raw
+        template rows -- the refined spectrum is read back from that file's
+        ``MODELS`` extension instead -- so it passes ``False`` here to avoid
+        requiring the (multi-GB) raw templates file to be present just to
+        regenerate plots.
+
     """
     global _igm, _cosmo
 
     sc_data.photometry = Photometry(fphotofile=fphotofile)
     bg_data.load(gridfile, templatedir=templatedir)
 
-    if not os.path.isfile(bg_data.templates_file):
+    if require_templates and not os.path.isfile(bg_data.templates_file):
         errmsg = (f'Bayesian templates file {bg_data.templates_file} not found; '
                   'check $FTEMPLATES_DIR or --templatedir.')
         log.critical(errmsg)
@@ -379,6 +401,82 @@ def _parabola_vertex3(x, y):
         zwarn |= ZWarningMask.BAD_MINFIT
 
     return x0, xerr, y0, zwarn
+
+
+def _solve_grid(flam, flam_ivar, lambda_eff, photsys, redshift):
+    """Closed-form chi2-minimizing amplitude solve over the full grid, plus
+    sub-grid refinement of the maximum-likelihood point.
+
+    Factored out of :func:`fastbayes_one` so that it can also be called by
+    :func:`fastbayes_qa_one` to regenerate QA figures from an
+    already-written FASTBAYES output file, without repeating the fit's
+    per-object I/O (only ``flam``/``flam_ivar``/``lambda_eff``/``photsys``/
+    ``redshift`` are needed, all recoverable from the output file's
+    ``METADATA`` table) -- this keeps the two callers' math from being able
+    to drift apart.
+
+    Parameters
+    ----------
+    flam, flam_ivar, lambda_eff : :class:`numpy.ndarray`
+        Observed flux density, inverse variance, and effective wavelength,
+        one entry per band.
+    photsys : :class:`str`
+        Photometric-system key.
+    redshift : :class:`float`
+        Object redshift.
+
+    Returns
+    -------
+    :class:`dict`
+        ``chi2``, ``weight``, ``amplitude`` (all shape (ntemplate,)),
+        ``ibest`` (flat index of the discrete chi2 minimum), ``fit_value``/
+        ``fit_ivar`` (per grid-axis-column refined value/formal ivar, from
+        :func:`_refine_grid_axes`), ``corner_idx``/``corner_weight`` (N-linear
+        interpolation corners, from :func:`_corner_weights`),
+        ``refined_model_maggies`` (shape (nband,)), ``refined_amplitude``,
+        and ``chi2_refined``.
+
+    """
+    model_maggies = bg_data.interpolate_at_z(photsys, redshift) # [ntemplate, nband]
+    model_flam = Photometry.get_photflam(model_maggies, lambda_eff) # [ntemplate, nband]
+
+    # Closed-form, non-negative, chi2-minimizing mass amplitude per template.
+    numer = (model_flam * (flam_ivar * flam)[np.newaxis, :]).sum(axis=1)
+    denom = (model_flam**2 * flam_ivar[np.newaxis, :]).sum(axis=1)
+    amplitude = np.divide(numer, denom, out=np.zeros_like(numer), where=denom > 0.)
+    amplitude = np.clip(amplitude, 0., None)
+
+    resid = flam[np.newaxis, :] - amplitude[:, np.newaxis] * model_flam
+    chi2 = (flam_ivar[np.newaxis, :] * resid**2).sum(axis=1)
+
+    chi2min = np.min(chi2)
+    weight = np.exp(-0.5 * (chi2 - chi2min))
+    weight /= weight.sum()
+
+    ibest = np.argmin(chi2)
+
+    # --- local refinement of the maximum-likelihood point -----------------
+    fit_value, fit_ivar, frac, frac_dir = _refine_grid_axes(ibest, chi2)
+    corner_idx, corner_weight = _corner_weights(ibest, frac, frac_dir)
+
+    refined_model_maggies = (corner_weight[:, np.newaxis] * model_maggies[corner_idx, :]).sum(axis=0)
+    refined_model_flam = Photometry.get_photflam(refined_model_maggies, lambda_eff)
+
+    refined_numer = np.sum(refined_model_flam * flam_ivar * flam)
+    refined_denom = np.sum(refined_model_flam**2 * flam_ivar)
+    refined_amplitude = refined_numer / refined_denom if refined_denom > 0. else 0.
+    refined_amplitude = max(refined_amplitude, 0.)
+
+    refined_resid = flam - refined_amplitude * refined_model_flam
+    chi2_refined = np.sum(flam_ivar * refined_resid**2)
+
+    return {
+        'chi2': chi2, 'weight': weight, 'amplitude': amplitude, 'ibest': ibest,
+        'fit_value': fit_value, 'fit_ivar': fit_ivar,
+        'corner_idx': corner_idx, 'corner_weight': corner_weight,
+        'refined_model_maggies': refined_model_maggies,
+        'refined_amplitude': refined_amplitude, 'chi2_refined': chi2_refined,
+    }
 
 
 def _refine_grid_axes(ibest, chi2):
@@ -642,23 +740,19 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
     flam_ivar = np.asarray(data['photometry']['flam_ivar'], dtype='f8') * phot.bands_to_fit
     lambda_eff = np.asarray(data['photometry']['lambda_eff'], dtype='f8')
 
-    model_maggies = bg_data.interpolate_at_z(photsys, redshift) # [ntemplate, nband]
-    model_flam = Photometry.get_photflam(model_maggies, lambda_eff) # [ntemplate, nband]
+    soln = _solve_grid(flam, flam_ivar, lambda_eff, photsys, redshift)
+    chi2 = soln['chi2']
+    weight = soln['weight']
+    amplitude = soln['amplitude']
+    ibest = soln['ibest']
+    fit_value = soln['fit_value']
+    fit_ivar = soln['fit_ivar']
+    corner_idx = soln['corner_idx']
+    corner_weight = soln['corner_weight']
+    refined_model_maggies = soln['refined_model_maggies']
+    refined_amplitude = soln['refined_amplitude']
+    chi2_refined = soln['chi2_refined']
 
-    # Closed-form, non-negative, chi2-minimizing mass amplitude per template.
-    numer = (model_flam * (flam_ivar * flam)[np.newaxis, :]).sum(axis=1)
-    denom = (model_flam**2 * flam_ivar[np.newaxis, :]).sum(axis=1)
-    amplitude = np.divide(numer, denom, out=np.zeros_like(numer), where=denom > 0.)
-    amplitude = np.clip(amplitude, 0., None)
-
-    resid = flam[np.newaxis, :] - amplitude[:, np.newaxis] * model_flam
-    chi2 = (flam_ivar[np.newaxis, :] * resid**2).sum(axis=1)
-
-    chi2min = np.min(chi2)
-    weight = np.exp(-0.5 * (chi2 - chi2min))
-    weight /= weight.sum()
-
-    ibest = np.argmin(chi2)
     logmstar = np.log10(np.clip(amplitude, 1e-30, None))
 
     # The grid stores sfr per solar mass formed (like the flux templates
@@ -668,21 +762,6 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
     # the log, given LOGSFR's large dynamic range.
     sfr_per_template = amplitude * bg_data.sfr # [ntemplate], Msun/yr
     logsfr_per_template = np.log10(np.clip(sfr_per_template, 1e-30, None))
-
-    # --- local refinement of the maximum-likelihood point -----------------
-    fit_value, fit_ivar, frac, frac_dir = _refine_grid_axes(ibest, chi2)
-    corner_idx, corner_weight = _corner_weights(ibest, frac, frac_dir)
-
-    refined_model_maggies = (corner_weight[:, np.newaxis] * model_maggies[corner_idx, :]).sum(axis=0)
-    refined_model_flam = Photometry.get_photflam(refined_model_maggies, lambda_eff)
-
-    refined_numer = np.sum(refined_model_flam * flam_ivar * flam)
-    refined_denom = np.sum(refined_model_flam**2 * flam_ivar)
-    refined_amplitude = refined_numer / refined_denom if refined_denom > 0. else 0.
-    refined_amplitude = max(refined_amplitude, 0.)
-
-    refined_resid = flam - refined_amplitude * refined_model_flam
-    chi2_refined = np.sum(flam_ivar * refined_resid**2)
 
     refined_logmstar = np.log10(max(refined_amplitude, 1e-30))
     refined_sfr_per_msun = np.sum(corner_weight * bg_data.sfr[corner_idx])
@@ -788,16 +867,120 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
     return meta, result, restflux.astype('f4')
 
 
+def fastbayes_qa_one(iobj, meta, result, restwave, restflux, qadir='.', coadd_type='healpix'):
+    """Regenerate the QA figure for one object from an already-written
+    FASTBAYES output file, without repeating the fit.
+
+    Rebuilds everything :func:`_fastbayes_qa_one` needs purely from data
+    already present in the output file's ``METADATA``/``FASTBAYES``/``WAVE``/
+    ``MODELS`` extensions: the observed photometry (``FLUX_*``/
+    ``FLUX_IVAR_*`` columns), redshift (``Z``) and photometric system
+    (``PHOTSYS``), and the refined rest-frame spectrum (``restwave``/
+    ``restflux``, read back rather than recomputed). The only work redone is
+    the cheap, vectorized full-grid solve (:func:`_solve_grid`) needed to
+    reconstruct the per-template posterior weights, which are not stored in
+    the output file -- no raw DESI spectra or individual template rows are
+    read.
+
+    Parameters
+    ----------
+    iobj : :class:`int`
+        Index of the object in the input list, used for log messages.
+    meta : :class:`astropy.table.Row`
+        ``METADATA`` row for this object, from the FASTBAYES output file.
+    result : :class:`numpy.void`
+        ``FASTBAYES`` results row for this object, from the FASTBAYES
+        output file.
+    restwave : :class:`numpy.ndarray`
+        Shared rest-frame wavelength array (the output file's ``WAVE``
+        extension).
+    restflux : :class:`numpy.ndarray`
+        This object's refined rest-frame spectrum (one row of the output
+        file's ``MODELS`` extension).
+    qadir : :class:`str`, optional
+        Output directory for the QA figure. Default is ``'.'``.
+    coadd_type : :class:`str`, optional
+        Coadd type, used to build the QA target label/filename. Not stored
+        in the output file, so it must be supplied by the caller. Default
+        is ``'healpix'``.
+
+    """
+    phot = sc_data.photometry
+
+    redshift = float(meta['Z'])
+    if redshift <= 0.:
+        # mirror the (non-persisted) floor applied to the local `redshift`
+        # value in fastspecfit.io.DESISpectra.read
+        redshift = 1e-8
+    photsys = str(meta['PHOTSYS']).strip()
+
+    log.info(f'Regenerating QA for object {iobj} [{phot.uniqueid_col.lower()} '
+            f'{meta[phot.uniqueid_col]}, z={redshift:.6f}].')
+
+    if redshift > bg_data.redshift[-1]:
+        log.warning(f'Object {iobj} [{phot.uniqueid_col.lower()} {meta[phot.uniqueid_col]}] redshift '
+                   f'{redshift:.6f} exceeds the grid maximum {bg_data.redshift[-1]:.6f}; skipping QA.')
+        return
+
+    nanomaggies = np.array([meta[f'FLUX_{band.upper()}'] for band in phot.bands], dtype='f8')
+    nanomaggies_ivar = np.array([meta[f'FLUX_IVAR_{band.upper()}'] for band in phot.bands], dtype='f8')
+    lambda_eff = phot.filters[photsys].effective_wavelengths.value
+
+    phot_tbl = Photometry.parse_photometry(
+        phot.bands, maggies=nanomaggies, ivarmaggies=nanomaggies_ivar,
+        lambda_eff=lambda_eff, min_uncertainty=phot.min_uncertainty)
+    flam = np.asarray(phot_tbl['flam'], dtype='f8')
+    flam_ivar = np.asarray(phot_tbl['flam_ivar'], dtype='f8') * phot.bands_to_fit
+
+    soln = _solve_grid(flam, flam_ivar, lambda_eff, photsys, redshift)
+    weight = soln['weight']
+    amplitude = soln['amplitude']
+    refined_model_maggies = soln['refined_model_maggies']
+    refined_amplitude = soln['refined_amplitude']
+
+    logmstar = np.log10(np.clip(amplitude, 1e-30, None))
+    sfr_per_template = amplitude * bg_data.sfr # [ntemplate], Msun/yr
+    logsfr_per_template = np.log10(np.clip(sfr_per_template, 1e-30, None))
+    posterior = {'LOGMSTAR': logmstar, 'LOGSFR': logsfr_per_template}
+
+    posterior_arrays = {}
+    for pname in PARAM_NAMES:
+        if pname in posterior:
+            vals = posterior[pname]
+        else:
+            vals = bg_data.axis_posterior_cache(_OUTNAME_TO_AXIS[pname])[0]
+        posterior_arrays[pname] = (vals, weight)
+
+    zwave = restwave * (1. + redshift)
+    igm_trans = _igm.full_IGM(redshift, zwave)
+    dlum = _cosmo.luminosity_distance(redshift) # [Mpc]
+    zfactor = igm_trans * (10. / (1e6 * dlum))**2 / (1. + redshift)
+    zflux = restflux * zfactor # [erg/s/cm2/A, observed frame]
+
+    synth_maggies = refined_model_maggies * refined_amplitude # [nband], observed-frame maggies
+
+    data = {'photometry': {
+        'nanomaggies': nanomaggies,
+        'nanomaggies_ivar': nanomaggies_ivar,
+        'lambda_eff': lambda_eff,
+    }}
+
+    _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
+                      zwave, zflux, synth_maggies, redshift, coadd_type=coadd_type, outdir=qadir)
+
+
 def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
                       zwave, zflux, synth_maggies, redshift, coadd_type='healpix', outdir='.'):
     """Generate a QA figure for one Bayesian-fit object.
 
     Reuses :func:`fastspecfit.qa._target_label` and
     :func:`fastspecfit.qa._fetch_cutout`, which are generic utilities with
-    no fastspec/fastphot-specific coupling. Called from
-    :func:`fastbayes_one` rather than as a separate post-processing pass,
-    since ``posterior_arrays`` (the full per-template posterior weights)
-    only exists in memory during fitting.
+    no fastspec/fastphot-specific coupling. Called either inline from
+    :func:`fastbayes_one` during fitting (``--qa``), or from
+    :func:`fastbayes_qa_one` to regenerate QA from an already-written
+    FASTBAYES output file without repeating the fit -- both callers build
+    the same ``posterior_arrays``/``zwave``/``zflux``/``synth_maggies``
+    inputs, just from different sources.
 
     Parameters
     ----------
@@ -1137,7 +1320,11 @@ def write_fastbayes(meta, results, modelwave, modelspectra, outfile, gridfile, f
 
     hduprim = fits.PrimaryHDU()
     hduprim.header['GRIDFILE'] = os.path.abspath(str(gridfile))
-    hduprim.header['FPHOTO'] = os.path.basename(str(fphotofile)) if fphotofile else ''
+    # Full path (not just the basename) so that fastbayes_qa can reload the
+    # exact same Photometry configuration later, including for bundled
+    # (importlib.resources) configs, which Photometry.__init__ cannot
+    # resolve from a bare filename.
+    hduprim.header['FPHOTO'] = os.path.abspath(str(fphotofile)) if fphotofile else ''
     hduprim.header['TOPK'] = topk
 
     with warnings.catch_warnings():
@@ -1358,5 +1545,153 @@ def fastbayes(args=None, mp_pool=None):
 
     write_fastbayes(outmeta, results, modelwave, modelspectra, outfile=args.outfile,
                     gridfile=gridfile, fphotofile=phot.fphotofile, topk=args.topk)
+
+    return 0
+
+
+def parse_qa(options=None):
+    """Parse input arguments to the ``fastbayes-qa`` script.
+
+    Parameters
+    ----------
+    options : list of str or None, optional
+        Command-line argument strings. If ``None``, reads from ``sys.argv``.
+
+    Returns
+    -------
+    args : :class:`argparse.Namespace`
+
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    parser.add_argument('fastbayesfile', help='Full path to an existing FASTBAYES output FITS file.')
+    parser.add_argument('--qadir', type=str, default='.', help='Output directory for QA figures.')
+    parser.add_argument('--coadd-type', dest='coadd_type', type=str, default='healpix',
+                        choices=['healpix', 'uniqpix', 'cumulative', 'pernight', 'perexp', 'custom', 'stacked'],
+                        help='Coadd type, used to build the QA target label/filename (not stored in the '
+                        'FASTBAYES output file, so it cannot be inferred).')
+    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
+    parser.add_argument('-n', '--ntargets', type=int, help='Number of objects to process.')
+    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to process, zero-indexed.')
+    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads.')
+    parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
+
+    if options is None:
+        options = sys.argv[1:]
+
+    log.info('fastbayes-qa {}'.format(' '.join(options)))
+
+    return parser.parse_args(options)
+
+
+def fastbayes_qa(args=None, mp_pool=None):
+    """Regenerate QA figures for a FASTBAYES output file, without repeating the fit.
+
+    Reads back an already-written FASTBAYES output file's ``METADATA``,
+    ``FASTBAYES``, ``WAVE``, and ``MODELS`` extensions and primary header
+    (``GRIDFILE``/``FPHOTO``), then calls :func:`fastbayes_qa_one` for each
+    requested object. The only work redone is the cheap, vectorized
+    :func:`_solve_grid` solve needed to rebuild the per-template posterior
+    weights (the one thing not stored in the output file); no raw DESI
+    spectra or individual raw template rows are read, so this does not need
+    ``$FTEMPLATES_DIR`` (or the original redrock/spectra files) to be
+    available.
+
+    Parameters
+    ----------
+    args : :class:`argparse.Namespace` or list of str or None, optional
+        Pre-parsed arguments or raw argument list. If ``None``, reads from
+        ``sys.argv``.
+    mp_pool : :class:`fastspecfit.util.MPPool` or None, optional
+        Pre-built worker pool; a new one is created (and closed) when
+        ``None``.
+
+    Returns
+    -------
+    :class:`int`
+        Exit code (0 on success).
+
+    """
+    from astropy.table import Table
+
+    if isinstance(args, (list, tuple, type(None))):
+        args = parse_qa(args)
+
+    if args.verbose:
+        log.setLevel(logging.DEBUG)
+
+    fastbayesfile = os.path.expandvars(args.fastbayesfile)
+    if not os.path.isfile(fastbayesfile):
+        errmsg = f'FASTBAYES output file {fastbayesfile} not found.'
+        log.critical(errmsg)
+        raise IOError(errmsg)
+
+    F = fitsio.FITS(fastbayesfile)
+    prihdr = F[0].read_header()
+    gridfile = prihdr.get('GRIDFILE')
+    fphotofile = prihdr.get('FPHOTO') or None
+
+    if not gridfile or not os.path.isfile(gridfile):
+        errmsg = f'Bayesian grid file {gridfile} (from {fastbayesfile} header GRIDFILE) not found.'
+        log.critical(errmsg)
+        raise IOError(errmsg)
+
+    meta = Table(F['METADATA'].read())
+    results = F['FASTBAYES'].read()
+    restwave = F['WAVE'].read()
+    modelspectra = F['MODELS'].read()
+
+    nobj = len(meta)
+    keep = np.arange(nobj)
+
+    if args.targetids is not None:
+        targetids = [int(x) for x in args.targetids.split(',')]
+        keep = np.where(np.isin(meta['TARGETID'], targetids))[0]
+        if len(keep) == 0:
+            log.warning('No objects match the requested --targetids.')
+            return 0
+    else:
+        firsttarget = args.firsttarget
+        lasttarget = firsttarget + args.ntargets if args.ntargets is not None else nobj
+        keep = keep[firsttarget:lasttarget]
+
+    if len(keep) == 0:
+        log.warning('No objects to process.')
+        return 0
+
+    init_argdict = {'fphotofile': fphotofile, 'gridfile': gridfile, 'require_templates': False}
+
+    t0 = time.time()
+    _initialize_fastbayes_workers(**init_argdict)
+    log.info(fsftime('bg_data_init', time.time() - t0))
+
+    _own_pool = False
+    if mp_pool is None:
+        mp_pool = MPPool(args.mp, initializer=_initialize_fastbayes_workers, init_argdict=init_argdict)
+        _own_pool = True
+
+    qaargs = [{
+        'iobj': iobj,
+        'meta': meta[iobj],
+        'result': results[iobj],
+        'restwave': restwave,
+        'restflux': modelspectra[iobj],
+        'qadir': args.qadir,
+        'coadd_type': args.coadd_type,
+    } for iobj in keep]
+
+    t0 = time.time()
+    # Forces evaluation: MPPool.starmap returns a lazy itertools.starmap
+    # generator when running serially (nworkers=1), which would otherwise
+    # never actually execute fastbayes_qa_one (same idiom as qa.desiqa_one).
+    for _ in mp_pool.starmap(fastbayes_qa_one, qaargs):
+        pass
+
+    if _own_pool:
+        mp_pool.close()
+
+    log.info(fsftime('fastbayes_qa_all', time.time() - t0, context=f'nobj={len(qaargs)}'))
 
     return 0

@@ -72,6 +72,7 @@ script-files = [
     "bin/build-bayesian-templates",
     "bin/build-bayesian-photometry",
     "bin/fastbayes",
+    "bin/fastbayes-qa",
     "bin/build-mini-specprod",
     "bin/generate-fast-slurm",
     "bin/get-cutouts",
