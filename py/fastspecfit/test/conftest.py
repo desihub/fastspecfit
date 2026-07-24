@@ -73,14 +73,14 @@ def templates(templatedir, template_version):
 def filenames(outdir):
     from importlib import resources
     redux_dir    = resources.files('fastspecfit').joinpath('test/data')
-    specproddir  = resources.files('fastspecfit').joinpath('test/data')
+    specprod     = resources.files('fastspecfit').joinpath('test/data')
     mapdir       = resources.files('fastspecfit').joinpath('test/data')
     fphotodir    = resources.files('fastspecfit').joinpath('test/data')
     redrockfile  = resources.files('fastspecfit').joinpath('test/data/redrock-4-80613-thru20210324.fits')
     stackfile    = resources.files('fastspecfit').joinpath('test/data/stack-LRG.fits')
     yield {
         'redux_dir':        redux_dir,
-        'specproddir':      specproddir,
+        'specprod':         specprod,
         'mapdir':           mapdir,
         'fphotodir':        fphotodir,
         'redrockfile':      redrockfile,
@@ -98,7 +98,7 @@ def fastphot_output(filenames, templates):
     cmd = (f'fastphot {filenames["redrockfile"]} -o {outfile} '
            f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
            f'--redux_dir {filenames["redux_dir"]} '
-           f'--specproddir {filenames["specproddir"]} --templates {templates}')
+           f'--specprod {filenames["specprod"]} --templates {templates}')
     fastphot(args=parse(options=cmd.split()[1:]))
     yield outfile
 
@@ -110,7 +110,7 @@ def fastspec_output(filenames, templates):
     cmd = (f'fastspec {filenames["redrockfile"]} -o {outfile} '
            f'--redux_dir {filenames["redux_dir"]} '
            f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
-           f'--specproddir {filenames["specproddir"]} --templates {templates}')
+           f'--specprod {filenames["specprod"]} --templates {templates}')
     fastspec(args=parse(options=cmd.split()[1:]))
     yield outfile
 
@@ -128,7 +128,7 @@ def fastspec_hii_output(filenames, templates, outdir):
     cmd = (f'fastspec {filenames["redrockfile"]} -o {outfile} '
            f'--redux_dir {filenames["redux_dir"]} '
            f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
-           f'--specproddir {filenames["specproddir"]} --templates {templates} '
+           f'--specprod {filenames["specprod"]} --templates {templates} '
            f'--emlinesfile {emlinesfile} --constraintsfile {constraintsfile}')
     fastspec(args=parse(options=cmd.split()[1:]))
     yield outfile
@@ -143,7 +143,7 @@ def fastspec_fixedvdisp_output(filenames, templates, outdir):
     cmd = (f'fastspec {filenames["redrockfile"]} -o {outfile} '
            f'--redux_dir {filenames["redux_dir"]} '
            f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
-           f'--specproddir {filenames["specproddir"]} --templates {templates} '
+           f'--specprod {filenames["specprod"]} --templates {templates} '
            f'--vdisp-bounds 0 0')
     fastspec(args=parse(options=cmd.split()[1:]))
     yield outfile

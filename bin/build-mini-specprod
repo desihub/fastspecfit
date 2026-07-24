@@ -19,15 +19,16 @@ and point ``DESI_SPECTRO_REDUX`` at ``$outdir/spectro/redux`` and
 ``FPHOTO_DIR`` at ``$outdir/external/legacysurvey/dr9`` there.
 
 Note on ``--output-specprod``: only the top-level *directory* name is
-changed. The Redrock file headers keep the real, input ``--specprod`` name
-(e.g. ``iron``, ``loa``) as their ``SPECPROD`` dependency, because
-fastspecfit uses that string to pick the correct QuasarNet-afterburner column
-schema (see ``update_qso_redshifts`` in ``fastspecfit/io.py``); renaming it
-would silently break that logic for older productions. One consequence: for
-cumulative-tile samples, ``tiles-{specprod}.csv`` keeps the *input* specprod
-name in its filename, and downstream ``fastspec``/``fastqa`` runs against the
-mini tree should pass ``--specproddir $outdir/spectro/redux/{output-specprod}``
-explicitly so that file is found.
+changed. The Redrock and coadd file headers keep the real, input
+``--specprod`` name (e.g. ``iron``, ``loa``) as their ``SPECPROD``
+dependency, because fastspecfit uses that string to pick the correct
+QuasarNet-afterburner column schema (see ``update_qso_redshifts`` in
+``fastspecfit/io.py``); renaming it would silently break that logic for
+older productions. One consequence: for cumulative-tile samples,
+``tiles-{specprod}.csv`` keeps the *input* specprod name in its filename, and
+downstream ``fastspec``/``fastqa`` runs against the mini tree should pass
+``--specprod {output-specprod}`` explicitly so that file is found under the
+renamed directory.
 
 Examples
 --------
@@ -105,8 +106,22 @@ def subset_spectro_files(in_dir, out_dir, stem, targetids):
 
     if not _skip(out_coaddfile):
         print(f'Writing {out_coaddfile}')
+        orig_hdr = fitsio.read_header(coaddfile, ext=0)
         spec = read_spectra(coaddfile).select(targets=targetids)
         write_spectra(out_coaddfile, spec)
+        # write_spectra() builds a fresh primary header (via
+        # desiutil.depend.add_dependencies), which stamps DEPVER(SPECPROD)
+        # from the *current* $SPECPROD environment variable rather than
+        # preserving the original file's provenance. Restore the original
+        # header verbatim, as is done for the redrock file above: drop
+        # whatever write_spectra() added that wasn't in the original header,
+        # then write the original keys back.
+        with fitsio.FITS(out_coaddfile, 'rw') as ff:
+            keep = {r['name'] for r in orig_hdr.records() if r['name']}
+            new_hdr = ff[0].read_header()
+            stale = [r['name'] for r in new_hdr.records() if r['name'] and r['name'] not in keep]
+            ff[0].delete_keys(stale)
+            ff[0].write_keys(orig_hdr, clean=True)
 
     for prefix, extname in (('qso_qn', 'QN_RR'), ('qso_mgii', 'MGII')):
         infile = os.path.join(in_dir, f'{prefix}-{stem}.fits')

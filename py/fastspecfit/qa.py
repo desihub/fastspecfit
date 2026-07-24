@@ -11,6 +11,45 @@ from fastspecfit.templates import Templates
 from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import MPPool
 
+# Sticky per-process flag: once the Legacy Survey viewer is found
+# unreachable, stop retrying it for every subsequent object in this process
+# (see _fetch_cutout). Seeded once per fastqa() call by _probe_cutout_host()
+# and propagated to multiprocessing workers via their pool initializer, so
+# a single probe covers the whole call regardless of --mp.
+_cutout_unreachable = False
+
+
+def _probe_cutout_host(timeout=5):
+    """One-shot reachability check for the Legacy Survey viewer host.
+
+    Cheap up-front alternative to letting every worker separately discover
+    an outage via _fetch_cutout()'s multi-attempt retry/backoff loop. Unlike
+    socket.create_connection(), which tries *every* address getaddrinfo
+    returns (this host round-robins across several backend IPs, so that can
+    multiply the effective timeout severalfold), this only ever attempts the
+    first resolved address, so the wall-clock cost is bounded by `timeout`.
+    """
+    import socket
+    host, port = 'www.legacysurvey.org', 443
+    try:
+        family, socktype, proto, _, sockaddr = socket.getaddrinfo(
+            host, port, socket.AF_UNSPEC, socket.SOCK_STREAM)[0]
+        with socket.socket(family, socktype, proto) as sock:
+            sock.settimeout(timeout)
+            sock.connect(sockaddr)
+        return True
+    except OSError as e:
+        log.warning(f'Legacy Survey viewer unreachable ({e}); skipping image cutouts for this run.')
+        return False
+
+
+def _qa_worker_init(cutout_unreachable=False, **init_sc_args):
+    """Pool initializer: seed this worker's cutout-reachability state, then
+    initialize the single-copy objects as usual."""
+    global _cutout_unreachable
+    _cutout_unreachable = cutout_unreachable
+    sc_data.initialize(**init_sc_args)
+
 
 def _corner_plot(plotdata, bins, ranges, labels, titles, truths, sigmas,
                  suptitle, pngfile, subplots_adjust=None):
@@ -723,8 +762,10 @@ def _fetch_cutout(metadata, outdir, pngfile, layer, pixscale):
     hdr['CD2_2'] = +pixscale/3600
     wcs = WCS(hdr)
 
+    global _cutout_unreachable
+
     cutoutjpeg = os.path.join(outdir, 'tmp.'+os.path.basename(pngfile.replace('.png', '.jpeg')))
-    if not os.path.isfile(cutoutjpeg):
+    if not os.path.isfile(cutoutjpeg) and not _cutout_unreachable:
         import random
         import time
         import urllib.request
@@ -756,7 +797,9 @@ def _fetch_cutout(metadata, outdir, pngfile, layer, pixscale):
                                 f'Retrying in {backoff:.1f}s.')
                     time.sleep(backoff)
                 else:
-                    log.warning(f'No viewer cutout retrieved after {max_retries} attempts: {e}.')
+                    log.warning(f'No viewer cutout retrieved after {max_retries} attempts: {e}. '
+                                f'Skipping further cutout fetches for the remainder of this run.')
+                    _cutout_unreachable = True
     try:
         img = mpimg.imread(cutoutjpeg)
     except:
@@ -1721,6 +1764,9 @@ def parse(options=None):
     parser.add_argument('--night', default=None, type=str, nargs='*', help="""Generate QA for all objects observed on this
         night (only defined for coadd-type 'pernight' and 'perexp').""")
     parser.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
+    parser.add_argument('--specprod', type=str, default=None, help="""Optional override of the on-disk spectroscopic
+        production directory name under --redux_dir, when it differs from the SPECPROD recorded in the fastspecfit
+        output file (e.g., a relocated or "mini" production tree).""")
     parser.add_argument('--redrockfiles', nargs='*', help='Optional full path to redrock file(s).')
     parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
     parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
@@ -1887,6 +1933,13 @@ def fastqa(args=None, comm=None):
 
     sc_data.initialize(**init_sc_args)
 
+    # Probe the Legacy Survey viewer once for this call and seed the
+    # (per-process) cutout-reachability flag, both here in the main process
+    # (covers the args.mp<=1 case) and via the pool initializer below (covers
+    # each multiprocessing worker).
+    global _cutout_unreachable
+    _cutout_unreachable = not _probe_cutout_host()
+
     # if multiprocessing, create a pool of worker processes
     # and initialize single-copy objects in each worker
     if args.mp > 1 and not 'NERSC_HOST' in os.environ:
@@ -1894,8 +1947,8 @@ def fastqa(args=None, comm=None):
         multiprocessing.set_start_method('fork')
 
     mp_pool = MPPool(args.mp,
-                     initializer=sc_data.initialize,
-                     init_argdict=init_sc_args)
+                     initializer=_qa_worker_init,
+                     init_argdict=dict(cutout_unreachable=_cutout_unreachable, **init_sc_args))
 
     log.info(f'Cached stellar templates {sc_data.templates.file}')
     log.info(f'Cached emission-line table {sc_data.emlines.file}')
@@ -2000,7 +2053,7 @@ def fastqa(args=None, comm=None):
                                             (program == allprograms) * (pixel == allpixels))[0]
                             if len(indx) == 0:
                                 continue
-                            redrockfile = os.path.join(args.redux_dir, specprod, 'healpix', str(survey), str(program), str(pixel // 100),
+                            redrockfile = os.path.join(args.redux_dir, args.specprod or specprod, 'healpix', str(survey), str(program), str(pixel // 100),
                                                        str(pixel), 'redrock-{}-{}-{}.fits'.format(survey, program, pixel))
                             _wrap_qa(redrockfile, indx)
     elif coadd_type == 'uniqpix':
@@ -2020,7 +2073,7 @@ def fastqa(args=None, comm=None):
                                             (program == allprograms) * (pixel == allpixels))[0]
                             if len(indx) == 0:
                                 continue
-                            redrockfile = os.path.join(args.redux_dir, specprod, 'spectra', str(survey), str(program), str(pixel // 100),
+                            redrockfile = os.path.join(args.redux_dir, args.specprod or specprod, 'spectra', str(survey), str(program), str(pixel // 100),
                                                        str(pixel), 'redrock-{}-{}-{}.fits'.format(survey, program, pixel))
                             _wrap_qa(redrockfile, indx)
     elif coadd_type == 'custom':
@@ -2047,7 +2100,7 @@ def fastqa(args=None, comm=None):
                                 #log.warning('No object found with tileid={} and petal={}!'.format(
                                 #    tile, petal))
                                 continue
-                            redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'cumulative', str(tile), allnights[indx[0]],
+                            redrockfile = os.path.join(args.redux_dir, args.specprod or specprod, 'tiles', 'cumulative', str(tile), allnights[indx[0]],
                                                        'redrock-{}-{}-thru{}.fits'.format(petal, tile, allnights[indx[0]]))
                             _wrap_qa(redrockfile, indx)
             elif coadd_type == 'pernight':
@@ -2059,7 +2112,7 @@ def fastqa(args=None, comm=None):
                                                 (tile == alltiles) * (petal == allpetals))[0]
                                 if len(indx) == 0:
                                     continue
-                                redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'pernight', str(tile), str(night),
+                                redrockfile = os.path.join(args.redux_dir, args.specprod or specprod, 'tiles', 'pernight', str(tile), str(night),
                                                            'redrock-{}-{}-{}.fits'.format(petal, tile, night))
                                 _wrap_qa(redrockfile, indx)
             elif coadd_type == 'perexp':
@@ -2074,7 +2127,7 @@ def fastqa(args=None, comm=None):
                                                     (petal == allpetals))[0]
                                     if len(indx) == 0:
                                         continue
-                                    redrockfile = os.path.join(args.redux_dir, specprod, 'tiles', 'perexp', str(tile), '{:08d}'.format(expid),
+                                    redrockfile = os.path.join(args.redux_dir, args.specprod or specprod, 'tiles', 'perexp', str(tile), '{:08d}'.format(expid),
                                                                'redrock-{}-{}-exp{:08d}.fits'.format(petal, tile, expid))
                                     _wrap_qa(redrockfile, indx)
 

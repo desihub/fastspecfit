@@ -5,6 +5,7 @@ Change Log
 3.6.0 (not released yet)
 ------------------------
 
+* Support analysis of mini-specprod datasets [`PR #274`_].
 * Dynamically split ``FASTSPEC`` HDU into an additional ``MORELINES``
   HDU [`PR #273`_].
 * Switch to new default templates (version 3.0.0) built from a
@@ -13,6 +14,7 @@ Change Log
 * New unit test and documentation of external photometric catalog
   "mode" [`PR #269`_].
 
+.. _`PR #274`: https://github.com/desihub/fastspecfit/pull/274
 .. _`PR #273`: https://github.com/desihub/fastspecfit/pull/273
 .. _`PR #271`: https://github.com/desihub/fastspecfit/pull/271
 .. _`PR #270`: https://github.com/desihub/fastspecfit/pull/270
