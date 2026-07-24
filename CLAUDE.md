@@ -59,6 +59,9 @@ Defined in `pyproject.toml` and implemented in `py/fastspecfit/fastspecfit.py`:
 - `parse-fast-logs` (bin script) — parse log files and report timing statistics
 - `compare-fast-vacs` (bin script) — compare two FastSpecFit VACs
 - `profile-fastspec` (bin script) — profiling tool for fastspec performance
+- `build-mini-specprod` (bin script) — subset Redrock/coadd/afterburner/Tractor files for a sample of TARGETIDs into a mini `$DESI_ROOT`-like tree, for testing off-NERSC
+- `vac-statistics` (bin script) — print summary statistics for a FastSpecFit VAC
+- `validate-fast-vac` (bin script) — run fitsverify/NaN checks across a VAC directory, or write per-directory SHA-256 checksums
 
 ## Architecture
 
@@ -110,6 +113,7 @@ This pattern avoids re-reading large files in multiprocessing workers.
 
 - `emlines.ecsv` — emission line table (wavelengths, line types, constraints)
 - `emline-constraints.yaml` — YAML-based kinematic groups, doublet bounds, amplitude constraints, and per-group fitting-strategy parameters
+- `emlines-hii.ecsv` / `emline-constraints-hii.yaml` — alternate line list/constraints for HII-region fitting; select via the `--emlinesfile`/`--constraintsfile` CLI flags
 - `legacysurvey-dr9.yaml` / `legacysurvey-dr10.yaml` — photometric filter/band configuration
 - `stacked-phot.yaml` — photometric configuration for stacked spectra
 - `desi_fiducial_cosmology.dat` — tabulated cosmology table
