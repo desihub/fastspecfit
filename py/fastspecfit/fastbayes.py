@@ -268,16 +268,26 @@ _igm = None
 _cosmo = None
 
 
-def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=None, require_templates=True):
+def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=None,
+                                  require_templates=True, mapdir=None):
     """MPPool initializer: populate ``sc_data.photometry``, ``bg_data``, the
     IGM model, and the cosmology in each worker.
 
     ``sc_data.photometry`` is populated directly (rather than via
     ``sc_data.initialize()``) so this mode never loads the stellar template
-    basis or emission-line tables, neither of which it needs.
+    basis or emission-line tables, neither of which it needs; the Milky Way
+    dust-map directory is set the same way, via
+    :meth:`~fastspecfit.singlecopy.Singletons.set_mapdir`, since
+    :func:`fastspecfit.io.one_spectrum` (called from :func:`fastbayes_one`)
+    still needs :attr:`sc_data.sfdmap` to be usable.
 
     Parameters
     ----------
+    mapdir : :class:`str` or None, optional
+        Directory containing the Milky Way dust maps; defaults to
+        ``$DUST_DIR/maps`` when ``None``. Not needed by
+        :func:`fastbayes_qa`/:func:`fastbayes_qa_one`, which never call
+        :func:`fastspecfit.io.one_spectrum`.
     require_templates : :class:`bool`, optional
         If ``True`` (default), require the raw templates FITS file (used by
         :meth:`BayesianGrid.template_flux_row` to build the refined rest-frame
@@ -293,6 +303,7 @@ def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=No
     global _igm, _cosmo
 
     sc_data.photometry = Photometry(fphotofile=fphotofile)
+    sc_data.set_mapdir(mapdir)
     bg_data.load(gridfile, templatedir=templatedir)
 
     if require_templates and not os.path.isfile(bg_data.templates_file):
@@ -1413,7 +1424,9 @@ def parse(options=None):
     parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
     parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
     parser.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
-    parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
+    parser.add_argument('--specprod', type=str, default=None, help="""Optional override of the on-disk spectroscopic
+        production directory name under --redux_dir, when it differs from the SPECPROD dependency recorded in the
+        Redrock/coadd file headers (e.g., a relocated or "mini" production tree).""")
     parser.add_argument('--uncertainty-floor', type=float, default=0.01,
                         help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
@@ -1485,7 +1498,8 @@ def fastbayes(args=None, mp_pool=None):
         log.critical(errmsg)
         raise IOError(errmsg)
 
-    init_argdict = {'fphotofile': args.fphotofile, 'gridfile': gridfile, 'templatedir': args.templatedir}
+    init_argdict = {'fphotofile': args.fphotofile, 'gridfile': gridfile,
+                    'templatedir': args.templatedir, 'mapdir': args.mapdir}
 
     t0 = time.time()
     _initialize_fastbayes_workers(**init_argdict)
@@ -1499,13 +1513,13 @@ def fastbayes(args=None, mp_pool=None):
     phot = sc_data.photometry
 
     Spec = DESISpectra(phot=phot, cosmo=_cosmo, fphotodir=args.fphotodir,
-                       mapdir=args.mapdir, redux_dir=args.redux_dir)
+                       redux_dir=args.redux_dir)
 
     Spec.gather_metadata(args.redrockfiles, firsttarget=args.firsttarget,
                          targetids=targetids, input_redshifts=input_redshifts,
                          ntargets=args.ntargets, zmin=args.zmin,
                          redrockfile_prefix=args.redrockfile_prefix,
-                         use_quasarnet=args.use_quasarnet, specprod_dir=args.specproddir)
+                         use_quasarnet=args.use_quasarnet, specprod=args.specprod)
     if len(Spec.specfiles) == 0:
         return 0
 
