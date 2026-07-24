@@ -73,6 +73,11 @@ LUM_WAVES = (1450., 1500., 1700., 2800., 3000., 5100.)
 _PC_CM = 3.0856775814913673e18 # [cm]
 _LSUN = 3.846e33 # [erg/s]
 
+# Averaging window for the derived SFR proxy (BayesianGrid.load), matching
+# the 100 Myr convention used for the main (tabular-SFH) templates in
+# fastspecfit.continuum.
+SFR_AVG_WINDOW_GYR = 0.1 # [Gyr] = 100 Myr
+
 
 class BayesianGrid(object):
     """Pre-synthesized Bayesian grid photometry, shared read-only across MPPool workers.
@@ -134,7 +139,23 @@ class BayesianGrid(object):
 
         self.meta = Table(T['METADATA'].read())
         self.ntemplate = len(self.meta)
-        self.sfr = np.asarray(self.meta['sfr'], dtype='f8') # [ntemplate], Msun/yr per Msun formed
+
+        # NB: the templates' own METADATA 'sfr' column (FSPS's sp.sfr,
+        # written by bin/build-bayesian-templates) is identically zero for
+        # every template and is *not* used here: each grid point is an
+        # instantaneous single-burst SSP (sfh=0), and FSPS's "current" SFR
+        # attribute is meaningful only for continuous/tabular SFHs, not a
+        # delta-function burst. Instead, derive SFR averaged over the most
+        # recent SFR_AVG_WINDOW_GYR directly from the burst age (same 100 Myr
+        # convention used for the main templates in fastspecfit.continuum):
+        # for an instantaneous burst, all of the formed mass falls within
+        # that window if age <= SFR_AVG_WINDOW_GYR, none of it otherwise.
+        # This is exact (not an approximation) for a true delta-function SFH,
+        # and can be computed just-in-time from METADATA alone -- no need to
+        # rebuild the grid.
+        age_gyr = np.asarray(self.meta['age'], dtype='f8')
+        self.sfr = np.where(age_gyr <= SFR_AVG_WINDOW_GYR,
+                            1. / (SFR_AVG_WINDOW_GYR * 1e9), 0.) # [ntemplate], Msun/yr per Msun formed
         self._axis_cache = {}
 
         # Recover the grid's N-D axis structure. The grid is a full

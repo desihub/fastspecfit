@@ -120,6 +120,19 @@ scaling each template's tabulated per-unit-mass values by $\amp(t)$). Point
 estimates --- mean, mode, and the 16th/50th/84th percentiles --- are reported
 for every parameter directly from this weighted posterior.
 
+\paragraph{SFR proxy.} Each grid point is an instantaneous single-burst SSP,
+for which FSPS's native ``current'' SFR is identically zero at any lookback
+time (it is only meaningful for continuous/tabular star formation
+histories). \texttt{fastbayes} instead derives, per template, the SFR
+averaged over the most recent 100~Myr directly from the burst age: since a
+delta-function burst's entire formed mass lies within that window whenever
+$\mathrm{age} \le 100$~Myr and none of it otherwise, this per-unit-mass value
+is exactly $10^{-8}~M_\odot\,\mathrm{yr}^{-1}$ for $\mathrm{age} \le
+100$~Myr and $0$ otherwise -- computed from the grid's tabulated ages alone,
+with no need to rerun FSPS or rebuild the grid. This mirrors the 100~Myr
+averaging window used for the main (tabular-SFH) templates in
+\texttt{fastspecfit.continuum}.
+
 \section{Sub-Grid Refinement}
 \label{sec:refine}
 
