@@ -675,7 +675,7 @@ def main(imf='chabrier', logmets=[0.0], agelims=None, qpah=1.0, umin=1., gamma=0
         logmets = [0.]
 
     nmets = len(logmets)
-    zsolar = 0.019
+    zsolar = 0.0134 # Asplund et al. (2009); matches the C3K library abundance mixture
     print(' <Z/Zsun>: '+', '.join(['{:.2f}'.format(10.**logmet) for logmet in logmets]))
 
     dims = (nages, nmets)
@@ -775,7 +775,8 @@ def main(imf='chabrier', logmets=[0.0], agelims=None, qpah=1.0, umin=1., gamma=0
 
     hdutable = fits.convenience.table_to_hdu(meta)
     hdutable.header['EXTNAME'] = 'METADATA'
-    hdutable.header['imf'] = imf
+    hdutable.header['IMF'] = imf
+    hdutable.header['ZSUN'] = (zsolar, 'adopted solar metallicity (Asplund+09)')
 
     # emission lines
     hduflux6 = fits.ImageHDU(linefluxes)
