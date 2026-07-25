@@ -19,6 +19,9 @@ Usage
       --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates \\
       --logmets=-1.,0.,0.3
 
+  time python bin/build-templates --version 1.0.0 --tag paper1 \\
+      --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates
+
 Input Files
 -----------
 The script expects the following raw data files under
@@ -583,7 +586,7 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
     return meta, newwave, fluxes, linewaves, linefluxes
 
 
-def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
+def main(imf='chabrier', logmets=[0.0], agelims=None, qpah=1.0, umin=1., gamma=0.01,
          agntau=10., test=False, version='1.0.0', tag=None, templatedir=None):
     """Build all templates and write the output FITS file.
 
@@ -602,6 +605,12 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
         log10(Z/Zsun) metallicity grid values. Default is ``[0.0]``
         (solar metallicity only). The production templates use
         ``[-1.0, 0.0, 0.3]``.
+    agelims : :class:`list` of :class:`float` or None, optional
+        Lookback time bin edges in Gyr, ascending, of length ``nages+1``.
+        When ``None`` (default), generated with the production 5-bin
+        prescription (``adjust_continuity_agebins``-style: an edge at
+        ~30 Myr, log-spaced edges out to ``0.85*tuniv``, and a final edge
+        at ``tuniv=13.7`` Gyr).
     qpah : :class:`float`, optional
         Draine & Li (2007) PAH mass fraction parameter. Default is 1.0.
     umin : :class:`float`, optional
@@ -640,29 +649,34 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
 
     print(f'<IR Dust>: q_PAH = {qpah}, U_min = {umin}, gamma = {gamma}')
 
-    # Choose lookback time bins.
-
-    # from prospect.templates.adjust_continuity_agebins
-    nbins = 5
-    tuniv = 13.7
-    tbinmax = (tuniv * 0.85) * 1e9
-    lim1, lim2 = 7.4772, 8.0
-    agelims = np.array([0, lim1] + np.linspace(lim2, np.log10(tbinmax), nbins-2).tolist() + [np.log10(tuniv*1e9)]) # log10(yr)
-    agelims = 10.**agelims / 1e9 # [Gyr]
+    # Choose lookback time bin edges (Gyr). If not supplied explicitly, fall
+    # back to the production default: nbins=5 edges following the
+    # prospect.templates.adjust_continuity_agebins prescription (one edge at
+    # ~30 Myr for young-population resolution, then log-spaced edges out to
+    # 0.85*tuniv, then a final bin out to tuniv).
+    if agelims is None:
+        nbins = 5
+        tuniv = 13.7
+        tbinmax = (tuniv * 0.85) * 1e9
+        lim1, lim2 = 7.4772, 8.0
+        agelims = np.array([0, lim1] + np.linspace(lim2, np.log10(tbinmax), nbins-2).tolist() + [np.log10(tuniv*1e9)]) # log10(yr)
+        agelims = 10.**agelims / 1e9 # [Gyr]
+    else:
+        agelims = np.asarray(agelims, dtype=float) # [Gyr]
 
     agebins = np.array([agelims[:-1], agelims[1:]]).T # [Gyr]
     logages = np.log10(1e9*np.sum(agebins, axis=1) / 2) # mean age [log10(yr)] in each bin
     print('   <Ages>: '+', '.join(['{:.4f}'.format(10.**logage/1e9) for logage in logages]) + ' Gyr')
 
     nages = len(logages)
-    nmets = len(logmets)
-    zsolar = 0.019
-    print(' <Z/Zsun>: '+', '.join(['{:.2f}'.format(10.**logmet) for logmet in logmets]))
 
     # for testing
     if test:
         logmets = [0.]
-        nmets = 1
+
+    nmets = len(logmets)
+    zsolar = 0.019
+    print(' <Z/Zsun>: '+', '.join(['{:.2f}'.format(10.**logmet) for logmet in logmets]))
 
     dims = (nages, nmets)
 
@@ -807,6 +821,10 @@ if __name__ == '__main__':
     parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
                         help='Initial mass function')
     parser.add_argument('--logmets', type=str, default='0.', help='Stellar metallicity values')
+    parser.add_argument('--agelims', type=str, default=None,
+                        help='Comma-separated lookback time bin edges in Gyr, ascending, '
+                             'of length nages+1 (e.g., 0,0.03,0.1,1.08,11.6,13.7). '
+                             'Defaults to the production 5-bin grid.')
     parser.add_argument('--test', action='store_true', help='Generate a test set of SPS models.')
     args = parser.parse_args()
 
@@ -816,6 +834,7 @@ if __name__ == '__main__':
         raise IOError(f'Missing directory containing original templates {origdir}')
 
     logmets = np.array(args.logmets.split(',')).astype(float)
-    main(imf=args.imf, logmets=logmets, qpah=args.qpah,
+    agelims = np.array(args.agelims.split(',')).astype(float) if args.agelims else None
+    main(imf=args.imf, logmets=logmets, agelims=agelims, qpah=args.qpah,
          umin=args.umin, gamma=args.gamma, agntau=args.agntau, test=args.test,
          version=args.version, tag=args.tag, templatedir=templatedir)
