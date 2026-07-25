@@ -584,7 +584,7 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
 
 
 def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
-         agntau=10., test=False, version='1.0.0', templatedir=None):
+         agntau=10., test=False, version='1.0.0', tag=None, templatedir=None):
     """Build all templates and write the output FITS file.
 
     Orchestrates calls to :func:`build_fsps_templates` (twice — with and
@@ -616,14 +616,20 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
         If ``True``, override ``logmets`` with ``[0.0]`` for a quick
         single-metallicity test run. Default is ``False``.
     version : :class:`str`, optional
-        Version string embedded in the output filename and FITS header,
-        e.g. ``'2.1.0'``.
+        Provenance string embedded in the FITS header's ``VERSION``
+        keyword, e.g. ``'2.1.0'``.
+    tag : :class:`str` or None, optional
+        Tag used for the output directory and filename instead of
+        ``version``, e.g. for a custom/one-off template set. Defaults to
+        ``version`` when ``None``.
     templatedir : :class:`str` or None, optional
         Root template directory. Raw input files are read from
         ``<templatedir>/original/`` and the output FITS file is written
-        to ``<templatedir>/<version>/``.
+        to ``<templatedir>/<tag>/``.
 
     """
+    if tag is None:
+        tag = version
     # AGN + Fe template(s)
     fewave, feflux = build_fe_templates(version='1.0')#, png=os.path.join(templatedir, 'original', 'qa-fe.png'))
     agnwave, agnflux = build_agn_templates(agntau=agntau, png=os.path.join(templatedir, 'original', 'qa-agn.png'))
@@ -698,10 +704,10 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
     #agnflux[I] = 0.
 
     # Write out.
-    outdir = os.path.join(templatedir, version)
+    outdir = os.path.join(templatedir, tag)
     if not os.path.isdir(outdir):
         os.makedirs(outdir, exist_ok=True)
-    outfile = os.path.join(outdir, f'ftemplates-{imf}-{version}.fits')
+    outfile = os.path.join(outdir, f'ftemplates-{imf}-{tag}.fits')
 
     #isplit = np.argmin(np.abs(wave-PIXKMS_WAVESPLIT)) + 1
 
@@ -739,6 +745,7 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
     hduwave1.header['PIXWAVLO'] = (Templates.PIXKMS_BOUNDS[0], 'min(wave) where pixel size is PIXKMS [Angstrom]')
     hduwave1.header['PIXWAVHI'] = (Templates.PIXKMS_BOUNDS[1], 'max(wave) where pixel size is PIXKMS [Angstrom]')
     hduwave1.header['PIXKMS'] = (Templates.PIXKMS, 'pixel size within PIXWAVLO-PIXWAVHI [km/s]')
+    hduwave1.header['SIGC3K'] = (Templates.SIGMA_C3K, 'C3K native Gaussian sigma [km/s]')
 
     hduwave2 = fits.ImageHDU(agnwave)
     hduwave2.header['EXTNAME'] = 'AGNWAVE'
@@ -783,6 +790,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--templatedir', required=True, help='Location of original and output templates')
     parser.add_argument('--version', required=True, help='Version number (e.g., 3.0.0)')
+    parser.add_argument('--tag', type=str, default=None,
+                        help='Output directory/filename tag; defaults to --version. '
+                             'Use for a custom/one-off template set (e.g., paper1) '
+                             'whose --version need not follow the production numbering.')
 
     # DL07 parameters
     # https://python-fsps.readthedocs.io/en/latest/stellarpop_api
@@ -807,4 +818,4 @@ if __name__ == '__main__':
     logmets = np.array(args.logmets.split(',')).astype(float)
     main(imf=args.imf, logmets=logmets, qpah=args.qpah,
          umin=args.umin, gamma=args.gamma, agntau=args.agntau, test=args.test,
-         version=args.version, templatedir=templatedir)
+         version=args.version, tag=args.tag, templatedir=templatedir)
