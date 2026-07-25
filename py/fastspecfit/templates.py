@@ -112,14 +112,27 @@ class Templates(object):
         templateflux     = np.transpose(templateflux).copy()
         templatelineflux = np.transpose(templatelineflux).copy()
 
-        self.version = T[0].read_header()['VERSION']
+        primhdr = T[0].read_header()
+        if 'VERSION' in primhdr:
+            self.version = primhdr['VERSION']
+        else:
+            self.version = Templates.DEFAULT_TEMPLATEVERSION
+            log.warning(f'Templates file {template_file} is missing the VERSION header '
+                        f'keyword; assuming {self.version}.')
 
-        # Templates <3.0.0 were built on the C3K_a (R~3000) grid with a
-        # different segment/pixel-size convention; use the values that
-        # actually match how those files were resampled (bin/build-templates
-        # was technically wrong to resample to 25 km/s pixels for that R,
-        # but this matches what's actually baked into those files).
-        if int(self.version.split('.')[0]) < 3:
+        # Templates built with a SIGC3K keyword in the WAVE header record
+        # their own grid parameters directly, so no inference is needed.
+        # Older files lack this keyword; <3.0.0 of those were built on the
+        # C3K_a (R~3000) grid with a different segment/pixel-size convention,
+        # so fall back to the values that actually match how those files
+        # were resampled (bin/build-templates was technically wrong to
+        # resample to 25 km/s pixels for that R, but this matches what's
+        # actually baked into those files).
+        if 'SIGC3K' in wavehdr:
+            self.PIXKMS = wavehdr['PIXKMS']
+            self.PIXKMS_BOUNDS = (wavehdr['PIXWAVLO'], wavehdr['PIXWAVHI'])
+            self.SIGMA_C3K = wavehdr['SIGC3K']
+        elif int(self.version.split('.')[0]) < 3:
             self.PIXKMS = 25.  # [km/s]
             self.PIXKMS_BOUNDS = (2750., 9100.)
             self.SIGMA_C3K = Templates.C_LIGHT / (3000. * np.sqrt(8. * np.log(2.))) # 42.4 [km/s]
