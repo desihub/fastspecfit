@@ -53,7 +53,7 @@ PARAM_NAMES = tuple(_AXIS_OUTNAME[col] for col in GRID_AXIS_COLUMNS) + ('LOGMSTA
 
 # Subset (and display order) of PARAM_NAMES shown in the QA posterior panel;
 # the full 9-parameter grid is overkill for a quick-look figure.
-QA_POSTERIOR_PARAMS = ('LOGAGE', 'LOGZZSUN', 'LOGMSTAR', 'LOGSFR')
+QA_POSTERIOR_PARAMS = ('LOGZZSUN', 'LOGAGE', 'LOGMSTAR', 'LOGSFR')
 
 # Human-friendly axis labels for the QA posterior-histogram grid.
 _PARAM_LABELS = {
@@ -1085,18 +1085,24 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     # cutout), and row 4 holds the (single-row, 4-parameter) posterior grid.
     # Explicit margins mirror fastqa's own fastphot subplots_adjust (tight
     # left/bottom, generous right/top for the fig.text labels/legends).
-    fig = plt.figure(figsize=(18, 14))
-    gs = fig.add_gridspec(5, 8, height_ratios=[1, 1, 1, 0.5, 2.8],
-                          left=0.09, right=0.88, top=0.9, bottom=0.07,
-                          hspace=0.6, wspace=0.3)
+    fig = plt.figure(figsize=(18, 12))
+    gs = fig.add_gridspec(5, 8, height_ratios=[1, 1, 1, 0.7, 2.],
+                          left=0.09, right=0.92, top=0.9, bottom=0.07,
+                          hspace=0.1, wspace=0.25)
 
-    sedax = fig.add_subplot(gs[0:3, 0:4])
+    sedax = fig.add_subplot(gs[0:3, 0:5])
 
     # image cutout, only if this photometry configuration has viewer info
+    cutgs = gs[0:2, 5:8]
     have_cutout = hasattr(phot, 'viewer_layer') and hasattr(phot, 'viewer_pixscale')
     if have_cutout:
         img, wcs, _, _ = _fetch_cutout(meta, figdir, pngfile, phot.viewer_layer, phot.viewer_pixscale)
-        cutax = fig.add_subplot(gs[0:2, 4:8], projection=wcs)
+        cutax = fig.add_subplot(cutgs, projection=wcs)
+        # WCS projection forces equal aspect, and this cell is wider than it
+        # is tall, so matplotlib shrinks the axes box to a square; anchoring
+        # 'NW' keeps that box flush against sedax (and the cell's top edge)
+        # instead of centering it, which would leave a gap on both sides.
+        cutax.set_anchor('NW')
         cutax.imshow(img, origin='lower')
         cutax.set_xlabel('RA [J2000]')
         cutax.set_ylabel('Dec [J2000]')
@@ -1118,7 +1124,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
                   Line2D([0], [0], color='yellow', lw=2, ls='--', label='10 arcsec')]
         cutax.legend(handles=handles, loc='lower left', fontsize=fontsize1, facecolor='lightgray')
     else:
-        cutax = fig.add_subplot(gs[0:2, 4:8])
+        cutax = fig.add_subplot(cutgs)
         cutax.axis('off')
 
     # --- SED panel: observed photometry (filled markers, upper limits where
@@ -1225,8 +1231,14 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     sedax.text(0.02, 0.94, r'$\chi^{2}_{\nu,\mathrm{phot}}=$' + r'${:.2f}$'.format(rchi2),
               ha='left', va='top', transform=sedax.transAxes, fontsize=legfntsz)
 
-    # target label above the cutout, and rest-frame wavelength label above the SED
-    cpos = cutax.get_position()
+    # target label above the cutout, and rest-frame wavelength label above the SED.
+    # Use the cutout's *gridspec cell* position, not cutax.get_position(): the
+    # WCS-projected axes has equal aspect and gets shrunk to a (now
+    # left-anchored) square within that wider cell, so the actual axes box is
+    # narrower than the allocated column -- anchoring labels/boxes to the full
+    # cell instead keeps them aligned with the RA/Dec axis labels, which sit
+    # outside the shrunk box near the cell's edges.
+    cpos = cutgs.get_position(fig)
     spos = sedax.get_position()
     fig.text(cpos.x0, cpos.y1 + 0.02, '\n'.join(_target_label(meta, coadd_type)),
              ha='left', va='bottom', fontsize=fontsize2, linespacing=1.4)
@@ -1268,27 +1280,31 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         txt += [r'$M_{{{}{}}}-M_{{{}{}}}={:.3f}$'.format(
             str(shift_rband), absmag_rband.lower(), str(shift_zband), absmag_zband.lower(),
             rz).replace('decam_', '').replace('sdss_', '')]
-    fig.text(cpos.x0, ytext, '\n'.join(txt), ha='left', va='top', fontsize=fontsize1 - 3,
-             bbox=bbox, linespacing=1.4)
+    fig.text(cpos.x0, ytext, '\n'.join(txt), ha='left', va='top', fontsize=fontsize1,
+             bbox=bbox, linespacing=1.6)
 
     txt = [
+        r'$\log_{{10}}(Z/Z_{{\odot}})={}$'.format(_fmt(result['LOGZZSUN'], result['LOGZZSUN_IVAR'], '{:.2f}')),
         r'$\log_{{10}}(\mathrm{{Age}}/\mathrm{{Gyr}})={}$'.format(
             _fmt(result['LOGAGE'], result['LOGAGE_IVAR'], '{:.2f}')),
-        r'$\log_{{10}}(Z/Z_{{\odot}})={}$'.format(_fmt(result['LOGZZSUN'], result['LOGZZSUN_IVAR'], '{:.2f}')),
         r'$\log_{{10}}(M/M_{{\odot}})={}$'.format(_fmt(result['LOGMSTAR'], result['LOGMSTAR_IVAR'], '{:.2f}')),
         r'$\log_{{10}}(\mathrm{{SFR}}/[M_{{\odot}}/\mathrm{{yr}}])={}$'.format(
             _fmt(result['LOGSFR'], result['LOGSFR_IVAR'], '{:.2f}')),
     ]
-    fig.text(cpos.x1, ytext, '\n'.join(txt), ha='right', va='top', fontsize=fontsize1 - 3,
-             bbox=bbox, linespacing=1.4)
+    fig.text(cpos.x1+0.04, ytext, '\n'.join(txt), ha='right', va='top', fontsize=fontsize1,
+             bbox=bbox, linespacing=1.6)
 
     # --- posterior panel: weighted 1D marginal histogram, one row of
-    # QA_POSTERIOR_PARAMS (age, Z/Zsun, LOGMSTAR, LOGSFR) --------------------
+    # QA_POSTERIOR_PARAMS (Z/Zsun, age, LOGMSTAR, LOGSFR) --------------------
+    # A standalone gridspec (not a subgridspec of `gs`) so its right edge can
+    # extend past gs's own right margin to cpos.x1 + 0.04, matching the
+    # right-hand gray box/Dec label; top/bottom match row 4 of `gs` exactly.
     ncols = len(QA_POSTERIOR_PARAMS)
-    post_gs = gs[4, 0:8].subgridspec(1, ncols, wspace=0.08)
+    row4pos = gs[4, 0:8].get_position(fig)
+    post_gs = fig.add_gridspec(1, ncols, left=spos.x0-0.02, right=cpos.x1 + 0.04,
+                               bottom=row4pos.y0, top=row4pos.y1, wspace=0.1)
     for i, pname in enumerate(QA_POSTERIOR_PARAMS):
         ax = fig.add_subplot(post_gs[0, i])
-        ax.set_box_aspect(1)
         vals, w = posterior_arrays[pname]
         uniq, inv = np.unique(vals, return_inverse=True)
 
