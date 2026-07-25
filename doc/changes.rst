@@ -2,8 +2,11 @@
 Change Log
 ==========
 
-3.6.0 (not released yet)
+3.6.1 (not released yet)
 ------------------------
+
+3.6.0 (2026-07-25)
+------------------
 
 * Faster continuum fitting and I/O by caching the SFD dust map [`PR
   #275`_].
