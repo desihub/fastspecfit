@@ -175,19 +175,25 @@ class Templates(object):
         if 'dt' not in self.info.colnames:
             log.warning('Template file lacks dt column; SFR will be averaged over ~30 Myr instead of 100 Myr.')
 
-        if 'DUSTFLUX' in T and 'AGNFLUX' in T:
-            from fastspecfit.util import trapz
+        if 'DUSTFLUX' not in T:
+            errmsg = f'Templates file {template_file} missing mandatory extension DUSTFLUX.'
+            log.critical(errmsg)
+            raise IOError(errmsg)
 
-            # make sure fluxes are normalized to unity
-            dustflux = T['DUSTFLUX'].read()
-            #dustflux /= trapz(dustflux, x=templatewave) # should already be 1.0
-            self.dustflux = dustflux[keeplo:keephi]
+        # make sure fluxes are normalized to unity
+        dustflux = T['DUSTFLUX'].read()
+        #dustflux /= trapz(dustflux, x=templatewave) # should already be 1.0
+        self.dustflux = dustflux[keeplo:keephi]
 
-            #dusthdr = T['DUSTFLUX'].read_header()
-            #self.qpah     = dusthdr['QPAH']
-            #self.umin     = dusthdr['UMIN']
-            #self.gamma    = dusthdr['GAMMA']
+        #dusthdr = T['DUSTFLUX'].read_header()
+        #self.qpah     = dusthdr['QPAH']
+        #self.umin     = dusthdr['UMIN']
+        #self.gamma    = dusthdr['GAMMA']
 
+        # AGNFLUX/AGNWAVE/FEFLUX/FEWAVE are only used by the
+        # still-in-development fastqso mode, and are absent from template
+        # files built with --no-agn.
+        if 'AGNFLUX' in T and 'FEFLUX' in T:
             # construct the AGN wavelength vector
             iragnflux = T['AGNFLUX'].read()
             iragnwave = T['AGNWAVE'].read()
@@ -210,10 +216,6 @@ class Templates(object):
 
             #agnhdr = T['AGNFLUX'].read_header()
             #self.agntau   = agnhdr['AGNTAU']
-        else:
-            errmsg = f'Templates file {template_file} missing mandatory extensions DUSTFLUX and AGNFLUX.'
-            log.critical(errmsg)
-            raise IOError(errmsg)
 
         # Read the model emission-line fluxes; only present for
         # template_version>=1.1.1 and generally only useful to a power-user.
