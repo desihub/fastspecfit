@@ -608,8 +608,8 @@ def main(imf='chabrier', logmets=[0.0], agelims=None, qpah=1.0, umin=1., gamma=0
     :func:`build_fe_templates`, then assembles the results into a single
     multi-extension FITS file. With no ``tag``, this is written to
     ``<templatedir>/<version>/ftemplates-{imf}-{version}.fits``; with a
-    custom ``tag`` it is written to
-    ``<templatedir>/<tag>/ftemplates-{imf}-{tag}-{version}.fits``.
+    custom ``tag`` it is written flat to
+    ``<templatedir>/ftemplates-{imf}-{tag}-{version}.fits``.
 
     Parameters
     ----------
@@ -650,12 +650,13 @@ def main(imf='chabrier', logmets=[0.0], agelims=None, qpah=1.0, umin=1., gamma=0
         Provenance string embedded in the FITS header's ``VERSION``
         keyword, e.g. ``'2.1.0'``.
     tag : :class:`str` or None, optional
-        Tag used for the output directory and filename instead of
-        ``version``, e.g. for a custom/one-off template set. Defaults to
-        ``version`` when ``None``.
+        Tag used in place of ``version`` in the output filename, e.g. for
+        a custom/one-off template set. When given, the file is written
+        flat directly into ``templatedir`` (no version subdirectory), so
+        multiple versions of the same tag can coexist there. Defaults to
+        ``version`` when ``None`` (production layout, see above).
     templatedir : :class:`str` or None, optional
-        Root output directory; the FITS file is written under
-        ``<templatedir>/<tag>/`` (see above).
+        Root output directory (see above).
     origdir : :class:`str` or None, optional
         Directory containing the shared raw input files (DL07 dust
         grids, Fe template, Nenkova+08 torus grid). Defaults to
@@ -752,15 +753,16 @@ def main(imf='chabrier', logmets=[0.0], agelims=None, qpah=1.0, umin=1., gamma=0
     #agnflux[I] = 0.
 
     # Write out. Production (no --tag) keeps the versioned-subdirectory
-    # layout; a custom --tag is written flat so multiple versions of the
-    # same tag can coexist in one directory.
-    outdir = os.path.join(templatedir, tag)
-    if not os.path.isdir(outdir):
-        os.makedirs(outdir, exist_ok=True)
+    # layout; a custom --tag is written flat directly into templatedir so
+    # multiple versions of the same tag can coexist in one directory.
     if custom_tag:
+        outdir = templatedir
         outfile = os.path.join(outdir, f'ftemplates-{imf}-{tag}-{version}.fits')
     else:
+        outdir = os.path.join(templatedir, tag)
         outfile = os.path.join(outdir, f'ftemplates-{imf}-{tag}.fits')
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir, exist_ok=True)
 
     #isplit = np.argmin(np.abs(wave-PIXKMS_WAVESPLIT)) + 1
 
@@ -852,9 +854,11 @@ if __name__ == '__main__':
                              '$FTEMPLATES_DIR/original.')
     parser.add_argument('--version', required=True, help='Version number (e.g., 3.0.0)')
     parser.add_argument('--tag', type=str, default=None,
-                        help='Output directory/filename tag; defaults to --version. '
-                             'Use for a custom/one-off template set (e.g., paper1) '
-                             'whose --version need not follow the production numbering.')
+                        help='Output filename tag used in place of --version; when given, '
+                             'the file is written flat directly into --templatedir (no '
+                             'version subdirectory). Use for a custom/one-off template set '
+                             '(e.g., paper1) whose --version need not follow the production '
+                             'numbering.')
     parser.add_argument('--no-agn', action='store_true',
                         help='Skip building the AGN torus and Fe emission templates '
                              '(AGNFLUX, AGNWAVE, FEFLUX, FEWAVE), which are only used '
