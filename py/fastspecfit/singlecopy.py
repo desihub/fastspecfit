@@ -39,6 +39,7 @@ class Singletons(object):
                    template_imf=None,
                    log_verbose=False,
                    mapdir=None,
+                   cosmology=None,
     ):
         """Load all singleton data structures from disk.
 
@@ -83,6 +84,11 @@ class Singletons(object):
             accesses :attr:`sfdmap` (the map itself is loaded lazily, on
             first access, not here); stacked-spectra fits and other callers
             that never touch dust corrections never require it.
+        cosmology : optional
+            Pre-built cosmology object (e.g., an instance of
+            :class:`~fastspecfit.cosmo.FlatLambdaCDM`) to use in place of
+            the :class:`~fastspecfit.cosmo.TabulatedDESI` default. Intended
+            for one-off projects that need a non-fiducial cosmology.
 
         """
         if log_verbose:
@@ -91,7 +97,7 @@ class Singletons(object):
         key = (emlines_file, constraints_file, fphotofile, fastphot, fitstack,
                ignore_photometry, template_file, template_version, template_imf,
                vdisp_nominal, tuple(vdisp_bounds) if vdisp_bounds is not None else None,
-               mapdir)
+               mapdir, cosmology)
         if getattr(self, '_init_key', None) == key:
             return
         self._init_key = key
@@ -124,8 +130,8 @@ class Singletons(object):
         log.debug(f'Cached photometric filters and parameters {self.photometry.fphotofile}')
 
         # fiducial cosmology
-        self.cosmology = TabulatedDESI()
-        log.debug(f'Cached cosmology table {self.cosmology.file}')
+        self.cosmology = cosmology if cosmology is not None else TabulatedDESI()
+        log.debug(f'Cached cosmology {self.cosmology!r}')
 
         # IGM model
         self.igm = Inoue14()

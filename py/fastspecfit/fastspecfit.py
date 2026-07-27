@@ -343,7 +343,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         log.info(f'Cached stellar templates {sc_data.templates.file}')
         log.info(f'Cached emission-line table {sc_data.emlines.file}')
         log.info(f'Cached photometric filters and parameters {sc_data.photometry.fphotofile}')
-        log.info(f'Cached cosmology table {sc_data.cosmology.file}')
+        log.info(f'Cached cosmology {sc_data.cosmology!r}')
         log.info(f'Cached {sc_data.igm.reference} IGM attenuation parameters.')
 
         # Read the data.
