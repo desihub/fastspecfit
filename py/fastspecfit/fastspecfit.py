@@ -117,7 +117,8 @@ def parse(options=None, rank=0):
 
     fit_group = parser.add_argument_group('Fitting options')
     fit_group.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
-    fit_group.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, help='Nominal (default) velocity dispersion in km/s.')
+    fit_group.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, metavar=('MIN', 'MAX'),
+                        help='Minimum and maximum velocity dispersion in km/s, given as two space-separated values, e.g. --vdisp-bounds 50 500.')
     fit_group.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not model broad Balmer and helium line-emission.')
     fit_group.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')

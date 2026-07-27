@@ -235,10 +235,10 @@ def main():
     data_group.add_argument('--specprod', type=str, default='loa', help='Spectroscopic production to process.')
     data_group.add_argument('--healpix', type=str, default=None, help='Comma-separated list of healpix pixels to process (use with --coadd-type healpix).')
     data_group.add_argument('--uniqpix', type=str, default=None, help='Comma-separated list of uniqpix pixels to process (use with --coadd-type uniqpix).')
-    data_group.add_argument('--survey', type=str, default='main,special,cmx,sv1,sv2,sv3', help='Survey to process.')
-    data_group.add_argument('--program', type=str, default='bright,dark,other,backup', help='Program to process.') # backup not supported
-    data_group.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process.')
-    data_group.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is cumulative).')
+    data_group.add_argument('--survey', type=str, default='main,special,cmx,sv1,sv2,sv3', help='Comma-separated list of surveys to process.')
+    data_group.add_argument('--program', type=str, default='bright,dark,other,backup', help='Comma-separated list of programs to process.') # backup not supported
+    data_group.add_argument('--tile', default=None, type=str, nargs='*', help='Space-separated list of tile(s) to process.')
+    data_group.add_argument('--night', default=None, type=str, nargs='*', help='Space-separated list of night(s) to process (ignored if coadd-type is cumulative).')
     data_group.add_argument('--samplefile', default=None, type=str, help='Full path to sample (FITS) file with {SURVEY,PROGRAM,TARGETID} and either HEALPIX or UNIQPIX.')
     data_group.add_argument('--input-redshifts', action='store_true', help='Only used with --samplefile; if set, fit with redshift "Z" values.')
     data_group.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
@@ -268,7 +268,8 @@ def main():
 
     fit_group = parser.add_argument_group('Fitting options')
     fit_group.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
-    fit_group.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, help='Nominal (default) velocity dispersion in km/s.')
+    fit_group.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, metavar=('MIN', 'MAX'),
+                        help='Minimum and maximum velocity dispersion in km/s, given as two space-separated values, e.g. --vdisp-bounds 50 500.')
     fit_group.add_argument('--ignore-quasarnet', default=False, action='store_true', help='Do not use QuasarNet to improve QSO redshifts.')
     fit_group.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
     fit_group.add_argument('--no-smooth-continuum', default=False, action='store_true', help='Do not fit the smooth continuum.')

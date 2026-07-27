@@ -1772,12 +1772,12 @@ def parse(options=None):
     target_group.add_argument('--stackfit', action='store_true', help='Generate QA for stacked spectra.')
 
     file_group = parser.add_argument_group('File selection')
-    file_group.add_argument('--healpix', default=None, type=str, nargs='*', help="""Generate QA for all objects
-        in these pixels (healpix values for coadd-type 'healpix', uniqpix values for 'uniqpix').""")
-    file_group.add_argument('--tile', default=None, type=str, nargs='*', help='Generate QA for all objects on this tile.')
-    file_group.add_argument('--night', default=None, type=str, nargs='*', help="""Generate QA for all objects observed on this
-        night (only defined for coadd-type 'pernight' and 'perexp').""")
-    file_group.add_argument('--redrockfiles', nargs='*', help='Optional full path to redrock file(s).')
+    file_group.add_argument('--healpix', default=None, type=str, help="""Comma-separated list of healpix
+        pixels to generate QA for (healpix values for coadd-type 'healpix', uniqpix values for 'uniqpix').""")
+    file_group.add_argument('--tile', default=None, type=str, nargs='*', help='Space-separated list of tile(s) to generate QA for.')
+    file_group.add_argument('--night', default=None, type=str, nargs='*', help="""Space-separated list of night(s) to generate QA for
+        (only defined for coadd-type 'pernight' and 'perexp').""")
+    file_group.add_argument('--redrockfiles', type=str, nargs='*', help='Space-separated list of full path(s) to redrock file(s).')
     file_group.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
     file_group.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
     file_group.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
@@ -1888,9 +1888,10 @@ def fastqa(args=None, comm=None):
         if not fastphot:
             fastfit = fastfit[keep]
 
+    healpixels = args.healpix.split(',') if args.healpix else None
     metadata, specphot, fastfit = select(
         metadata, specphot, fastfit=fastfit, coadd_type=coadd_type,
-        healpixels=args.healpix, tiles=args.tile, nights=args.night)
+        healpixels=healpixels, tiles=args.tile, nights=args.night)
 
     pngfile = get_qa_filename(metadata, coadd_type, outprefix=args.outprefix,
                               outdir=args.outdir, fastphot=fastphot)
