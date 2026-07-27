@@ -7,6 +7,7 @@ Cosmology utilities.
 """
 import numpy as np
 
+from fastspecfit.logger import log
 from fastspecfit.util import C_LIGHT
 
 class TabulatedDESI(object):
@@ -332,3 +333,39 @@ class FlatLambdaCDM(object):
                 integ, _ =  quad(_agefunc, _z, np.inf)
                 age.append(integ * self.hubble_time)
             return np.array(age)
+
+
+# names of alternate (non-default) cosmology models selectable from the
+# command line; extend alongside build_cosmology() when adding a new model
+COSMOLOGY_MODELS = ('flatLCDM',)
+
+
+def build_cosmology(name, args):
+    """Build an alternate cosmology model from parsed command-line arguments.
+
+    Parameters
+    ----------
+    name : str or None
+        Name of the cosmology model (one of :data:`COSMOLOGY_MODELS`), or
+        ``None`` to keep the default DESI fiducial cosmology
+        (:class:`TabulatedDESI`).
+    args : :class:`argparse.Namespace`
+        Parsed command-line arguments; each model pulls whichever
+        model-specific attribute(s) it needs (e.g. ``args.omega_m`` for
+        ``flatLCDM``).
+
+    Returns
+    -------
+    Cosmology instance, or ``None`` if ``name`` is ``None`` (callers should
+    fall back to :class:`TabulatedDESI` in that case).
+
+    """
+    if name is None:
+        return None
+
+    if name == 'flatLCDM':
+        return FlatLambdaCDM(omega_m=args.omega_m)
+
+    errmsg = f'Unrecognized --cosmology {name!r}; choose from {COSMOLOGY_MODELS}.'
+    log.critical(errmsg)
+    raise ValueError(errmsg)
