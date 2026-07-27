@@ -105,3 +105,27 @@ def test_flatcosmo_age(flatexpected, flatcosmo):
 def test_flatcosmo_zoutofrange(flatexpected, flatcosmo):
     with pytest.raises(ValueError):
         flatcosmo.comoving_radial_distance(flatexpected['zoutofrange'])
+
+
+class _FakeArgs(object):
+    """Minimal stand-in for an argparse.Namespace, for build_cosmology()."""
+    def __init__(self, omega_m=0.3):
+        self.omega_m = omega_m
+
+
+def test_build_cosmology_default():
+    from fastspecfit.cosmo import build_cosmology
+    assert(build_cosmology(None, _FakeArgs()) is None)
+
+
+def test_build_cosmology_flatlcdm():
+    from fastspecfit.cosmo import build_cosmology, FlatLambdaCDM
+    cosmo = build_cosmology('flatLCDM', _FakeArgs(omega_m=0.25))
+    assert(isinstance(cosmo, FlatLambdaCDM))
+    assert(np.isclose(cosmo.omega_m, 0.25))
+
+
+def test_build_cosmology_unrecognized():
+    from fastspecfit.cosmo import build_cosmology
+    with pytest.raises(ValueError):
+        build_cosmology('not-a-real-model', _FakeArgs())
