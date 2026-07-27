@@ -14,6 +14,7 @@ from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data, _initialize_sc_data
 from fastspecfit.util import BoxedScalar, MPPool, NMONTE_DEFAULT, fsftime
 from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
+from fastspecfit.cosmo import COSMOLOGY_MODELS, build_cosmology
 
 def make_init_sc_args(args, fastphot=False, fitstack=False):
     """Build the sc_data.initialize() kwargs from a parsed args Namespace.
@@ -48,6 +49,7 @@ def make_init_sc_args(args, fastphot=False, fitstack=False):
         'vdisp_nominal':     getattr(args, 'vdisp_nominal', VDISP_NOMINAL),
         'vdisp_bounds':      getattr(args, 'vdisp_bounds', VDISP_BOUNDS),
         'mapdir':            getattr(args, 'mapdir', None),
+        'cosmology':         build_cosmology(getattr(args, 'cosmology', None), args),
     }
 
 
@@ -86,6 +88,10 @@ def parse(options=None, rank=0):
     parser.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
     parser.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, help='Nominal (default) velocity dispersion in km/s.')
     parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
+    parser.add_argument('--cosmology', type=str, default=None, choices=COSMOLOGY_MODELS,
+                        help='Use an alternate cosmology model instead of the tabulated DESI fiducial cosmology.')
+    parser.add_argument('--omega-m', type=float, default=0.3,
+                        help='Matter density parameter; only used with --cosmology flatLCDM (h is fixed at 1).')
     parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not model broad Balmer and helium line-emission.')
     parser.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')

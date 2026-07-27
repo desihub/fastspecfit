@@ -10,6 +10,7 @@ from fastspecfit.logger import log
 from fastspecfit.templates import Templates
 from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import MPPool
+from fastspecfit.cosmo import COSMOLOGY_MODELS, build_cosmology
 
 # Sticky per-process flag: once the Legacy Survey viewer is found
 # unreachable, stop retrying it for every subsequent object in this process
@@ -1796,6 +1797,11 @@ def parse(options=None):
     parser.add_argument('--templateversion', type=str, default=Templates.DEFAULT_TEMPLATEVERSION, help='Template version number.')
     parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
 
+    parser.add_argument('--cosmology', type=str, default=None, choices=COSMOLOGY_MODELS,
+                        help='Use an alternate cosmology model instead of the tabulated DESI fiducial cosmology.')
+    parser.add_argument('--omega-m', type=float, default=0.3,
+                        help='Matter density parameter; only used with --cosmology flatLCDM (h is fixed at 1).')
+
     parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')
     parser.add_argument('-o', '--outdir', default='.', type=str, help='Full path to desired output directory.')
 
@@ -1930,6 +1936,7 @@ def fastqa(args=None, comm=None):
         'template_imf':      args.imf,
         'log_verbose':       False,
         'mapdir':            args.mapdir,
+        'cosmology':         build_cosmology(args.cosmology, args),
     }
 
     sc_data.initialize(**init_sc_args)

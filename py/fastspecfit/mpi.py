@@ -739,6 +739,10 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
     if args.makeqa:
         cmd = 'fastqa'
         cmdargs = f'{outfile} -o={redrockfile} --mp={args.mp}'
+
+        if args.cosmology:
+            cmdargs += f' --cosmology={args.cosmology}'
+            cmdargs += f' --omega-m={args.omega_m}'
     else:
         cmd = 'fastphot' if fastphot else 'fastspec'
         cmdargs = f'{redrockfile} -o={outfile} --mp={args.mp}'
@@ -761,6 +765,9 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
             cmdargs += f' --emlinesfile={args.emlinesfile}'
         if args.constraintsfile:
             cmdargs += f' --constraintsfile={args.constraintsfile}'
+        if args.cosmology:
+            cmdargs += f' --cosmology={args.cosmology}'
+            cmdargs += f' --omega-m={args.omega_m}'
         if args.nmonte:
             cmdargs += f' --nmonte={args.nmonte}'
         if args.vdisp_nominal:
