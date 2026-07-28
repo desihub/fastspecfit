@@ -5,6 +5,11 @@ Change Log
 3.6.1 (not released yet)
 ------------------------
 
+* More flexible ``build-templates`` script and improved header
+  metadata [`PR #277`_].
+
+.. _`PR #277`: https://github.com/desihub/fastspecfit/pull/277
+
 3.6.0 (2026-07-25)
 ------------------
 
