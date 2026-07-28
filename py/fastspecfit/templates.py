@@ -112,14 +112,27 @@ class Templates(object):
         templateflux     = np.transpose(templateflux).copy()
         templatelineflux = np.transpose(templatelineflux).copy()
 
-        self.version = T[0].read_header()['VERSION']
+        primhdr = T[0].read_header()
+        if 'VERSION' in primhdr:
+            self.version = primhdr['VERSION']
+        else:
+            self.version = Templates.DEFAULT_TEMPLATEVERSION
+            log.warning(f'Templates file {template_file} is missing the VERSION header '
+                        f'keyword; assuming {self.version}.')
 
-        # Templates <3.0.0 were built on the C3K_a (R~3000) grid with a
-        # different segment/pixel-size convention; use the values that
-        # actually match how those files were resampled (bin/build-templates
-        # was technically wrong to resample to 25 km/s pixels for that R,
-        # but this matches what's actually baked into those files).
-        if int(self.version.split('.')[0]) < 3:
+        # Templates built with a SIGC3K keyword in the WAVE header record
+        # their own grid parameters directly, so no inference is needed.
+        # Older files lack this keyword; <3.0.0 of those were built on the
+        # C3K_a (R~3000) grid with a different segment/pixel-size convention,
+        # so fall back to the values that actually match how those files
+        # were resampled (bin/build-templates was technically wrong to
+        # resample to 25 km/s pixels for that R, but this matches what's
+        # actually baked into those files).
+        if 'SIGC3K' in wavehdr:
+            self.PIXKMS = wavehdr['PIXKMS']
+            self.PIXKMS_BOUNDS = (wavehdr['PIXWAVLO'], wavehdr['PIXWAVHI'])
+            self.SIGMA_C3K = wavehdr['SIGC3K']
+        elif int(self.version.split('.')[0]) < 3:
             self.PIXKMS = 25.  # [km/s]
             self.PIXKMS_BOUNDS = (2750., 9100.)
             self.SIGMA_C3K = Templates.C_LIGHT / (3000. * np.sqrt(8. * np.log(2.))) # 42.4 [km/s]
@@ -162,19 +175,25 @@ class Templates(object):
         if 'dt' not in self.info.colnames:
             log.warning('Template file lacks dt column; SFR will be averaged over ~30 Myr instead of 100 Myr.')
 
-        if 'DUSTFLUX' in T and 'AGNFLUX' in T:
-            from fastspecfit.util import trapz
+        if 'DUSTFLUX' not in T:
+            errmsg = f'Templates file {template_file} missing mandatory extension DUSTFLUX.'
+            log.critical(errmsg)
+            raise IOError(errmsg)
 
-            # make sure fluxes are normalized to unity
-            dustflux = T['DUSTFLUX'].read()
-            #dustflux /= trapz(dustflux, x=templatewave) # should already be 1.0
-            self.dustflux = dustflux[keeplo:keephi]
+        # make sure fluxes are normalized to unity
+        dustflux = T['DUSTFLUX'].read()
+        #dustflux /= trapz(dustflux, x=templatewave) # should already be 1.0
+        self.dustflux = dustflux[keeplo:keephi]
 
-            #dusthdr = T['DUSTFLUX'].read_header()
-            #self.qpah     = dusthdr['QPAH']
-            #self.umin     = dusthdr['UMIN']
-            #self.gamma    = dusthdr['GAMMA']
+        #dusthdr = T['DUSTFLUX'].read_header()
+        #self.qpah     = dusthdr['QPAH']
+        #self.umin     = dusthdr['UMIN']
+        #self.gamma    = dusthdr['GAMMA']
 
+        # AGNFLUX/AGNWAVE/FEFLUX/FEWAVE are only used by the
+        # still-in-development fastqso mode, and are absent from template
+        # files built with --no-agn.
+        if 'AGNFLUX' in T and 'FEFLUX' in T:
             # construct the AGN wavelength vector
             iragnflux = T['AGNFLUX'].read()
             iragnwave = T['AGNWAVE'].read()
@@ -197,10 +216,6 @@ class Templates(object):
 
             #agnhdr = T['AGNFLUX'].read_header()
             #self.agntau   = agnhdr['AGNTAU']
-        else:
-            errmsg = f'Templates file {template_file} missing mandatory extensions DUSTFLUX and AGNFLUX.'
-            log.critical(errmsg)
-            raise IOError(errmsg)
 
         # Read the model emission-line fluxes; only present for
         # template_version>=1.1.1 and generally only useful to a power-user.
