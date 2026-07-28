@@ -1354,7 +1354,8 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     log.info(f'Wrote {pngfile}')
 
 
-def write_fastbayes(meta, results, modelwave, modelspectra, outfile, gridfile, fphotofile, topk=0):
+def write_fastbayes(meta, results, modelwave, modelspectra, outfile, gridfile, fphotofile,
+                    template_file=None, topk=0):
     """Write the Bayesian-fitting output to a multi-extension FITS file.
 
     Parameters
@@ -1374,6 +1375,9 @@ def write_fastbayes(meta, results, modelwave, modelspectra, outfile, gridfile, f
         Full path of the Bayesian grid file used for fitting.
     fphotofile : :class:`str`
         Full path of the photometry configuration file used.
+    template_file : :class:`str` or None, optional
+        Full path of the raw Bayesian templates FITS file actually used
+        for fitting (e.g. ``bg_data.templates_file``).
     topk : :class:`int`, optional
         Number of top-weight grid templates stored per object, if any.
 
@@ -1381,6 +1385,7 @@ def write_fastbayes(meta, results, modelwave, modelspectra, outfile, gridfile, f
     import gzip, shutil, warnings
     from astropy.io import fits
     from astropy.utils.exceptions import AstropyUserWarning
+    from desiutil.depend import add_dependencies, possible_dependencies, setdep
 
     outdir = os.path.dirname(os.path.abspath(os.path.expanduser(os.path.expandvars(outfile))))
     if not os.path.isdir(outdir):
@@ -1392,13 +1397,19 @@ def write_fastbayes(meta, results, modelwave, modelspectra, outfile, gridfile, f
         tmpfile = outfile + '.tmp'
 
     hduprim = fits.PrimaryHDU()
-    hduprim.header['GRIDFILE'] = os.path.abspath(str(gridfile))
-    # Basename only (not the full path): grids are often built on one
-    # machine and fit/QA'd on another (e.g. laptop -> NERSC), so an absolute
-    # path recorded here would not generally be reloadable. This is purely a
-    # diagnostic/provenance record -- fastbayes_qa requires --fphotofile to
-    # be passed explicitly rather than reading it back from here.
-    hduprim.header['FPHOTO'] = os.path.basename(str(fphotofile)) if fphotofile else ''
+    add_dependencies(hduprim.header, module_names=possible_dependencies+['fastspecfit'],
+                     envvar_names=('DESI_SPECTRO_REDUX', 'DUST_DIR', 'FTEMPLATES_DIR', 'FPHOTO_DIR'))
+    # Recorded purely as diagnostic/provenance (mirroring write_fastspecfit):
+    # these are absolute (GRIDFILE, FPHOTO_FILE) or basename-only
+    # (FTEMPLATES_FILE) paths that may not exist on this machine, e.g. if the
+    # fit ran elsewhere (laptop -> NERSC). fastbayes_qa requires
+    # --gridfile/--fphotofile to be passed explicitly rather than reading
+    # them back from here.
+    setdep(hduprim.header, 'GRIDFILE', os.path.abspath(str(gridfile)))
+    if fphotofile:
+        setdep(hduprim.header, 'FPHOTO_FILE', str(fphotofile))
+    if template_file:
+        setdep(hduprim.header, 'FTEMPLATES_FILE', os.path.basename(str(template_file)))
     hduprim.header['TOPK'] = topk
 
     with warnings.catch_warnings():
@@ -1628,7 +1639,8 @@ def fastbayes(args=None, mp_pool=None):
     log.info(fsftime('fastbayes_all', time.time() - t0, context=f'nobj={nobj}'))
 
     write_fastbayes(outmeta, results, modelwave, modelspectra, outfile=args.outfile,
-                    gridfile=gridfile, fphotofile=phot.fphotofile, topk=args.topk)
+                    gridfile=gridfile, fphotofile=phot.fphotofile,
+                    template_file=bg_data.templates_file, topk=args.topk)
 
     return 0
 
@@ -1693,11 +1705,11 @@ def fastbayes_qa(args=None, mp_pool=None):
 
     ``--gridfile``/``--fphotofile`` must be passed explicitly (matching
     whatever was used to build the grid and run the fit) rather than being
-    read back from the output file's header: the header's ``GRIDFILE`` is an
-    absolute path that may not exist on this machine (e.g. the fit ran on a
-    different machine than this QA regeneration), and ``FPHOTO`` deliberately
-    stores only a basename for the same reason (see commit ``ad3df20``) --
-    neither is reliably reloadable without user input.
+    read back from the output file's header: the header's ``GRIDFILE`` and
+    ``FPHOTO_FILE`` dependency entries (see :func:`write_fastbayes`) are
+    absolute paths that may not exist on this machine (e.g. the fit ran on a
+    different machine than this QA regeneration) -- they are purely
+    diagnostic/provenance and not reliably reloadable without user input.
 
     Parameters
     ----------
