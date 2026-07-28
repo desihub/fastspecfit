@@ -48,8 +48,10 @@ Output Files
     SSP spectra (stellar continuum + nebular emission + dust attenuation
     + reradiated dust emission) in units of erg/s/cm2/Angstrom at 10 pc
     per solar mass formed. Header keywords record the IMF, grid number,
-    python-fsps version and commit hash, and the FSPS isochrone,
-    spectral, and dust-emission libraries in use.
+    python-fsps version and commit hash, the FSPS isochrone, spectral,
+    and dust-emission libraries in use, and the adopted solar
+    metallicity (``ZSUN``) against which ``logmet``/``zzsun`` are
+    defined.
 
 ``WAVE`` (float64 [nwave])
     Native (unmodified) FSPS vacuum wavelength array in Angstroms.
@@ -271,6 +273,7 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, test=False):
     hduflux.header['ISOCHRON'] = (libraries[0], 'FSPS isochrone library')
     hduflux.header['SPECLIB'] = (libraries[1], 'FSPS stellar spectral library')
     hduflux.header['DUSTLIB'] = (libraries[2], 'FSPS dust-emission library')
+    hduflux.header['ZSUN'] = (0.0134, 'adopted solar metallicity (custom C3K_R10K)')
 
     hduwave = fits.ImageHDU(wave)
     hduwave.header['EXTNAME'] = 'WAVE'
