@@ -10,6 +10,7 @@ from fastspecfit.logger import log
 from fastspecfit.templates import Templates
 from fastspecfit.singlecopy import sc_data
 from fastspecfit.util import MPPool
+from fastspecfit.cosmo import COSMOLOGY_MODELS, build_cosmology
 
 # Sticky per-process flag: once the Legacy Survey viewer is found
 # unreachable, stop retrying it for every subsequent object in this process
@@ -1758,48 +1759,59 @@ def parse(options=None):
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('--healpix', default=None, type=str, nargs='*', help="""Generate QA for all objects
-        in these pixels (healpix values for coadd-type 'healpix', uniqpix values for 'uniqpix').""")
-    parser.add_argument('--tile', default=None, type=str, nargs='*', help='Generate QA for all objects on this tile.')
-    parser.add_argument('--night', default=None, type=str, nargs='*', help="""Generate QA for all objects observed on this
-        night (only defined for coadd-type 'pernight' and 'perexp').""")
-    parser.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
-    parser.add_argument('--specprod', type=str, default=None, help="""Optional override of the on-disk spectroscopic
+    io_group = parser.add_argument_group('Positional arguments and output')
+    io_group.add_argument('fastfitfile', nargs=1, help='Full path to fastspec or fastphot fitting results.')
+    io_group.add_argument('-o', '--outdir', default='.', type=str, help='Full path to desired output directory.')
+    io_group.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')
+    io_group.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')
+
+    target_group = parser.add_argument_group('Target selection')
+    target_group.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
+    target_group.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
+    target_group.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
+    target_group.add_argument('--stackfit', action='store_true', help='Generate QA for stacked spectra.')
+
+    file_group = parser.add_argument_group('File selection')
+    file_group.add_argument('--healpix', default=None, type=str, help="""Comma-separated list of healpix
+        pixels to generate QA for (healpix values for coadd-type 'healpix', uniqpix values for 'uniqpix').""")
+    file_group.add_argument('--tile', default=None, type=str, nargs='*', help='Space-separated list of tile(s) to generate QA for.')
+    file_group.add_argument('--night', default=None, type=str, nargs='*', help="""Space-separated list of night(s) to generate QA for
+        (only defined for coadd-type 'pernight' and 'perexp').""")
+    file_group.add_argument('--redrockfiles', type=str, nargs='*', help='Space-separated list of full path(s) to redrock file(s).')
+    file_group.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
+    file_group.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
+    file_group.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
+
+    data_group = parser.add_argument_group('Data locations')
+    data_group.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
+    data_group.add_argument('--specprod', type=str, default=None, help="""Optional override of the on-disk spectroscopic
         production directory name under --redux_dir, when it differs from the SPECPROD recorded in the fastspecfit
         output file (e.g., a relocated or "mini" production tree).""")
-    parser.add_argument('--redrockfiles', nargs='*', help='Optional full path to redrock file(s).')
-    parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
-    parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
-    parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
-    parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
-    parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
-    parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
+    data_group.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
+    data_group.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
+    data_group.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
 
-    parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
-    parser.add_argument('--constraintsfile', type=str, default=None, help='Emission line constraints file.')
-    parser.add_argument('--emline-snrmin', type=float, default=0.0, help='Minimum emission-line S/N to be displayed.')
-    parser.add_argument('--nsmoothspec', type=int, default=0, help='Smoothing pixel value.')
+    model_group = parser.add_argument_group('Physical model')
+    model_group.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
+    model_group.add_argument('--templateversion', type=str, default=Templates.DEFAULT_TEMPLATEVERSION, help='Template version number.')
+    model_group.add_argument('--imf', type=str, default=Templates.DEFAULT_IMF, help='Initial mass function.')
+    model_group.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
+    model_group.add_argument('--constraintsfile', type=str, default=None, help='Emission line constraints file.')
+    model_group.add_argument('--cosmology', type=str, default=None, choices=COSMOLOGY_MODELS,
+                        help='Use an alternate cosmology model instead of the tabulated DESI fiducial cosmology.')
+    model_group.add_argument('--omega-m', type=float, default=0.3,
+                        help='Matter density parameter; only used with --cosmology flatLCDM (h is fixed at 1).')
 
-    parser.add_argument('--minspecwave', type=float, default=3500., help='Minimum spectral wavelength (Angstrom).')
-    parser.add_argument('--maxspecwave', type=float, default=9900., help='Maximum spectral wavelength (Angstrom).')
-    parser.add_argument('--minphotwave', type=float, default=0.1, help='Minimum photometric wavelength (micron).')
-    parser.add_argument('--maxphotwave', type=float, default=35., help='Maximum photometric wavelength (micron).')
+    plot_group = parser.add_argument_group('Plot options')
+    plot_group.add_argument('--emline-snrmin', type=float, default=0.0, help='Minimum emission-line S/N to be displayed.')
+    plot_group.add_argument('--nsmoothspec', type=int, default=0, help='Smoothing pixel value.')
+    plot_group.add_argument('--minspecwave', type=float, default=3500., help='Minimum spectral wavelength (Angstrom).')
+    plot_group.add_argument('--maxspecwave', type=float, default=9900., help='Maximum spectral wavelength (Angstrom).')
+    plot_group.add_argument('--minphotwave', type=float, default=0.1, help='Minimum photometric wavelength (micron).')
+    plot_group.add_argument('--maxphotwave', type=float, default=35., help='Maximum photometric wavelength (micron).')
 
-    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of target IDs to process.')
-    parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
-    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file (0-indexed).')
-    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
-    parser.add_argument('--stackfit', action='store_true', help='Generate QA for stacked spectra.')
-    parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files.')
-
-    parser.add_argument('--imf', type=str, default=Templates.DEFAULT_IMF, help='Initial mass function.')
-    parser.add_argument('--templateversion', type=str, default=Templates.DEFAULT_TEMPLATEVERSION, help='Template version number.')
-    parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
-
-    parser.add_argument('--outprefix', default=None, type=str, help='Optional prefix for output filename.')
-    parser.add_argument('-o', '--outdir', default='.', type=str, help='Full path to desired output directory.')
-
-    parser.add_argument('fastfitfile', nargs=1, help='Full path to fastspec or fastphot fitting results.')
+    parallel_group = parser.add_argument_group('Parallelism')
+    parallel_group.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
 
     if options is None:
         args = parser.parse_args()
@@ -1876,9 +1888,10 @@ def fastqa(args=None, comm=None):
         if not fastphot:
             fastfit = fastfit[keep]
 
+    healpixels = args.healpix.split(',') if args.healpix else None
     metadata, specphot, fastfit = select(
         metadata, specphot, fastfit=fastfit, coadd_type=coadd_type,
-        healpixels=args.healpix, tiles=args.tile, nights=args.night)
+        healpixels=healpixels, tiles=args.tile, nights=args.night)
 
     pngfile = get_qa_filename(metadata, coadd_type, outprefix=args.outprefix,
                               outdir=args.outdir, fastphot=fastphot)
@@ -1930,6 +1943,7 @@ def fastqa(args=None, comm=None):
         'template_imf':      args.imf,
         'log_verbose':       False,
         'mapdir':            args.mapdir,
+        'cosmology':         build_cosmology(args.cosmology, args),
     }
 
     sc_data.initialize(**init_sc_args)
@@ -1954,7 +1968,7 @@ def fastqa(args=None, comm=None):
     log.info(f'Cached stellar templates {sc_data.templates.file}')
     log.info(f'Cached emission-line table {sc_data.emlines.file}')
     log.info(f'Cached photometric filters and parameters {sc_data.photometry.fphotofile}')
-    log.info(f'Cached cosmology table {sc_data.cosmology.file}')
+    log.info(f'Cached cosmology {sc_data.cosmology!r}')
     log.info(f'Cached {sc_data.igm.reference} IGM attenuation parameters.')
 
     # Initialize the I/O class.
