@@ -61,7 +61,10 @@ omitted when ``--no-agn`` is passed.
 
 ``FLUX`` (Primary HDU, float64 [nwave x nmodel])
     Stellar continuum plus nebular emission in units of
-    erg/s/cm2/Angstrom at 10 pc per solar mass formed.
+    erg/s/cm2/Angstrom at 10 pc per solar mass formed. Header keywords
+    record the version string, python-fsps version and commit hash,
+    and the FSPS isochrone, spectral, and dust-emission libraries in
+    use.
 
 ``LINEFLUX`` (float64 [nwave x nmodel])
     Isolated nebular emission (``FLUX`` minus the continuum-only pass).
@@ -496,6 +499,9 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
     linefluxes : :class:`numpy.ndarray`
         Per-model emission-line luminosities of shape (nlines, nmodel)
         in units of erg/s/cm2/Angstrom at 10 pc per solar mass formed.
+    libraries : :class:`tuple` of :class:`str`
+        FSPS isochrone, spectral, and dust-emission library names, as
+        reported by ``fsps.StellarPopulation.libraries``.
 
     """
     nsed = len(models)
@@ -525,7 +531,8 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
         zcontinuous=1,
     )
     print('...took {:.3f} sec'.format((time.time()-t0)))
-    print(sp.libraries)
+    libraries = tuple(lib.decode() for lib in sp.libraries)
+    print('FSPS libraries: {}'.format(', '.join(libraries)))
 
     if include_nebular:
         print('Creating {} model spectra with nebular emission...'.format(nsed), end='')
@@ -594,7 +601,7 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
 
     print('...took {:.3f} min'.format((time.time()-t0)/60.))
 
-    return meta, newwave, fluxes, linewaves, linefluxes
+    return meta, newwave, fluxes, linewaves, linefluxes, libraries
 
 
 def main(imf='chabrier', logmets=[0.0], agelims=None, qpah=1.0, umin=1., gamma=0.01,
@@ -730,10 +737,10 @@ def main(imf='chabrier', logmets=[0.0], agelims=None, qpah=1.0, umin=1., gamma=0
     models = models.flatten()
 
     # Build models with and without line-emission.
-    meta, wave, flux, linewaves, linefluxes = build_fsps_templates(
+    meta, wave, flux, linewaves, linefluxes, libraries = build_fsps_templates(
         models, logages, agebins=agebins, include_nebular=True, imf=imf)
 
-    _, _, fluxnolines, _, _ = build_fsps_templates(
+    _, _, fluxnolines, _, _, _ = build_fsps_templates(
         models, logages, agebins=agebins, include_nebular=False, imf=imf)
 
     lineflux = flux - fluxnolines
@@ -770,6 +777,11 @@ def main(imf='chabrier', logmets=[0.0], agelims=None, qpah=1.0, umin=1., gamma=0
     hduflux1.header['EXTNAME'] = 'FLUX'
     hduflux1.header['VERSION'] = version
     hduflux1.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+    hduflux1.header['PYFSPSV'] = (fsps.__version__, 'python-fsps version')
+    hduflux1.header['FSPSHASH'] = (fsps.fsps_version.commit_id, 'python-fsps/FSPS git commit')
+    hduflux1.header['ISOCHRON'] = (libraries[0], 'FSPS isochrone library')
+    hduflux1.header['SPECLIB'] = (libraries[1], 'FSPS stellar spectral library')
+    hduflux1.header['DUSTLIB'] = (libraries[2], 'FSPS dust-emission library')
 
     hduflux2 = fits.ImageHDU(lineflux)
     hduflux2.header['EXTNAME'] = 'LINEFLUX'
