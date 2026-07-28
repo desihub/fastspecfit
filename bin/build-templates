@@ -19,17 +19,23 @@ Usage
       --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates \\
       --logmets=-1.,0.,0.3
 
+  time python bin/build-templates --version 1.0.0 --tag paper1 --no-agn \\
+      --templatedir /path/to/custom/templates
+
 Input Files
 -----------
-The script expects the following raw data files under
-``<templatedir>/original/``:
+The script expects the following raw data files under ``origdir``
+(``--origdir``, default ``$FTEMPLATES_DIR/original`` — the shared
+production input directory, so a custom/side-project ``--templatedir``
+does not need its own copy):
 
 - ``DL07_MW3.1_{00,10,20,30,40,50,60}.dat`` — Draine & Li (2007) dust
   emission grids (Table 3 of https://arxiv.org/pdf/astro-ph/0608003).
+  Always required.
 - ``fetemplates-1.0.fits`` — Vestergaard & Wilkes (2001) UV Fe emission
-  template (``VW01ALT`` extension).
+  template (``VW01ALT`` extension). Not needed with ``--no-agn``.
 - ``Nenkova08_y010_torusg_n10_q2.0.dat`` — Nenkova et al. (2008) clumpy
-  AGN torus model grid.
+  AGN torus model grid. Not needed with ``--no-agn``.
 
 Stellar Population Model
 ------------------------
@@ -49,8 +55,9 @@ Stellar spectra are computed with ``python-fsps`` using:
 
 Output FITS Extensions
 ----------------------
-The output ``ftemplates-{imf}-{version}.fits`` file contains the
-following extensions (in order):
+The output file contains the following extensions (in order). The
+``AGNFLUX``, ``AGNWAVE``, ``FEFLUX``, and ``FEWAVE`` extensions are
+omitted when ``--no-agn`` is passed.
 
 ``FLUX`` (Primary HDU, float64 [nwave x nmodel])
     Stellar continuum plus nebular emission in units of
@@ -233,11 +240,13 @@ def _qa_dustem_templates(dustwave, mduste, qpah, umin, gamma, png):
     fig.savefig(png)
 
 
-def build_dustem_templates(qpah=3.5, umin=1., gamma=0.01, png=None):
+def build_dustem_templates(origdir, qpah=3.5, umin=1., gamma=0.01, png=None):
     """Build the DL07 dust emission templates.
 
     Parameters
     ----------
+    origdir : :class:`str`
+        Directory containing the raw ``DL07_MW3.1_*.dat`` input files.
     qpah : :class:`float`, optional
         PAH fraction. Default is 3.5.
     umin : :class:`float`, optional
@@ -279,7 +288,7 @@ def build_dustem_templates(qpah=3.5, umin=1., gamma=0.01, png=None):
     dustem = np.zeros((nqpah, numin*2, nwave))
 
     for imodel, model in enumerate(models):
-        dustfile = os.path.join(templatedir, 'original', f'DL07_{model}.dat')
+        dustfile = os.path.join(origdir, f'DL07_{model}.dat')
         dustem1 = np.loadtxt(dustfile, skiprows=2)
         if imodel == 0:
             dustwave = dustem1[:, 0]
@@ -309,11 +318,13 @@ def build_dustem_templates(qpah=3.5, umin=1., gamma=0.01, png=None):
     return dustwave, mduste
 
 
-def build_fe_templates(version='1.0', png=None):
+def build_fe_templates(origdir, version='1.0', png=None):
     """Build the Fe emission template.
 
     Parameters
     ----------
+    origdir : :class:`str`
+        Directory containing the raw ``fetemplates-{version}.fits`` input file.
     version : :class:`str`, optional
         Template file version string. Default is ``'1.0'``.
     png : :class:`str` or None, optional
@@ -345,7 +356,7 @@ def build_fe_templates(version='1.0', png=None):
         fig.tight_layout()
         fig.savefig(png)
 
-    templatefile = os.path.join(templatedir, 'original', f'fetemplates-{version}.fits')
+    templatefile = os.path.join(origdir, f'fetemplates-{version}.fits')
     fe = fitsio.read(templatefile, 'VW01ALT')
     fewave = fe['WAVE'].astype('f8')
     feflux = fe['FLUX'].astype('f8')
@@ -370,11 +381,14 @@ def build_fe_templates(version='1.0', png=None):
     return newwave, newflux
 
 
-def build_agn_templates(agntau=10., png=None):
+def build_agn_templates(origdir, agntau=10., png=None):
     """Build the AGN (Nenkova+08 torus) template.
 
     Parameters
     ----------
+    origdir : :class:`str`
+        Directory containing the raw ``Nenkova08_y010_torusg_n10_q2.0.dat``
+        input file.
     agntau : :class:`float`, optional
         AGN optical depth. Default is 10.0.
     png : :class:`str` or None, optional
@@ -409,7 +423,7 @@ def build_agn_templates(agntau=10., png=None):
         fig.tight_layout()
         fig.savefig(png)
 
-    templatefile = os.path.join(templatedir, 'original', 'Nenkova08_y010_torusg_n10_q2.0.dat')
+    templatefile = os.path.join(origdir, 'Nenkova08_y010_torusg_n10_q2.0.dat')
     data = np.loadtxt(templatefile, skiprows=4)
     agnwave = data[:, 0]    # [nwave, Angstrom]
     agngrid = data[:, 1:].T # [nagn, nwave]
@@ -583,15 +597,19 @@ def build_fsps_templates(models, logages, agebins=None, imf='chabrier',
     return meta, newwave, fluxes, linewaves, linefluxes
 
 
-def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
-         agntau=10., test=False, version='1.0.0', templatedir=None):
+def main(imf='chabrier', logmets=[0.0], agelims=None, qpah=1.0, umin=1., gamma=0.01,
+         agntau=10., include_agn=True, test=False, version='1.0.0', tag=None,
+         templatedir=None, origdir=None):
     """Build all templates and write the output FITS file.
 
     Orchestrates calls to :func:`build_fsps_templates` (twice — with and
-    without nebular emission), :func:`build_dustem_templates`,
-    :func:`build_agn_templates`, and :func:`build_fe_templates`, then
-    assembles the results into a single multi-extension FITS file at
-    ``<templatedir>/<version>/ftemplates-{imf}-{version}.fits``.
+    without nebular emission), :func:`build_dustem_templates`, and
+    (unless ``include_agn`` is ``False``) :func:`build_agn_templates` and
+    :func:`build_fe_templates`, then assembles the results into a single
+    multi-extension FITS file. With no ``tag``, this is written to
+    ``<templatedir>/<version>/ftemplates-{imf}-{version}.fits``; with a
+    custom ``tag`` it is written flat to
+    ``<templatedir>/ftemplates-{imf}-{tag}-{version}.fits``.
 
     Parameters
     ----------
@@ -602,6 +620,12 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
         log10(Z/Zsun) metallicity grid values. Default is ``[0.0]``
         (solar metallicity only). The production templates use
         ``[-1.0, 0.0, 0.3]``.
+    agelims : :class:`list` of :class:`float` or None, optional
+        Lookback time bin edges in Gyr, ascending, of length ``nages+1``.
+        When ``None`` (default), generated with the production 5-bin
+        prescription (``adjust_continuity_agebins``-style: an edge at
+        ~30 Myr, log-spaced edges out to ``0.85*tuniv``, and a final edge
+        at ``tuniv=13.7`` Gyr).
     qpah : :class:`float`, optional
         Draine & Li (2007) PAH mass fraction parameter. Default is 1.0.
     umin : :class:`float`, optional
@@ -612,51 +636,82 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
         radiation field component). Default is 0.01.
     agntau : :class:`float`, optional
         Nenkova et al. (2008) AGN torus optical depth. Default is 10.0.
+    include_agn : :class:`bool`, optional
+        If ``False``, skip building the AGN torus and Fe emission
+        templates and omit the ``AGNFLUX``, ``AGNWAVE``, ``FEFLUX``, and
+        ``FEWAVE`` extensions from the output file (and skip reading
+        their raw inputs from ``origdir``). These extensions are only
+        used by the still-in-development ``fastqso`` mode. Default is
+        ``True``.
     test : :class:`bool`, optional
         If ``True``, override ``logmets`` with ``[0.0]`` for a quick
         single-metallicity test run. Default is ``False``.
     version : :class:`str`, optional
-        Version string embedded in the output filename and FITS header,
-        e.g. ``'2.1.0'``.
+        Provenance string embedded in the FITS header's ``VERSION``
+        keyword, e.g. ``'2.1.0'``.
+    tag : :class:`str` or None, optional
+        Tag used in place of ``version`` in the output filename, e.g. for
+        a custom/one-off template set. When given, the file is written
+        flat directly into ``templatedir`` (no version subdirectory), so
+        multiple versions of the same tag can coexist there. Defaults to
+        ``version`` when ``None`` (production layout, see above).
     templatedir : :class:`str` or None, optional
-        Root template directory. Raw input files are read from
-        ``<templatedir>/original/`` and the output FITS file is written
-        to ``<templatedir>/<version>/``.
+        Root output directory (see above).
+    origdir : :class:`str` or None, optional
+        Directory containing the shared raw input files (DL07 dust
+        grids, Fe template, Nenkova+08 torus grid). Defaults to
+        ``$FTEMPLATES_DIR/original`` when ``None``.
 
     """
+    custom_tag = tag is not None
+    if tag is None:
+        tag = version
+
+    if origdir is None:
+        ftemplates_dir = os.environ.get('FTEMPLATES_DIR')
+        if not ftemplates_dir:
+            raise IOError('origdir not specified and $FTEMPLATES_DIR is not set.')
+        origdir = os.path.join(os.path.expandvars(ftemplates_dir), 'original')
+
     # AGN + Fe template(s)
-    fewave, feflux = build_fe_templates(version='1.0')#, png=os.path.join(templatedir, 'original', 'qa-fe.png'))
-    agnwave, agnflux = build_agn_templates(agntau=agntau, png=os.path.join(templatedir, 'original', 'qa-agn.png'))
+    if include_agn:
+        fewave, feflux = build_fe_templates(origdir, version='1.0')#, png=os.path.join(origdir, 'qa-fe.png'))
+        agnwave, agnflux = build_agn_templates(origdir, agntau=agntau)#, png=os.path.join(origdir, 'qa-agn.png'))
 
     # dust emission template(s)
-    dustwave, dustflux = build_dustem_templates(qpah=qpah, umin=umin, gamma=gamma)#,
-                                              #png=os.path.join(templatedir, 'original', 'qa-dustem.png'))
+    dustwave, dustflux = build_dustem_templates(origdir, qpah=qpah, umin=umin, gamma=gamma)#,
+                                              #png=os.path.join(origdir, 'qa-dustem.png'))
 
     print(f'<IR Dust>: q_PAH = {qpah}, U_min = {umin}, gamma = {gamma}')
 
-    # Choose lookback time bins.
-
-    # from prospect.templates.adjust_continuity_agebins
-    nbins = 5
-    tuniv = 13.7
-    tbinmax = (tuniv * 0.85) * 1e9
-    lim1, lim2 = 7.4772, 8.0
-    agelims = np.array([0, lim1] + np.linspace(lim2, np.log10(tbinmax), nbins-2).tolist() + [np.log10(tuniv*1e9)]) # log10(yr)
-    agelims = 10.**agelims / 1e9 # [Gyr]
+    # Choose lookback time bin edges (Gyr). If not supplied explicitly, fall
+    # back to the production default: nbins=5 edges following the
+    # prospect.templates.adjust_continuity_agebins prescription (one edge at
+    # ~30 Myr for young-population resolution, then log-spaced edges out to
+    # 0.85*tuniv, then a final bin out to tuniv).
+    if agelims is None:
+        nbins = 5
+        tuniv = 13.7
+        tbinmax = (tuniv * 0.85) * 1e9
+        lim1, lim2 = 7.4772, 8.0
+        agelims = np.array([0, lim1] + np.linspace(lim2, np.log10(tbinmax), nbins-2).tolist() + [np.log10(tuniv*1e9)]) # log10(yr)
+        agelims = 10.**agelims / 1e9 # [Gyr]
+    else:
+        agelims = np.asarray(agelims, dtype=float) # [Gyr]
 
     agebins = np.array([agelims[:-1], agelims[1:]]).T # [Gyr]
     logages = np.log10(1e9*np.sum(agebins, axis=1) / 2) # mean age [log10(yr)] in each bin
     print('   <Ages>: '+', '.join(['{:.4f}'.format(10.**logage/1e9) for logage in logages]) + ' Gyr')
 
     nages = len(logages)
-    nmets = len(logmets)
-    zsolar = 0.019
-    print(' <Z/Zsun>: '+', '.join(['{:.2f}'.format(10.**logmet) for logmet in logmets]))
 
     # for testing
     if test:
         logmets = [0.]
-        nmets = 1
+
+    nmets = len(logmets)
+    zsolar = 0.0134 # Asplund et al. (2009); matches the C3K library abundance mixture
+    print(' <Z/Zsun>: '+', '.join(['{:.2f}'.format(10.**logmet) for logmet in logmets]))
 
     dims = (nages, nmets)
 
@@ -697,11 +752,17 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
     #I = wave <= agnwave[0] # do not extrapolate blueward
     #agnflux[I] = 0.
 
-    # Write out.
-    outdir = os.path.join(templatedir, version)
+    # Write out. Production (no --tag) keeps the versioned-subdirectory
+    # layout; a custom --tag is written flat directly into templatedir so
+    # multiple versions of the same tag can coexist in one directory.
+    if custom_tag:
+        outdir = templatedir
+        outfile = os.path.join(outdir, f'ftemplates-{imf}-{tag}-{version}.fits')
+    else:
+        outdir = os.path.join(templatedir, tag)
+        outfile = os.path.join(outdir, f'ftemplates-{imf}-{tag}.fits')
     if not os.path.isdir(outdir):
         os.makedirs(outdir, exist_ok=True)
-    outfile = os.path.join(outdir, f'ftemplates-{imf}-{version}.fits')
 
     #isplit = np.argmin(np.abs(wave-PIXKMS_WAVESPLIT)) + 1
 
@@ -722,14 +783,15 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
     hduflux3.header['GAMMA'] = (gamma, 'gamma parameter')
     hduflux3.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
-    hduflux4 = fits.ImageHDU(agnflux)
-    hduflux4.header['EXTNAME'] = 'AGNFLUX'
-    hduflux4.header['AGNTAU'] = (agntau, 'AGN optical depth')
-    hduflux4.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+    if include_agn:
+        hduflux4 = fits.ImageHDU(agnflux)
+        hduflux4.header['EXTNAME'] = 'AGNFLUX'
+        hduflux4.header['AGNTAU'] = (agntau, 'AGN optical depth')
+        hduflux4.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
-    hduflux5 = fits.ImageHDU(feflux)
-    hduflux5.header['EXTNAME'] = 'FEFLUX'
-    hduflux5.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+        hduflux5 = fits.ImageHDU(feflux)
+        hduflux5.header['EXTNAME'] = 'FEFLUX'
+        hduflux5.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
 
 
     hduwave1 = fits.ImageHDU(wave)
@@ -739,22 +801,25 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
     hduwave1.header['PIXWAVLO'] = (Templates.PIXKMS_BOUNDS[0], 'min(wave) where pixel size is PIXKMS [Angstrom]')
     hduwave1.header['PIXWAVHI'] = (Templates.PIXKMS_BOUNDS[1], 'max(wave) where pixel size is PIXKMS [Angstrom]')
     hduwave1.header['PIXKMS'] = (Templates.PIXKMS, 'pixel size within PIXWAVLO-PIXWAVHI [km/s]')
+    hduwave1.header['SIGC3K'] = (Templates.SIGMA_C3K, 'C3K native Gaussian sigma [km/s]')
 
-    hduwave2 = fits.ImageHDU(agnwave)
-    hduwave2.header['EXTNAME'] = 'AGNWAVE'
-    hduwave2.header['BUNIT'] = 'Angstrom'
-    hduwave2.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+    if include_agn:
+        hduwave2 = fits.ImageHDU(agnwave)
+        hduwave2.header['EXTNAME'] = 'AGNWAVE'
+        hduwave2.header['BUNIT'] = 'Angstrom'
+        hduwave2.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
 
-    hduwave3 = fits.ImageHDU(fewave)
-    hduwave3.header['EXTNAME'] = 'FEWAVE'
-    hduwave3.header['BUNIT'] = 'Angstrom'
-    hduwave3.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
-    hduwave3.header['PIXSZ'] = (Templates.AGN_PIXKMS, 'pixel size [km/s]')
+        hduwave3 = fits.ImageHDU(fewave)
+        hduwave3.header['EXTNAME'] = 'FEWAVE'
+        hduwave3.header['BUNIT'] = 'Angstrom'
+        hduwave3.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+        hduwave3.header['PIXSZ'] = (Templates.AGN_PIXKMS, 'pixel size [km/s]')
 
 
     hdutable = fits.convenience.table_to_hdu(meta)
     hdutable.header['EXTNAME'] = 'METADATA'
-    hdutable.header['imf'] = imf
+    hdutable.header['IMF'] = imf
+    hdutable.header['ZSUN'] = (zsolar, 'adopted solar metallicity (Asplund+09)')
 
     # emission lines
     hduflux6 = fits.ImageHDU(linefluxes)
@@ -767,10 +832,11 @@ def main(imf='chabrier', logmets=[0.0], qpah=1.0, umin=1., gamma=0.01,
     hduwave4.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
 
     # metadata table
-    hx = fits.HDUList([hduflux1, hduflux2, hduflux3, hduwave1, hdutable,
-                       hduflux4, hduwave2,
-                       hduflux5, hduwave3,
-                       hduflux6, hduwave4])
+    hdus = [hduflux1, hduflux2, hduflux3, hduwave1, hdutable]
+    if include_agn:
+        hdus += [hduflux4, hduwave2, hduflux5, hduwave3]
+    hdus += [hduflux6, hduwave4]
+    hx = fits.HDUList(hdus)
 
     print(f'Writing {len(models)} model spectra to {outfile}')
     hx.writeto(outfile, overwrite=True)
@@ -781,8 +847,22 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--templatedir', required=True, help='Location of original and output templates')
+    parser.add_argument('--templatedir', required=True, help='Location of output templates')
+    parser.add_argument('--origdir', type=str, default=None,
+                        help='Location of shared raw input templates (DL07 dust grids, '
+                             'Fe template, Nenkova+08 torus grid). Defaults to '
+                             '$FTEMPLATES_DIR/original.')
     parser.add_argument('--version', required=True, help='Version number (e.g., 3.0.0)')
+    parser.add_argument('--tag', type=str, default=None,
+                        help='Output filename tag used in place of --version; when given, '
+                             'the file is written flat directly into --templatedir (no '
+                             'version subdirectory). Use for a custom/one-off template set '
+                             '(e.g., paper1) whose --version need not follow the production '
+                             'numbering.')
+    parser.add_argument('--no-agn', action='store_true',
+                        help='Skip building the AGN torus and Fe emission templates '
+                             '(AGNFLUX, AGNWAVE, FEFLUX, FEWAVE), which are only used '
+                             'by the still-in-development fastqso mode.')
 
     # DL07 parameters
     # https://python-fsps.readthedocs.io/en/latest/stellarpop_api
@@ -796,15 +876,28 @@ if __name__ == '__main__':
     parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
                         help='Initial mass function')
     parser.add_argument('--logmets', type=str, default='0.', help='Stellar metallicity values')
+    parser.add_argument('--agelims', type=str, default=None,
+                        help='Comma-separated lookback time bin edges in Gyr, ascending, '
+                             'of length nages+1 (e.g., 0,0.03,0.1,1.08,11.6,13.7). '
+                             'Defaults to the production 5-bin grid.')
     parser.add_argument('--test', action='store_true', help='Generate a test set of SPS models.')
     args = parser.parse_args()
 
     templatedir = os.path.expandvars(args.templatedir)
-    origdir = os.path.join(templatedir, 'original')
+
+    if args.origdir:
+        origdir = os.path.expandvars(args.origdir)
+    else:
+        ftemplates_dir = os.environ.get('FTEMPLATES_DIR')
+        if not ftemplates_dir:
+            raise IOError('Either --origdir must be specified or $FTEMPLATES_DIR must be set.')
+        origdir = os.path.join(os.path.expandvars(ftemplates_dir), 'original')
     if not os.path.isdir(origdir):
         raise IOError(f'Missing directory containing original templates {origdir}')
 
     logmets = np.array(args.logmets.split(',')).astype(float)
-    main(imf=args.imf, logmets=logmets, qpah=args.qpah,
-         umin=args.umin, gamma=args.gamma, agntau=args.agntau, test=args.test,
-         version=args.version, templatedir=templatedir)
+    agelims = np.array(args.agelims.split(',')).astype(float) if args.agelims else None
+    main(imf=args.imf, logmets=logmets, agelims=agelims, qpah=args.qpah,
+         umin=args.umin, gamma=args.gamma, agntau=args.agntau, include_agn=not args.no_agn,
+         test=args.test, version=args.version, tag=args.tag, templatedir=templatedir,
+         origdir=origdir)
