@@ -2,8 +2,19 @@
 Change Log
 ==========
 
-3.6.0 (not released yet)
+3.6.1 (not released yet)
 ------------------------
+
+* New LCDM cosmology class and CLI; re-organized ``argparse`` help
+  messages [`PR #278`_].
+* More flexible ``build-templates`` script and improved header
+  metadata [`PR #277`_].
+
+.. _`PR #278`: https://github.com/desihub/fastspecfit/pull/278
+.. _`PR #277`: https://github.com/desihub/fastspecfit/pull/277
+
+3.6.0 (2026-07-25)
+------------------
 
 * Faster continuum fitting and I/O by caching the SFD dust map [`PR
   #275`_].

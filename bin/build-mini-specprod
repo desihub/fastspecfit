@@ -201,6 +201,7 @@ def build_photometry(dr9dir, outdir, fibermaps):
     """Gather and write the Tractor photometry matching *fibermaps*."""
     from astropy.table import MaskedColumn
     from desispec.io.photo import gather_tractorphot
+    from fastspecfit.photometry import desitarget_resolve_dec
 
     # Each fibermap carries per-file FITS metadata (CHECKSUM, DATASUM, ...)
     # that vstack otherwise complains about merging; it's meaningless once
@@ -225,6 +226,13 @@ def build_photometry(dr9dir, outdir, fibermaps):
 
     tractor = gather_tractorphot(combined, legacysurveydir=dr9dir)
 
+    # Per-TARGETID PHOTSYS/Dec, needed below to pick the correct region for
+    # boundary-strip bricks that have a Tractor catalog in *both* trees (see
+    # comment further down).
+    photsys_map = dict(zip(combined['TARGETID'], combined['PHOTSYS']))
+    dec_map = dict(zip(combined['TARGETID'], combined['TARGET_DEC']))
+    resolve_dec = desitarget_resolve_dec()
+
     for brick in sorted(set(tractor['BRICKNAME'])):
         B = tractor[tractor['BRICKNAME'] == brick].copy()
 
@@ -237,19 +245,42 @@ def build_photometry(dr9dir, outdir, fibermaps):
                  f"skipping: {list(B['TARGETID'])}")
             continue
 
-        # Determine which region (north/south) actually contains this brick
-        # by checking the filesystem directly, rather than trusting the
-        # targeting-time PHOTSYS: for positionally-matched objects (blank or
-        # zero-valued BRICKID/BRICK_OBJID, e.g. secondary targets) the real
-        # match can land in either region regardless of the nominal PHOTSYS
-        # value, and the two can disagree near the north/south boundary.
-        for oneregion in ('north', 'south'):
-            infile = os.path.join(dr9dir, oneregion, 'tractor', brick[:3], f'tractor-{brick}.fits')
-            if os.path.isfile(infile):
-                break
+        # Determine which region (north/south) this brick's Tractor file
+        # should come from using each target's own PHOTSYS, falling back to
+        # the same Dec cut used for positionally-matched targets (mirrors
+        # fastspecfit.photometry._gather_tractorphot_onebrick) -- not simply
+        # whichever region happens to exist on disk. Boundary-strip bricks
+        # can have a Tractor catalog in *both* trees (overlapping BASS/MzLS
+        # and DECaLS imaging), and fastspec's later PHOTSYS-driven lookup
+        # expects a specific one; copying the wrong one here causes a
+        # spurious "Unable to find Tractor catalog" crash downstream.
+        regions = []
+        for tid in B['TARGETID']:
+            photsys = photsys_map.get(tid, '')
+            if photsys == 'S':
+                regions.append('south')
+            elif photsys == 'N':
+                regions.append('north')
+            else:
+                dec = dec_map.get(tid)
+                regions.append('south' if dec is not None and dec < resolve_dec else 'north')
+        vals, counts = np.unique(regions, return_counts=True)
+        preferred = vals[np.argmax(counts)]
+
+        infile = os.path.join(dr9dir, preferred, 'tractor', brick[:3], f'tractor-{brick}.fits')
+        if os.path.isfile(infile):
+            oneregion = preferred
         else:
-            print(f'WARNING: could not locate a north or south Tractor file for brick {brick}; skipping.')
-            continue
+            # Only one region has the file; use it regardless of preference.
+            fallback = 'north' if preferred == 'south' else 'south'
+            infile = os.path.join(dr9dir, fallback, 'tractor', brick[:3], f'tractor-{brick}.fits')
+            if os.path.isfile(infile):
+                print(f'WARNING: brick {brick} PHOTSYS/Dec indicates {preferred}, but only the '
+                     f'{fallback} Tractor file exists; using it.')
+                oneregion = fallback
+            else:
+                print(f'WARNING: could not locate a north or south Tractor file for brick {brick}; skipping.')
+                continue
 
         B.remove_columns([col for col in ('TARGETID', 'LS_ID') if col in B.colnames])
 
