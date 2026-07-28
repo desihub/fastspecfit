@@ -134,7 +134,17 @@ class BayesianGrid(object):
             laptop) -- so pass it explicitly here (or via ``--templatesfile``)
             when the templates live somewhere non-standard.
 
+        Raises
+        ------
+        KeyError
+            If ``gridfile`` predates the ``FPHOTO_FILE`` dependency
+            keyword (i.e. was built with an older
+            ``bin/build-bayesian-photometry``) -- regenerate the grid
+            file rather than relying on a fallback.
+
         """
+        from desiutil.depend import getdep
+
         if self.file == gridfile:
             return
 
@@ -143,7 +153,7 @@ class BayesianGrid(object):
 
         self.gridnumber = prihdr.get('GRIDNUM')
         self.imf = prihdr.get('IMF')
-        self.fphotofile = prihdr.get('FPHOTO')
+        self.fphotofile = getdep(prihdr, 'FPHOTO_FILE')
         if templatesfile is not None:
             self.templates_file = os.path.expandvars(templatesfile)
         else:

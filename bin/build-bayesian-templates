@@ -47,11 +47,14 @@ Output Files
 ``FLUX`` (Primary HDU, float32 [nwave x nmodel])
     SSP spectra (stellar continuum + nebular emission + dust attenuation
     + reradiated dust emission) in units of erg/s/cm2/Angstrom at 10 pc
-    per solar mass formed. Header keywords record the IMF, grid number,
-    python-fsps version and commit hash, the FSPS isochrone, spectral,
-    and dust-emission libraries in use, and the adopted solar
-    metallicity (``ZSUN``) against which ``logmet``/``zzsun`` are
-    defined.
+    per solar mass formed. ``IMF``, ``GRIDNUM``, and the adopted solar
+    metallicity (``ZSUN``, against which ``logmet``/``zzsun`` are
+    defined) are plain header keywords. Software/library provenance
+    (loaded module versions, ``$FTEMPLATES_DIR``, python-fsps version
+    and commit hash, and the FSPS isochrone, spectral, and
+    dust-emission libraries in use) is recorded via ``desiutil.depend``
+    as ``DEPNAMnn``/``DEPVERnn`` keyword pairs, mirroring
+    ``bin/build-templates``.
 
 ``WAVE`` (float64 [nwave])
     Native (unmodified) FSPS vacuum wavelength array in Angstroms.
@@ -257,6 +260,8 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, test=False):
         If ``True``, build a tiny test grid. Default is ``False``.
 
     """
+    from desiutil.depend import add_dependencies, possible_dependencies, setdep
+
     meta, wave, fluxes, libraries = build_bayesian_grid(imf=imf, test=test)
 
     if not os.path.isdir(templatedir):
@@ -268,11 +273,18 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, test=False):
     hduflux.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
     hduflux.header['IMF'] = imf
     hduflux.header['GRIDNUM'] = gridnumber
-    hduflux.header['PYFSPSV'] = (fsps.__version__, 'python-fsps version')
-    hduflux.header['FSPSHASH'] = (fsps.fsps_version.commit_id, 'python-fsps/FSPS git commit')
-    hduflux.header['ISOCHRON'] = (libraries[0], 'FSPS isochrone library')
-    hduflux.header['SPECLIB'] = (libraries[1], 'FSPS stellar spectral library')
-    hduflux.header['DUSTLIB'] = (libraries[2], 'FSPS dust-emission library')
+    add_dependencies(hduflux.header, module_names=possible_dependencies+['fastspecfit'],
+                     envvar_names=('FTEMPLATES_DIR',))
+    # python-fsps isn't in possible_dependencies (so add_dependencies never
+    # auto-detects it), and the FSPS libraries in use aren't module versions
+    # at all but configuration choices baked into this specific grid file --
+    # both recorded explicitly here as dependency entries, mirroring
+    # bin/build-templates.
+    setdep(hduflux.header, 'PYFSPSV', fsps.__version__)
+    setdep(hduflux.header, 'FSPSHASH', fsps.fsps_version.commit_id)
+    setdep(hduflux.header, 'ISOCHRON', libraries[0])
+    setdep(hduflux.header, 'SPECLIB', libraries[1])
+    setdep(hduflux.header, 'DUSTLIB', libraries[2])
     hduflux.header['ZSUN'] = (0.0134, 'adopted solar metallicity (custom C3K_R10K)')
 
     hduwave = fits.ImageHDU(wave)

@@ -248,6 +248,8 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
         See :func:`build_redshift_grid`.
 
     """
+    from desiutil.depend import add_dependencies, possible_dependencies, setdep, getdep
+
     if templatesfile is not None:
         tempfile = templatesfile
     else:
@@ -284,20 +286,21 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
     hduprim = fits.PrimaryHDU()
     hduprim.header['GRIDNUM'] = gridnumber
     hduprim.header['IMF'] = imf
-    # Full path, purely a diagnostic/provenance record (not reloadable
-    # sight-unseen on another machine): the raw templates file is always
+    add_dependencies(hduprim.header, module_names=possible_dependencies+['fastspecfit'],
+                     envvar_names=('FTEMPLATES_DIR',))
+    # Recorded purely as diagnostic/provenance (mirroring write_fastspecfit
+    # and fastbayes.write_fastbayes): the raw templates file is always
     # located at fit time via GRIDNUM/IMF/--templatedir or an explicit
-    # --templatesfile override, never read back from this keyword. Mirrors
-    # GRIDFILE in fastbayes.write_fastbayes.
-    hduprim.header['TEMPFILE'] = (os.path.abspath(tempfile), 'source templates file')
-    hduprim.header['FPHOTO'] = os.path.basename(str(phot.fphotofile))
+    # --templatesfile override, never read back from this keyword.
+    setdep(hduprim.header, 'TEMPFILE', os.path.abspath(tempfile))
+    setdep(hduprim.header, 'FPHOTO_FILE', str(phot.fphotofile))
+    setdep(hduprim.header, 'FSPSHASH', getdep(fluxhdr, 'FSPSHASH'))
     hduprim.header['PHOTSYS'] = (','.join(photsys_keys) if any(photsys_keys) else 'NONE',
                                  'available photsys key(s)')
     hduprim.header['ZMIN'] = zmin
     hduprim.header['ZMAX'] = zmax
     hduprim.header['NZ'] = len(zgrid)
     hduprim.header['LOGSPACE'] = logspace
-    hduprim.header['GRIDHASH'] = (fluxhdr.get('FSPSHASH', ''), 'python-fsps/FSPS git commit of the templates')
 
     hduz = fits.ImageHDU(zgrid.astype(np.float32))
     hduz.header['EXTNAME'] = 'REDSHIFT'
