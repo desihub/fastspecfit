@@ -19,7 +19,11 @@ Usage
 
   time python bin/build-bayesian-photometry --gridnumber 001 \\
       --templatedir $FTEMPLATES_DIR/bayesian --logspace \\
-      --outfile $FTEMPLATES_DIR/bayesian/001/bayesian-photometry-chabrier-001.fits
+      --outfile $FTEMPLATES_DIR/bayesian/bayesian-photometry-chabrier-001.fits
+
+  time python bin/build-bayesian-photometry \\
+      --templatesfile /path/to/bayesian-templates-chabrier-001.fits --logspace \\
+      --outfile /path/to/bayesian-photometry-chabrier-001.fits
 
 Output Files
 ------------
@@ -209,31 +213,45 @@ def synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm):
 
 
 def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
-         zmin=0.001, zmax=1.6, dz=0.01, nz=None, logspace=False):
+         templatesfile=None, zmin=0.001, zmax=1.6, dz=0.01, nz=None, logspace=False):
     """Synthesize the photometry grid and write the output FITS file.
 
     Parameters
     ----------
-    gridnumber : :class:`str`
+    gridnumber : :class:`str` or None
         Grid identifier matching the one used with
-        ``bin/build-bayesian-templates``.
+        ``bin/build-bayesian-templates``. Only used to locate the
+        templates file when ``templatesfile`` is not given; otherwise
+        read back from the templates file's own header.
     outfile : :class:`str`
         Full path of the output FITS file. Independent of
         ``templatedir``.
     imf : :class:`str`, optional
         Initial mass function, matching the templates file. Default is
-        ``'chabrier'``.
+        ``'chabrier'``. Only used to locate the templates file when
+        ``templatesfile`` is not given; otherwise read back from the
+        templates file's own header.
     templatedir : :class:`str`
         Root template directory; the templates are read from
-        ``<templatedir>/<gridnumber>/``.
+        ``<templatedir>/bayesian-templates-{imf}-{gridnumber}.fits``
+        when ``templatesfile`` is not given.
     fphotofile : :class:`str` or None, optional
         Path to the photometry configuration YAML file. Defaults to the
         bundled DR9 configuration.
+    templatesfile : :class:`str` or None, optional
+        Full path to the raw Bayesian templates FITS file, overriding
+        ``gridnumber``/``templatedir`` reconstruction. Useful when the
+        templates live somewhere non-standard (e.g. switching between
+        NERSC and a laptop). ``GRIDNUM``/``IMF`` are read back from its
+        header rather than trusting ``gridnumber``/``imf``.
     zmin, zmax, dz, nz, logspace
         See :func:`build_redshift_grid`.
 
     """
-    tempfile = os.path.join(templatedir, gridnumber, f'bayesian-templates-{imf}-{gridnumber}.fits')
+    if templatesfile is not None:
+        tempfile = templatesfile
+    else:
+        tempfile = os.path.join(templatedir, f'bayesian-templates-{imf}-{gridnumber}.fits')
     if not os.path.isfile(tempfile):
         errmsg = f'Templates file {tempfile} not found.'
         raise IOError(errmsg)
@@ -244,6 +262,10 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
     flux = T['FLUX'].read()
     meta = T['METADATA'].read()
     fluxhdr = T['FLUX'].read_header()
+
+    if templatesfile is not None:
+        gridnumber = fluxhdr.get('GRIDNUM', gridnumber)
+        imf = fluxhdr.get('IMF', imf)
 
     phot = Photometry(fphotofile=fphotofile)
     cosmo = TabulatedDESI()
@@ -262,7 +284,12 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
     hduprim = fits.PrimaryHDU()
     hduprim.header['GRIDNUM'] = gridnumber
     hduprim.header['IMF'] = imf
-    hduprim.header['TEMPFILE'] = (os.path.basename(tempfile), 'source templates file')
+    # Full path, purely a diagnostic/provenance record (not reloadable
+    # sight-unseen on another machine): the raw templates file is always
+    # located at fit time via GRIDNUM/IMF/--templatedir or an explicit
+    # --templatesfile override, never read back from this keyword. Mirrors
+    # GRIDFILE in fastbayes.write_fastbayes.
+    hduprim.header['TEMPFILE'] = (os.path.abspath(tempfile), 'source templates file')
     hduprim.header['FPHOTO'] = os.path.basename(str(phot.fphotofile))
     hduprim.header['PHOTSYS'] = (','.join(photsys_keys) if any(photsys_keys) else 'NONE',
                                  'available photsys key(s)')
@@ -307,13 +334,20 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--templatedir', default=None,
-                        help='Input template directory (default $FTEMPLATES_DIR/bayesian)')
+                        help='Input template directory (default $FTEMPLATES_DIR/bayesian); '
+                        'ignored if --templatesfile is given.')
+    parser.add_argument('--templatesfile', type=str, default=None,
+                        help='Full path to the raw Bayesian templates FITS file (output of '
+                        'bin/build-bayesian-templates), overriding --gridnumber/--templatedir '
+                        'reconstruction. GRIDNUM/IMF are read back from its header.')
     parser.add_argument('--outfile', required=True,
                         help='Full path to the output FITS file, e.g., '
-                        './001/bayesian-photometry-chabrier-001.fits (include the grid number yourself if desired)')
-    parser.add_argument('--gridnumber', required=True, help='Grid number/identifier (e.g., 001)')
+                        './bayesian-photometry-chabrier-001.fits (include the grid number yourself if desired)')
+    parser.add_argument('--gridnumber', default=None,
+                        help='Grid number/identifier (e.g., 001); required unless --templatesfile is given.')
     parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
-                        help='Initial mass function (must match the templates file)')
+                        help='Initial mass function (must match the templates file); ignored '
+                        '(read from the header instead) if --templatesfile is given.')
     parser.add_argument('--fphotofile', default=None, help='Photometry configuration YAML file')
 
     parser.add_argument('--zmin', type=float, default=1e-5, help='Minimum redshift')
@@ -325,10 +359,18 @@ if __name__ == '__main__':
     parser.add_argument('--test', action='store_true', help='Generate a tiny test grid.')
     args = parser.parse_args()
 
-    templatedir = args.templatedir
-    if templatedir is None:
-        templatedir = os.path.join(os.environ['FTEMPLATES_DIR'], 'bayesian')
-    templatedir = os.path.expandvars(templatedir)
+    templatesfile = os.path.expandvars(args.templatesfile) if args.templatesfile else None
+
+    if templatesfile is None:
+        if args.gridnumber is None:
+            raise IOError('Either --templatesfile or --gridnumber must be given.')
+        templatedir = args.templatedir
+        if templatedir is None:
+            templatedir = os.path.join(os.environ['FTEMPLATES_DIR'], 'bayesian')
+        templatedir = os.path.expandvars(templatedir)
+    else:
+        templatedir = None
+
     outfile = os.path.expandvars(args.outfile)
 
     zmin, zmax, dz, nz = args.zmin, args.zmax, args.dz, args.nz
@@ -336,4 +378,4 @@ if __name__ == '__main__':
         zmin, zmax, dz, nz = 0.01, 0.2, None, 5
 
     main(args.gridnumber, outfile, imf=args.imf, templatedir=templatedir, fphotofile=args.fphotofile,
-        zmin=zmin, zmax=zmax, dz=dz, nz=nz, logspace=args.logspace)
+        templatesfile=templatesfile, zmin=zmin, zmax=zmax, dz=dz, nz=nz, logspace=args.logspace)

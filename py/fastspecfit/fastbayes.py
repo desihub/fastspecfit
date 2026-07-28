@@ -118,11 +118,23 @@ class BayesianGrid(object):
             templatedir = os.path.join(os.path.expandvars(templatedir), 'bayesian')
         else:
             templatedir = os.path.expandvars(templatedir)
-        return os.path.join(templatedir, str(gridnumber), f'bayesian-templates-{imf}-{gridnumber}.fits')
+        return os.path.join(templatedir, f'bayesian-templates-{imf}-{gridnumber}.fits')
 
 
-    def load(self, gridfile, templatedir=None):
-        """Load a ``bayesian-photometry-*.fits`` grid file (idempotent)."""
+    def load(self, gridfile, templatedir=None, templatesfile=None):
+        """Load a ``bayesian-photometry-*.fits`` grid file (idempotent).
+
+        Parameters
+        ----------
+        templatesfile : :class:`str` or None, optional
+            Full path to the raw Bayesian templates FITS file, overriding
+            the ``GRIDNUM``/``IMF``/``templatedir`` reconstruction. Not
+            read back from ``gridfile``'s header -- that path may not
+            resolve on this machine (e.g. switching between NERSC and a
+            laptop) -- so pass it explicitly here (or via ``--templatesfile``)
+            when the templates live somewhere non-standard.
+
+        """
         if self.file == gridfile:
             return
 
@@ -132,7 +144,10 @@ class BayesianGrid(object):
         self.gridnumber = prihdr.get('GRIDNUM')
         self.imf = prihdr.get('IMF')
         self.fphotofile = prihdr.get('FPHOTO')
-        self.templates_file = self.get_templates_filename(self.gridnumber, self.imf, templatedir=templatedir)
+        if templatesfile is not None:
+            self.templates_file = os.path.expandvars(templatesfile)
+        else:
+            self.templates_file = self.get_templates_filename(self.gridnumber, self.imf, templatedir=templatedir)
         self.logspace = bool(prihdr.get('LOGSPACE'))
 
         photsys_hdr = prihdr.get('PHOTSYS')
@@ -200,7 +215,9 @@ class BayesianGrid(object):
         """
         if self._templates_fits is None:
             if not self.templates_file:
-                errmsg = f'Grid file {self.file} has no TEMPFILE header keyword.'
+                errmsg = (f'Could not resolve a raw templates file for grid {self.file} '
+                          '(missing GRIDNUM/IMF header keyword(s), or $FTEMPLATES_DIR is unset; '
+                          'check --templatedir or pass --templatesfile explicitly).')
                 log.critical(errmsg)
                 raise ValueError(errmsg)
             self._templates_fits = fitsio.FITS(self.templates_file)
@@ -294,7 +311,8 @@ _cosmo = None
 
 
 def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=None,
-                                  require_templates=True, mapdir=None, cutout_unreachable=None):
+                                  templatesfile=None, require_templates=True, mapdir=None,
+                                  cutout_unreachable=None):
     """MPPool initializer: populate ``sc_data.photometry``, ``bg_data``, the
     IGM model, and the cosmology in each worker.
 
@@ -308,6 +326,9 @@ def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=No
 
     Parameters
     ----------
+    templatesfile : :class:`str` or None, optional
+        Full path to the raw Bayesian templates FITS file, overriding
+        ``templatedir`` reconstruction. See :meth:`BayesianGrid.load`.
     mapdir : :class:`str` or None, optional
         Directory containing the Milky Way dust maps; defaults to
         ``$DUST_DIR/maps`` when ``None``. Not needed by
@@ -339,7 +360,7 @@ def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=No
 
     sc_data.photometry = Photometry(fphotofile=fphotofile)
     sc_data.set_mapdir(mapdir)
-    bg_data.load(gridfile, templatedir=templatedir)
+    bg_data.load(gridfile, templatedir=templatedir, templatesfile=templatesfile)
 
     if cutout_unreachable is not None:
         import fastspecfit.qa as qa_module
@@ -347,7 +368,7 @@ def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=No
 
     if require_templates and not os.path.isfile(bg_data.templates_file):
         errmsg = (f'Bayesian templates file {bg_data.templates_file} not found; '
-                  'check $FTEMPLATES_DIR or --templatedir.')
+                  'check $FTEMPLATES_DIR, --templatedir, or --templatesfile.')
         log.critical(errmsg)
         raise IOError(errmsg)
 
@@ -1451,7 +1472,12 @@ def parse(options=None):
                         '(output of bin/build-bayesian-photometry).')
     parser.add_argument('--templatedir', type=str, default=None,
                         help='Top-level location of the raw Bayesian templates file '
-                        '(default: $FTEMPLATES_DIR/bayesian).')
+                        '(default: $FTEMPLATES_DIR/bayesian); ignored if --templatesfile is given.')
+    parser.add_argument('--templatesfile', type=str, default=None,
+                        help='Full path to the raw Bayesian templates FITS file, overriding '
+                        '--templatedir/$FTEMPLATES_DIR reconstruction from the --gridfile header '
+                        '(useful when the templates live somewhere non-standard, e.g. switching '
+                        'between NERSC and a laptop).')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to process in each file, zero-indexed.')
@@ -1515,7 +1541,7 @@ def fastbayes(args=None, mp_pool=None):
         envlist.append('DUST_DIR')
     if args.fphotodir is None:
         envlist.append('FPHOTO_DIR')
-    if args.templatedir is None:
+    if args.templatesfile is None and args.templatedir is None:
         envlist.append('FTEMPLATES_DIR')
     for env in envlist:
         if env not in os.environ:
@@ -1544,7 +1570,8 @@ def fastbayes(args=None, mp_pool=None):
         raise IOError(errmsg)
 
     init_argdict = {'fphotofile': args.fphotofile, 'gridfile': gridfile,
-                    'templatedir': args.templatedir, 'mapdir': args.mapdir}
+                    'templatedir': args.templatedir, 'templatesfile': args.templatesfile,
+                    'mapdir': args.mapdir}
 
     t0 = time.time()
     _initialize_fastbayes_workers(**init_argdict)

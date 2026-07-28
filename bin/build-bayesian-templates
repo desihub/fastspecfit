@@ -42,7 +42,7 @@ Total grid size: 20 x 4 x 6 x 4 x 4 x 4 x 3 = 92,160 models.
 
 Output Files
 ------------
-``<templatedir>/<gridnumber>/bayesian-templates-{imf}-{gridnumber}.fits``
+``<templatedir>/bayesian-templates-{imf}-{gridnumber}.fits``
 
 ``FLUX`` (Primary HDU, float32 [nwave x nmodel])
     SSP spectra (stellar continuum + nebular emission + dust attenuation
@@ -248,20 +248,20 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, test=False):
         ``'salpeter'``, or ``'kroupa'``.
     gridnumber : :class:`str`
         Grid identifier (e.g., ``'001'``), embedded in the output
-        directory and filename in place of a version string.
+        filename in place of a version string.
     templatedir : :class:`str`
-        Root output directory; the FITS file is written to
-        ``<templatedir>/<gridnumber>/``.
+        Root output directory; the FITS file is written directly to
+        ``<templatedir>/`` (flat -- no per-grid subdirectory, since the
+        filename already disambiguates by ``imf`` and ``gridnumber``).
     test : :class:`bool`, optional
         If ``True``, build a tiny test grid. Default is ``False``.
 
     """
     meta, wave, fluxes, libraries = build_bayesian_grid(imf=imf, test=test)
 
-    outdir = os.path.join(templatedir, gridnumber)
-    if not os.path.isdir(outdir):
-        os.makedirs(outdir, exist_ok=True)
-    outfile = os.path.join(outdir, f'bayesian-templates-{imf}-{gridnumber}.fits')
+    if not os.path.isdir(templatedir):
+        os.makedirs(templatedir, exist_ok=True)
+    outfile = os.path.join(templatedir, f'bayesian-templates-{imf}-{gridnumber}.fits')
 
     hduflux = fits.PrimaryHDU(fluxes)
     hduflux.header['EXTNAME'] = 'FLUX'
