@@ -61,10 +61,14 @@ omitted when ``--no-agn`` is passed.
 
 ``FLUX`` (Primary HDU, float64 [nwave x nmodel])
     Stellar continuum plus nebular emission in units of
-    erg/s/cm2/Angstrom at 10 pc per solar mass formed. Header keywords
-    record the version string, python-fsps version and commit hash,
-    and the FSPS isochrone, spectral, and dust-emission libraries in
-    use.
+    erg/s/cm2/Angstrom at 10 pc per solar mass formed. The ``VERSION``
+    keyword records the version string. Software/library provenance
+    (loaded module versions, ``$FTEMPLATES_DIR``, python-fsps version
+    and commit hash, and the FSPS isochrone, spectral, and
+    dust-emission libraries in use) is recorded via
+    ``desiutil.depend`` as ``DEPNAMnn``/``DEPVERnn`` keyword pairs
+    (see :func:`desiutil.depend.setdep`), mirroring
+    ``fastspecfit.io.write_fastspecfit``.
 
 ``LINEFLUX`` (float64 [nwave x nmodel])
     Isolated nebular emission (``FLUX`` minus the continuum-only pass).
@@ -670,6 +674,8 @@ def main(imf='chabrier', logmets=[0.0], agelims=None, qpah=1.0, umin=1., gamma=0
         ``$FTEMPLATES_DIR/original`` when ``None``.
 
     """
+    from desiutil.depend import add_dependencies, possible_dependencies, setdep
+
     custom_tag = tag is not None
     if tag is None:
         tag = version
@@ -777,11 +783,17 @@ def main(imf='chabrier', logmets=[0.0], agelims=None, qpah=1.0, umin=1., gamma=0
     hduflux1.header['EXTNAME'] = 'FLUX'
     hduflux1.header['VERSION'] = version
     hduflux1.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
-    hduflux1.header['PYFSPSV'] = (fsps.__version__, 'python-fsps version')
-    hduflux1.header['FSPSHASH'] = (fsps.fsps_version.commit_id, 'python-fsps/FSPS git commit')
-    hduflux1.header['ISOCHRON'] = (libraries[0], 'FSPS isochrone library')
-    hduflux1.header['SPECLIB'] = (libraries[1], 'FSPS stellar spectral library')
-    hduflux1.header['DUSTLIB'] = (libraries[2], 'FSPS dust-emission library')
+    add_dependencies(hduflux1.header, module_names=possible_dependencies+['fastspecfit'],
+                     envvar_names=('FTEMPLATES_DIR',))
+    # python-fsps isn't in possible_dependencies (so add_dependencies never
+    # auto-detects it), and the FSPS libraries in use aren't module versions
+    # at all but configuration choices baked into this specific templates
+    # file -- both recorded explicitly here as dependency entries.
+    setdep(hduflux1.header, 'PYFSPSV', fsps.__version__)
+    setdep(hduflux1.header, 'FSPSHASH', fsps.fsps_version.commit_id)
+    setdep(hduflux1.header, 'ISOCHRON', libraries[0])
+    setdep(hduflux1.header, 'SPECLIB', libraries[1])
+    setdep(hduflux1.header, 'DUSTLIB', libraries[2])
 
     hduflux2 = fits.ImageHDU(lineflux)
     hduflux2.header['EXTNAME'] = 'LINEFLUX'
