@@ -47,13 +47,21 @@ _AXIS_OUTNAME = {
 }
 _OUTNAME_TO_AXIS = {v: k for k, v in _AXIS_OUTNAME.items()}
 
-# All reported parameters: the 7 grid axes, plus LOGMSTAR and LOGSFR, which
-# are derived per-object from the closed-form amplitude solve.
-PARAM_NAMES = tuple(_AXIS_OUTNAME[col] for col in GRID_AXIS_COLUMNS) + ('LOGMSTAR', 'LOGSFR')
+# All reported parameters: the 7 grid axes, plus LOGMSTAR and SFR, which
+# are derived per-object from the closed-form amplitude solve. SFR (unlike
+# LOGMSTAR) is reported in linear space, matching fastspecfit.continuum's
+# SFR/SFR_IVAR convention: bg_data.sfr is exactly zero for every template
+# older than SFR_AVG_WINDOW_GYR (passively-evolving SSPs), and a log
+# transform cannot represent that exactly, forcing an arbitrary floor that
+# collapses every quiescent template onto one identical value and produces
+# a spuriously tiny (or exactly zero) log-space posterior variance --
+# reporting SFR linearly instead lets SFR=0 be an exact, well-behaved
+# output with a meaningful (possibly zero) formal uncertainty.
+PARAM_NAMES = tuple(_AXIS_OUTNAME[col] for col in GRID_AXIS_COLUMNS) + ('LOGMSTAR', 'SFR')
 
 # Subset (and display order) of PARAM_NAMES shown in the QA posterior panel;
 # the full 9-parameter grid is overkill for a quick-look figure.
-QA_POSTERIOR_PARAMS = ('LOGZZSUN', 'LOGAGE', 'LOGMSTAR', 'LOGSFR')
+QA_POSTERIOR_PARAMS = ('LOGZZSUN', 'LOGAGE', 'LOGMSTAR', 'SFR')
 
 # Human-friendly axis labels for the QA posterior-histogram grid.
 _PARAM_LABELS = {
@@ -65,7 +73,7 @@ _PARAM_LABELS = {
     'GAMMA': r'$\gamma$',
     'LOGQPAH': r'$\log_{10}(Q_{\rm PAH})$',
     'LOGMSTAR': r'$\log_{10}(M/M_{\odot})$',
-    'LOGSFR': r'$\log_{10}({\rm SFR}/[M_{\odot}/{\rm yr}])$',
+    'SFR': r'${\rm SFR}\ [M_{\odot}/{\rm yr}]$',
 }
 
 # Rest-frame luminosity output keys and reference wavelengths (Angstrom),
@@ -721,10 +729,10 @@ def get_fastbayes_dtype(phot, topk=0):
     for col in GRID_AXIS_COLUMNS:
         cols += [(f'{_AXIS_OUTNAME[col]}_IVAR', 'f4')]
 
-    # LOGMSTAR/LOGSFR are derived quantities without a directly fit chi2(x)
+    # LOGMSTAR/SFR are derived quantities without a directly fit chi2(x)
     # curve, so their uncertainty is instead estimated from the weighted
     # variance of their discrete-grid posterior.
-    cols += [('LOGMSTAR_IVAR', 'f4'), ('LOGSFR_IVAR', 'f4')]
+    cols += [('LOGMSTAR_IVAR', 'f4'), ('SFR_IVAR', 'f4')]
 
     cols += [('CHI2', 'f4'), ('NDOF', 'i2')]
 
@@ -827,16 +835,15 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
 
     # The grid stores sfr per solar mass formed (like the flux templates
     # themselves), so scale by the fitted mass amplitude to get each
-    # template's actual SFR estimate for this object. Guard against
-    # zero/negative SFR (e.g., old, passively evolving SSPs) before taking
-    # the log, given LOGSFR's large dynamic range.
+    # template's actual SFR estimate for this object. Reported linearly
+    # (not logged): bg_data.sfr is exactly zero for every template older
+    # than SFR_AVG_WINDOW_GYR, and SFR=0 is a valid, physically meaningful
+    # value (passively evolving SSP) that a log transform cannot represent.
     sfr_per_template = amplitude * bg_data.sfr # [ntemplate], Msun/yr
-    logsfr_per_template = np.log10(np.clip(sfr_per_template, 1e-30, None))
 
     refined_logmstar = np.log10(max(refined_amplitude, 1e-30))
     refined_sfr_per_msun = np.sum(corner_weight * bg_data.sfr[corner_idx])
     refined_sfr = refined_amplitude * refined_sfr_per_msun
-    refined_logsfr = np.log10(max(refined_sfr, 1e-30))
 
     # --- refined rest-frame spectrum (N-linear combination of the
     # neighboring raw template spectra), scaled by the refined mass -------
@@ -874,8 +881,8 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
         lums[key] = np.log10(val) if val > 0. else 0.
 
     # --- fill the output row ------------------------------------------------
-    derived = {'LOGMSTAR': refined_logmstar, 'LOGSFR': refined_logsfr}
-    posterior = {'LOGMSTAR': logmstar, 'LOGSFR': logsfr_per_template}
+    derived = {'LOGMSTAR': refined_logmstar, 'SFR': refined_sfr}
+    posterior = {'LOGMSTAR': logmstar, 'SFR': sfr_per_template}
 
     for col in GRID_AXIS_COLUMNS:
         pname = _AXIS_OUTNAME[col]
@@ -899,7 +906,7 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
         result[f'{pname}_P50'] = p50
         result[f'{pname}_P84'] = p84
 
-        # LOGMSTAR/LOGSFR have no direct grid axis (and hence no delta-chi2=1
+        # LOGMSTAR/SFR have no direct grid axis (and hence no delta-chi2=1
         # parabola fit), so estimate their formal uncertainty from the
         # weighted variance of their discrete-grid posterior instead.
         if pname in derived:
@@ -1016,8 +1023,7 @@ def fastbayes_qa_one(iobj, meta, result, restwave, restflux, qadir='.', coadd_ty
 
     logmstar = np.log10(np.clip(amplitude, 1e-30, None))
     sfr_per_template = amplitude * bg_data.sfr # [ntemplate], Msun/yr
-    logsfr_per_template = np.log10(np.clip(sfr_per_template, 1e-30, None))
-    posterior = {'LOGMSTAR': logmstar, 'LOGSFR': logsfr_per_template}
+    posterior = {'LOGMSTAR': logmstar, 'SFR': sfr_per_template}
 
     posterior_arrays = {}
     for pname in PARAM_NAMES:
@@ -1332,14 +1338,14 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         r'$\log_{{10}}(\mathrm{{Age}}/\mathrm{{Gyr}})={}$'.format(
             _fmt(result['LOGAGE'], result['LOGAGE_IVAR'], '{:.2f}')),
         r'$\log_{{10}}(M/M_{{\odot}})={}$'.format(_fmt(result['LOGMSTAR'], result['LOGMSTAR_IVAR'], '{:.2f}')),
-        r'$\log_{{10}}(\mathrm{{SFR}}/[M_{{\odot}}/\mathrm{{yr}}])={}$'.format(
-            _fmt(result['LOGSFR'], result['LOGSFR_IVAR'], '{:.2f}')),
+        r'$\mathrm{{SFR}}={}\ M_{{\odot}}/\mathrm{{yr}}$'.format(
+            _fmt(result['SFR'], result['SFR_IVAR'], '{:.3g}')),
     ]
     fig.text(cpos.x1+0.04, ytext, '\n'.join(txt), ha='right', va='top', fontsize=fontsize1,
              bbox=bbox, linespacing=1.6)
 
     # --- posterior panel: weighted 1D marginal histogram, one row of
-    # QA_POSTERIOR_PARAMS (Z/Zsun, age, LOGMSTAR, LOGSFR) --------------------
+    # QA_POSTERIOR_PARAMS (Z/Zsun, age, LOGMSTAR, SFR) --------------------
     # A standalone gridspec (not a subgridspec of `gs`) so its right edge can
     # extend past gs's own right margin to cpos.x1 + 0.04, matching the
     # right-hand gray box/Dec label; top/bottom match row 4 of `gs` exactly.
@@ -1359,7 +1365,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
             width = np.min(np.diff(uniq)) * 0.8 if len(uniq) > 1 else 1.
             ax.bar(uniq, binweight, width=width, color='gray', edgecolor='k', alpha=0.8)
         else:
-            # derived quantity (LOGMSTAR/LOGSFR): continuous across the
+            # derived quantity (LOGMSTAR/SFR): continuous across the
             # grid, so zoom the range to where the posterior weight
             # actually is rather than the full (often much wider) range
             lo, hi = _weighted_percentile(vals, w, (0.5, 99.5))
