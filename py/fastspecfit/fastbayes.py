@@ -1123,7 +1123,8 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
             return fmt.format(val) + r'\pm' + fmt.format(1. / np.sqrt(ivar))
         return fmt.format(val)
 
-    pngfile = get_qa_filename(meta, coadd_type, outprefix='fastbayes', outdir=outdir)
+    pngfile = get_qa_filename(meta, coadd_type, outprefix='fastbayes', outdir=outdir,
+                              uniqueid_col=phot.uniqueid_col)
     figdir = os.path.dirname(pngfile)
     if figdir and not os.path.isdir(figdir):
         os.makedirs(figdir, exist_ok=True)
@@ -1290,7 +1291,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     # outside the shrunk box near the cell's edges.
     cpos = cutgs.get_position(fig)
     spos = sedax.get_position()
-    fig.text(cpos.x0, cpos.y1 + 0.02, '\n'.join(_target_label(meta, coadd_type)),
+    fig.text(cpos.x0, cpos.y1 + 0.02, '\n'.join(_target_label(meta, coadd_type, uniqueid_col=phot.uniqueid_col)),
              ha='left', va='bottom', fontsize=fontsize2, linespacing=1.4)
     fig.text((spos.x0 + spos.x1) / 2., spos.y1 + 0.05, r'Rest-frame Wavelength ($\mu$m)',
              ha='center', va='bottom', fontsize=fontsize2)
@@ -1703,10 +1704,19 @@ def parse_qa(options=None):
                         'used at fit time if a custom one was used).')
     parser.add_argument('--qadir', type=str, default='.', help='Output directory for QA figures.')
     parser.add_argument('--coadd-type', dest='coadd_type', type=str, default='healpix',
-                        choices=['healpix', 'uniqpix', 'cumulative', 'pernight', 'perexp', 'custom', 'stacked'],
+                        choices=['healpix', 'uniqpix', 'cumulative', 'pernight', 'perexp', 'custom',
+                                'stacked', 'external'],
                         help='Coadd type, used to build the QA target label/filename (not stored in the '
-                        'FASTBAYES output file, so it cannot be inferred).')
+                        'FASTBAYES output file, so it cannot be inferred). Use "external" for non-DESI '
+                        'samples (e.g., built from a custom photometry file), identified by the '
+                        'photometry configuration\'s uniqueid column rather than SURVEY/PROGRAM/HEALPIX/'
+                        'TARGETID.')
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
+    parser.add_argument('--uniqueids', type=str, default=None,
+                        help='Comma-separated list of integer IDs to process, matched against the '
+                        'photometry configuration\'s uniqueid column instead of TARGETID. Use for '
+                        'external/non-DESI samples (e.g., --coadd-type=external); ignored if '
+                        '--targetids is also given.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of objects to process.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to process, zero-indexed.')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads.')
@@ -1792,6 +1802,17 @@ def fastbayes_qa(args=None, mp_pool=None):
         keep = np.where(np.isin(meta['TARGETID'], targetids))[0]
         if len(keep) == 0:
             log.warning('No objects match the requested --targetids.')
+            return 0
+    elif args.uniqueids is not None:
+        # For external/non-DESI samples, matched against the photometry
+        # configuration's uniqueid column instead of the literal TARGETID
+        # column; --targetids (above) is left untouched so default DESI
+        # behavior is unaffected.
+        uniqueid_col = Photometry(fphotofile=fphotofile).uniqueid_col
+        uniqueids = [int(x) for x in args.uniqueids.split(',')]
+        keep = np.where(np.isin(meta[uniqueid_col], uniqueids))[0]
+        if len(keep) == 0:
+            log.warning('No objects match the requested --uniqueids.')
             return 0
     else:
         firsttarget = args.firsttarget

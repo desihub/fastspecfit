@@ -234,7 +234,7 @@ def format_niceline(line):
             return line
 
 
-def _target_label(metadata, coadd_type):
+def _target_label(metadata, coadd_type, uniqueid_col=None):
     """Build target identification strings for the QA figure legend.
 
     Parameters
@@ -243,6 +243,11 @@ def _target_label(metadata, coadd_type):
         Object metadata.
     coadd_type : :class:`str`
         Coadd type (e.g., ``'healpix'``).
+    uniqueid_col : :class:`str` or None, optional
+        Column name identifying each target, used only when
+        ``coadd_type='external'`` (non-DESI samples with no
+        SURVEY/PROGRAM/HEALPIX/TARGETID structure). Defaults to
+        ``sc_data.photometry.uniqueid_col`` when ``None``.
 
     Returns
     -------
@@ -282,6 +287,10 @@ def _target_label(metadata, coadd_type):
         ]
     elif coadd_type == 'stacked':
         return ['StackID: {}'.format(metadata['STACKID']), '']
+    elif coadd_type == 'external':
+        if uniqueid_col is None:
+            uniqueid_col = sc_data.photometry.uniqueid_col
+        return [f'{uniqueid_col}: {metadata[uniqueid_col]}', '']
     else:
         errmsg = 'Unrecognized coadd_type {}!'.format(coadd_type)
         log.critical(errmsg)
