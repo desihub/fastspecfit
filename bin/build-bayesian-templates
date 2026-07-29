@@ -31,14 +31,27 @@ Axis                     N    Range
 ======================  ===  ========================================
 log10(age/yr)            20   7.000 to 10.137 (linear spacing; up to 13.7 Gyr)
 log10(Z/Zsun)             4   -0.8 to 0.2 (linear spacing)
-tau (dust2 optical depth) 6   0.0 to 3.0 (linear spacing)
-dustn (dust_index)        4   -1.0 to 0.4 (linear spacing)
-dust-emission Umin        4   0.1 to 80.0 (log spacing)
-dust-emission gamma       4   0.005 to 0.04 (linear spacing)
-dust-emission Qpah        3   0.1 to 5.0 (log spacing)
+tau (dust2 optical depth) 12   0.0 to 4.0 (linear spacing)
+dustn (dust_index)        8   -1.5 to 0.4 (linear spacing)
+dust-emission Umin        2   0.1 to 15.0 (log spacing)
+dust-emission gamma       2   0.0 to 0.15 (linear spacing)
+dust-emission Qpah        3   0.1 to 7.0 (log spacing)
 ======================  ===  ========================================
 
-Total grid size: 20 x 4 x 6 x 4 x 4 x 4 x 3 = 92,160 models.
+The tau/dustn/Umin/gamma/Qpah ranges and resolutions follow a grid-design
+review (2026): tau and dustn are well constrained by the UV/optical/NIR SED
+shape alone, so both keep (or gain) resolution and their upper bounds are
+widened to match Leja+2017's fiducial prior range so the dustiest SGA
+galaxies (edge-on spirals, LIRG-like systems) aren't truncated (dustn's
+upper bound stops short of Leja+2017's full -2.2 literature bound, since
+that extreme is rarely physical for SGA's population). Umin and gamma are
+essentially unconstrained without far-IR photometry (Leja+2017 App. C), so
+each collapses to a coarse low/high pair spanning their Herschel-informed
+fiducial range. Qpah is comparatively well constrained by mid-IR photometry
+alone even without far-IR, so it keeps its full 3-point resolution, only
+widening its upper bound to match Leja+2017's fiducial range.
+
+Total grid size: 20 x 4 x 12 x 8 x 2 x 2 x 3 = 92,160 models.
 
 Output Files
 ------------
@@ -62,7 +75,11 @@ Output Files
 ``METADATA`` (table, nmodel rows)
     Per-model grid parameters: ``age`` (Gyr), ``zzsun`` (Z/Zsun), ``tau``,
     ``dustn``, ``umin``, ``gamma``, ``qpah``, ``sfr``, and ``mstar``
-    (surviving stellar mass fraction per solar mass formed).
+    (surviving stellar mass fraction per solar mass formed); plus, for
+    fastbayes's cheap per-object LOGL_*/DN4000_MODEL uncertainty estimates
+    (see fastspecfit.fastbayes.BayesianGrid), the precomputed rest-frame
+    ``dn4000_model`` index and one ``<lumkey>_permass`` column (linear,
+    per solar mass formed) for each of fastspecfit.fastbayes.LUM_KEYS.
 
 Notes
 -----
@@ -125,11 +142,25 @@ def build_bayesian_grid(imf='chabrier', test=False):
     else:
         nages, minlogage, maxlogage = 20, 7., 10.137
         nmets, minlogmet, maxlogmet = 4, -0.8, 0.2
-        ntaus, mintau, maxtau = 6, 0., 3.
-        ndustns, mindustn, maxdustn = 4, -1.0, 0.4
-        numins, minumin, maxumin = 4, 0.1, 80.0
-        ngammas, mingamma, maxgamma = 4, 0.005, 0.04
-        nqpahs, minqpah, maxqpah = 3, 0.1, 5.0
+        # tau is well constrained by the UV/optical/NIR SED shape alone, so
+        # resolution doubles; upper bound widened to Leja+17's fiducial
+        # range so the dustiest SGA galaxies aren't truncated.
+        ntaus, mintau, maxtau = 12, 0., 4.
+        # dustn is likewise well constrained by the SED shape; resolution
+        # doubles and the range widens toward (but short of) Leja+17's full
+        # -2.2 literature bound, which is rarely physical for SGA galaxies.
+        ndustns, mindustn, maxdustn = 8, -1.5, 0.4
+        # Umin is essentially unconstrained without far-IR photometry
+        # (Leja+17 App. C), so it collapses to a coarse low/high pair
+        # spanning their Herschel-informed fiducial range.
+        numins, minumin, maxumin = 2, 0.1, 15.0
+        # gamma is only loosely constrained by mid-IR photometry, so it also
+        # collapses to a coarse pair, widened to Leja+17's fiducial range.
+        ngammas, mingamma, maxgamma = 2, 0.0, 0.15
+        # Qpah is comparatively well constrained by mid-IR photometry alone
+        # even without far-IR, so its resolution is kept at 3 points; only
+        # the upper bound widens to match Leja+17's fiducial range.
+        nqpahs, minqpah, maxqpah = 3, 0.1, 7.0
 
     logages = minlogage + (maxlogage - minlogage) * np.arange(nages) / np.float32(max(nages - 1, 1))
     logmets = minlogmet + (maxlogmet - minlogmet) * np.arange(nmets) / np.float32(max(nmets - 1, 1))
