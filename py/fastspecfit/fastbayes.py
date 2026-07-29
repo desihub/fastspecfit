@@ -904,7 +904,11 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
         # weighted variance of their discrete-grid posterior instead.
         if pname in derived:
             var = np.sum(weight * (vals - mean)**2)
-            result[f'{pname}_IVAR'] = 1. / var if var > 0. else 0.
+            # float(): comparing a huge Python float against a bare
+            # np.float32 scalar (rather than a plain Python float) itself
+            # triggers "overflow encountered in cast" -- numpy downcasts the
+            # comparison operand -- so keep the bound in float64.
+            result[f'{pname}_IVAR'] = min(1. / var, float(np.finfo(np.float32).max)) if var > 0. else 0.
 
     # dof = number of fitted bands minus the one continuous free parameter
     # (the per-template mass amplitude) solved for above.
