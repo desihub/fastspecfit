@@ -65,21 +65,28 @@ Axis & Symbol & $N$ & Range (spacing) \\
 \midrule
 Age & $\log_{10}(\mathrm{age/yr})$ & 20 & 7.000 to 10.137 (linear) \\
 Metallicity & $\log_{10}(Z/Z_\odot)$ & 4 & $-0.8$ to $0.2$ (linear) \\
-Dust optical depth & $\tau$ (\texttt{dust2}) & 6 & 0.0 to 3.0 (linear) \\
-Dust index & $n_{\rm dust}$ (\texttt{dust\_index}) & 4 & $-1.0$ to $0.4$ (linear) \\
-Dust-emission $U_{\rm min}$ & $\log_{10}(U_{\rm min})$ & 4 & 0.1 to 80.0 (log) \\
-Dust-emission $\gamma$ & $\gamma$ & 4 & 0.005 to 0.04 (linear) \\
-Dust-emission $Q_{\rm PAH}$ & $\log_{10}(Q_{\rm PAH})$ & 3 & 0.1 to 5.0 (log) \\
+Dust optical depth & $\tau$ (\texttt{dust2}) & 12 & 0.0 to 4.0 (linear) \\
+Dust index & $n_{\rm dust}$ (\texttt{dust\_index}) & 8 & $-1.5$ to $0.4$ (linear) \\
+Dust-emission $U_{\rm min}$ & $\log_{10}(U_{\rm min})$ & 2 & 0.1 to 15.0 (log) \\
+Dust-emission $\gamma$ & $\gamma$ & 2 & 0.0 to 0.15 (linear) \\
+Dust-emission $Q_{\rm PAH}$ & $\log_{10}(Q_{\rm PAH})$ & 3 & 0.1 to 7.0 (log) \\
 \bottomrule
 \end{tabular}
 \caption{The seven Bayesian grid axes (\texttt{GRID\_AXIS\_COLUMNS} in
   \texttt{fastspecfit.fastbayes}), in full-factorial nested-loop order.
-  Total grid size $20\times4\times6\times4\times4\times4\times3 = 92{,}160$
+  Total grid size $20\times4\times12\times8\times2\times2\times3 = 92{,}160$
   models. Axes built log-uniform (age, metallicity, $U_{\rm min}$,
   $Q_{\rm PAH}$) are refined and reported in $\log_{10}$ space so that
   their formal uncertainties (Section~\ref{sec:refine}) are symmetric;
   the remaining axes ($\tau$, $n_{\rm dust}$, $\gamma$) are refined and
-  reported in linear space.}
+  reported in linear space. $\tau$ and $n_{\rm dust}$ (well constrained by
+  the UV/optical/NIR SED shape alone) gained resolution and had their upper
+  bounds widened to match Leja et al. (2017)'s fiducial prior range, so the
+  dustiest galaxies (edge-on spirals, LIRG-like systems) aren't truncated;
+  $U_{\rm min}$ and $\gamma$ (essentially unconstrained without far-IR
+  photometry) instead collapsed to a coarse low/high pair spanning their
+  Herschel-informed fiducial range; $Q_{\rm PAH}$ (constrained by mid-IR
+  photometry alone) kept its resolution, with only its upper bound widened.}
 \label{tab:grid}
 \end{table}
 
@@ -115,10 +122,40 @@ $t_{\rm best} = \arg\min_t \chisq(t)$ and, via Gaussian likelihood weighting,
   \label{eq:weight}
 \end{equation}
 the full discrete posterior over every grid parameter (and over the derived
-quantities $\log_{10} M_\star$ and $\log_{10}\mathrm{SFR}$, obtained by
-scaling each template's tabulated per-unit-mass values by $\amp(t)$). Point
-estimates --- mean, mode, and the 16th/50th/84th percentiles --- are reported
-for every parameter directly from this weighted posterior.
+quantities $\log_{10} M_\star$ and $\mathrm{SFR}$, obtained by scaling each
+template's tabulated per-unit-mass values by $\amp(t)$). Point estimates ---
+mean, mode, and the 25th/50th/75th percentiles --- are reported for every
+parameter directly from this weighted posterior.
+
+\paragraph{Formal uncertainties.} A formal uncertainty $\sigma_x$ is also
+reported for every parameter $x$ --- the seven grid axes, $\log_{10}
+M_\star$, $\mathrm{SFR}$, and the rest-frame luminosities and $D_n(4000)$
+index of Section~\ref{sec:derived} --- as the square root of the weighted
+second moment of that parameter's marginalized discrete posterior,
+\begin{equation}
+  \sigma_x \;=\; \sqrt{\sum_t w(t)\,\bigl[x(t) - \bar{x}\bigr]^2},
+  \qquad \bar{x} \;=\; \sum_t w(t)\, x(t).
+  \label{eq:sigma}
+\end{equation}
+Because this is a genuinely marginal quantity, it grows to reflect real
+posterior structure --- multiple modes, skewness, parameter degeneracies
+(e.g., age--dust--metallicity) --- that the local $\Delta\chisq=1$ curvature
+of Section~\ref{sec:refine} cannot see, being confined to a single grid
+corner. The per-template value $x(t)$ entering Equation~\ref{eq:sigma}
+depends on how the parameter scales with the mass amplitude $\amp(t)$: for
+the seven grid axes and the model $D_n(4000)$ index (intensive quantities,
+unaffected by $\amp(t)$), $x(t)$ is simply the tabulated per-template value;
+for $\log_{10} M_\star$ and the rest-frame luminosities of
+Section~\ref{sec:derived} (both logarithmic and linear in $\amp(t)$),
+$x(t) = \log_{10}[\amp(t)] + \log_{10}[y_{\rm permass}(t)]$, using each
+template's tabulated per-unit-mass value $y_{\rm permass}(t)$ --- one extra
+per-template array lookup, not a per-object model rebuild; for
+$\mathrm{SFR}$ (linear in $\amp(t)$, but reported and weighted in linear
+space so that $\mathrm{SFR}=0$ remains exact, see below), $x(t) =
+\amp(t)\, \mathrm{sfr}_{\rm permass}(t)$ directly. Absolute magnitudes and
+K-corrections (Section~\ref{sec:derived}) are the one exception: their
+reported uncertainty comes instead from the real observed photometry, not
+this marginalized SED-fit posterior.
 
 \paragraph{SFR proxy.} Each grid point is an instantaneous single-burst SSP,
 for which FSPS's native ``current'' SFR is identically zero at any lookback
@@ -150,13 +187,18 @@ Recasting that parabola as
   \chisq(x) \;=\; \chisq_0 + \left(\frac{x - x_0}{\delta x}\right)^2
   \label{eq:parabola}
 \end{equation}
-gives both the refined coordinate $x_0$ along axis $a$ and its formal
-$\Delta\chisq=1$ uncertainty $\delta x$ directly from the quadratic
-coefficient ($\delta x = 1/\sqrt{a}$ for $\chisq = a x^2 + bx + c$). The
-refinement is skipped
-(falling back to the discrete grid value, with zero formal uncertainty)
-whenever $i_0$ is at a grid edge, the fit is degenerate or concave-down, or
-the vertex $x_0$ falls outside the three-point bracket.
+gives the refined coordinate $x_0$ along axis $a$, plus a $\Delta\chisq=1$
+curvature width $\delta x$ ($\delta x = 1/\sqrt{a}$ for
+$\chisq = a x^2 + bx + c$) used only as a validity check on the fit (a
+concave-down or degenerate parabola, i.e.\ $a \le 0$, invalidates the
+refinement); $\delta x$ is not itself reported as a formal uncertainty ---
+that instead comes from the marginalized-posterior second moment
+$\sigma_x$ of Equation~\ref{eq:sigma}, which is not confined to a single
+grid corner and so captures real posterior structure that this local
+curvature cannot. The refinement is skipped entirely (falling back to the
+discrete grid value) whenever $i_0$ is at a grid edge, the fit is
+degenerate or concave-down, or the vertex $x_0$ falls outside the
+three-point bracket.
 
 \paragraph{N-linear interpolation.} The same per-axis fractional offset
 $f_a \in [0,1)$ toward the nearer neighbor (zero when unrefined) feeds an
@@ -174,7 +216,12 @@ The refined model photometry, mass amplitude, and $\chisq$
 (equations~\ref{eq:amplitude}--\ref{eq:chi2}) are then recomputed from the
 $w_\kappa$-weighted combination of the corner templates' photometry, so the
 reported \texttt{CHI2} corresponds to the same refined model as the reported
-parameters, not the unrefined discrete grid point. The corner templates'
+parameters, not the unrefined discrete grid point. This same refined model
+photometry, scaled by the refined mass amplitude, is written to the
+\texttt{METADATA} output as \texttt{FLUX\_SYNTH\_PHOTMODEL\_*} --- the
+grid-interpolated synthetic photometry consistent with what $\chisq$ was
+actually computed from, as opposed to a fresh resynthesis of the resampled
+rest-frame spectrum below. The corner templates'
 raw rest-frame spectra are combined the same way (weighted by $w_\kappa$ and
 scaled by the refined mass amplitude) to build the one refined rest-frame
 spectrum used for the derived quantities in Section~\ref{sec:derived} and
@@ -188,18 +235,35 @@ already baked into the photometry grid by \texttt{bin/build-bayesian-photometry}
 \texttt{fastbayes} only needs the IGM model and cosmology directly to redshift
 the one refined rest-frame spectrum per object, for:
 \begin{itemize}
-\item \textbf{K-corrections and absolute magnitudes}, via
-  \texttt{Photometry.kcorr\_and\_absmag} (the same routine used by
-  \texttt{fastspec}/\texttt{fastphot});
+\item \textbf{K-corrections and absolute magnitudes}
+  (\texttt{KCORR*}/\texttt{ABSMAG*}), from the same routine used by
+  \texttt{fastspec}/\texttt{fastphot}, which also returns the purely
+  synthetic, non-K-corrected model magnitude (\texttt{ABSMAG*\_SYNTH}) and
+  propagates the real observed photometry's own inverse variance into
+  \texttt{ABSMAG*\_IVAR} --- the one reported uncertainty in this section
+  \emph{not} drawn from the SED-fit posterior of Section~\ref{sec:fit};
 \item \textbf{Rest-frame luminosities} at a fixed set of reference
-  wavelengths (1450, 1500, 1700, 2800, 3000, 5100~\AA), by linear
-  interpolation of the refined rest-frame spectrum;
+  wavelengths (1450, 1500, 1700, 2800, 3000, 5100~\AA, plus 3.4, 12, and
+  22~$\mu$m --- roughly WISE $W1$/$W3$/$W4$ --- as monochromatic
+  IR/SFR indicators for samples with adequate IR photometric coverage), by
+  linear interpolation of the refined rest-frame spectrum;
 \item \textbf{The model $D_n(4000)$ index}, from the refined rest-frame
   spectrum directly.
 \end{itemize}
-These are point estimates only; no Monte Carlo/uncertainty propagation
-analogous to \textsc{FastSpecFit}'s \texttt{nmonte} machinery exists yet for
-this mode.
+The rest-frame luminosities and $D_n(4000)$ index depend only on a
+template's intrinsic rest-frame spectral shape, not on redshift or observed
+photometry, so \texttt{bin/build-bayesian-templates} precomputes each
+template's $D_n(4000)$ index and per-unit-mass monochromatic luminosities
+once, at grid-build time, and stores them as additional \texttt{METADATA}
+columns (mirroring \texttt{sfr}/\texttt{mstar}). Their formal uncertainties
+(Equation~\ref{eq:sigma}) then require no per-object model rebuild --- just
+one extra pair of vectorized array operations over the full, already-cached
+posterior weights $w(t)$, unlike the point estimates above, which still
+require the one refined rest-frame spectrum. No Monte Carlo/uncertainty
+propagation analogous to \textsc{FastSpecFit}'s \texttt{nmonte} machinery
+exists for this mode; every uncertainty reported here comes instead from
+either the marginalized discrete posterior or the real observed photometry,
+as described above.
 
 \section*{Acknowledgments}
 
