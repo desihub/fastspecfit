@@ -77,11 +77,16 @@ _PARAM_LABELS = {
     'SFR': r'${\rm SFR}\ [M_{\odot}/{\rm yr}]$',
 }
 
-# Rest-frame luminosity output keys and reference wavelengths (Angstrom),
-# matching the LOGL_*/LOGLNU_* columns in fastspecfit's own SPECPHOT schema
-# (see fastspecfit.continuum.ContinuumTools.lums_keys).
-LUM_KEYS = ('LOGL_1450', 'LOGLNU_1500', 'LOGL_1700', 'LOGLNU_2800', 'LOGL_3000', 'LOGL_5100')
-LUM_WAVES = (1450., 1500., 1700., 2800., 3000., 5100.)
+# Rest-frame luminosity output keys and reference wavelengths (Angstrom).
+# The first six match the LOGL_*/LOGLNU_* columns in fastspecfit's own
+# SPECPHOT schema (see fastspecfit.continuum.ContinuumTools.lums_keys); the
+# last three (3.4, 12, and 22 micron, roughly WISE W1/W3/W4) are fastbayes-
+# specific -- monochromatic IR luminosities usable as SFR indicators given
+# adequate IR photometric coverage -- and have no main-pipeline counterpart
+# since the fastspec/fastphot SPS templates have no dust re-emission.
+LUM_KEYS = ('LOGL_1450', 'LOGLNU_1500', 'LOGL_1700', 'LOGLNU_2800', 'LOGL_3000', 'LOGL_5100',
+           'LOGL_3MU', 'LOGL_12MU', 'LOGL_22MU')
+LUM_WAVES = (1450., 1500., 1700., 2800., 3000., 5100., 34000., 120000., 220000.)
 
 _PC_CM = 3.0856775814913673e18 # [cm]
 _LSUN = 3.846e33 # [erg/s]
