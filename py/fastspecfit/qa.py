@@ -813,7 +813,8 @@ def _fetch_cutout(metadata, outdir, pngfile, layer, pixscale):
     try:
         img = mpimg.imread(cutoutjpeg)
     except:
-        log.warning(f'Problem reading cutout for targetid {metadata["TARGETID"]}.')
+        log.warning(f'Problem reading cutout for {sc_data.photometry.uniqueid_col.lower()} '
+                   f'{metadata[sc_data.photometry.uniqueid_col]}.')
         img = np.zeros((height, width, 3))
 
     if os.path.isfile(cutoutjpeg):
