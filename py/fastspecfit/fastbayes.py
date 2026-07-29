@@ -26,7 +26,7 @@ import fitsio
 from astropy.table import Table
 
 from fastspecfit.logger import log
-from fastspecfit.util import MPPool, fsftime, ZWarningMask, C_LIGHT, TINY, F32MAX
+from fastspecfit.util import MPPool, fsftime, ZWarningMask, C_LIGHT
 from fastspecfit.photometry import Photometry
 from fastspecfit.singlecopy import sc_data
 
@@ -59,9 +59,10 @@ _OUTNAME_TO_AXIS = {v: k for k, v in _AXIS_OUTNAME.items()}
 # output with a meaningful (possibly zero) formal uncertainty.
 PARAM_NAMES = tuple(_AXIS_OUTNAME[col] for col in GRID_AXIS_COLUMNS) + ('LOGMSTAR', 'SFR')
 
-# Subset (and display order) of PARAM_NAMES shown in the QA posterior panel;
-# the full 9-parameter grid is overkill for a quick-look figure.
-QA_POSTERIOR_PARAMS = ('LOGZZSUN', 'LOGAGE', 'LOGMSTAR', 'SFR')
+# Subset (and display order) of PARAM_NAMES shown in the QA posterior panel
+# (laid out as 2 rows of 3: Z/age/mass, then SFR/tau/dustn); the full
+# 9-parameter grid is overkill for a quick-look figure.
+QA_POSTERIOR_PARAMS = ('LOGZZSUN', 'LOGAGE', 'LOGMSTAR', 'SFR', 'TAU', 'DUSTN')
 
 # Human-friendly axis labels for the QA posterior-histogram grid.
 _PARAM_LABELS = {
@@ -518,12 +519,11 @@ def _solve_grid(flam, flam_ivar, lambda_eff, photsys, redshift):
     -------
     :class:`dict`
         ``chi2``, ``weight``, ``amplitude`` (all shape (ntemplate,)),
-        ``ibest`` (flat index of the discrete chi2 minimum), ``fit_value``/
-        ``fit_ivar`` (per grid-axis-column refined value/formal ivar, from
-        :func:`_refine_grid_axes`), ``corner_idx``/``corner_weight`` (N-linear
-        interpolation corners, from :func:`_corner_weights`),
-        ``refined_model_maggies`` (shape (nband,)), ``refined_amplitude``,
-        and ``chi2_refined``.
+        ``ibest`` (flat index of the discrete chi2 minimum), ``fit_value``
+        (per grid-axis-column refined value, from :func:`_refine_grid_axes`),
+        ``corner_idx``/``corner_weight`` (N-linear interpolation corners,
+        from :func:`_corner_weights`), ``refined_model_maggies`` (shape
+        (nband,)), ``refined_amplitude``, and ``chi2_refined``.
 
     """
     model_maggies = bg_data.interpolate_at_z(photsys, redshift) # [ntemplate, nband]
@@ -545,7 +545,7 @@ def _solve_grid(flam, flam_ivar, lambda_eff, photsys, redshift):
     ibest = np.argmin(chi2)
 
     # --- local refinement of the maximum-likelihood point -----------------
-    fit_value, fit_ivar, frac, frac_dir = _refine_grid_axes(ibest, chi2)
+    fit_value, frac, frac_dir = _refine_grid_axes(ibest, chi2)
     corner_idx, corner_weight = _corner_weights(ibest, frac, frac_dir)
 
     refined_model_maggies = (corner_weight[:, np.newaxis] * model_maggies[corner_idx, :]).sum(axis=0)
@@ -561,7 +561,7 @@ def _solve_grid(flam, flam_ivar, lambda_eff, photsys, redshift):
 
     return {
         'chi2': chi2, 'weight': weight, 'amplitude': amplitude, 'ibest': ibest,
-        'fit_value': fit_value, 'fit_ivar': fit_ivar,
+        'fit_value': fit_value,
         'corner_idx': corner_idx, 'corner_weight': corner_weight,
         'refined_model_maggies': refined_model_maggies,
         'refined_amplitude': refined_amplitude, 'chi2_refined': chi2_refined,
@@ -589,10 +589,6 @@ def _refine_grid_axes(ibest, chi2):
     -------
     fit_value : :class:`dict`
         Per grid-axis-column refined value, in its fit coordinate.
-    fit_ivar : :class:`dict`
-        Per grid-axis-column formal (delta-chi2=1) inverse variance, in the
-        same coordinate; 0 where refinement was not possible (grid edge, or
-        a failed/degenerate parabola fit).
     frac : :class:`dict`
         Per grid-axis-column fractional offset in [0, 1) toward the
         relevant neighbor (0 when unrefined); feeds the N-linear
@@ -605,7 +601,7 @@ def _refine_grid_axes(ibest, chi2):
     """
     multi_index = list(np.unravel_index(ibest, bg_data.dims))
 
-    fit_value, fit_ivar, frac, frac_dir = {}, {}, {}, {}
+    fit_value, frac, frac_dir = {}, {}, {}
 
     for axis_pos, col in enumerate(GRID_AXIS_COLUMNS):
         n = bg_data.dims[axis_pos]
@@ -618,7 +614,6 @@ def _refine_grid_axes(ibest, chi2):
         if i0 <= 0 or i0 >= n - 1:
             # at a grid edge -- cannot bracket a minimum, no refinement
             fit_value[col] = center_coord
-            fit_ivar[col] = 0.
             frac[col] = 0.
             frac_dir[col] = 1
             continue
@@ -636,13 +631,11 @@ def _refine_grid_axes(ibest, chi2):
 
         if zwarn != 0 or not (xs[0] < x0 < xs[2]):
             fit_value[col] = center_coord
-            fit_ivar[col] = 0.
             frac[col] = 0.
             frac_dir[col] = 1
             continue
 
         fit_value[col] = x0
-        fit_ivar[col] = 1. / xerr**2 if xerr > 0. else 0.
 
         if x0 >= xs[1]:
             f = (x0 - xs[1]) / (xs[2] - xs[1])
@@ -657,7 +650,7 @@ def _refine_grid_axes(ibest, chi2):
         # noise in the parabola fit.
         frac[col] = 0. if f < 1e-9 else f
 
-    return fit_value, fit_ivar, frac, frac_dir
+    return fit_value, frac, frac_dir
 
 
 def _corner_weights(ibest, frac, frac_dir):
@@ -720,21 +713,16 @@ def get_fastbayes_dtype(phot, topk=0):
     :class:`numpy.dtype`
 
     """
-    cols = []
+    cols = [('CHI2', 'f4'), ('NDOF', 'i2')]
+
+    # One block per parameter: refined maximum-likelihood value and its
+    # formal uncertainty (the sqrt of the weighted 2nd moment of the
+    # marginalized discrete posterior), then descriptive statistics (mean,
+    # mode, and the 25th/50th/75th percentiles) of that same posterior.
     for pname in PARAM_NAMES:
-        cols += [(pname, 'f4'), (f'{pname}_MEAN', 'f4'), (f'{pname}_MODE', 'f4'),
-                (f'{pname}_P16', 'f4'), (f'{pname}_P50', 'f4'), (f'{pname}_P84', 'f4')]
-
-    # Formal delta-chi2=1 uncertainties for the 7 native grid axes.
-    for col in GRID_AXIS_COLUMNS:
-        cols += [(f'{_AXIS_OUTNAME[col]}_IVAR', 'f4')]
-
-    # LOGMSTAR/SFR are derived quantities without a directly fit chi2(x)
-    # curve, so their uncertainty is instead estimated from the weighted
-    # variance of their discrete-grid posterior.
-    cols += [('LOGMSTAR_IVAR', 'f4'), ('SFR_IVAR', 'f4')]
-
-    cols += [('CHI2', 'f4'), ('NDOF', 'i2')]
+        cols += [(pname, 'f4'), (f'{pname}_ERR', 'f4'), (f'{pname}_MEAN', 'f4'),
+                (f'{pname}_MODE', 'f4'), (f'{pname}_P25', 'f4'), (f'{pname}_P50', 'f4'),
+                (f'{pname}_P75', 'f4')]
 
     # K-corrections, absolute magnitudes, rest-frame luminosities, and the
     # model Dn(4000) index, computed from the refined rest-frame spectrum
@@ -824,7 +812,6 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
     amplitude = soln['amplitude']
     ibest = soln['ibest']
     fit_value = soln['fit_value']
-    fit_ivar = soln['fit_ivar']
     corner_idx = soln['corner_idx']
     corner_weight = soln['corner_weight']
     refined_model_maggies = soln['refined_model_maggies']
@@ -887,7 +874,6 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
     for col in GRID_AXIS_COLUMNS:
         pname = _AXIS_OUTNAME[col]
         result[pname] = fit_value[col]
-        result[f'{pname}_IVAR'] = fit_ivar[col]
 
     for pname in PARAM_NAMES:
         order = sorted_vals = uniq = inv = None
@@ -901,30 +887,17 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
         mean = np.sum(weight * vals)
         result[f'{pname}_MEAN'] = mean
         result[f'{pname}_MODE'] = _weighted_mode(vals, weight, uniq=uniq, inv=inv)
-        p16, p50, p84 = _weighted_percentile(vals, weight, (16., 50., 84.), order=order, sorted_values=sorted_vals)
-        result[f'{pname}_P16'] = p16
+        p25, p50, p75 = _weighted_percentile(vals, weight, (25., 50., 75.), order=order, sorted_values=sorted_vals)
+        result[f'{pname}_P25'] = p25
         result[f'{pname}_P50'] = p50
-        result[f'{pname}_P84'] = p84
+        result[f'{pname}_P75'] = p75
 
-        # LOGMSTAR/SFR have no direct grid axis (and hence no delta-chi2=1
-        # parabola fit), so estimate their formal uncertainty from the
-        # weighted variance of their discrete-grid posterior instead.
-        if pname in derived:
-            var = np.sum(weight * (vals - mean)**2)
-            # Guard the division itself (not just its result): for a
-            # sufficiently tiny (but nonzero) var, 1./var overflows on
-            # computation and warns regardless of any clipping applied
-            # afterward, so skip the division entirely whenever it would
-            # exceed the largest finite float32 -- report that bound
-            # directly instead (very tightly constrained, not zero
-            # information).
-            if var > 1. / F32MAX:
-                ivar = 1. / var
-            elif var > TINY:
-                ivar = F32MAX
-            else:
-                ivar = 0.
-            result[f'{pname}_IVAR'] = ivar
+        # Formal uncertainty for every parameter: the sqrt of the weighted
+        # variance of its marginalized discrete posterior (no division, so
+        # no overflow guard is needed even when the posterior collapses to
+        # a single dominant template).
+        var = np.sum(weight * (vals - mean)**2)
+        result[f'{pname}_ERR'] = np.sqrt(var)
 
     # dof = number of fitted bands minus the one continuous free parameter
     # (the per-template mass amplitude) solved for above.
@@ -1118,9 +1091,9 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         else:
             return f'{x:.0f}'
 
-    def _fmt(val, ivar, fmt):
-        if ivar > 0.:
-            return fmt.format(val) + r'\pm' + fmt.format(1. / np.sqrt(ivar))
+    def _fmt(val, err, fmt):
+        if err > 0.:
+            return fmt.format(val) + r'\pm' + fmt.format(err)
         return fmt.format(val)
 
     pngfile = get_qa_filename(meta, coadd_type, outprefix='fastbayes', outdir=outdir,
@@ -1133,11 +1106,11 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     # column proportions of fastqa's fastphot layout: sedax 5/8, cutax
     # 3/8, so labels/legends sized for that layout still fit), row 3 is
     # a blank gap (also hosting the z/Dn4000/absmag boxes below the
-    # cutout), and row 4 holds the (single-row, 4-parameter) posterior grid.
+    # cutout), and row 4 holds the (2-row x 3-col, 6-parameter) posterior grid.
     # Explicit margins mirror fastqa's own fastphot subplots_adjust (tight
     # left/bottom, generous right/top for the fig.text labels/legends).
-    fig = plt.figure(figsize=(18, 12))
-    gs = fig.add_gridspec(5, 8, height_ratios=[1, 1, 1, 0.7, 2.],
+    fig = plt.figure(figsize=(18, 14))
+    gs = fig.add_gridspec(5, 8, height_ratios=[1, 1, 1, 0.7, 3.5],
                           left=0.09, right=0.92, top=0.9, bottom=0.07,
                           hspace=0.1, wspace=0.25)
 
@@ -1305,7 +1278,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     # right box at the column's right edge (ha='right') maximizes the gap
     # between them for a given cutout column width, rather than splitting at
     # a fixed fraction that can overlap if either box's text runs long.
-    ytext = cpos.y0 - 0.10
+    ytext = cpos.y0 - 0.08
 
     gindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1. + phot.band_shift) - 4300))
     rindx = np.argmin(np.abs(phot.absmag_filters.effective_wavelengths.value / (1. + phot.band_shift) - 5600))
@@ -1335,27 +1308,31 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
              bbox=bbox, linespacing=1.6)
 
     txt = [
-        r'$\log_{{10}}(Z/Z_{{\odot}})={}$'.format(_fmt(result['LOGZZSUN'], result['LOGZZSUN_IVAR'], '{:.2f}')),
+        r'$\log_{{10}}(Z/Z_{{\odot}})={}$'.format(_fmt(result['LOGZZSUN'], result['LOGZZSUN_ERR'], '{:.2f}')),
         r'$\log_{{10}}(\mathrm{{Age}}/\mathrm{{Gyr}})={}$'.format(
-            _fmt(result['LOGAGE'], result['LOGAGE_IVAR'], '{:.2f}')),
-        r'$\log_{{10}}(M/M_{{\odot}})={}$'.format(_fmt(result['LOGMSTAR'], result['LOGMSTAR_IVAR'], '{:.2f}')),
+            _fmt(result['LOGAGE'], result['LOGAGE_ERR'], '{:.2f}')),
+        r'$\log_{{10}}(M/M_{{\odot}})={}$'.format(_fmt(result['LOGMSTAR'], result['LOGMSTAR_ERR'], '{:.2f}')),
         r'$\mathrm{{SFR}}={}\ M_{{\odot}}/\mathrm{{yr}}$'.format(
-            _fmt(result['SFR'], result['SFR_IVAR'], '{:.3g}')),
+            _fmt(result['SFR'], result['SFR_ERR'], '{:.3g}')),
+        r'$\tau={}$'.format(_fmt(result['TAU'], result['TAU_ERR'], '{:.2f}')),
+        r'$n_{{\rm dust}}={}$'.format(_fmt(result['DUSTN'], result['DUSTN_ERR'], '{:.2f}')),
     ]
     fig.text(cpos.x1+0.04, ytext, '\n'.join(txt), ha='right', va='top', fontsize=fontsize1,
              bbox=bbox, linespacing=1.6)
 
-    # --- posterior panel: weighted 1D marginal histogram, one row of
-    # QA_POSTERIOR_PARAMS (Z/Zsun, age, LOGMSTAR, SFR) --------------------
+    # --- posterior panel: weighted 1D marginal histogram, 2 rows x 3 cols of
+    # QA_POSTERIOR_PARAMS (Z/Zsun, age, LOGMSTAR / SFR, tau, dustn) ----------
     # A standalone gridspec (not a subgridspec of `gs`) so its right edge can
     # extend past gs's own right margin to cpos.x1 + 0.04, matching the
     # right-hand gray box/Dec label; top/bottom match row 4 of `gs` exactly.
-    ncols = len(QA_POSTERIOR_PARAMS)
+    ncols = 3
+    nrows = -(-len(QA_POSTERIOR_PARAMS) // ncols) # ceil division
     row4pos = gs[4, 0:8].get_position(fig)
-    post_gs = fig.add_gridspec(1, ncols, left=spos.x0-0.02, right=cpos.x1 + 0.04,
-                               bottom=row4pos.y0, top=row4pos.y1, wspace=0.1)
+    post_gs = fig.add_gridspec(nrows, ncols, left=spos.x0-0.02, right=cpos.x1 + 0.04,
+                               bottom=row4pos.y0, top=row4pos.y1-0.02, wspace=0.1, hspace=0.6)
     for i, pname in enumerate(QA_POSTERIOR_PARAMS):
-        ax = fig.add_subplot(post_gs[0, i])
+        row, col = divmod(i, ncols)
+        ax = fig.add_subplot(post_gs[row, col])
         vals, w = posterior_arrays[pname]
         uniq, inv = np.unique(vals, return_inverse=True)
 
@@ -1657,7 +1634,7 @@ def fastbayes(args=None, mp_pool=None):
     outmeta = create_output_meta(vstack(out[0]), phot=phot, fastphot=True)
 
     units = {'LOGAGE': 'dex(Gyr)'}
-    units.update({f'LOGAGE_{stat}': 'dex(Gyr)' for stat in ('MEAN', 'MODE', 'P16', 'P50', 'P84')})
+    units.update({f'LOGAGE_{stat}': 'dex(Gyr)' for stat in ('ERR', 'MEAN', 'MODE', 'P25', 'P50', 'P75')})
     results = create_output_table(out[1], outmeta, units)
 
     modelwave = bg_data.template_wave()
