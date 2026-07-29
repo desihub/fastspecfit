@@ -199,6 +199,17 @@ class BayesianGrid(object):
         age_gyr = np.asarray(self.meta['age'], dtype='f8')
         self.sfr = np.where(age_gyr <= SFR_AVG_WINDOW_GYR,
                             1. / (SFR_AVG_WINDOW_GYR * 1e9), 0.) # [ntemplate], Msun/yr per Msun formed
+
+        # Rest-frame Dn(4000) and monochromatic luminosities-per-solar-mass-
+        # formed, precomputed once per template by bin/build-bayesian-templates
+        # (they depend only on the template's intrinsic rest-frame spectral
+        # shape, not on redshift or observed photometry) -- cached here so
+        # per-object LOGL_*/DN4000_MODEL uncertainties (fastbayes_one) are a
+        # cheap vectorized weighted-variance calculation, with no extra raw
+        # spectrum reads.
+        self.dn4000_model_permass = np.asarray(self.meta['dn4000_model'], dtype='f8')
+        self.lum_permass = {key: np.asarray(self.meta[f'{key.lower()}_permass'], dtype='f8') for key in LUM_KEYS}
+
         self._axis_cache = {}
 
         # Recover the grid's N-D axis structure. The grid is a full
@@ -729,17 +740,29 @@ def get_fastbayes_dtype(phot, topk=0):
                 (f'{pname}_MODE', 'f4'), (f'{pname}_P25', 'f4'), (f'{pname}_P50', 'f4'),
                 (f'{pname}_P75', 'f4')]
 
-    # K-corrections, absolute magnitudes, rest-frame luminosities, and the
-    # model Dn(4000) index, computed from the refined rest-frame spectrum
-    # (point estimates only for now -- no Monte Carlo/uncertainty framework
-    # analogous to fastspecfit's nmonte machinery exists here yet).
+    # K-corrections and absolute magnitudes, computed from the refined
+    # rest-frame spectrum blended with the real observed photometry.
+    # ABSMAG_SYNTH is the purely synthetic (model-only, no K-correction
+    # blending) absolute magnitude; ABSMAG_IVAR is propagated from the
+    # observed photometry's own ivar (Photometry.kcorr_and_absmag), not from
+    # the SED-fit posterior -- mirrors the ABSMAG*/ABSMAG*_SYNTH/ABSMAG*_IVAR
+    # naming used by fastspecfit's own SPECPHOT schema.
     for band, shift in zip(phot.absmag_bands, phot.band_shift):
         band = band.upper()
         shift = int(10 * shift)
-        cols += [(f'ABSMAG{shift:02d}_{band}', 'f4'), (f'KCORR{shift:02d}_{band}', 'f4')]
+        cols += [(f'KCORR{shift:02d}_{band}', 'f4'),
+                (f'ABSMAG{shift:02d}_{band}', 'f4'),
+                (f'ABSMAG{shift:02d}_SYNTH_{band}', 'f4'),
+                (f'ABSMAG{shift:02d}_IVAR_{band}', 'f4')]
+
+    # Rest-frame luminosities and the model Dn(4000) index, computed from the
+    # refined rest-frame spectrum, plus their formal uncertainty (sqrt of the
+    # weighted 2nd moment of their marginalized discrete posterior, computed
+    # from per-template quantities tabulated once at grid-build time -- see
+    # BayesianGrid.lum_permass/dn4000_model_permass).
     for key in LUM_KEYS:
-        cols += [(key, 'f4')]
-    cols += [('DN4000_MODEL', 'f4')]
+        cols += [(key, 'f4'), (f'{key}_ERR', 'f4')]
+    cols += [('DN4000_MODEL', 'f4'), ('DN4000_MODEL_ERR', 'f4')]
 
     if topk > 0:
         cols += [('TOPK_INDEX', 'i4', (topk,)), ('TOPK_WEIGHT', 'f4', (topk,))]
@@ -845,6 +868,16 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
         restflux += w * bg_data.template_flux_row(idx)
     restflux *= refined_amplitude # [erg/s/cm2/A at 10pc, actual stellar mass]
 
+    # Synthetic observed-frame photometry from the interpolated grid itself
+    # (refined_model_maggies/refined_amplitude, already computed above by
+    # _solve_grid) -- consistent with what CHI2 was actually computed from,
+    # unlike a fresh speclite resynthesis of the resampled spectrum. Written
+    # into the METADATA row (FLUX_SYNTH_PHOTMODEL_*, pre-declared by the
+    # fastbayes() driver), alongside the real FLUX_*/FLUX_IVAR_* columns.
+    synth_maggies_grid = refined_model_maggies * refined_amplitude # [nband], observed-frame maggies
+    for iband, band in enumerate(phot.bands):
+        meta[f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'] = 1e9 * synth_maggies_grid[iband] # [nanomaggies]
+
     # --- K-corrections, absolute magnitudes, rest-frame luminosities, and
     # the model Dn(4000) index, all derived from the refined rest-frame
     # spectrum -------------------------------------------------------------
@@ -913,12 +946,30 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
     for iband, (band, shift) in enumerate(zip(phot.absmag_bands, phot.band_shift)):
         band = band.upper()
         shift = int(10 * shift)
-        result[f'ABSMAG{shift:02d}_{band}'] = absmag[iband]
         result[f'KCORR{shift:02d}_{band}'] = kcorr[iband]
+        result[f'ABSMAG{shift:02d}_{band}'] = absmag[iband]
+        result[f'ABSMAG{shift:02d}_SYNTH_{band}'] = synth_absmag[iband]
+        result[f'ABSMAG{shift:02d}_IVAR_{band}'] = ivarabsmag[iband]
 
     for key in LUM_KEYS:
         result[key] = lums[key]
     result['DN4000_MODEL'] = dn4000_model
+
+    # Formal uncertainty on DN4000_MODEL/LOGL_* from the weighted 2nd moment
+    # of their marginalized discrete posterior, over the *full* grid (no
+    # top-K truncation needed: both depend only on tabulated per-template
+    # scalars, not on a rebuilt spectrum, so this is a cheap vectorized
+    # calculation, not an extra disk read). DN4000_MODEL is intensive (the
+    # fitted mass amplitude cancels in the ratio, like a grid axis); LOGL_*/
+    # LOGLNU_* are extensive (linear in amplitude), so log10(amplitude *
+    # L_permass) = logmstar + log10(L_permass), the same additive-log trick
+    # used for LOGMSTAR above.
+    dn4000_mean = np.sum(weight * bg_data.dn4000_model_permass)
+    result['DN4000_MODEL_ERR'] = np.sqrt(np.sum(weight * (bg_data.dn4000_model_permass - dn4000_mean)**2))
+    for key in LUM_KEYS:
+        logl_per_template = logmstar + np.log10(np.clip(bg_data.lum_permass[key], 1e-30, None))
+        logl_mean = np.sum(weight * logl_per_template)
+        result[f'{key}_ERR'] = np.sqrt(np.sum(weight * (logl_per_template - logl_mean)**2))
 
     if topk > 0:
         idx = np.argsort(weight)[::-1][:topk]
@@ -1621,6 +1672,13 @@ def fastbayes(args=None, mp_pool=None):
     data, meta = Spec.read(phot, fastphot=True)
 
     nobj = len(meta)
+
+    # Pre-declare the grid-based synthetic-photometry columns (populated by
+    # fastbayes_one) on the whole metadata table before it's sliced into
+    # per-object rows and dispatched to the worker pool.
+    for band in phot.bands:
+        meta[f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'] = np.zeros(nobj, dtype='f4')
+
     fastbayes_dtype = get_fastbayes_dtype(phot, topk=args.topk)
 
     fitargs = [{
@@ -1636,7 +1694,12 @@ def fastbayes(args=None, mp_pool=None):
     out = mp_pool.starmap(fastbayes_one, fitargs)
     out = list(zip(*out))
 
-    outmeta = create_output_meta(vstack(out[0]), phot=phot, fastphot=True)
+    allmeta = vstack(out[0])
+    outmeta = create_output_meta(allmeta, phot=phot, fastphot=True)
+    for band in phot.bands:
+        col = f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'
+        outmeta[col] = allmeta[col]
+        outmeta[col].unit = 'nanomaggies'
 
     units = {'LOGAGE': 'dex(Gyr)'}
     units.update({f'LOGAGE_{stat}': 'dex(Gyr)' for stat in ('ERR', 'MEAN', 'MODE', 'P25', 'P50', 'P75')})

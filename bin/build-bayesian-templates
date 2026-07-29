@@ -78,6 +78,10 @@ import fsps
 from astropy.io import fits
 from astropy.table import Table
 
+from fastspecfit.photometry import Photometry
+from fastspecfit.util import C_LIGHT
+from fastspecfit.fastbayes import LUM_KEYS, LUM_WAVES, _PC_CM, _LSUN
+
 
 def build_bayesian_grid(imf='chabrier', test=False):
     """Build the Bayesian SSP template grid.
@@ -178,6 +182,9 @@ def build_bayesian_grid(imf='chabrier', test=False):
     meta['qpah'] = models['qpah']
     meta['sfr'] = np.zeros(nsed, 'f4')
     meta['mstar'] = np.zeros(nsed, 'f4')
+    meta['dn4000_model'] = np.zeros(nsed, 'f4')
+    for lumkey in LUM_KEYS:
+        meta[f'{lumkey.lower()}_permass'] = np.zeros(nsed, 'f4')
 
     print('Instantiating the StellarPopulation object...', end='')
     t0 = time.time()
@@ -200,6 +207,10 @@ def build_bayesian_grid(imf='chabrier', test=False):
 
     lodot = 3.828e33               # [erg/s]
     tenpc2 = (10. * 3.085678e18)**2 # [cm2]
+
+    # For the rest-frame Dn(4000)/monochromatic-luminosity precomputation
+    # below, matching fastspecfit.fastbayes's own runtime formula exactly.
+    fourpi_10pc2 = 4. * np.pi * (10. * _PC_CM)**2 # [cm2]
 
     # log progress roughly every 5% of the grid (at least every model, at most every 500)
     logevery = int(np.clip(nsed // 20, 1, 500))
@@ -228,6 +239,21 @@ def build_bayesian_grid(imf='chabrier', test=False):
 
         if sp.stellar_mass < 0:
             raise ValueError('Stellar mass is negative!')
+
+        # Rest-frame Dn(4000) and monochromatic luminosities per solar mass
+        # formed, precomputed once here (rather than once per DESI object at
+        # fastbayes runtime) since both depend only on this template's
+        # intrinsic rest-frame spectral shape, not on redshift or observed
+        # photometry -- see fastspecfit.fastbayes.fastbayes_one for the
+        # equivalent per-object formula this mirrors.
+        meta['dn4000_model'][imodel] = Photometry.get_dn4000(wave, flux, rest=True)[0]
+        for cwave, lumkey in zip(LUM_WAVES, LUM_KEYS):
+            cflux = np.interp(cwave, wave, flux) * fourpi_10pc2 # [erg/s/A]
+            if 'LOGL_' in lumkey:
+                val = cflux * cwave / _LSUN / 1e10 # [1e10 Lsun]
+            else:
+                val = cflux * cwave**2 / (C_LIGHT * 1e13) / 1e28 # [1e-28 erg/s/Hz]
+            meta[f'{lumkey.lower()}_permass'][imodel] = val
 
         ndone = imodel + 1
         if ndone % logevery == 0 or ndone == nsed:
