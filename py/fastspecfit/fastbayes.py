@@ -26,7 +26,7 @@ import fitsio
 from astropy.table import Table
 
 from fastspecfit.logger import log
-from fastspecfit.util import MPPool, fsftime, ZWarningMask, C_LIGHT
+from fastspecfit.util import MPPool, fsftime, ZWarningMask, C_LIGHT, TINY, F32MAX
 from fastspecfit.photometry import Photometry
 from fastspecfit.singlecopy import sc_data
 
@@ -904,11 +904,20 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
         # weighted variance of their discrete-grid posterior instead.
         if pname in derived:
             var = np.sum(weight * (vals - mean)**2)
-            # float(): comparing a huge Python float against a bare
-            # np.float32 scalar (rather than a plain Python float) itself
-            # triggers "overflow encountered in cast" -- numpy downcasts the
-            # comparison operand -- so keep the bound in float64.
-            result[f'{pname}_IVAR'] = min(1. / var, float(np.finfo(np.float32).max)) if var > 0. else 0.
+            # Guard the division itself (not just its result): for a
+            # sufficiently tiny (but nonzero) var, 1./var overflows on
+            # computation and warns regardless of any clipping applied
+            # afterward, so skip the division entirely whenever it would
+            # exceed the largest finite float32 -- report that bound
+            # directly instead (very tightly constrained, not zero
+            # information).
+            if var > 1. / F32MAX:
+                ivar = 1. / var
+            elif var > TINY:
+                ivar = F32MAX
+            else:
+                ivar = 0.
+            result[f'{pname}_IVAR'] = ivar
 
     # dof = number of fitted bands minus the one continuous free parameter
     # (the per-template mass amplitude) solved for above.
