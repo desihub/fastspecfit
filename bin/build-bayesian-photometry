@@ -18,11 +18,11 @@ Usage
 ::
 
   time python bin/build-bayesian-photometry --gridnumber 001 \\
-      --templatedir $FTEMPLATES_DIR/bayesian --logspace \\
+      --templatedir $FTEMPLATES_DIR/bayesian --adaptive \\
       --outfile $FTEMPLATES_DIR/bayesian/bayesian-photometry-chabrier-001.fits
 
   time python bin/build-bayesian-photometry \\
-      --templatesfile /path/to/bayesian-templates-chabrier-001.fits --logspace \\
+      --templatesfile /path/to/bayesian-templates-chabrier-001.fits --adaptive \\
       --outfile /path/to/bayesian-photometry-chabrier-001.fits
 
 Output Files
@@ -55,47 +55,6 @@ from astropy.table import Table
 from fastspecfit.photometry import Photometry
 from fastspecfit.cosmo import TabulatedDESI
 from fastspecfit.igm import Inoue14
-
-
-def build_redshift_grid(zmin, zmax, dz=None, nz=None, logspace=False):
-    """Build the fixed redshift grid.
-
-    Parameters
-    ----------
-    zmin : :class:`float`
-        Minimum redshift. Must be greater than zero, since the
-        luminosity-distance normalization used here is singular at
-        z=0.
-    zmax : :class:`float`
-        Maximum redshift.
-    dz : :class:`float` or None, optional
-        Approximate redshift spacing, used to derive the number of grid
-        points when ``nz`` is not given.
-    nz : :class:`int` or None, optional
-        Number of grid points. Overrides ``dz`` when given.
-    logspace : :class:`bool`, optional
-        If ``True``, space grid points uniformly in log10(1+z) instead
-        of linearly in z. Default is ``False``.
-
-    Returns
-    -------
-    zgrid : :class:`numpy.ndarray`
-        Redshift grid of length ``nz``.
-
-    """
-    if zmin <= 0.:
-        errmsg = 'zmin must be > 0 (the 10pc-normalized flux scaling is singular at z=0).'
-        raise ValueError(errmsg)
-
-    if nz is None:
-        nz = int(round((zmax - zmin) / dz)) + 1
-
-    if logspace:
-        zgrid = np.geomspace(1. + zmin, 1. + zmax, nz) - 1.
-    else:
-        zgrid = np.linspace(zmin, zmax, nz)
-
-    return zgrid
 
 
 def _photsys_suffix(key):
@@ -213,7 +172,8 @@ def synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm):
 
 
 def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
-         templatesfile=None, zmin=0.001, zmax=1.6, dz=0.01, nz=None, logspace=False,
+         templatesfile=None, zmin=0.001, zmax=1.7, nz=100, logspace=False,
+         adaptive=False, nbase_weight=40., npts_local=3., lines=None, edge_bands=None,
          cmdline=None):
     """Synthesize the photometry grid and write the output FITS file.
 
@@ -245,8 +205,12 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
         templates live somewhere non-standard (e.g. switching between
         NERSC and a laptop). ``GRIDNUM``/``IMF`` are read back from its
         header rather than trusting ``gridnumber``/``imf``.
-    zmin, zmax, dz, nz, logspace
-        See :func:`build_redshift_grid`.
+    zmin, zmax, nz, logspace, adaptive, nbase_weight, npts_local, lines, edge_bands
+        See :meth:`fastspecfit.photometry.Photometry.build_redshift_grid` and
+        :meth:`~fastspecfit.photometry.Photometry.build_adaptive_redshift_grid`
+        (``edge_bands`` here is passed through as that method's ``bands``
+        argument, renamed to avoid confusion with the templates/photometry
+        bands used elsewhere in this script).
     cmdline : :class:`str` or None, optional
         Exact command-line invocation, recorded verbatim as the ``CMDLINE``
         header keyword (in addition to the individual dependency/parameter
@@ -280,7 +244,9 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
     cosmo = TabulatedDESI()
     igm = Inoue14()
 
-    zgrid = build_redshift_grid(zmin, zmax, dz=dz, nz=nz, logspace=logspace)
+    zgrid = phot.build_redshift_grid(zmin, zmax, nz, logspace=logspace, adaptive=adaptive,
+                                     nbase_weight=nbase_weight, npts_local=npts_local,
+                                     lines=lines, bands=edge_bands)
 
     maggies = synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm)
 
@@ -310,6 +276,10 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
     hduprim.header['ZMAX'] = zmax
     hduprim.header['NZ'] = len(zgrid)
     hduprim.header['LOGSPACE'] = logspace
+    hduprim.header['ADAPTIVE'] = (adaptive, 'emission-line-aware redshift grid')
+    if adaptive:
+        hduprim.header['NBASEWT'] = nbase_weight
+        hduprim.header['NPTSLOC'] = npts_local
 
     hduz = fits.ImageHDU(zgrid.astype(np.float32))
     hduz.header['EXTNAME'] = 'REDSHIFT'
@@ -362,11 +332,28 @@ if __name__ == '__main__':
                         '(read from the header instead) if --templatesfile is given.')
     parser.add_argument('--fphotofile', default=None, help='Photometry configuration YAML file')
 
-    parser.add_argument('--zmin', type=float, default=1e-5, help='Minimum redshift')
-    parser.add_argument('--zmax', type=float, default=1.6, help='Maximum redshift')
-    parser.add_argument('--dz', type=float, default=0.01, help='Approximate redshift spacing')
-    parser.add_argument('--nz', type=int, default=None, help='Number of redshift grid points (overrides --dz)')
-    parser.add_argument('--logspace', action='store_true', help='Space the redshift grid uniformly in log10(1+z)')
+    parser.add_argument('--zmin', type=float, default=1e-3, help='Minimum redshift')
+    parser.add_argument('--zmax', type=float, default=1.7, help='Maximum redshift')
+    parser.add_argument('--nz', type=int, default=100, help='Number of redshift grid points')
+    parser.add_argument('--logspace', action='store_true', help='Space the (non-adaptive) redshift '
+                        'grid uniformly in log10(1+z) instead of linearly in z; ignored with --adaptive')
+    parser.add_argument('--adaptive', action='store_true', help='Build an emission-line-aware '
+                        'redshift grid concentrated at redshifts where prominent emission lines '
+                        'cross a bandpass edge, instead of a uniform grid; see '
+                        'fastspecfit.photometry.Photometry.build_adaptive_redshift_grid.')
+    parser.add_argument('--nbase-weight', type=float, default=40., help='(--adaptive only) relative '
+                        'weight of the flat baseline term, as an equivalent point count spread '
+                        'uniformly over [zmin, zmax]')
+    parser.add_argument('--npts-local', type=float, default=3., help='(--adaptive only) relative '
+                        'weight (equivalent point count) contributed by each individual '
+                        'emission-line/bandpass-edge crossing')
+    parser.add_argument('--lines', type=str, default=None, help='(--adaptive only) comma-separated '
+                        'name:wavelength pairs (rest-frame vacuum Angstrom) overriding the default '
+                        'line list (Lyman-alpha, [OII], H-beta, [OIII] 5007, H-alpha), e.g. '
+                        '"halpha:6564.61,oiii_5007:5006.84"')
+    parser.add_argument('--edge-bands', type=str, default=None, help='(--adaptive only) comma-separated '
+                        'band names (must match the photometry configuration, e.g. "g,r,z") whose '
+                        'edges are searched for line crossings; defaults to all bands')
 
     parser.add_argument('--test', action='store_true', help='Generate a tiny test grid.')
     args = parser.parse_args()
@@ -385,12 +372,22 @@ if __name__ == '__main__':
 
     outfile = os.path.expandvars(args.outfile)
 
-    zmin, zmax, dz, nz = args.zmin, args.zmax, args.dz, args.nz
+    zmin, zmax, nz = args.zmin, args.zmax, args.nz
     if args.test:
-        zmin, zmax, dz, nz = 0.01, 0.2, None, 5
+        zmin, zmax, nz = 0.01, 0.2, 5
+
+    lines = None
+    if args.lines is not None:
+        lines = {}
+        for pair in args.lines.split(','):
+            name, wave = pair.split(':')
+            lines[name] = float(wave)
+
+    edge_bands = args.edge_bands.split(',') if args.edge_bands is not None else None
 
     cmdline = ' '.join([os.path.basename(sys.argv[0])] + sys.argv[1:])
 
     main(args.gridnumber, outfile, imf=args.imf, templatedir=templatedir, fphotofile=args.fphotofile,
-        templatesfile=templatesfile, zmin=zmin, zmax=zmax, dz=dz, nz=nz, logspace=args.logspace,
-        cmdline=cmdline)
+        templatesfile=templatesfile, zmin=zmin, zmax=zmax, nz=nz, logspace=args.logspace,
+        adaptive=args.adaptive, nbase_weight=args.nbase_weight, npts_local=args.npts_local,
+        lines=lines, edge_bands=edge_bands, cmdline=cmdline)
