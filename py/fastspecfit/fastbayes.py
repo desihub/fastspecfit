@@ -374,11 +374,12 @@ def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=No
         :meth:`BayesianGrid.template_flux_row` to build the refined rest-frame
         spectrum during fitting) to be present. QA regeneration from an
         already-written FASTBAYES output file
-        (:func:`fastbayes_qa`/:func:`fastbayes_qa_one`) never reads raw
-        template rows -- the refined spectrum is read back from that file's
-        ``MODELS`` extension instead -- so it passes ``False`` here to avoid
-        requiring the (multi-GB) raw templates file to be present just to
-        regenerate plots.
+        (:func:`fastbayes_qa`/:func:`fastbayes_qa_one`) reads back the
+        refined spectrum from that file's ``MODELS`` extension instead of
+        rebuilding it, so it passes ``False`` here -- unless ``--ndraw > 0``
+        (the default), in which case a handful of individual raw template
+        rows are read per object for the posterior-weighted draws overplotted
+        on the SED panel, and the (multi-GB) raw templates file is required.
     cutout_unreachable : :class:`bool` or None, optional
         Seeds this worker's copy of :data:`fastspecfit.qa._cutout_unreachable`
         (same sticky per-process mechanism ``fastqa`` uses to detect an
@@ -979,7 +980,7 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
     return meta, result, restflux.astype('f4')
 
 
-def fastbayes_qa_one(iobj, meta, result, restwave, restflux, qadir='.', coadd_type='healpix'):
+def fastbayes_qa_one(iobj, meta, result, restwave, restflux, qadir='.', coadd_type='healpix', ndraw=50):
     """Regenerate the QA figure for one object from an already-written
     FASTBAYES output file, without repeating the fit.
 
@@ -991,8 +992,9 @@ def fastbayes_qa_one(iobj, meta, result, restwave, restflux, qadir='.', coadd_ty
     ``restflux``, read back rather than recomputed). The only work redone is
     the cheap, vectorized full-grid solve (:func:`_solve_grid`) needed to
     reconstruct the per-template posterior weights, which are not stored in
-    the output file -- no raw DESI spectra or individual template rows are
-    read.
+    the output file. When ``ndraw > 0``, a handful of additional raw
+    template rows are also read (see below) -- the one case where QA
+    regeneration does touch the raw templates file.
 
     Parameters
     ----------
@@ -1015,6 +1017,15 @@ def fastbayes_qa_one(iobj, meta, result, restwave, restflux, qadir='.', coadd_ty
         Coadd type, used to build the QA target label/filename. Not stored
         in the output file, so it must be supplied by the caller. Default
         is ``'healpix'``.
+    ndraw : :class:`int`, optional
+        Number of additional grid templates to draw (without replacement,
+        probability-weighted by the discrete posterior) and overplot on the
+        SED panel as a visual sense of the model uncertainty, alongside the
+        one refined maximum-likelihood curve. ``0`` disables this (default
+        ``50``), restoring the original raw-template-free QA regeneration.
+        Draws are capped at the number of templates with strictly positive
+        posterior weight (typically a small fraction of the grid -- no
+        attempt is made to force exactly ``ndraw`` draws via replacement).
 
     """
     phot = sc_data.photometry
@@ -1070,6 +1081,22 @@ def fastbayes_qa_one(iobj, meta, result, restwave, restflux, qadir='.', coadd_ty
 
     synth_maggies = refined_model_maggies * refined_amplitude # [nband], observed-frame maggies
 
+    # Additional templates drawn (without replacement) with probability
+    # proportional to the discrete posterior weight, purely for a visual
+    # sense of the model uncertainty in the SED panel -- distinct from the
+    # one refined (N-linearly interpolated) maximum-likelihood spectrum
+    # above. Seeded per-object so repeated QA regeneration is reproducible.
+    family_zflux = np.empty((0, len(restwave)))
+    if ndraw > 0:
+        nonzero = np.flatnonzero(weight > 0.)
+        ndraw_actual = min(ndraw, len(nonzero)) # don't force replacement/padding
+        if ndraw_actual > 0:
+            rng = np.random.default_rng(int(meta[phot.uniqueid_col]))
+            p = weight[nonzero] / weight[nonzero].sum()
+            draw_idx = rng.choice(nonzero, size=ndraw_actual, replace=False, p=p)
+            family_zflux = np.array([bg_data.template_flux_row(idx) * amplitude[idx]
+                                     for idx in draw_idx]) * zfactor
+
     data = {'photometry': {
         'nanomaggies': nanomaggies,
         'nanomaggies_ivar': nanomaggies_ivar,
@@ -1077,11 +1104,13 @@ def fastbayes_qa_one(iobj, meta, result, restwave, restflux, qadir='.', coadd_ty
     }}
 
     _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
-                      zwave, zflux, synth_maggies, redshift, coadd_type=coadd_type, outdir=qadir)
+                      zwave, zflux, synth_maggies, redshift, family_zflux=family_zflux,
+                      coadd_type=coadd_type, outdir=qadir)
 
 
 def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
-                      zwave, zflux, synth_maggies, redshift, coadd_type='healpix', outdir='.'):
+                      zwave, zflux, synth_maggies, redshift, family_zflux=None,
+                      coadd_type='healpix', outdir='.'):
     """Generate a QA figure for one Bayesian-fit object.
 
     Reuses :func:`fastspecfit.qa._target_label` and
@@ -1111,6 +1140,12 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         Observed-frame photometry (AB maggies) synthesized from the refined
         maximum-likelihood model in each band.
     redshift : :class:`float`
+    family_zflux : :class:`numpy.ndarray` or None, optional
+        Shape ``(ndraw, npix)`` observed-frame spectra of additional
+        templates drawn probability-weighted from the discrete posterior
+        (:func:`fastbayes_qa_one`), overplotted faintly behind the one
+        refined maximum-likelihood curve as a visual sense of the model
+        uncertainty. Empty or ``None`` (default) plots none.
     coadd_type : :class:`str`, optional
     outdir : :class:`str`, optional
 
@@ -1255,6 +1290,17 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
 
     sedax.set_xlim(phot_wavelims[0], phot_wavelims[1])
     sedax.set_ylim(sed_ymin, sed_ymax)
+
+    # additional posterior-weighted draws, plotted faintly behind the one
+    # refined maximum-likelihood curve as a visual sense of the model
+    # uncertainty (same grey hue, distinguished only by opacity/linewidth so
+    # as not to clash with the photometry's orange color scheme below)
+    if family_zflux is not None and len(family_zflux) > 0:
+        for fam_flux in family_zflux:
+            fam_mgood = (fam_flux > 0.) & (zwave_um >= phot_wavelims[0]) & (zwave_um <= phot_wavelims[1])
+            if np.any(fam_mgood):
+                fam_abmag = -2.5 * np.log10(fam_flux[fam_mgood] * factor[fam_mgood])
+                sedax.plot(zwave_um[fam_mgood], fam_abmag, color='grey', alpha=0.12, lw=0.5, zorder=0)
 
     sedax.plot(zwave_um[mgood], sedmodel_abmag[mgood], color='grey', alpha=0.9, zorder=1)
 
@@ -1764,6 +1810,19 @@ def parse_qa(options=None):
                         '--targetids is also given.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of objects to process.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to process, zero-indexed.')
+    parser.add_argument('--ndraw', type=int, default=50,
+                        help='Number of additional grid templates to draw (probability-weighted by '
+                        'the discrete posterior, without replacement) and overplot on the SED panel '
+                        'as a visual sense of the model uncertainty. 0 disables this and restores QA '
+                        'regeneration that never touches the raw templates file (see --templatedir/'
+                        '--templatesfile below, only needed when --ndraw > 0).')
+    parser.add_argument('--templatedir', type=str, default=None,
+                        help='Top-level location of the raw Bayesian templates file '
+                        '(default: $FTEMPLATES_DIR/bayesian); ignored if --templatesfile is given. '
+                        'Only needed when --ndraw > 0.')
+    parser.add_argument('--templatesfile', type=str, default=None,
+                        help='Full path to the raw Bayesian templates FITS file, overriding '
+                        '--templatedir/$FTEMPLATES_DIR reconstruction. Only needed when --ndraw > 0.')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 
@@ -1783,9 +1842,12 @@ def fastbayes_qa(args=None, mp_pool=None):
     :func:`fastbayes_qa_one` for each requested object. The only work redone
     is the cheap, vectorized :func:`_solve_grid` solve needed to rebuild the
     per-template posterior weights (the one thing not stored in the output
-    file); no raw DESI spectra or individual raw template rows are read, so
-    this does not need ``$FTEMPLATES_DIR`` (or the original redrock/spectra
-    files) to be available.
+    file); no raw DESI spectra are read, so this does not need the original
+    redrock/spectra files to be available. The raw Bayesian templates file
+    (``$FTEMPLATES_DIR``/``--templatedir``/``--templatesfile``) is likewise
+    unneeded when ``--ndraw 0`` -- the default ``--ndraw`` > 0, however, does
+    read a handful of individual raw template rows per object (see
+    :func:`fastbayes_qa_one`), so it is required in that (default) case.
 
     ``--gridfile``/``--fphotofile`` must be passed explicitly (matching
     whatever was used to build the grid and run the fit) rather than being
@@ -1875,8 +1937,9 @@ def fastbayes_qa(args=None, mp_pool=None):
     from fastspecfit.qa import _probe_cutout_host
     cutout_unreachable = not _probe_cutout_host()
 
-    init_argdict = {'fphotofile': fphotofile, 'gridfile': gridfile, 'require_templates': False,
-                    'cutout_unreachable': cutout_unreachable}
+    init_argdict = {'fphotofile': fphotofile, 'gridfile': gridfile,
+                    'templatedir': args.templatedir, 'templatesfile': args.templatesfile,
+                    'require_templates': args.ndraw > 0, 'cutout_unreachable': cutout_unreachable}
 
     t0 = time.time()
     _initialize_fastbayes_workers(**init_argdict)
@@ -1895,6 +1958,7 @@ def fastbayes_qa(args=None, mp_pool=None):
         'restflux': modelspectra[iobj],
         'qadir': args.qadir,
         'coadd_type': args.coadd_type,
+        'ndraw': args.ndraw,
     } for iobj in keep]
 
     t0 = time.time()
