@@ -11,7 +11,7 @@ solving for the chi2-minimizing stellar-mass amplitude of every grid template
 in closed form, and building up the posterior probability distribution of
 every grid parameter by weighting each template by its likelihood. The
 discrete maximum-likelihood point is then refined to sub-grid precision via
-a local parabola fit along each of the 7 grid axes and an N-linear
+a local parabola fit along each of the 8 grid axes and an N-linear
 interpolation over the neighboring templates, so that the reported
 parameters, CHI2, and model spectrum are all mutually consistent.
 
@@ -31,37 +31,45 @@ from fastspecfit.photometry import Photometry
 from fastspecfit.singlecopy import sc_data
 
 # Grid axes in the exact nested-loop order used by bin/build-bayesian-templates
-# (age outermost ... qpah innermost). This order is what lets the flattened
+# (age outermost ... fagn innermost). This order is what lets the flattened
 # grid's N-D structure be recovered via np.unravel_index/np.ravel_multi_index.
-GRID_AXIS_COLUMNS = ('age', 'zzsun', 'tau', 'dustn', 'umin', 'gamma', 'qpah')
+# umin and gamma are fixed (N=1) grid points, not free axes, but are kept in
+# this tuple anyway: a fixed axis is already handled correctly (no
+# refinement, weight fully on the single point) by the generic per-axis edge
+# case in _refine_grid_axes/_corner_weights below, so no special-casing is
+# needed to support them.
+GRID_AXIS_COLUMNS = ('age', 'zzsun', 'tau', 'dustn', 'umin', 'gamma', 'qpah', 'fagn')
 
 # Axes built log-uniform: refined/reported in log10 space so that the formal
 # (delta-chi2=1) uncertainty is symmetric. The remaining axes (tau, dustn,
-# gamma) were built linear-uniform and are refined/reported in linear space.
+# gamma, fagn) were built linear-uniform (some, like tau and fagn, with a
+# hybrid exact-zero-plus-log-spaced design that log10 can't represent at the
+# zero point) and are refined/reported in linear space.
 LOG_AXES = frozenset(('age', 'zzsun', 'umin', 'qpah'))
 
 # Output parameter name for each grid axis, and its inverse.
 _AXIS_OUTNAME = {
     'age': 'LOGAGE', 'zzsun': 'LOGZZSUN', 'tau': 'TAU', 'dustn': 'DUSTN',
-    'umin': 'LOGUMIN', 'gamma': 'GAMMA', 'qpah': 'LOGQPAH',
+    'umin': 'LOGUMIN', 'gamma': 'GAMMA', 'qpah': 'LOGQPAH', 'fagn': 'FAGN',
 }
 _OUTNAME_TO_AXIS = {v: k for k, v in _AXIS_OUTNAME.items()}
 
-# All reported parameters: the 7 grid axes, plus LOGMSTAR and SFR, which
+# All reported parameters: the 8 grid axes, plus LOGMSTAR and SFR, which
 # are derived per-object from the closed-form amplitude solve. SFR (unlike
 # LOGMSTAR) is reported in linear space, matching fastspecfit.continuum's
 # SFR/SFR_IVAR convention: bg_data.sfr is exactly zero for every template
-# older than SFR_AVG_WINDOW_GYR (passively-evolving SSPs), and a log
-# transform cannot represent that exactly, forcing an arbitrary floor that
-# collapses every quiescent template onto one identical value and produces
-# a spuriously tiny (or exactly zero) log-space posterior variance --
-# reporting SFR linearly instead lets SFR=0 be an exact, well-behaved
-# output with a meaningful (possibly zero) formal uncertainty.
+# older than the ~100 Myr window baked into the templates' precomputed sfr
+# column (passively-evolving population), and a log transform cannot
+# represent that exactly, forcing an arbitrary floor that collapses every
+# quiescent template onto one identical value and produces a spuriously
+# tiny (or exactly zero) log-space posterior variance -- reporting SFR
+# linearly instead lets SFR=0 be an exact, well-behaved output with a
+# meaningful (possibly zero) formal uncertainty.
 PARAM_NAMES = tuple(_AXIS_OUTNAME[col] for col in GRID_AXIS_COLUMNS) + ('LOGMSTAR', 'SFR')
 
 # Subset (and display order) of PARAM_NAMES shown in the QA posterior panel
 # (laid out as 2 rows of 3: Z/age/mass, then SFR/tau/dustn); the full
-# 9-parameter grid is overkill for a quick-look figure.
+# 10-parameter grid is overkill for a quick-look figure.
 QA_POSTERIOR_PARAMS = ('LOGZZSUN', 'LOGAGE', 'LOGMSTAR', 'SFR', 'TAU', 'DUSTN')
 
 # Human-friendly axis labels for the QA posterior-histogram grid.
@@ -73,6 +81,7 @@ _PARAM_LABELS = {
     'LOGUMIN': r'$\log_{10}(U_{\rm min})$',
     'GAMMA': r'$\gamma$',
     'LOGQPAH': r'$\log_{10}(Q_{\rm PAH})$',
+    'FAGN': r'$f_{\rm AGN}$',
     'LOGMSTAR': r'$\log_{10}(M/M_{\odot})$',
     'SFR': r'${\rm SFR}\ [M_{\odot}/{\rm yr}]$',
 }
@@ -90,11 +99,6 @@ LUM_WAVES = (1450., 1500., 1700., 2800., 3000., 5100., 34000., 120000., 220000.)
 
 _PC_CM = 3.0856775814913673e18 # [cm]
 _LSUN = 3.846e33 # [erg/s]
-
-# Averaging window for the derived SFR proxy (BayesianGrid.load), matching
-# the 100 Myr convention used for the main (tabular-SFH) templates in
-# fastspecfit.continuum.
-SFR_AVG_WINDOW_GYR = 0.1 # [Gyr] = 100 Myr
 
 
 class BayesianGrid(object):
@@ -183,22 +187,16 @@ class BayesianGrid(object):
         self.meta = Table(T['METADATA'].read())
         self.ntemplate = len(self.meta)
 
-        # NB: the templates' own METADATA 'sfr' column (FSPS's sp.sfr,
-        # written by bin/build-bayesian-templates) is identically zero for
-        # every template and is *not* used here: each grid point is an
-        # instantaneous single-burst SSP (sfh=0), and FSPS's "current" SFR
-        # attribute is meaningful only for continuous/tabular SFHs, not a
-        # delta-function burst. Instead, derive SFR averaged over the most
-        # recent SFR_AVG_WINDOW_GYR directly from the burst age (same 100 Myr
-        # convention used for the main templates in fastspecfit.continuum):
-        # for an instantaneous burst, all of the formed mass falls within
-        # that window if age <= SFR_AVG_WINDOW_GYR, none of it otherwise.
-        # This is exact (not an approximation) for a true delta-function SFH,
-        # and can be computed just-in-time from METADATA alone -- no need to
-        # rebuild the grid.
-        age_gyr = np.asarray(self.meta['age'], dtype='f8')
-        self.sfr = np.where(age_gyr <= SFR_AVG_WINDOW_GYR,
-                            1. / (SFR_AVG_WINDOW_GYR * 1e9), 0.) # [ntemplate], Msun/yr per Msun formed
+        # Each grid template is a single continuity-SFH age bin (sfh=3), so
+        # unlike the old single-burst-SSP (sfh=0) design, FSPS's "current"
+        # SFR is physically meaningful here -- but bin/build-bayesian-templates
+        # doesn't use FSPS's sp.sfr directly (that would normalize by the
+        # bin's own width, not by a fixed averaging window); instead it
+        # precomputes this column via the same trailing-100-Myr windowed-
+        # overlap formula used for the main (tabular-SFH) templates in
+        # fastspecfit.continuum._get_sps_properties, specialized to a single
+        # age-bin template. Just read it back directly.
+        self.sfr = np.asarray(self.meta['sfr'], dtype='f8') # [ntemplate], Msun/yr per Msun formed
 
         # Rest-frame Dn(4000) and monochromatic luminosities-per-solar-mass-
         # formed, precomputed once per template by bin/build-bayesian-templates
@@ -588,7 +586,7 @@ def _solve_grid(flam, flam_ivar, lambda_eff, photsys, redshift):
 def _refine_grid_axes(ibest, chi2):
     """Locally refine each grid axis's ML value via a 3-point parabola fit.
 
-    For each of the 7 grid axes, holds the other 6 fixed at their best-fit
+    For each of the 8 grid axes, holds the other 7 fixed at their best-fit
     (discrete argmin chi2) index and fits a parabola to the already-computed
     chi2 at the immediate neighboring grid points along that axis alone
     (:func:`fastspecfit.util.minfit`). Because the grid is a full factorial
@@ -687,7 +685,7 @@ def _corner_weights(ibest, frac, frac_dir):
     -------
     indices : :class:`numpy.ndarray`
         Flat grid indices of the contributing corner templates (up to
-        2**7 = 128; fewer whenever some axes were not refined).
+        2**8 = 256; fewer whenever some axes were not refined).
     weights : :class:`numpy.ndarray`
         Corresponding non-negative weights, summing to 1.
 

@@ -18,6 +18,43 @@ VDISP_NOMINAL = 150. # [km/s]
 VDISP_BOUNDS = (50., 500.) # [km/s]
 VDISP_SIGMA_RELATION = (2.30, 0.25) # (a, b): log σ = a + b*(log M* − 11) [km/s]
 
+
+def continuity_agebins(nbins, tuniv=13.7):
+    """Lookback-time bin edges for a Prospector-style continuity-SFH grid.
+
+    Mirrors ``prospect.models.templates.adjust_continuity_agebins``: the
+    first two bins are hard-coded to 0-30 Myr and 30-100 Myr (for young-
+    population resolution and to leave a bin edge exactly at 100 Myr), the
+    remaining ``nbins-3`` interior bins are log-spaced out to
+    ``0.85*tuniv``, and the final bin runs from ``0.85*tuniv`` to
+    ``tuniv``.
+
+    Parameters
+    ----------
+    nbins : :class:`int`
+        Number of age bins; must be >= 4.
+    tuniv : :class:`float`, optional
+        Age of the universe in Gyr. Default is 13.7.
+
+    Returns
+    -------
+    agelims : :class:`numpy.ndarray`
+        Lookback-time bin edges in Gyr, ascending, of length ``nbins+1``,
+        from ~0 to ``tuniv``.
+
+    """
+    if nbins < 4:
+        errmsg = f'nbins must be >= 4 (got {nbins}).'
+        log.critical(errmsg)
+        raise ValueError(errmsg)
+
+    tbinmax = (tuniv * 0.85) * 1e9
+    lim1, lim2 = 7.4772, 8.0
+    agelims = np.array([0, lim1] + np.linspace(lim2, np.log10(tbinmax), nbins - 2).tolist() +
+                       [np.log10(tuniv * 1e9)]) # log10(yr)
+    return 10.**agelims / 1e9 # [Gyr]
+
+
 class Templates(object):
     """Stellar population synthesis templates for continuum fitting.
 
