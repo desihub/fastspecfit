@@ -771,7 +771,7 @@ def get_fastbayes_dtype(phot, topk=0):
     return np.dtype(cols)
 
 
-def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0.01):
+def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
     """Fit one object's broadband photometry against the Bayesian grid.
 
     Parameters
@@ -787,8 +787,6 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
         Output dtype, from :func:`get_fastbayes_dtype`.
     topk : :class:`int`, optional
         Number of top-weight grid templates to store (0 disables).
-    uncertainty_floor : :class:`float`, optional
-        Minimum fractional photometric uncertainty added in quadrature.
 
     Returns
     -------
@@ -810,7 +808,7 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, uncertainty_floor=0
     log.info(f'Bayesian fitting object {iobj} [{phot.uniqueid_col.lower()} '
             f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
 
-    one_spectrum(data, meta, uncertainty_floor=uncertainty_floor, fastphot=True, synthphot=True)
+    one_spectrum(data, meta, fastphot=True, synthphot=True)
 
     # Copy parsed photometry from the 'data' dictionary to the 'meta' table
     # (mirroring fastspec_one's convention).
@@ -1618,8 +1616,6 @@ def parse(options=None):
     parser.add_argument('--specprod', type=str, default=None, help="""Optional override of the on-disk spectroscopic
         production directory name under --redux_dir, when it differs from the SPECPROD dependency recorded in the
         Redrock/coadd file headers (e.g., a relocated or "mini" production tree).""")
-    parser.add_argument('--uncertainty-floor', type=float, default=0.01,
-                        help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 
     if options is None:
@@ -1733,7 +1729,6 @@ def fastbayes(args=None, mp_pool=None):
         'meta': meta[iobj],
         'fastbayes_dtype': fastbayes_dtype,
         'topk': args.topk,
-        'uncertainty_floor': args.uncertainty_floor,
     } for iobj in range(nobj)]
 
     t0 = time.time()
