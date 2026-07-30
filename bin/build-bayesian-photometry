@@ -46,7 +46,7 @@ does not distinguish photometric systems, e.g. no ``PHOTSYS``)
     Copied unchanged from the input template file, for convenience.
 
 """
-import os, time
+import os, sys, time
 import numpy as np
 import fitsio
 from astropy.io import fits
@@ -213,7 +213,8 @@ def synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm):
 
 
 def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
-         templatesfile=None, zmin=0.001, zmax=1.6, dz=0.01, nz=None, logspace=False):
+         templatesfile=None, zmin=0.001, zmax=1.6, dz=0.01, nz=None, logspace=False,
+         cmdline=None):
     """Synthesize the photometry grid and write the output FITS file.
 
     Parameters
@@ -246,6 +247,12 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
         header rather than trusting ``gridnumber``/``imf``.
     zmin, zmax, dz, nz, logspace
         See :func:`build_redshift_grid`.
+    cmdline : :class:`str` or None, optional
+        Exact command-line invocation, recorded verbatim as the ``CMDLINE``
+        header keyword (in addition to the individual dependency/parameter
+        cards already written) for easier provenance at a glance. Left out
+        of the header entirely when ``None`` (e.g. calling :func:`main`
+        directly, not via the command line).
 
     """
     from desiutil.depend import add_dependencies, possible_dependencies, setdep, getdep
@@ -286,6 +293,8 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
     hduprim = fits.PrimaryHDU()
     hduprim.header['GRIDNUM'] = gridnumber
     hduprim.header['IMF'] = imf
+    if cmdline is not None:
+        hduprim.header['CMDLINE'] = (cmdline, 'exact command-line invocation')
     add_dependencies(hduprim.header, module_names=possible_dependencies+['fastspecfit'],
                      envvar_names=('FTEMPLATES_DIR',))
     # Recorded purely as diagnostic/provenance (mirroring write_fastspecfit
@@ -380,5 +389,8 @@ if __name__ == '__main__':
     if args.test:
         zmin, zmax, dz, nz = 0.01, 0.2, None, 5
 
+    cmdline = ' '.join([os.path.basename(sys.argv[0])] + sys.argv[1:])
+
     main(args.gridnumber, outfile, imf=args.imf, templatedir=templatedir, fphotofile=args.fphotofile,
-        templatesfile=templatesfile, zmin=zmin, zmax=zmax, dz=dz, nz=nz, logspace=args.logspace)
+        templatesfile=templatesfile, zmin=zmin, zmax=zmax, dz=dz, nz=nz, logspace=args.logspace,
+        cmdline=cmdline)

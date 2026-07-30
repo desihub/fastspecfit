@@ -87,7 +87,7 @@ Notes
   instructions.
 
 """
-import os, time
+import os, sys, time
 import numpy as np
 import fitsio
 import fsps
@@ -298,7 +298,7 @@ def build_bayesian_grid(imf='chabrier', test=False):
     return meta, wave, fluxes, libraries
 
 
-def main(imf='chabrier', gridnumber=None, templatedir=None, test=False):
+def main(imf='chabrier', gridnumber=None, templatedir=None, test=False, cmdline=None):
     """Build the Bayesian template grid and write the output FITS file.
 
     Parameters
@@ -315,6 +315,12 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, test=False):
         filename already disambiguates by ``imf`` and ``gridnumber``).
     test : :class:`bool`, optional
         If ``True``, build a tiny test grid. Default is ``False``.
+    cmdline : :class:`str` or None, optional
+        Exact command-line invocation, recorded verbatim as the ``CMDLINE``
+        header keyword (in addition to the individual dependency/parameter
+        cards already written) for easier provenance at a glance. Left out
+        of the header entirely when ``None`` (e.g. calling :func:`main`
+        directly, not via the command line).
 
     """
     from desiutil.depend import add_dependencies, possible_dependencies, setdep
@@ -330,6 +336,8 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, test=False):
     hduflux.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
     hduflux.header['IMF'] = imf
     hduflux.header['GRIDNUM'] = gridnumber
+    if cmdline is not None:
+        hduflux.header['CMDLINE'] = (cmdline, 'exact command-line invocation')
     add_dependencies(hduflux.header, module_names=possible_dependencies+['fastspecfit'],
                      envvar_names=('FTEMPLATES_DIR',))
     # python-fsps isn't in possible_dependencies (so add_dependencies never
@@ -377,4 +385,7 @@ if __name__ == '__main__':
         templatedir = os.path.join(os.environ['FTEMPLATES_DIR'], 'bayesian')
     templatedir = os.path.expandvars(templatedir)
 
-    main(imf=args.imf, gridnumber=args.gridnumber, templatedir=templatedir, test=args.test)
+    cmdline = ' '.join([os.path.basename(sys.argv[0])] + sys.argv[1:])
+
+    main(imf=args.imf, gridnumber=args.gridnumber, templatedir=templatedir, test=args.test,
+        cmdline=cmdline)
