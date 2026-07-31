@@ -58,12 +58,26 @@ diffuse optical depth), reradiated dust emission
 (\texttt{add\_dust\_emission=True}, Draine \& Li 2007 templates), and AGN
 torus emission (Nenkova et al. 2008 templates, via FSPS's own
 \texttt{fagn}/\texttt{agn\_tau} parameters). Nebular line and continuum
-emission are included directly in the spectrum. The grid is a full
-factorial design over the seven axes in Table~\ref{tab:grid}: every
-combination of the seven axis values exists, so the flattened grid's
-$N$-dimensional structure --- and the flat index of any neighboring grid
-point --- is recoverable directly from the per-axis values via index
-arithmetic, with no separate shape bookkeeping required.
+emission are included directly in the spectrum. The grid's free axes ---
+which parameters vary, how many grid points each gets, and how those
+points are spaced --- are defined by a YAML parameter file
+(\texttt{fastspecfit/data/bayesian-grid.yaml} by default, overridable via
+\texttt{bin/build-bayesian-templates}'s \texttt{--paramsfile} flag) rather
+than hard-coded, so different grid designs are a config-file change, not a
+code change. The bundled default grid, described throughout the rest of
+this note, is a full factorial design over the seven axes in
+Table~\ref{tab:grid}: every combination of the seven axis values exists, so
+the flattened grid's $N$-dimensional structure --- and the flat index of
+any neighboring grid point --- is recoverable directly from the per-axis
+values via index arithmetic, with no separate shape bookkeeping required.
+This full-factorial property, along with the axis list itself (names,
+order, and whether each is refined in $\log_{10}$ space, described below),
+is written to the templates FITS file's \texttt{AXES} extension at
+grid-build time and read back per-grid-file by
+\texttt{fastspecfit.fastbayes.BayesianGrid}, so the fitting and
+sub-grid-refinement machinery of Sections~\ref{sec:fit}--\ref{sec:refine}
+is generic to whatever axis combination a given grid file defines, not
+hard-coded to these particular seven.
 
 \begin{table}[h]
 \centering
@@ -81,9 +95,9 @@ Dust-emission $Q_{\rm PAH}$ & $\log_{10}(Q_{\rm PAH})$ & 3 & 0.1 to 7.0 (log) \\
 AGN luminosity fraction & $f_{\rm AGN}$ (\texttt{fagn}) & 4 & 0.0, then log-spaced 0.01 to 3.0 \\
 \bottomrule
 \end{tabular}
-\caption{The seven Bayesian grid axes (\texttt{GRID\_AXIS\_COLUMNS} in
-  \texttt{fastspecfit.fastbayes}), in full-factorial nested-loop order.
-  Total grid size $6\times5\times10\times1\times1\times3\times4 = 3{,}600$
+\caption{The seven axes of the bundled default Bayesian grid
+  (\texttt{fastspecfit/data/bayesian-grid.yaml}), in full-factorial
+  nested-loop order. Total grid size $6\times5\times10\times1\times1\times3\times4 = 3{,}600$
   models. Axes built log-uniform (age, metallicity, $U_{\rm min}$,
   $Q_{\rm PAH}$) are refined and reported in $\log_{10}$ space so that
   their formal uncertainties (Section~\ref{sec:refine}) are symmetric;
@@ -166,7 +180,8 @@ mean, mode, and the 25th/50th/75th percentiles --- are reported for every
 parameter directly from this weighted posterior.
 
 \paragraph{Formal uncertainties.} A formal uncertainty $\sigma_x$ is also
-reported for every parameter $x$ --- the seven grid axes, $\log_{10}
+reported for every parameter $x$ --- every grid axis (seven for the
+bundled default grid of Table~\ref{tab:grid}), $\log_{10}
 M_\star$, $\mathrm{SFR}$, and the rest-frame luminosities and $D_n(4000)$
 index of Section~\ref{sec:derived} --- as the square root of the weighted
 second moment of that parameter's marginalized discrete posterior,
@@ -181,7 +196,7 @@ posterior structure --- multiple modes, skewness, parameter degeneracies
 of Section~\ref{sec:refine} cannot see, being confined to a single grid
 corner. The per-template value $x(t)$ entering Equation~\ref{eq:sigma}
 depends on how the parameter scales with the mass amplitude $\amp(t)$: for
-the seven grid axes and the model $D_n(4000)$ index (intensive quantities,
+every grid axis and the model $D_n(4000)$ index (intensive quantities,
 unaffected by $\amp(t)$), $x(t)$ is simply the tabulated per-template value;
 for $\log_{10} M_\star$ and the rest-frame luminosities of
 Section~\ref{sec:derived} (both logarithmic and linear in $\amp(t)$),
@@ -246,15 +261,18 @@ three-point bracket.
 
 \paragraph{N-linear interpolation.} The same per-axis fractional offset
 $f_a \in [0,1)$ toward the nearer neighbor (zero when unrefined) feeds an
-N-linear interpolation over the $2^7=128$ grid corners bracketing the
-refined point: corner $\kappa$, defined by one bit per axis, carries weight
+N-linear interpolation over the $2^{n_{\rm axes}}$ grid corners bracketing
+the refined point ($n_{\rm axes}=7$ and 128 corners for the bundled default
+grid of Table~\ref{tab:grid}; the code makes no assumption about
+$n_{\rm axes}$, reading it from the grid file's own axis list): corner
+$\kappa$, defined by one bit per axis, carries weight
 \begin{equation}
-  w_\kappa \;=\; \prod_{a=1}^{7} \bigl[\kappa_a\, f_a + (1-\kappa_a)(1-f_a)\bigr],
+  w_\kappa \;=\; \prod_{a=1}^{n_{\rm axes}} \bigl[\kappa_a\, f_a + (1-\kappa_a)(1-f_a)\bigr],
   \qquad \kappa_a \in \{0, 1\},
   \label{eq:corner_weight}
 \end{equation}
-computed for all 128 corners at once via array broadcasting over the bit
-pattern, rather than a nested loop. Corners with $w_\kappa \le 0$ (any axis
+computed for all $2^{n_{\rm axes}}$ corners at once via array broadcasting
+over the bit pattern, rather than a nested loop. Corners with $w_\kappa \le 0$ (any axis
 exactly on a grid point) are dropped and the remaining weights renormalized
 --- which is also how the two fixed ($N=1$) axes, $U_{\rm min}$ and
 $\gamma$, are handled with no special-casing: a fixed axis is always ``at a
