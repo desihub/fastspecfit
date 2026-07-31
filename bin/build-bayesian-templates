@@ -20,6 +20,19 @@ Usage
   time python bin/build-bayesian-templates --gridnumber 002 \\
       --templatedir $FTEMPLATES_DIR/bayesian --paramsfile /path/to/my-grid.yaml
 
+``--gridnumber`` is purely a filename/provenance label (embedded in the
+output filename and the ``GRIDNUM`` header keyword); it has no other
+connection to ``--paramsfile``. To guard against accidentally overwriting
+a grid file with a *different* grid design under the same ``--gridnumber``
+(and thus the same output filename), a sha256 hash of the resolved
+grid-parameter YAML's content is stored as the ``GRIDPHSH`` header
+keyword; if an output file already exists for the requested ``--imf``/
+``--gridnumber`` and its ``GRIDPHSH`` disagrees with the one about to be
+written, the script refuses to proceed (raises rather than silently
+overwriting) unless ``--force`` is given. In short: pick a fresh
+``--gridnumber`` for each distinct grid design; reuse a ``--gridnumber``
+only to rebuild the *same* design (e.g. after an FSPS/library update).
+
 Grid Design
 -----------
 Each grid point is a single continuity-SFH age bin (``sfh=3``, constant
@@ -118,7 +131,7 @@ Notes
   instructions.
 
 """
-import os, sys, time
+import os, sys, time, hashlib
 import numpy as np
 import fitsio
 import fsps
@@ -172,6 +185,14 @@ def _load_grid_params(paramsfile=None):
         params = yaml.safe_load(fh)
 
     return params, paramsfile
+
+
+def _grid_params_hash(paramsfile):
+    """Short content hash of a grid-parameter YAML file, for the
+    ``GRIDPHSH`` header keyword (see :func:`main`'s ``--gridnumber``/
+    ``--force`` overwrite guard)."""
+    with open(paramsfile, 'rb') as fh:
+        return hashlib.sha256(fh.read()).hexdigest()[:16]
 
 
 def _exponential_quantile_grid(npts, theta):
@@ -453,7 +474,8 @@ def build_bayesian_grid(imf='chabrier', paramsfile=None):
     return meta, wave, fluxes, libraries, axes, dust_index, agn_tau, paramsfile_used
 
 
-def main(imf='chabrier', gridnumber=None, templatedir=None, paramsfile=None, cmdline=None):
+def main(imf='chabrier', gridnumber=None, templatedir=None, paramsfile=None, cmdline=None,
+        force=False):
     """Build the Bayesian template grid and write the output FITS file.
 
     Parameters
@@ -463,7 +485,11 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, paramsfile=None, cmd
         ``'salpeter'``, or ``'kroupa'``.
     gridnumber : :class:`str`
         Grid identifier (e.g., ``'001'``), embedded in the output
-        filename in place of a version string.
+        filename in place of a version string. Purely a filename/
+        provenance label -- not otherwise linked to ``paramsfile`` -- so
+        an existing output file for this ``imf``/``gridnumber`` is checked
+        against the resolved ``paramsfile``'s content hash before being
+        overwritten (see ``force``).
     templatedir : :class:`str`
         Root output directory; the FITS file is written directly to
         ``<templatedir>/`` (flat -- no per-grid subdirectory, since the
@@ -476,16 +502,48 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, paramsfile=None, cmd
         cards already written) for easier provenance at a glance. Left out
         of the header entirely when ``None`` (e.g. calling :func:`main`
         directly, not via the command line).
+    force : :class:`bool`, optional
+        If ``True``, overwrite an existing output file for this ``imf``/
+        ``gridnumber`` even if it was built from a different grid-parameter
+        file (different ``GRIDPHSH``). Default is ``False``.
+
+    Raises
+    ------
+    ValueError
+        If an output file already exists for this ``imf``/``gridnumber``
+        and was built from a grid-parameter file with different content
+        (different ``GRIDPHSH``), and ``force`` is ``False``.
 
     """
     from desiutil.depend import add_dependencies, possible_dependencies, setdep
 
-    meta, wave, fluxes, libraries, axes, dust_index, agn_tau, paramsfile_used = \
-        build_bayesian_grid(imf=imf, paramsfile=paramsfile)
-
     if not os.path.isdir(templatedir):
         os.makedirs(templatedir, exist_ok=True)
     outfile = os.path.join(templatedir, f'bayesian-templates-{imf}-{gridnumber}.fits')
+
+    # Resolve the grid-parameter file and its content hash up front (cheap --
+    # just a YAML parse), so a --gridnumber/--paramsfile mismatch against an
+    # existing output file is caught before paying for the (potentially very
+    # slow) FSPS spectrum synthesis in build_bayesian_grid below.
+    _, paramsfile_used = _load_grid_params(paramsfile)
+    grid_hash = _grid_params_hash(paramsfile_used)
+
+    if not force and os.path.isfile(outfile):
+        old_hash = None
+        try:
+            old_hash = fitsio.FITS(outfile)[0].read_header().get('GRIDPHSH')
+        except Exception:
+            pass
+        if old_hash is not None and old_hash != grid_hash:
+            errmsg = (f"{outfile} already exists and was built from a different grid-parameter "
+                      f"file (existing GRIDPHSH '{old_hash}' != '{grid_hash}' for "
+                      f"'{paramsfile_used}'); refusing to overwrite a different grid design "
+                      "under the same --gridnumber/--imf. Pass --force to overwrite anyway, or "
+                      "use a different --gridnumber.")
+            raise ValueError(errmsg)
+
+    meta, wave, fluxes, libraries, axes, dust_index, agn_tau, paramsfile_used = \
+        build_bayesian_grid(imf=imf, paramsfile=paramsfile_used)
 
     hduflux = fits.PrimaryHDU(fluxes)
     hduflux.header['EXTNAME'] = 'FLUX'
@@ -507,6 +565,7 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, paramsfile=None, cmd
     setdep(hduflux.header, 'SPECLIB', libraries[1])
     setdep(hduflux.header, 'DUSTLIB', libraries[2])
     setdep(hduflux.header, 'GRIDPARF', os.path.abspath(paramsfile_used))
+    hduflux.header['GRIDPHSH'] = (grid_hash, 'sha256[:16] of the grid-parameter YAML content')
     hduflux.header['ZSUN'] = (ZSUN, 'adopted solar metallicity (custom C3K_R10K)')
     hduflux.header['AGNTAU'] = (agn_tau, 'fixed AGN torus optical depth (agn_tau)')
     hduflux.header['DUSTIDX'] = (dust_index, 'fixed power-law attenuation slope (dust_index)')
@@ -547,6 +606,9 @@ if __name__ == '__main__':
     parser.add_argument('--paramsfile', type=str, default=None,
                         help='Grid axis-definition YAML file (default: the bundled '
                         'fastspecfit/data/bayesian-grid.yaml)')
+    parser.add_argument('--force', action='store_true', help='Overwrite an existing output '
+                        'file for this --imf/--gridnumber even if it was built from a '
+                        'different --paramsfile (different GRIDPHSH).')
     args = parser.parse_args()
 
     templatedir = args.templatedir
@@ -557,4 +619,4 @@ if __name__ == '__main__':
     cmdline = ' '.join([os.path.basename(sys.argv[0])] + sys.argv[1:])
 
     main(imf=args.imf, gridnumber=args.gridnumber, templatedir=templatedir,
-        paramsfile=args.paramsfile, cmdline=cmdline)
+        paramsfile=args.paramsfile, cmdline=cmdline, force=args.force)
