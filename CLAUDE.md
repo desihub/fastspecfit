@@ -143,6 +143,6 @@ Numba `@jit` decorators are used heavily in `emline_fit/model.py`, `emline_fit/j
 
 `fastbayes` output FITS extensions (distinct schema, written by `fastspecfit.fastbayes.write_fastbayes`):
 - `METADATA` — targeting metadata, redshifts, observed/synthesized photometry
-- `FASTBAYES` — per-grid-axis refined values + formal uncertainties + posterior mean/mode/percentiles, plus derived `LOGMSTAR`/`SFR`, K-corrections/absolute magnitudes, rest-frame luminosities, and `DN4000_MODEL`
+- `FASTBAYES` — per-grid-axis refined values + formal uncertainties + posterior mean/mode/percentiles, plus derived `LOGMSTAR`/`SFR`, K-corrections/absolute magnitudes, rest-frame luminosities, and `DN4000_MODEL`; `ABSMAG*_SYNTH_ERR_*` (optional, `--ndraw > 0`) adds a posterior-weighted-template-draw uncertainty on the model-only absolute magnitude
 
 No `WAVE`/`MODELS` extensions: the refined rest-frame model spectrum is cheap and deterministic to rebuild from the stored `FLUX_*`/`FLUX_IVAR_*`/`Z`/`PHOTSYS` columns (`fastspecfit.fastbayes._solve_grid` + `_build_refined_spectrum`), so `fastbayes-qa` always regenerates it on demand from the raw templates file rather than persisting it per object.

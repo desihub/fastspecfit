@@ -822,7 +822,7 @@ def _corner_weights(ibest, frac, frac_dir):
     return indices, weights
 
 
-def get_fastbayes_dtype(phot, topk=0):
+def get_fastbayes_dtype(phot, topk=0, ndraw=0):
     """Build the output dtype for the per-object Bayesian-fitting results.
 
     Parameters
@@ -832,6 +832,12 @@ def get_fastbayes_dtype(phot, topk=0):
     topk : :class:`int`, optional
         Number of top-weight grid templates to store per object (sparse
         joint posterior). Disabled when ``0`` (default).
+    ndraw : :class:`int`, optional
+        Number of posterior-weighted template draws used by
+        :func:`fastbayes_one` to estimate ``ABSMAG*_SYNTH_ERR_*`` (see
+        there). ``0`` (default) disables it and omits those columns
+        entirely, matching the ``topk``/``TOPK_INDEX``/``TOPK_WEIGHT``
+        pattern above.
 
     Returns
     -------
@@ -855,7 +861,10 @@ def get_fastbayes_dtype(phot, topk=0):
     # blending) absolute magnitude; ABSMAG_IVAR is propagated from the
     # observed photometry's own ivar (Photometry.kcorr_and_absmag), not from
     # the SED-fit posterior -- mirrors the ABSMAG*/ABSMAG*_SYNTH/ABSMAG*_IVAR
-    # naming used by fastspecfit's own SPECPHOT schema.
+    # naming used by fastspecfit's own SPECPHOT schema. KCORR and the
+    # data-blended ABSMAG do not get a posterior-based uncertainty column
+    # either, mirroring fastspecfit.continuum's own --nmonte convention
+    # (only ABSMAG*_SYNTH gets one there too).
     for band, shift in zip(phot.absmag_bands, phot.band_shift):
         band = band.upper()
         shift = int(10 * shift)
@@ -863,6 +872,8 @@ def get_fastbayes_dtype(phot, topk=0):
                 (f'ABSMAG{shift:02d}_{band}', 'f4'),
                 (f'ABSMAG{shift:02d}_SYNTH_{band}', 'f4'),
                 (f'ABSMAG{shift:02d}_IVAR_{band}', 'f4')]
+        if ndraw > 0:
+            cols += [(f'ABSMAG{shift:02d}_SYNTH_ERR_{band}', 'f4')]
 
     # Rest-frame luminosities and the model Dn(4000) index, computed from the
     # refined rest-frame spectrum, plus their formal uncertainty (sqrt of the
@@ -879,7 +890,7 @@ def get_fastbayes_dtype(phot, topk=0):
     return np.dtype(cols)
 
 
-def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
+def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0, ndraw=0):
     """Fit one object's broadband photometry against the Bayesian grid.
 
     Parameters
@@ -895,6 +906,19 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
         Output dtype, from :func:`get_fastbayes_dtype`.
     topk : :class:`int`, optional
         Number of top-weight grid templates to store (0 disables).
+    ndraw : :class:`int`, optional
+        Number of individual grid templates to draw (probability-weighted
+        by the discrete posterior, without replacement), used to estimate
+        ``ABSMAG*_SYNTH_ERR_*`` from the sample spread of their
+        ``synth_absmag`` values. ``0`` (default) disables this. Cheap
+        relative to the fit itself: the observed-band photometry each draw
+        would otherwise need is already fully tabulated (via
+        :meth:`BayesianGrid.interpolate_at_z`, used once for the whole grid
+        in :func:`_solve_grid`), so each draw only costs one
+        :meth:`BayesianGrid.template_flux_row` read plus one
+        rest-frame-only :meth:`fastspecfit.photometry.Photometry.synth_absmag`
+        call -- unlike ``fastspecfit.continuum``'s ``--nmonte``, this never
+        refits the grid.
 
     Returns
     -------
@@ -992,6 +1016,30 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
         flux, fluxivar, redshift, dmod, photsys, zwave, zflux,
         synth_absmag, synth_maggies_rest)
 
+    # --- ABSMAG_SYNTH uncertainty from ndraw posterior-weighted template
+    # draws (probability-weighted by `weight`, without replacement; same
+    # seeding convention as fastbayes_qa_one's family_zflux draws). Each
+    # draw only costs one template_flux_row read plus one rest-frame-only
+    # synth_absmag call -- the observed-band photometry it would otherwise
+    # need is already fully tabulated in model_maggies (used once for the
+    # whole grid above), so this never touches filters_obs/kcorr_and_absmag
+    # or re-solves the grid, unlike fastspecfit.continuum's --nmonte.
+    if ndraw > 0:
+        nonzero = np.flatnonzero(weight > 0.)
+        ndraw_actual = min(ndraw, len(nonzero)) # don't force replacement/padding
+        if ndraw_actual > 0:
+            rng = np.random.default_rng(int(data['uniqueid']))
+            p = weight[nonzero] / weight[nonzero].sum()
+            draw_idx = rng.choice(nonzero, size=ndraw_actual, replace=False, p=p)
+            synth_absmag_draws = np.empty((ndraw_actual, len(phot.absmag_bands)), dtype='f8')
+            for idraw, idx in enumerate(draw_idx):
+                draw_zflux = bg_data.template_flux_row(idx) * amplitude[idx] * zfactor
+                synth_absmag_draws[idraw], _ = phot.synth_absmag(redshift, dmod, zwave, draw_zflux)
+            with np.errstate(invalid='ignore'):
+                synth_absmag_err = np.std(synth_absmag_draws, axis=0)
+        else:
+            synth_absmag_err = np.zeros(len(phot.absmag_bands), dtype='f8')
+
     dn4000_model, _ = Photometry.get_dn4000(restwave, restflux, rest=True)
 
     fourpi_10pc2 = 4. * np.pi * (10. * _PC_CM)**2 # [cm2]
@@ -1049,6 +1097,8 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
         result[f'ABSMAG{shift:02d}_{band}'] = absmag[iband]
         result[f'ABSMAG{shift:02d}_SYNTH_{band}'] = synth_absmag[iband]
         result[f'ABSMAG{shift:02d}_IVAR_{band}'] = ivarabsmag[iband]
+        if ndraw > 0:
+            result[f'ABSMAG{shift:02d}_SYNTH_ERR_{band}'] = synth_absmag_err[iband]
 
     for key in LUM_KEYS:
         result[key] = lums[key]
@@ -1704,6 +1754,12 @@ def parse(options=None):
     parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
     parser.add_argument('--topk', type=int, default=0,
                         help='Number of top-weight grid templates to save per object (sparse joint posterior); 0 disables.')
+    parser.add_argument('--ndraw', type=int, default=50,
+                        help='Number of individual grid templates to draw (probability-weighted by '
+                        'the discrete posterior, without replacement) to estimate ABSMAG*_SYNTH_ERR_* '
+                        'from their sample spread. 0 disables this and omits those columns. Cheap '
+                        'relative to the fit itself (see fastbayes_one) -- unlike --nmonte in '
+                        'fastspec/fastphot, this never refits the grid.')
     parser.add_argument('--use-quasarnet', dest='use_quasarnet', default=False, action='store_true',
                         help='Use QuasarNet to improve QSO redshifts.')
     parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
@@ -1815,7 +1871,7 @@ def _run_fastbayes_chunks(data, meta, phot, fastbayes_dtype, units, args, mp_poo
     units : :class:`dict`
     args : :class:`argparse.Namespace`
         Parsed ``fastbayes`` arguments (uses ``checkpoint_size``,
-        ``checkpoint_dir``, ``outfile``, ``topk``).
+        ``checkpoint_dir``, ``outfile``, ``topk``, ``ndraw``).
     mp_pool : :class:`fastspecfit.util.MPPool`
         Worker pool, reused across every batch (the grid is loaded once,
         not re-initialized per batch).
@@ -1862,6 +1918,7 @@ def _run_fastbayes_chunks(data, meta, phot, fastbayes_dtype, units, args, mp_poo
             'meta': meta[iobj],
             'fastbayes_dtype': fastbayes_dtype,
             'topk': args.topk,
+            'ndraw': args.ndraw,
         } for iobj in range(start, stop)]
 
         t0 = time.time()
@@ -1977,7 +2034,7 @@ def fastbayes(args=None, mp_pool=None):
     for band in phot.bands:
         meta[f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'] = np.zeros(nobj, dtype='f4')
 
-    fastbayes_dtype = get_fastbayes_dtype(phot, topk=args.topk)
+    fastbayes_dtype = get_fastbayes_dtype(phot, topk=args.topk, ndraw=args.ndraw)
 
     units = {'LOGAGE': 'dex(Gyr)'}
     units.update({f'LOGAGE_{stat}': 'dex(Gyr)' for stat in ('ERR', 'MEAN', 'MODE', 'P25', 'P50', 'P75')})
@@ -1992,6 +2049,7 @@ def fastbayes(args=None, mp_pool=None):
             'meta': meta[iobj],
             'fastbayes_dtype': fastbayes_dtype,
             'topk': args.topk,
+            'ndraw': args.ndraw,
         } for iobj in range(nobj)]
 
         t0 = time.time()
