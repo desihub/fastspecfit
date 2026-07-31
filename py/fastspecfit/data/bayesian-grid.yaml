@@ -8,8 +8,6 @@
 # Each axis entry:
 #   name            metadata column name / grid axis identifier
 #   kind            grid-value construction strategy; one of:
-#                     agebins           continuity_agebins(nbins=...) lookback-time
-#                                       bins (age axis only; no param/param_transform)
 #                     fixed             explicit `values` list
 #                     linspace          `npts` linearly spaced points in [min, max]
 #                     logspace          `npts` log-uniformly spaced points in [min, max]
@@ -29,12 +27,41 @@ dust_index: -0.7  # CF00-style power-law attenuation slope (sp.params['dust_inde
 agn_tau: 10.0     # AGN torus optical depth (sp.params['agn_tau'])
 
 axes:
+  # Dense Basis (Iyer & Gawiser 2017) mass-quantile SFH, tertile form: `age`
+  # is the total time since the onset of star formation (= FSPS `tage`),
+  # and `t33frac`/`t67frac` are stick-broken fractions that place the two
+  # interior tertile boundaries -- t33 = t33frac*age, t67 = t33 +
+  # t67frac*(age - t33) -- guaranteeing 0 < t33 < t67 < age for any grid
+  # values (no invalid/rejected combinations). Each of the resulting three
+  # segments [0,t33], [t33,t67], [t67,age] carries exactly 1/3 of the total
+  # mass formed. See fastspecfit.fastbayes module docs for the SFR(t)
+  # tabular-SFH construction from these three axes.
   - name: age
-    kind: agebins
-    nbins: 6
+    kind: logspace
+    npts: 8
+    min: 0.03
+    max: 13.7
     log: true
     outname: LOGAGE
     label: '$\log_{10}({\rm Age/Gyr})$'
+
+  - name: t33frac
+    kind: linspace
+    npts: 5
+    min: 0.05
+    max: 0.95
+    log: false
+    outname: T33FRAC
+    label: '$t_{33}/{\rm Age}$'
+
+  - name: t67frac
+    kind: linspace
+    npts: 5
+    min: 0.05
+    max: 0.95
+    log: false
+    outname: T67FRAC
+    label: '$(t_{67}-t_{33})/({\rm Age}-t_{33})$'
 
   - name: zzsun
     kind: logspace

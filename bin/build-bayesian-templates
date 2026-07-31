@@ -4,21 +4,25 @@
 FastSpecFit's Bayesian grid-based, broadband-photometry-only fitting
 mode.
 
-Each grid point is a complete, fully specified stellar population model:
-a Prospector-style continuity-bin star formation history, dust
-attenuation, reradiated dust emission, and (optionally significant) AGN
-torus emission are all computed by FSPS itself and baked directly into
-the output spectrum.
+Each grid point is a complete, fully specified stellar population model: a
+three-epoch Dense Basis star formation history, dust attenuation,
+reradiated dust emission, and (optionally significant) AGN torus emission
+are all computed by FSPS itself and baked directly into the output
+spectrum.
 
 Usage
 -----
 ::
 
   time python bin/build-bayesian-templates --gridnumber 001 \\
-      --templatedir $FTEMPLATES_DIR/bayesian
+      --templatedir $FTEMPLATES_DIR/bayesian --mp 32
 
   time python bin/build-bayesian-templates --gridnumber 002 \\
-      --templatedir $FTEMPLATES_DIR/bayesian --paramsfile /path/to/my-grid.yaml
+      --templatedir $FTEMPLATES_DIR/bayesian --paramsfile /path/to/my-grid.yaml --mp 32
+
+``--mp`` sets the number of worker processes used to build the grid (each
+worker gets its own ``fsps.StellarPopulation`` instance -- FSPS state
+can't be shared across processes); default is 1 (serial).
 
 ``--gridnumber`` is purely a filename/provenance label (embedded in the
 output filename and the ``GRIDNUM`` header keyword); it has no other
@@ -35,12 +39,25 @@ only to rebuild the *same* design (e.g. after an FSPS/library update).
 
 Grid Design
 -----------
-Each grid point is a single continuity-SFH age bin (``sfh=3``, constant
-SFR within the bin, following the Prospector ``adjust_continuity_agebins``
-prescription -- see :func:`fastspecfit.templates.continuity_agebins`)
-computed with a Charlot & Fall (2000)-style power-law dust attenuation
-curve (``dust_type=0``, fixed ``dust_index`` -- the same slope as
-``fastspec``/``fastphot``'s own attenuation curve,
+Each grid point is a complete Dense Basis (Iyer & Gawiser 2017) SFH,
+tertile form: ``age`` is the total time since the onset of star formation
+(FSPS ``tage``), and ``t33frac``/``t67frac`` are stick-broken fractions
+that place the two interior tertile boundaries -- ``t33 = t33frac*age``,
+``t67 = t33 + t67frac*(age - t33)`` -- guaranteeing ``0 < t33 < t67 <
+age`` for any grid values, so every combination on the ``age``/
+``t33frac``/``t67frac`` axes is a valid model (no rejected/invalid
+combinations). The resulting three segments ``[0,t33]``, ``[t33,t67]``,
+``[t67,age]`` each carry exactly 1/3 of the total mass formed, and are
+passed to FSPS as a tabular SFH (``sfh=3``) -- a three-step SFR(t)
+function built directly on FSPS's native forward-time-since-onset
+convention, so ``tage = age`` with no lookback-time translation needed
+(see :func:`_build_one_model`). This replaces galaxy-scale mutually-
+exclusive age bins (only one bin ever "on" at a time, degenerate with an
+arbitrarily-confined burst) with a genuine three-epoch SFH shape.
+
+Spectra are computed with a Charlot & Fall (2000)-style power-law dust
+attenuation curve (``dust_type=0``, fixed ``dust_index`` -- the same
+slope as ``fastspec``/``fastphot``'s own attenuation curve,
 :func:`fastspecfit.templates.Templates.klambda` -- with ``dust1`` left at
 its FSPS default of 0.0, i.e. no separate birth-cloud attenuation
 component, and ``dust2`` (``tau``) as a free diffuse optical depth axis),
@@ -58,26 +75,20 @@ so different grid designs (more/fewer points, a different axis
 combination entirely, a different prior shape for a given axis) are a
 config-file change, not a code change. See that file's header comment
 for the full axis schema (``kind: fixed | linspace | logspace |
-exp_quantile | zero_plus_logspace | agebins``, plus ``log``/``param``/
+exp_quantile | zero_plus_logspace``, plus ``log``/``param``/
 ``param_transform``/``outname``/``label``). The YAML also carries two
 fixed (non-gridded) FSPS parameters applied to every model: ``dust_index``
 and ``agn_tau``.
 
-Two age-axis and grid-design constraints are baked into the code (not
-YAML-configurable, since they follow directly from the physical model
-rather than being a tunable grid choice):
-
-* The age axis (``kind: agebins``) always uses
-  :func:`fastspecfit.templates.continuity_agebins`, whose first two bins
-  are hard-coded to 0-30 Myr and 30-100 Myr -- this both resolves the
-  youngest, most rapidly evolving populations and guarantees a bin edge
-  exactly at 100 Myr for the ``sfr`` column's windowed-average
-  calculation below. ``nbins`` must be >= 4.
-* Any axis with an exact-zero grid point (e.g. a ``tau``/``fagn``-style
-  ``exp_quantile``/``zero_plus_logspace`` axis) must have ``log: false``
-  in the YAML -- ``log10(0)`` is undefined, and
-  :mod:`fastspecfit.fastbayes`'s sub-grid parabola refinement requires a
-  well-defined coordinate for every axis.
+One grid-design constraint is baked into the code (not YAML-configurable,
+since it follows directly from the physical model rather than being a
+tunable grid choice): any axis with an exact-zero grid point (e.g. a
+``tau``/``fagn``-style ``exp_quantile``/``zero_plus_logspace`` axis) must
+have ``log: false`` in the YAML -- ``log10(0)`` is undefined, and
+:mod:`fastspecfit.fastbayes`'s sub-grid parabola refinement requires a
+well-defined coordinate for every axis. The ``age``/``t33frac``/
+``t67frac`` axis names themselves are hard-coded (the SFH construction
+looks them up by name), unlike every other axis, which is generic.
 
 Output Files
 ------------
@@ -99,17 +110,18 @@ Output Files
     Native (unmodified) FSPS vacuum wavelength array in Angstroms.
 
 ``METADATA`` (table, nmodel rows)
-    Per-model grid parameters: ``age`` (Gyr, mean age of the continuity
-    bin), ``dt`` (Gyr, bin width), one column per non-age axis (named by
-    that axis's ``name`` in the parameter YAML, e.g. ``zzsun``, ``tau``,
-    ``umin``, ``gamma``, ``qpah``, ``fagn`` for the bundled default),
+    Per-model grid parameters: one column per axis (named by that axis's
+    ``name`` in the parameter YAML -- ``age``, ``t33frac``, ``t67frac``,
+    plus ``zzsun``, ``tau``, ``umin``, ``gamma``, ``qpah``, ``fagn`` for
+    the bundled default), the derived Dense Basis tertile boundaries
+    ``t33``/``t67`` (Gyr, informational only -- not grid axes themselves),
     ``sfr`` (Msun/yr per Msun formed, precomputed here rather than at
-    ``fastbayes`` runtime as the fraction of this bin's duration falling
-    within the trailing ``SFR_AVG_WINDOW_GYR`` window -- the same
-    windowed-overlap formula as ``fastspecfit.continuum``'s
-    ``_get_sps_properties``, specialized to a single age-bin template
-    rather than a multi-bin coefficient sum), and ``mstar`` (surviving
-    stellar mass fraction per solar mass formed); plus, for
+    ``fastbayes`` runtime as this template's three-segment SFH integrated
+    against the trailing ``SFR_AVG_WINDOW_GYR`` window -- the same
+    windowed-average convention as ``fastspecfit.continuum``'s
+    ``_get_sps_properties``, generalized from a single age-bin template to
+    a three-segment SFH), and ``mstar`` (surviving stellar mass fraction
+    per solar mass formed); plus, for
     ``fastbayes``'s cheap per-object LOGL_*/DN4000_MODEL uncertainty
     estimates (see :class:`fastspecfit.fastbayes.BayesianGrid`), the
     precomputed rest-frame ``dn4000_model`` index and one
@@ -140,8 +152,7 @@ from astropy.io import fits
 from astropy.table import Table
 
 from fastspecfit.photometry import Photometry
-from fastspecfit.util import C_LIGHT
-from fastspecfit.templates import continuity_agebins
+from fastspecfit.util import C_LIGHT, MPPool
 from fastspecfit.fastbayes import LUM_KEYS, LUM_WAVES, _PC_CM, _LSUN
 
 # Averaging window for the precomputed SFR proxy (see build_bayesian_grid),
@@ -262,9 +273,119 @@ _AXIS_BUILDERS = {
     'zero_plus_logspace': _axis_zero_plus_logspace,
 }
 
+# Hard-coded (not YAML-configurable) Dense Basis SFH axis names; see module
+# docstring's "Grid Design" section.
+_SFH_AXIS_NAMES = ('age', 't33frac', 't67frac')
 
-def build_bayesian_grid(imf='chabrier', paramsfile=None):
-    """Build the Bayesian continuity-SFH template grid.
+_IMF_DICT = {'salpeter': 0, 'chabrier': 1, 'kroupa': 2}
+
+_worker_sp = None # per-worker fsps.StellarPopulation instance; set by _init_worker
+
+
+def _init_worker(imf, dust_index):
+    """``MPPool`` worker initializer: build this worker's own
+    ``fsps.StellarPopulation`` instance (FSPS state can't be shared across
+    processes)."""
+    global _worker_sp
+    _worker_sp = fsps.StellarPopulation(
+        compute_vega_mags=False,
+        zcontinuous=1,
+        add_dust_emission=True,
+        add_neb_emission=True,
+        add_neb_continuum=True,
+        imf_type=_IMF_DICT[imf],
+        dust_type=0,            # power-law (Charlot & Fall 2000-style)
+        dust_index=dust_index,  # fixed slope, matching fastspec/fastphot
+        sfh=3,                  # tabular SFH
+    )
+
+
+def _build_one_model(imodel, age, t33, t67, sfr1, sfr2, sfr3, agn_tau, paramvals):
+    """Build a single Dense Basis tertile-SFH model spectrum (``MPPool``
+    worker function).
+
+    Parameters
+    ----------
+    imodel : :class:`int`
+        Flattened grid index, passed through unchanged so the parent
+        process can scatter this result into the right row.
+    age, t33, t67 : :class:`float`
+        Dense Basis tertile boundaries [Gyr]; ``0 < t33 < t67 < age``.
+    sfr1, sfr2, sfr3 : :class:`float`
+        Constant SFR in each of the three tertile segments [Msun/yr, per
+        Msun formed].
+    agn_tau : :class:`float`
+        Fixed AGN torus optical depth.
+    paramvals : :class:`dict`
+        ``{fsps_param_name: value}`` for this model's non-SFH axes.
+
+    Returns
+    -------
+    imodel : :class:`int`
+    flux : :class:`numpy.ndarray` (float32)
+        [erg/s/cm2/Angstrom at 10 pc per solar mass formed]
+    mstar : :class:`float`
+        Surviving stellar mass fraction per solar mass formed.
+    dn4000 : :class:`float`
+        Rest-frame Dn(4000) index.
+    lum_permass : :class:`dict`
+        ``{lumkey: value}`` for each of :data:`fastspecfit.fastbayes.LUM_KEYS`
+        (linear, per solar mass formed).
+
+    """
+    global _worker_sp
+    sp = _worker_sp
+
+    for pname, val in paramvals.items():
+        sp.params[pname] = val
+    sp.params['agn_tau'] = agn_tau
+
+    # Encode the three-segment SFR(t) step function as a piecewise-linear
+    # tabular SFH: each interior boundary is doubled with a tiny epsilon
+    # offset (scaled to the smallest segment duration, so it's always well
+    # inside every segment regardless of the age/fraction combination) to
+    # approximate an instantaneous jump between segments.
+    d1, d2, d3 = t33, t67 - t33, age - t67
+    eps = 1e-3 * min(d1, d2, d3) # [Gyr]
+
+    fspstime = np.array([0., t33, t33 + eps, t67, t67 + eps, age])
+    sfh_rate = np.array([sfr1, sfr1, sfr2, sfr2, sfr3, sfr3])
+    sp.set_tabular_sfh(fspstime, sfh_rate)
+
+    wave, flux = sp.get_spectrum(tage=age, peraa=True)
+
+    lodot = 3.828e33                # [erg/s]
+    tenpc2 = (10. * 3.085678e18)**2 # [cm2]
+    flux = flux * lodot / (4. * np.pi * tenpc2) # [erg/s/cm2/A/Msun at 10pc]
+
+    mstar = sp.stellar_mass
+    if mstar < 0:
+        errmsg = 'Stellar mass is negative!'
+        raise ValueError(errmsg)
+
+    # Rest-frame Dn(4000) and monochromatic luminosities per solar mass
+    # formed, precomputed once here (rather than once per DESI object at
+    # fastbayes runtime) since both depend only on this template's
+    # intrinsic rest-frame spectral shape, not on redshift or observed
+    # photometry -- see fastspecfit.fastbayes.fastbayes_one for the
+    # equivalent per-object formula this mirrors.
+    fourpi_10pc2 = 4. * np.pi * (10. * _PC_CM)**2 # [cm2]
+    dn4000 = Photometry.get_dn4000(wave, flux, rest=True)[0]
+
+    lum_permass = {}
+    for cwave, lumkey in zip(LUM_WAVES, LUM_KEYS):
+        cflux = np.interp(cwave, wave, flux) * fourpi_10pc2 # [erg/s/A]
+        if 'LOGL_' in lumkey:
+            val = cflux * cwave / _LSUN / 1e10 # [1e10 Lsun]
+        else:
+            val = cflux * cwave**2 / (C_LIGHT * 1e13) / 1e28 # [1e-28 erg/s/Hz]
+        lum_permass[lumkey] = val
+
+    return imodel, flux.astype(np.float32), mstar, dn4000, lum_permass
+
+
+def build_bayesian_grid(imf='chabrier', paramsfile=None, mp=1):
+    """Build the Bayesian Dense Basis SFH template grid.
 
     Parameters
     ----------
@@ -274,6 +395,10 @@ def build_bayesian_grid(imf='chabrier', paramsfile=None):
     paramsfile : :class:`str` or None, optional
         Grid axis-definition YAML file. Defaults to the bundled
         ``fastspecfit/data/bayesian-grid.yaml`` when ``None``.
+    mp : :class:`int`, optional
+        Number of worker processes (each with its own
+        ``fsps.StellarPopulation`` instance) used to build the grid.
+        Default is 1 (serial).
 
     Returns
     -------
@@ -298,82 +423,83 @@ def build_bayesian_grid(imf='chabrier', paramsfile=None):
         Resolved grid-parameter YAML path actually used.
 
     """
-    # https://dfm.io/python-fsps/current/stellarpop_api/
-    imfdict = {'salpeter': 0, 'chabrier': 1, 'kroupa': 2}
-
     params, paramsfile_used = _load_grid_params(paramsfile)
     axes = params['axes']
     dust_index = float(params['dust_index'])
     agn_tau = float(params['agn_tau'])
 
-    age_axes = [a for a in axes if a['kind'] == 'agebins']
-    if len(age_axes) != 1:
-        errmsg = f"Grid parameter file {paramsfile_used} must define exactly one 'agebins' axis."
-        raise ValueError(errmsg)
-    age_axis = age_axes[0]
-    nagebins = int(age_axis['nbins'])
-    if nagebins < 4:
-        errmsg = f"Age axis 'nbins' ({nagebins}) must be >= 4 (continuity_agebins requirement)."
+    axis_names = [a['name'] for a in axes]
+    missing = sorted(set(_SFH_AXIS_NAMES) - set(axis_names))
+    if missing:
+        errmsg = (f"Grid parameter file {paramsfile_used} is missing required Dense "
+                  f"Basis SFH axes: {missing}.")
         raise ValueError(errmsg)
 
-    non_age_axes = [a for a in axes if a['kind'] != 'agebins']
-    for axis in non_age_axes:
+    for axis in axes:
         if axis['kind'] not in _AXIS_BUILDERS:
             errmsg = (f"Unknown axis kind '{axis['kind']}' for axis '{axis['name']}'; "
-                      f'must be one of {sorted(_AXIS_BUILDERS.keys())} (or "agebins").')
+                      f'must be one of {sorted(_AXIS_BUILDERS.keys())}.')
             raise ValueError(errmsg)
 
-    # Prospector-style continuity-bin lookback-time edges (Gyr); see
-    # fastspecfit.templates.continuity_agebins. The first two bins are
-    # hard-coded to 0-30 Myr and 30-100 Myr, guaranteeing a bin edge
-    # exactly at 100 Myr for the windowed-average sfr calculation below.
-    agelims = continuity_agebins(nbins=nagebins)
-    agebins = np.array([agelims[:-1], agelims[1:]]).T # [nagebins, 2], Gyr
-    age_mean_gyr = np.mean(agebins, axis=1) # [Gyr]
-    dt_gyr = np.diff(agebins, axis=1)[:, 0]  # [Gyr]
+    axis_grids = [_AXIS_BUILDERS[a['kind']](a) for a in axes]
 
-    axis_grids = [_AXIS_BUILDERS[a['kind']](a) for a in non_age_axes]
+    models_dtype = np.dtype([(a['name'], np.float64) for a in axes])
 
-    models_dtype = np.dtype(
-        [('iagebin', np.int32)] + [(a['name'], np.float64) for a in non_age_axes])
-
-    dims = (nagebins,) + tuple(len(g) for g in axis_grids)
+    dims = tuple(len(g) for g in axis_grids)
     models = np.zeros(dims, dtype=models_dtype)
 
     for multi_index in np.ndindex(dims):
         model = models[multi_index]
-        model['iagebin'] = multi_index[0]
-        for iaxis, axis in enumerate(non_age_axes):
-            model[axis['name']] = axis_grids[iaxis][multi_index[iaxis + 1]]
+        for iaxis, axis in enumerate(axes):
+            model[axis['name']] = axis_grids[iaxis][multi_index[iaxis]]
 
     models = models.flatten()
     nsed = len(models)
 
+    # Dense Basis tertile boundaries (Gyr); see module docstring's "Grid
+    # Design" section. Stick-breaking guarantees 0 < t33 < t67 < age for
+    # any (age, t33frac, t67frac) grid combination.
+    age_gyr = models['age']
+    t33 = models['t33frac'] * age_gyr
+    t67 = t33 + models['t67frac'] * (age_gyr - t33)
+
     meta = Table()
-    meta['age'] = age_mean_gyr[models['iagebin']] # [Gyr]
-    meta['dt'] = dt_gyr[models['iagebin']]        # [Gyr]
-    for axis in non_age_axes:
+    for axis in axes:
         meta[axis['name']] = models[axis['name']]
+    meta['t33'] = t33 # [Gyr]; informational only, not a grid axis
+    meta['t67'] = t67 # [Gyr]; informational only, not a grid axis
     meta['mstar'] = np.zeros(nsed, 'f4')
     meta['dn4000_model'] = np.zeros(nsed, 'f4')
     for lumkey in LUM_KEYS:
         meta[f'{lumkey.lower()}_permass'] = np.zeros(nsed, 'f4')
 
+    # Each of the three tertile segments carries exactly 1/3 of the total
+    # mass formed (1 Msun, matching the existing "per Msun formed"
+    # convention).
+    d1_gyr, d2_gyr, d3_gyr = t33, t67 - t33, age_gyr - t67
+    sfr1 = (1. / 3.) / (d1_gyr * 1e9) # [Msun/yr per Msun formed]
+    sfr2 = (1. / 3.) / (d2_gyr * 1e9)
+    sfr3 = (1. / 3.) / (d3_gyr * 1e9)
+
     # Precompute the trailing-SFR_AVG_WINDOW_GYR-averaged SFR proxy per
-    # template (Msun/yr per Msun formed), mirroring the windowed-overlap
-    # formula in fastspecfit.continuum._get_sps_properties -- specialized
-    # to a single age-bin template (coeff=1) rather than a multi-bin
-    # coefficient sum: the fraction of this bin's duration overlapping the
-    # trailing window, divided by the window itself (not the bin's own
-    # width). Because a bin edge always falls exactly at
-    # SFR_AVG_WINDOW_GYR (see above), this fraction is exactly 0 or 1 for
-    # every template -- no partial-overlap case actually arises -- so
-    # every sub-100-Myr bin (however many there are) reports the same
-    # current-SFR value, and every older bin reports exactly zero.
-    t_near = meta['age'] - meta['dt'] / 2. # [Gyr]
-    t_far = meta['age'] + meta['dt'] / 2.  # [Gyr]
-    frac = np.clip((np.minimum(t_far, SFR_AVG_WINDOW_GYR) - t_near) / meta['dt'], 0., 1.)
-    meta['sfr'] = frac / (SFR_AVG_WINDOW_GYR * 1e9) # [Msun/yr per Msun formed]
+    # template (Msun/yr per Msun formed), generalizing the windowed-overlap
+    # formula in fastspecfit.continuum._get_sps_properties from a single
+    # age-bin template to this three-segment SFH: each segment's overlap
+    # with the trailing window [max(age-window, 0), age], weighted by that
+    # segment's SFR, summed and divided by the window itself.
+    window_lo = np.maximum(age_gyr - SFR_AVG_WINDOW_GYR, 0.) # [Gyr]
+    def _overlap(lo, hi):
+        return np.clip(np.minimum(hi, age_gyr) - np.maximum(lo, window_lo), 0., None)
+    overlap1 = _overlap(0., t33)
+    overlap2 = _overlap(t33, t67)
+    overlap3 = _overlap(t67, age_gyr)
+    # overlap1/2/3 are in Gyr; sfr1/2/3 are already in Msun/yr (their own
+    # Gyr-to-yr conversion is baked into their definition above), so no
+    # further unit conversion is needed here: the Gyr-to-yr factor that
+    # would apply to the numerator (converting overlap to years) and to
+    # the denominator (converting the window to years) cancels exactly.
+    meta['sfr'] = ((overlap1 * sfr1 + overlap2 * sfr2 + overlap3 * sfr3) /
+                  SFR_AVG_WINDOW_GYR) # [Msun/yr per Msun formed]
 
     print('Instantiating the StellarPopulation object...', end='')
     t0 = time.time()
@@ -383,91 +509,73 @@ def build_bayesian_grid(imf='chabrier', paramsfile=None):
         add_dust_emission=True,
         add_neb_emission=True,
         add_neb_continuum=True,
-        imf_type=imfdict[imf],
-        dust_type=0,            # power-law (Charlot & Fall 2000-style)
-        dust_index=dust_index,  # fixed slope, matching fastspec/fastphot
-        sfh=3,                  # tabular SFH (continuity bins)
+        imf_type=_IMF_DICT[imf],
+        dust_type=0,
+        dust_index=dust_index,
+        sfh=3,
     )
     print('...took {:.3f} sec'.format((time.time() - t0)))
     libraries = tuple(lib.decode() for lib in sp.libraries)
+    wave = sp.wavelengths
+    npix = len(wave)
     print('FSPS libraries: {}'.format(', '.join(libraries)))
+    del sp # per-worker copies (see _init_worker) do the actual model building
 
-    print(f'Creating {nsed} model spectra...')
-    t0 = time.time()
-
-    lodot = 3.828e33               # [erg/s]
-    tenpc2 = (10. * 3.085678e18)**2 # [cm2]
-
-    # For the rest-frame Dn(4000)/monochromatic-luminosity precomputation
-    # below, matching fastspecfit.fastbayes's own runtime formula exactly.
-    fourpi_10pc2 = 4. * np.pi * (10. * _PC_CM)**2 # [cm2]
-
-    # log progress roughly every 5% of the grid (at least every model, at most every 500)
-    logevery = int(np.clip(nsed // 20, 1, 500))
-
-    fluxes = None
-    for imodel, model in enumerate(models):
-        for axis in non_age_axes:
+    # Precompute each model's fixed FSPS sp.params dict once (cheap, pure
+    # Python) so worker processes only need to apply, not derive, them.
+    paramvals_list = []
+    for imodel in range(nsed):
+        paramvals = {}
+        for axis in axes:
             if 'param' not in axis:
                 continue
-            val = model[axis['name']]
+            val = models[axis['name']][imodel]
             transform = axis.get('param_transform', 'linear')
             if transform == 'log10':
                 val = np.log10(val)
             elif transform != 'linear':
                 errmsg = f"Unknown param_transform '{transform}' for axis '{axis['name']}'."
                 raise ValueError(errmsg)
-            sp.params[axis['param']] = val
-        sp.params['agn_tau'] = agn_tau
+            paramvals[axis['param']] = val
+        paramvals_list.append(paramvals)
 
-        agebin = agebins[model['iagebin']] # [Gyr]
-        fspstime = agebin - agebin[0]      # [Gyr], relative to bin start
-        tage = agebin[1]                   # [Gyr], time of observation (bin end)
+    argdicts = [
+        dict(imodel=imodel, age=age_gyr[imodel], t33=t33[imodel], t67=t67[imodel],
+             sfr1=sfr1[imodel], sfr2=sfr2[imodel], sfr3=sfr3[imodel],
+             agn_tau=agn_tau, paramvals=paramvals_list[imodel])
+        for imodel in range(nsed)
+    ]
 
-        dt_yr = np.diff(agebin)[0] * 1e9   # [yr]
-        sfh_rate = np.zeros_like(fspstime) + 1. / dt_yr # [Msun/yr]
+    print(f'Creating {nsed} model spectra using {mp} worker(s)...')
+    t0 = time.time()
 
-        # force the SFR to go to zero just after the bin ends
-        fspstime = np.hstack((fspstime, fspstime[-1] * 1.01))
-        sfh_rate = np.hstack((sfh_rate, 0.))
+    fluxes = np.zeros((nsed, npix), dtype=np.float32)
 
-        sp.set_tabular_sfh(fspstime, sfh_rate)
+    pool = MPPool(mp, initializer=_init_worker,
+                  init_argdict=dict(imf=imf, dust_index=dust_index))
 
-        wave, flux = sp.get_spectrum(tage=tage, peraa=True)
+    # Chunk the work so progress can still be reported periodically --
+    # MPPool.starmap otherwise blocks until every model in the batch is done.
+    nchunks = int(np.clip(nsed // 5000, 1, 40))
+    chunks = np.array_split(np.arange(nsed), nchunks)
 
-        flux = flux * lodot / (4. * np.pi * tenpc2) # [erg/s/cm2/A/Msun at 10pc]
+    ndone = 0
+    for chunk in chunks:
+        results = pool.starmap(_build_one_model, [argdicts[i] for i in chunk])
+        for imodel, flux, mstar, dn4000, lum_permass in results:
+            fluxes[imodel, :] = flux
+            meta['mstar'][imodel] = mstar
+            meta['dn4000_model'][imodel] = dn4000
+            for lumkey, val in lum_permass.items():
+                meta[f'{lumkey.lower()}_permass'][imodel] = val
 
-        if fluxes is None:
-            npix = len(wave)
-            fluxes = np.zeros((nsed, npix), dtype=np.float32)
+        ndone += len(chunk)
+        rate = ndone / (time.time() - t0) # [models/sec]
+        remaining = (nsed - ndone) / rate / 60. # [min]
+        print('  {}/{} models ({:.1f}%) done in {:.1f} min; ~{:.1f} min remaining'.format(
+            ndone, nsed, 100. * ndone / nsed, (time.time() - t0) / 60., remaining))
 
-        fluxes[imodel, :] = flux
-        meta['mstar'][imodel] = sp.stellar_mass
-
-        if sp.stellar_mass < 0:
-            raise ValueError('Stellar mass is negative!')
-
-        # Rest-frame Dn(4000) and monochromatic luminosities per solar mass
-        # formed, precomputed once here (rather than once per DESI object at
-        # fastbayes runtime) since both depend only on this template's
-        # intrinsic rest-frame spectral shape, not on redshift or observed
-        # photometry -- see fastspecfit.fastbayes.fastbayes_one for the
-        # equivalent per-object formula this mirrors.
-        meta['dn4000_model'][imodel] = Photometry.get_dn4000(wave, flux, rest=True)[0]
-        for cwave, lumkey in zip(LUM_WAVES, LUM_KEYS):
-            cflux = np.interp(cwave, wave, flux) * fourpi_10pc2 # [erg/s/A]
-            if 'LOGL_' in lumkey:
-                val = cflux * cwave / _LSUN / 1e10 # [1e10 Lsun]
-            else:
-                val = cflux * cwave**2 / (C_LIGHT * 1e13) / 1e28 # [1e-28 erg/s/Hz]
-            meta[f'{lumkey.lower()}_permass'][imodel] = val
-
-        ndone = imodel + 1
-        if ndone % logevery == 0 or ndone == nsed:
-            rate = ndone / (time.time() - t0) # [models/sec]
-            remaining = (nsed - ndone) / rate / 60. # [min]
-            print('  {}/{} models ({:.1f}%) done in {:.1f} min; ~{:.1f} min remaining'.format(
-                ndone, nsed, 100. * ndone / nsed, (time.time() - t0) / 60., remaining))
+    pool.close()
 
     print('Finished {} models in {:.3f} min'.format(nsed, (time.time() - t0) / 60.))
 
@@ -475,7 +583,7 @@ def build_bayesian_grid(imf='chabrier', paramsfile=None):
 
 
 def main(imf='chabrier', gridnumber=None, templatedir=None, paramsfile=None, cmdline=None,
-        force=False):
+        force=False, mp=1):
     """Build the Bayesian template grid and write the output FITS file.
 
     Parameters
@@ -496,6 +604,9 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, paramsfile=None, cmd
         filename already disambiguates by ``imf`` and ``gridnumber``).
     paramsfile : :class:`str` or None, optional
         Grid axis-definition YAML file; see :func:`build_bayesian_grid`.
+    mp : :class:`int`, optional
+        Number of worker processes used to build the grid; see
+        :func:`build_bayesian_grid`. Default is 1 (serial).
     cmdline : :class:`str` or None, optional
         Exact command-line invocation, recorded verbatim as the ``CMDLINE``
         header keyword (in addition to the individual dependency/parameter
@@ -543,7 +654,7 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, paramsfile=None, cmd
             raise ValueError(errmsg)
 
     meta, wave, fluxes, libraries, axes, dust_index, agn_tau, paramsfile_used = \
-        build_bayesian_grid(imf=imf, paramsfile=paramsfile_used)
+        build_bayesian_grid(imf=imf, paramsfile=paramsfile_used, mp=mp)
 
     hduflux = fits.PrimaryHDU(fluxes)
     hduflux.header['EXTNAME'] = 'FLUX'
@@ -615,6 +726,8 @@ if __name__ == '__main__':
     parser.add_argument('--force', action='store_true', help='Overwrite an existing output '
                         'file for this --imf/--gridnumber even if it was built from a '
                         'different --paramsfile (different GRIDPHSH).')
+    parser.add_argument('--mp', type=int, default=1, help='Number of worker processes to use '
+                        'to build the grid (each with its own fsps.StellarPopulation instance).')
     args = parser.parse_args()
 
     templatedir = args.templatedir
@@ -625,4 +738,4 @@ if __name__ == '__main__':
     cmdline = ' '.join([os.path.basename(sys.argv[0])] + sys.argv[1:])
 
     main(imf=args.imf, gridnumber=args.gridnumber, templatedir=templatedir,
-        paramsfile=args.paramsfile, cmdline=cmdline, force=args.force)
+        paramsfile=args.paramsfile, cmdline=cmdline, force=args.force, mp=args.mp)

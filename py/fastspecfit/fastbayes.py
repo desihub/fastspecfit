@@ -48,23 +48,48 @@ from fastspecfit.singlecopy import sc_data
 # no special-casing is needed to support one.
 
 # Derived (non-axis) output parameters, computed per-object from the
-# closed-form amplitude solve rather than read off a grid axis. SFR (unlike
-# LOGMSTAR) is reported in linear space, matching fastspecfit.continuum's
-# SFR/SFR_IVAR convention: bg_data.sfr is exactly zero for every template
-# older than the ~100 Myr window baked into the templates' precomputed sfr
-# column (passively-evolving population), and a log transform cannot
-# represent that exactly, forcing an arbitrary floor that collapses every
-# quiescent template onto one identical value and produces a spuriously
-# tiny (or exactly zero) log-space posterior variance -- reporting SFR
-# linearly instead lets SFR=0 be an exact, well-behaved output with a
-# meaningful (possibly zero) formal uncertainty.
-DERIVED_PARAM_NAMES = ('LOGMSTAR', 'SFR')
+# closed-form amplitude solve rather than read off a grid axis.
+#
+# LOGMSTAR is the *surviving* stellar mass (matching fastspec/fastphot's
+# own LOGMSTAR convention -- current mass, not total mass ever formed):
+# the grid's per-template `mstar` column is FSPS's surviving-mass fraction
+# per solar mass formed (mass loss/return already applied), so the fitted
+# mass amplitude (Msun formed) times bg_data.mstar gives each template's
+# surviving mass. (The total mass *formed*, log10(amplitude) alone, has no
+# output column -- it's used internally to scale LOGL_*/LOGLNU_*, which
+# are extensive quantities tied to the templates' `_permass` normalization,
+# not to the surviving-mass fraction.)
+#
+# SFR/SSFR (unlike LOGMSTAR) are reported in linear space, matching
+# fastspecfit.continuum's SFR/SFR_IVAR convention: bg_data.sfr is exactly
+# zero for every template older than the ~100 Myr window baked into the
+# templates' precomputed sfr column (passively-evolving population), and a
+# log transform cannot represent that exactly, forcing an arbitrary floor
+# that collapses every quiescent template onto one identical value and
+# produces a spuriously tiny (or exactly zero) log-space posterior
+# variance -- reporting SFR/SSFR linearly instead lets 0 be an exact,
+# well-behaved output with a meaningful (possibly zero) formal uncertainty.
+# SSFR = SFR/Mstar is exactly bg_data.ssfr = bg_data.sfr/bg_data.mstar
+# (both per Msun formed): the fitted mass amplitude cancels since SFR and
+# Mstar both scale linearly with it, so SSFR is amplitude-independent like
+# a grid axis, and its posterior/uncertainty come from bg_data.ssfr's own
+# discrete posterior rather than from (incorrectly) differencing the
+# separately-refined SFR and LOGMSTAR.
+#
+# T50 (half-mass assembly time) and MSTARAGE (mass-weighted age, lookback
+# convention) are likewise amplitude-independent, purely geometric
+# functions of each template's Dense Basis age/t33/t67 -- see
+# BayesianGrid.load's t50/mstarage precomputation.
+DERIVED_PARAM_NAMES = ('LOGMSTAR', 'SFR', 'SSFR', 'T50', 'MSTARAGE')
 
-# Human-friendly labels for the two derived (non-axis) parameters; per-grid
+# Human-friendly labels for the derived (non-axis) parameters; per-grid
 # axis labels come from BayesianGrid.axis_labels instead (see above).
 _DERIVED_PARAM_LABELS = {
-    'LOGMSTAR': r'$\log_{10}(M/M_{\odot})$',
+    'LOGMSTAR': r'$\log_{10}(M_\star/M_{\odot})$',
     'SFR': r'${\rm SFR}\ [M_{\odot}/{\rm yr}]$',
+    'SSFR': r'${\rm sSFR}\ [{\rm yr}^{-1}]$',
+    'T50': r'$t_{50}\ [{\rm Gyr}]$',
+    'MSTARAGE': r'$\langle{\rm Age}\rangle_M\ [{\rm Gyr}]$',
 }
 
 # Preferred-order candidates for the QA figure's compact text summary
@@ -76,11 +101,19 @@ _DERIVED_PARAM_LABELS = {
 _QA_SUMMARY_CANDIDATES = (
     ('LOGZZSUN', r'$\log_{{10}}(Z/Z_{{\odot}})={}$', '{:.2f}'),
     ('LOGAGE', r'$\log_{{10}}(\mathrm{{Age}}/\mathrm{{Gyr}})={}$', '{:.2f}'),
-    ('LOGMSTAR', r'$\log_{{10}}(M/M_{{\odot}})={}$', '{:.2f}'),
+    ('LOGMSTAR', r'$\log_{{10}}(M_\star/M_{{\odot}})={}$', '{:.2f}'),
     ('SFR', r'$\mathrm{{SFR}}={}\ M_{{\odot}}/\mathrm{{yr}}$', '{:.3g}'),
     ('TAUV', r'$\tau_V={}$', '{:.2f}'),
     ('FAGN', r'$f_{{\rm AGN}}={}$', '{:.2f}'),
 )
+
+# Grid axes that are still legitimate FASTBAYES output columns (refined and
+# reported like any other axis) but excluded from the QA posterior-panel
+# grid: t33frac/t67frac are internal Dense Basis SFH bookkeeping, not
+# physically meaningful on their own to someone reading the QA figure --
+# T50/MSTARAGE (see DERIVED_PARAM_NAMES) are the intended human-readable
+# substitutes.
+_QA_HIDDEN_PARAMS = frozenset(('T33FRAC', 'T67FRAC'))
 
 # Rest-frame luminosity output keys and reference wavelengths (Angstrom).
 # The first six match the LOGL_*/LOGLNU_* columns in fastspecfit's own
@@ -216,6 +249,32 @@ class BayesianGrid(object):
         # fastspecfit.continuum._get_sps_properties, specialized to a single
         # age-bin template. Just read it back directly.
         self.sfr = np.asarray(self.meta['sfr'], dtype='f8') # [ntemplate], Msun/yr per Msun formed
+
+        # Surviving stellar mass fraction per solar mass formed (FSPS's
+        # sp.stellar_mass, mass loss/return already applied) -- scaled by
+        # the fitted mass amplitude in fastbayes_one/fastbayes_qa_one to get
+        # each template's actual (surviving) stellar mass estimate, matching
+        # fastspec/fastphot's own LOGMSTAR convention. SSFR = SFR/Mstar is
+        # precomputed here too since it's likewise amplitude-independent
+        # (both scale linearly with the fitted amplitude, which cancels).
+        self.mstar = np.asarray(self.meta['mstar'], dtype='f8') # [ntemplate], dimensionless
+        self.ssfr = self.sfr / self.mstar # [ntemplate], 1/yr
+
+        # T50 (half-mass assembly time) and MSTARAGE (mass-weighted age,
+        # lookback convention) are purely geometric functions of each
+        # template's Dense Basis tertile boundaries (t33, t67) and total age
+        # -- see bin/build-bayesian-templates's module docstring for the SFH
+        # construction. T50 = (t33+t67)/2 because SFR is constant within the
+        # middle tertile segment, so cumulative mass grows linearly there and
+        # the 50%-mass point is exactly that segment's midpoint. MSTARAGE
+        # averages the three equal-mass (1/3 each) segments' midpoint
+        # lookback times: age - mean([t33/2, (t33+t67)/2, (t67+age)/2])
+        # = (5*age - 2*t33 - 2*t67) / 6.
+        t33_grid = np.asarray(self.meta['t33'], dtype='f8') # [Gyr]
+        t67_grid = np.asarray(self.meta['t67'], dtype='f8') # [Gyr]
+        age_grid = np.asarray(self.meta['age'], dtype='f8')  # [Gyr]
+        self.t50 = (t33_grid + t67_grid) / 2. # [Gyr]
+        self.mstarage = (5. * age_grid - 2. * t33_grid - 2. * t67_grid) / 6. # [Gyr]
 
         # Rest-frame Dn(4000) and monochromatic luminosities-per-solar-mass-
         # formed, precomputed once per template by bin/build-bayesian-templates
@@ -1081,7 +1140,20 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
     chi2_refined = soln['chi2_refined']
     model_maggies = soln['model_maggies']
 
-    logmstar = np.log10(np.clip(amplitude, 1e-30, None))
+    # log10(Msun formed) -- internal only (no output column): used below to
+    # scale LOGL_*/LOGLNU_*, which are extensive quantities tied to the
+    # templates' `_permass` (per Msun *formed*) normalization, not to the
+    # surviving-mass fraction that LOGMSTAR uses.
+    amplitude_log = np.log10(np.clip(amplitude, 1e-30, None))
+
+    # Surviving stellar mass: the grid's per-template `mstar` column is
+    # FSPS's surviving-mass fraction per solar mass formed (mass loss/return
+    # already applied), so scale by the fitted mass amplitude to get each
+    # template's actual surviving-mass estimate -- matching fastspec/
+    # fastphot's own LOGMSTAR convention (current mass, not total mass ever
+    # formed).
+    mstar_per_template = amplitude * bg_data.mstar # [ntemplate], Msun (surviving)
+    logmstar = np.log10(np.clip(mstar_per_template, 1e-30, None))
 
     # The grid stores sfr per solar mass formed (like the flux templates
     # themselves), so scale by the fitted mass amplitude to get each
@@ -1092,9 +1164,26 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
     # evolving population) that a log transform cannot represent.
     sfr_per_template = amplitude * bg_data.sfr # [ntemplate], Msun/yr
 
-    refined_logmstar = np.log10(max(refined_amplitude, 1e-30))
+    refined_mstar_permass = np.sum(corner_weight * bg_data.mstar[corner_idx])
+    refined_logmstar = np.log10(np.clip(refined_amplitude * refined_mstar_permass, 1e-30, None))
+
     refined_sfr_per_msun = np.sum(corner_weight * bg_data.sfr[corner_idx])
     refined_sfr = refined_amplitude * refined_sfr_per_msun
+
+    # SSFR = SFR/Mstar = bg_data.ssfr = bg_data.sfr/bg_data.mstar: the
+    # fitted mass amplitude cancels exactly (both SFR and Mstar scale
+    # linearly with it), so SSFR is amplitude-independent like a grid axis,
+    # and its refined value is the same N-linear interpolation over the
+    # corner simplex used for every other intrinsic per-template quantity
+    # (not a division of the separately-refined SFR and LOGMSTAR, which
+    # would propagate their individual refinement/rounding error
+    # incorrectly).
+    refined_ssfr = np.sum(corner_weight * bg_data.ssfr[corner_idx]) # [1/yr]
+
+    # T50/MSTARAGE are likewise amplitude-independent (see
+    # BayesianGrid.load), so refine them the same way.
+    refined_t50 = np.sum(corner_weight * bg_data.t50[corner_idx]) # [Gyr]
+    refined_mstarage = np.sum(corner_weight * bg_data.mstarage[corner_idx]) # [Gyr]
 
     # --- refined rest-frame spectrum (N-linear combination of the
     # neighboring raw template spectra), scaled by the refined mass -------
@@ -1154,7 +1243,7 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
         kcorr_mean = np.sum(weight[:, np.newaxis] * kcorr_per_template, axis=0)
         kcorr_err = np.sqrt(np.sum(weight[:, np.newaxis] * (kcorr_per_template - kcorr_mean)**2, axis=0))
 
-        # Floor amplitude (matching the logmstar/refined_logmstar convention
+        # Floor amplitude (matching the amplitude_log/logmstar convention
         # above) rather than leaving exact-zero-amplitude templates (routine
         # -- the non-negative closed-form solve in _solve_grid clips many
         # poorly-fitting templates to amplitude=0) to produce log10(0)=-inf:
@@ -1198,8 +1287,10 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
         lums[key] = np.log10(val) if val > 0. else 0.
 
     # --- fill the output row ------------------------------------------------
-    derived = {'LOGMSTAR': refined_logmstar, 'SFR': refined_sfr}
-    posterior = {'LOGMSTAR': logmstar, 'SFR': sfr_per_template}
+    derived = {'LOGMSTAR': refined_logmstar, 'SFR': refined_sfr, 'SSFR': refined_ssfr,
+              'T50': refined_t50, 'MSTARAGE': refined_mstarage}
+    posterior = {'LOGMSTAR': logmstar, 'SFR': sfr_per_template, 'SSFR': bg_data.ssfr,
+                'T50': bg_data.t50, 'MSTARAGE': bg_data.mstarage}
 
     for col in bg_data.axis_columns:
         pname = bg_data.axis_outname[col]
@@ -1273,12 +1364,14 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
     # calculation, not an extra disk read). DN4000_MODEL is intensive (the
     # fitted mass amplitude cancels in the ratio, like a grid axis); LOGL_*/
     # LOGLNU_* are extensive (linear in amplitude), so log10(amplitude *
-    # L_permass) = logmstar + log10(L_permass), the same additive-log trick
-    # used for LOGMSTAR above.
+    # L_permass) = amplitude_log + log10(L_permass) -- deliberately
+    # amplitude_log (Msun formed), not logmstar (surviving mass): L_permass
+    # is normalized per Msun *formed*, matching the flux templates
+    # themselves.
     dn4000_mean = np.sum(weight * bg_data.dn4000_model_permass)
     result['DN4000_MODEL_ERR'] = np.sqrt(np.sum(weight * (bg_data.dn4000_model_permass - dn4000_mean)**2))
     for key in LUM_KEYS:
-        logl_per_template = logmstar + np.log10(np.clip(bg_data.lum_permass[key], 1e-30, None))
+        logl_per_template = amplitude_log + np.log10(np.clip(bg_data.lum_permass[key], 1e-30, None))
         logl_mean = np.sum(weight * logl_per_template)
         result[f'{key}_ERR'] = np.sqrt(np.sum(weight * (logl_per_template - logl_mean)**2))
 
@@ -1370,9 +1463,10 @@ def fastbayes_qa_one(iobj, meta, result, qadir='.', coadd_type='healpix', ndraw=
     restwave = bg_data.template_wave()
     restflux = _build_refined_spectrum(corner_idx, corner_weight, refined_amplitude)
 
-    logmstar = np.log10(np.clip(amplitude, 1e-30, None))
+    logmstar = np.log10(np.clip(amplitude * bg_data.mstar, 1e-30, None)) # [ntemplate]; surviving mass
     sfr_per_template = amplitude * bg_data.sfr # [ntemplate], Msun/yr
-    posterior = {'LOGMSTAR': logmstar, 'SFR': sfr_per_template}
+    posterior = {'LOGMSTAR': logmstar, 'SFR': sfr_per_template, 'SSFR': bg_data.ssfr,
+                'T50': bg_data.t50, 'MSTARAGE': bg_data.mstarage}
 
     posterior_arrays = {}
     for pname in bg_data.param_names:
@@ -1731,14 +1825,17 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     # --- posterior panel: weighted 1D marginal histogram of every *free*
     # fitted parameter (bg_data.param_names minus bg_data.fixed_outnames --
     # a fixed axis like GAMMA/UMIN has exactly one possible value, so its
-    # panel is never informative), plus LOGMSTAR/SFR. A standalone gridspec
-    # (not a subgridspec of `gs`) so its right edge can extend past gs's own
-    # right margin to cpos.x1 + 0.04, matching the right-hand gray box/Dec
-    # label; top/bottom match row 4 of `gs` exactly. ncols is fixed at 4 (a
-    # layout choice); nrows adapts to however many free parameters this
-    # grid actually has.
-    free_param_names = [pname for pname in bg_data.param_names if pname not in bg_data.fixed_outnames]
-    ncols = 4
+    # panel is never informative -- and minus _QA_HIDDEN_PARAMS, raw Dense
+    # Basis SFH bookkeeping axes not physically meaningful on their own;
+    # T50/MSTARAGE are the human-readable substitutes), plus LOGMSTAR/SFR/
+    # SSFR/T50/MSTARAGE. A standalone gridspec (not a subgridspec of `gs`)
+    # so its right edge can extend past gs's own right margin to cpos.x1 +
+    # 0.04, matching the right-hand gray box/Dec label; top/bottom match
+    # row 4 of `gs` exactly. ncols is fixed at 4 (a layout choice); nrows
+    # adapts to however many free parameters this grid actually has.
+    free_param_names = [pname for pname in bg_data.param_names
+                        if pname not in bg_data.fixed_outnames and pname not in _QA_HIDDEN_PARAMS]
+    ncols = 5
     nrows = -(-len(free_param_names) // ncols) # ceil division
     row4pos = gs[4, 0:8].get_position(fig)
     post_gs = fig.add_gridspec(nrows, ncols, left=spos.x0-0.02, right=cpos.x1 + 0.04,
@@ -1763,9 +1860,9 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
                 width = np.min(np.diff(uniq)) * 0.8
                 ax.bar(uniq, binweight, width=width, color='gray', edgecolor='k', alpha=0.8)
         else:
-            # derived quantity (LOGMSTAR/SFR): continuous across the
-            # grid, so zoom the range to where the posterior weight
-            # actually is rather than the full (often much wider) range
+            # derived quantity (LOGMSTAR/SFR/SSFR/T50/MSTARAGE): continuous
+            # across the grid, so zoom the range to where the posterior
+            # weight actually is rather than the full (often much wider) range
             lo, hi = _weighted_percentile(vals, w, (0.5, 99.5))
             if hi > lo:
                 pad = 0.05 * (hi - lo)
@@ -1784,12 +1881,12 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
                     ax.hist(vals, bins=30, range=(lo - pad, hi + pad), weights=w,
                             color='gray', edgecolor='k', alpha=0.8)
 
-        # An SFR posterior pinned at exactly zero (every contributing
+        # An SFR/SSFR posterior pinned at exactly zero (every contributing
         # template passively evolving) has no meaningful spread to show --
         # suppress the numeric x-tick labels (matplotlib's default
         # auto-ranged ticks on an otherwise-empty axis are pure noise),
         # while keeping the axis label so it's still clear what the panel is.
-        if pname == 'SFR' and result['SFR'] == 0.:
+        if pname in ('SFR', 'SSFR') and result[pname] == 0.:
             ax.tick_params(labelbottom=False)
 
         ax.axvline(result[pname], color='C0', lw=1.5)
