@@ -290,8 +290,10 @@ actually computed from, as opposed to a fresh resynthesis of the resampled
 rest-frame spectrum below. The corner templates'
 raw rest-frame spectra are combined the same way (weighted by $w_\kappa$ and
 scaled by the refined mass amplitude) to build the one refined rest-frame
-spectrum used for the derived quantities in Section~\ref{sec:derived} and
-written to the \texttt{MODELS} output extension.
+spectrum used for the derived quantities in Section~\ref{sec:derived}. This
+spectrum is not itself persisted in the output file: it is cheap and
+deterministic to rebuild on demand (e.g. for QA) from the stored observed
+photometry, redshift, and photometric system alone.
 
 \section{Derived Quantities}
 \label{sec:derived}

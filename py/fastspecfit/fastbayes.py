@@ -23,6 +23,7 @@ definitions.
 
 """
 import os, sys, time, logging
+from collections import OrderedDict
 import numpy as np
 import fitsio
 from astropy.table import Table
@@ -95,6 +96,19 @@ LUM_WAVES = (1450., 1500., 1700., 2800., 3000., 5100., 34000., 120000., 220000.)
 _PC_CM = 3.0856775814913673e18 # [cm]
 _LSUN = 3.846e33 # [erg/s]
 
+# Default threshold (see BayesianGrid._ensure_flux_cache) below which the raw
+# templates' full FLUX array is preloaded once per worker rather than read
+# one row at a time on demand: the current default grid (3600 templates) is
+# ~375 MB, comparable to the MAGGIES arrays that are always fully preloaded,
+# so this is generous headroom for the default case while still falling back
+# to lazy per-row reads for much larger custom grids.
+DEFAULT_FLUX_CACHE_MB = 2048.
+
+# Bound on the number of individual raw template rows cached (in the lazy,
+# above-threshold path) per worker process, so a custom grid too large to
+# preload outright still can't grow this cache without bound.
+_FLUX_LRU_MAXSIZE = 5000
+
 
 class BayesianGrid(object):
     """Pre-synthesized Bayesian grid photometry, shared read-only across MPPool workers.
@@ -109,6 +123,9 @@ class BayesianGrid(object):
         self._templates_fits = None
         self._wave = None
         self._axis_cache = {}
+        self.flux_cache_mb = DEFAULT_FLUX_CACHE_MB
+        self._flux_cache = None # full (ntemplate, npix) FLUX array, if small enough to preload
+        self._flux_lru = None   # bounded per-row cache over lazy fitsio reads, otherwise
 
 
     @staticmethod
@@ -134,7 +151,8 @@ class BayesianGrid(object):
         return os.path.join(templatedir, f'bayesian-templates-{imf}-{gridnumber}.fits')
 
 
-    def load(self, gridfile, templatedir=None, templatesfile=None):
+    def load(self, gridfile, templatedir=None, templatesfile=None,
+            flux_cache_mb=DEFAULT_FLUX_CACHE_MB):
         """Load a ``bayesian-photometry-*.fits`` grid file (idempotent).
 
         Parameters
@@ -146,6 +164,10 @@ class BayesianGrid(object):
             resolve on this machine (e.g. switching between NERSC and a
             laptop) -- so pass it explicitly here (or via ``--templatesfile``)
             when the templates live somewhere non-standard.
+        flux_cache_mb : :class:`float`, optional
+            Threshold (see :meth:`_ensure_flux_cache`) below which the raw
+            templates' full FLUX array is preloaded once per worker rather
+            than read one row at a time on demand.
 
         Raises
         ------
@@ -157,6 +179,8 @@ class BayesianGrid(object):
 
         """
         from desiutil.depend import getdep
+
+        self.flux_cache_mb = flux_cache_mb
 
         if self.file == gridfile:
             return
@@ -204,6 +228,8 @@ class BayesianGrid(object):
         self.lum_permass = {key: np.asarray(self.meta[f'{key.lower()}_permass'], dtype='f8') for key in LUM_KEYS}
 
         self._axis_cache = {}
+        self._flux_cache = None
+        self._flux_lru = None
 
         # Per-grid-file axis list/order/log-ness/output names/labels, read
         # from the AXES extension (written by bin/build-bayesian-templates
@@ -274,9 +300,59 @@ class BayesianGrid(object):
         return self._wave
 
 
+    def _ensure_flux_cache(self):
+        """Decide, on first raw-template access, whether to preload the
+        entire FLUX array or fall back to a bounded per-row LRU cache over
+        lazy ``fitsio`` reads.
+
+        The decision is made lazily (not in :meth:`load`) because the raw
+        templates file is not always required up front -- e.g.
+        :func:`fastbayes_qa` with ``--ndraw 0`` never touches it -- so
+        opening it here, on first actual access, keeps that case working
+        without a raw templates file at all.
+
+        """
+        if self._flux_cache is not None or self._flux_lru is not None:
+            return
+
+        npix = len(self.template_wave())
+        nbytes = self.ntemplate * npix * 4 # FLUX is stored as f4
+
+        if nbytes <= self.flux_cache_mb * 1e6:
+            self._flux_cache = self.templates_fits()['FLUX'].read()
+            log.debug(f'Preloaded the full {nbytes/1e6:.0f} MB FLUX array for {self.file}.')
+        else:
+            self._flux_lru = OrderedDict()
+            log.debug(f'FLUX array ({nbytes/1e6:.0f} MB) exceeds --flux-cache-mb='
+                     f'{self.flux_cache_mb:.0f}; using a bounded per-row LRU cache instead.')
+
+
     def template_flux_row(self, itemplate):
-        """Read one raw rest-frame template spectrum by flat grid index."""
-        return self.templates_fits()['FLUX'][int(itemplate), :].ravel()
+        """Read one raw rest-frame template spectrum by flat grid index.
+
+        Served from the fully preloaded FLUX array, or from a bounded
+        per-worker LRU cache over lazy per-row ``fitsio`` reads, depending
+        on which mode :meth:`_ensure_flux_cache` picked for this grid; either
+        way, repeated corner hits across many objects within one worker
+        never re-read the same row from disk more than necessary.
+
+        """
+        self._ensure_flux_cache()
+        itemplate = int(itemplate)
+
+        if self._flux_cache is not None:
+            return self._flux_cache[itemplate]
+
+        row = self._flux_lru.get(itemplate)
+        if row is not None:
+            self._flux_lru.move_to_end(itemplate)
+            return row
+
+        row = self.templates_fits()['FLUX'][itemplate, :].ravel()
+        self._flux_lru[itemplate] = row
+        if len(self._flux_lru) > _FLUX_LRU_MAXSIZE:
+            self._flux_lru.popitem(last=False)
+        return row
 
 
     def interpolate_at_z(self, photsys, redshift):
@@ -355,7 +431,7 @@ _cosmo = None
 
 def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=None,
                                   templatesfile=None, require_templates=True, mapdir=None,
-                                  cutout_unreachable=None):
+                                  cutout_unreachable=None, flux_cache_mb=DEFAULT_FLUX_CACHE_MB):
     """MPPool initializer: populate ``sc_data.photometry``, ``bg_data``, the
     IGM model, and the cosmology in each worker.
 
@@ -379,15 +455,15 @@ def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=No
         :func:`fastspecfit.io.one_spectrum`.
     require_templates : :class:`bool`, optional
         If ``True`` (default), require the raw templates FITS file (used by
-        :meth:`BayesianGrid.template_flux_row` to build the refined rest-frame
-        spectrum during fitting) to be present. QA regeneration from an
-        already-written FASTBAYES output file
-        (:func:`fastbayes_qa`/:func:`fastbayes_qa_one`) reads back the
-        refined spectrum from that file's ``MODELS`` extension instead of
-        rebuilding it, so it passes ``False`` here -- unless ``--ndraw > 0``
-        (the default), in which case a handful of individual raw template
-        rows are read per object for the posterior-weighted draws overplotted
-        on the SED panel, and the (multi-GB) raw templates file is required.
+        :meth:`BayesianGrid.template_flux_row` to build the refined
+        rest-frame spectrum) to be present. Both :func:`fastbayes` (during
+        fitting) and :func:`fastbayes_qa` (regenerating the spectrum via
+        :func:`_build_refined_spectrum`, since it is not stored in the
+        output file) always need it, so neither passes ``False`` here in
+        practice; this remains available for callers that only need, e.g.,
+        the grid's tabulated per-template quantities (``sfr``,
+        ``dn4000_model_permass``, ``lum_permass``) without ever touching a
+        raw spectrum.
     cutout_unreachable : :class:`bool` or None, optional
         Seeds this worker's copy of :data:`fastspecfit.qa._cutout_unreachable`
         (same sticky per-process mechanism ``fastqa`` uses to detect an
@@ -398,13 +474,17 @@ def _initialize_fastbayes_workers(fphotofile=None, gridfile=None, templatedir=No
         (:func:`fastbayes`), which never generates QA figures and so never
         imports ``fastspecfit.qa`` at all; only :func:`fastbayes_qa` passes
         this.
+    flux_cache_mb : :class:`float`, optional
+        Threshold passed straight through to :meth:`BayesianGrid.load`; see
+        there for details.
 
     """
     global _igm, _cosmo
 
     sc_data.photometry = Photometry(fphotofile=fphotofile)
     sc_data.set_mapdir(mapdir)
-    bg_data.load(gridfile, templatedir=templatedir, templatesfile=templatesfile)
+    bg_data.load(gridfile, templatedir=templatedir, templatesfile=templatesfile,
+                flux_cache_mb=flux_cache_mb)
 
     if cutout_unreachable is not None:
         import fastspecfit.qa as qa_module
@@ -591,6 +671,26 @@ def _solve_grid(flam, flam_ivar, lambda_eff, photsys, redshift):
         'refined_model_maggies': refined_model_maggies,
         'refined_amplitude': refined_amplitude, 'chi2_refined': chi2_refined,
     }
+
+
+def _build_refined_spectrum(corner_idx, corner_weight, refined_amplitude):
+    """N-linearly interpolate the refined rest-frame spectrum from the
+    neighboring raw grid templates (:func:`_solve_grid`'s ``corner_idx``/
+    ``corner_weight``), scaled by the refined mass amplitude.
+
+    Factored out so that both :func:`fastbayes_one` (during fitting) and
+    :func:`fastbayes_qa_one` (regenerating QA figures from an
+    already-written output file, which no longer stores the spectrum
+    itself) rebuild it identically, from the same handful of
+    :meth:`BayesianGrid.template_flux_row` reads.
+
+    """
+    npix = len(bg_data.template_wave())
+    restflux = np.zeros(npix, dtype='f8')
+    for idx, w in zip(corner_idx, corner_weight):
+        restflux += w * bg_data.template_flux_row(idx)
+    restflux *= refined_amplitude # [erg/s/cm2/A at 10pc, actual stellar mass]
+    return restflux
 
 
 def _refine_grid_axes(ibest, chi2):
@@ -802,16 +902,11 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
         Updated metadata row with observed photometry filled in.
     result : :class:`numpy.ndarray`
         Bayesian-fitting output row.
-    modelspectrum : :class:`numpy.ndarray`
-        Refined rest-frame maximum-likelihood spectrum (erg/s/cm2/A at
-        10 pc for the fitted stellar mass), on the shared template
-        wavelength grid; all zeros when the fit was skipped.
 
     """
     from fastspecfit.io import one_spectrum
 
     phot = sc_data.photometry
-    npix = len(bg_data.template_wave())
 
     log.info(f'Bayesian fitting object {iobj} [{phot.uniqueid_col.lower()} '
             f'{data["uniqueid"]}, z={data["redshift"]:.6f}].')
@@ -827,7 +922,6 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
         meta[f'FLUX_IVAR_{band.upper()}'] = fluxivar[iband]
 
     result = np.zeros(1, dtype=fastbayes_dtype)[0]
-    modelspectrum = np.zeros(npix, dtype='f4')
 
     redshift = data['redshift']
     photsys = data['photsys']
@@ -835,7 +929,7 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
     if redshift > bg_data.redshift[-1]:
         log.warning(f'Object {iobj} [{phot.uniqueid_col.lower()} {data["uniqueid"]}] redshift '
                    f'{redshift:.6f} exceeds the grid maximum {bg_data.redshift[-1]:.6f}; skipping the fit.')
-        return meta, result, modelspectrum
+        return meta, result
 
     flam = np.asarray(data['photometry']['flam'], dtype='f8')
     flam_ivar = np.asarray(data['photometry']['flam_ivar'], dtype='f8') * phot.bands_to_fit
@@ -871,10 +965,7 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
     # --- refined rest-frame spectrum (N-linear combination of the
     # neighboring raw template spectra), scaled by the refined mass -------
     restwave = bg_data.template_wave()
-    restflux = np.zeros(npix, dtype='f8')
-    for idx, w in zip(corner_idx, corner_weight):
-        restflux += w * bg_data.template_flux_row(idx)
-    restflux *= refined_amplitude # [erg/s/cm2/A at 10pc, actual stellar mass]
+    restflux = _build_refined_spectrum(corner_idx, corner_weight, refined_amplitude)
 
     # Synthetic observed-frame photometry from the interpolated grid itself
     # (refined_model_maggies/refined_amplitude, already computed above by
@@ -984,24 +1075,24 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
         result['TOPK_INDEX'][:len(idx)] = idx.astype('i4')
         result['TOPK_WEIGHT'][:len(idx)] = weight[idx].astype('f4')
 
-    return meta, result, restflux.astype('f4')
+    return meta, result
 
 
-def fastbayes_qa_one(iobj, meta, result, restwave, restflux, qadir='.', coadd_type='healpix', ndraw=50):
+def fastbayes_qa_one(iobj, meta, result, qadir='.', coadd_type='healpix', ndraw=50):
     """Regenerate the QA figure for one object from an already-written
     FASTBAYES output file, without repeating the fit.
 
     Rebuilds everything :func:`_fastbayes_qa_one` needs purely from data
-    already present in the output file's ``METADATA``/``FASTBAYES``/``WAVE``/
-    ``MODELS`` extensions: the observed photometry (``FLUX_*``/
-    ``FLUX_IVAR_*`` columns), redshift (``Z``) and photometric system
-    (``PHOTSYS``), and the refined rest-frame spectrum (``restwave``/
-    ``restflux``, read back rather than recomputed). The only work redone is
-    the cheap, vectorized full-grid solve (:func:`_solve_grid`) needed to
-    reconstruct the per-template posterior weights, which are not stored in
-    the output file. When ``ndraw > 0``, a handful of additional raw
-    template rows are also read (see below) -- the one case where QA
-    regeneration does touch the raw templates file.
+    already present in the output file's ``METADATA``/``FASTBAYES``
+    extensions: the observed photometry (``FLUX_*``/``FLUX_IVAR_*``
+    columns), redshift (``Z``) and photometric system (``PHOTSYS``). The
+    refined rest-frame spectrum is not stored in the output file (see
+    :func:`write_fastbayes`) and is instead rebuilt here, from the same
+    cheap, vectorized full-grid solve (:func:`_solve_grid`) that also
+    reconstructs the per-template posterior weights, via
+    :func:`_build_refined_spectrum` -- so this always touches the raw
+    templates file (unlike the original design, where ``--ndraw 0`` could
+    skip it entirely).
 
     Parameters
     ----------
@@ -1012,12 +1103,6 @@ def fastbayes_qa_one(iobj, meta, result, restwave, restflux, qadir='.', coadd_ty
     result : :class:`numpy.void`
         ``FASTBAYES`` results row for this object, from the FASTBAYES
         output file.
-    restwave : :class:`numpy.ndarray`
-        Shared rest-frame wavelength array (the output file's ``WAVE``
-        extension).
-    restflux : :class:`numpy.ndarray`
-        This object's refined rest-frame spectrum (one row of the output
-        file's ``MODELS`` extension).
     qadir : :class:`str`, optional
         Output directory for the QA figure. Default is ``'.'``.
     coadd_type : :class:`str`, optional
@@ -1029,10 +1114,10 @@ def fastbayes_qa_one(iobj, meta, result, restwave, restflux, qadir='.', coadd_ty
         probability-weighted by the discrete posterior) and overplot on the
         SED panel as a visual sense of the model uncertainty, alongside the
         one refined maximum-likelihood curve. ``0`` disables this (default
-        ``50``), restoring the original raw-template-free QA regeneration.
-        Draws are capped at the number of templates with strictly positive
-        posterior weight (typically a small fraction of the grid -- no
-        attempt is made to force exactly ``ndraw`` draws via replacement).
+        ``50``). Draws are capped at the number of templates with strictly
+        positive posterior weight (typically a small fraction of the grid
+        -- no attempt is made to force exactly ``ndraw`` draws via
+        replacement).
 
     """
     phot = sc_data.photometry
@@ -1065,8 +1150,13 @@ def fastbayes_qa_one(iobj, meta, result, restwave, restflux, qadir='.', coadd_ty
     soln = _solve_grid(flam, flam_ivar, lambda_eff, photsys, redshift)
     weight = soln['weight']
     amplitude = soln['amplitude']
+    corner_idx = soln['corner_idx']
+    corner_weight = soln['corner_weight']
     refined_model_maggies = soln['refined_model_maggies']
     refined_amplitude = soln['refined_amplitude']
+
+    restwave = bg_data.template_wave()
+    restflux = _build_refined_spectrum(corner_idx, corner_weight, refined_amplitude)
 
     logmstar = np.log10(np.clip(amplitude, 1e-30, None))
     sfr_per_template = amplitude * bg_data.sfr # [ntemplate], Msun/yr
@@ -1462,9 +1552,15 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     log.info(f'Wrote {pngfile}')
 
 
-def write_fastbayes(meta, results, modelwave, modelspectra, outfile, gridfile, fphotofile,
+def write_fastbayes(meta, results, outfile, gridfile, fphotofile,
                     template_file=None, topk=0):
     """Write the Bayesian-fitting output to a multi-extension FITS file.
+
+    The refined rest-frame model spectrum is not stored: it is cheaply and
+    deterministically rebuildable from the stored ``FLUX_*``/``FLUX_IVAR_*``/
+    ``Z``/``PHOTSYS`` columns via :func:`_solve_grid` and
+    :func:`_build_refined_spectrum` (see :func:`fastbayes_qa_one`), so
+    persisting it per-object would only be a large, redundant disk cost.
 
     Parameters
     ----------
@@ -1472,10 +1568,6 @@ def write_fastbayes(meta, results, modelwave, modelspectra, outfile, gridfile, f
         Output metadata table (see :func:`fastspecfit.io.create_output_meta`).
     results : :class:`astropy.table.Table`
         Output fitting-results table.
-    modelwave : :class:`numpy.ndarray`
-        Shared rest-frame wavelength array for ``modelspectra``.
-    modelspectra : :class:`numpy.ndarray`
-        Refined rest-frame maximum-likelihood spectra, shape (nobj, nwave).
     outfile : :class:`str`
         Full path of the output FITS file (``.gz`` triggers gzip
         compression, as in :func:`fastspecfit.io.write_fastspecfit`).
@@ -1534,17 +1626,7 @@ def write_fastbayes(meta, results, modelwave, modelspectra, outfile, gridfile, f
     hdumeta.header['EXTNAME'] = 'METADATA'
     hduresults.header['EXTNAME'] = 'FASTBAYES'
 
-    hduwave = fits.ImageHDU(modelwave.astype('f4'))
-    hduwave.header['EXTNAME'] = 'WAVE'
-    hduwave.header['BUNIT'] = 'Angstrom'
-    hduwave.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
-
-    hdumodels = fits.ImageHDU(modelspectra)
-    hdumodels.header['EXTNAME'] = 'MODELS'
-    hdumodels.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
-    hdumodels.header['COMMENT'] = 'rest-frame refined maximum-likelihood model spectra'
-
-    hx = fits.HDUList([hduprim, hdumeta, hduresults, hduwave, hdumodels])
+    hx = fits.HDUList([hduprim, hdumeta, hduresults])
 
     nobj = len(meta)
     if nobj == 1:
@@ -1597,7 +1679,23 @@ def parse(options=None):
                         '--templatedir/$FTEMPLATES_DIR reconstruction from the --gridfile header '
                         '(useful when the templates live somewhere non-standard, e.g. switching '
                         'between NERSC and a laptop).')
+    parser.add_argument('--flux-cache-mb', dest='flux_cache_mb', type=float, default=DEFAULT_FLUX_CACHE_MB,
+                        help='Preload the full raw-templates FLUX array once per worker when it is '
+                        'smaller than this many MB; otherwise fall back to a bounded per-row LRU '
+                        'cache over lazy per-object reads.')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads.')
+    parser.add_argument('--checkpoint-size', dest='checkpoint_size', type=int, default=None,
+                        help='Fit and write results in batches of this many objects at a time, '
+                        'each to its own file under --checkpoint-dir, resuming from any batches '
+                        'already present from a previous (e.g. interrupted) run, then merge every '
+                        'batch into --outfile at the end. Recommended for very large single-shot '
+                        'samples (e.g. hundreds of thousands of objects processed outside the usual '
+                        'per-healpix-file workflow), where holding every object\'s result in memory '
+                        'at once would otherwise be the memory bottleneck. Disabled (default) for '
+                        'the usual per-file scale.')
+    parser.add_argument('--checkpoint-dir', dest='checkpoint_dir', type=str, default=None,
+                        help='Directory for --checkpoint-size batch files (default: a directory '
+                        'named after --outfile, alongside it). Ignored if --checkpoint-size is not given.')
     parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
     parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to process in each file, zero-indexed.')
     parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
@@ -1627,6 +1725,164 @@ def parse(options=None):
     return parser.parse_args(options)
 
 
+def _assemble_fastbayes_results(out, phot, units):
+    """Assemble the ``(outmeta, results)`` output tables from a list of
+    per-object ``(meta, result)`` tuples returned by :func:`fastbayes_one`.
+
+    Factored out of :func:`fastbayes` so that the checkpointed code path
+    (:func:`_run_fastbayes_chunks`) can call it once per chunk, identically
+    to how the non-checkpointed path calls it once for the whole catalog.
+
+    Parameters
+    ----------
+    out : list of (:class:`astropy.table.Row`, :class:`numpy.ndarray`)
+        Per-object ``(meta, result)`` tuples, in the order returned by
+        :func:`fastbayes_one`.
+    phot : :class:`fastspecfit.photometry.Photometry`
+        Photometry configuration, needed to size/label the output columns.
+    units : :class:`dict`
+        Mapping from output column name to astropy unit, passed straight
+        through to :func:`fastspecfit.io.create_output_table`.
+
+    Returns
+    -------
+    outmeta : :class:`astropy.table.Table`
+    results : :class:`astropy.table.Table`
+
+    """
+    from astropy.table import vstack
+    from fastspecfit.io import create_output_meta, create_output_table
+
+    out = list(zip(*out))
+
+    allmeta = vstack(out[0])
+    outmeta = create_output_meta(allmeta, phot=phot, fastphot=True)
+    for band in phot.bands:
+        col = f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'
+        outmeta[col] = allmeta[col]
+        outmeta[col].unit = 'nanomaggies'
+
+    results = create_output_table(out[1], outmeta, units)
+
+    return outmeta, results
+
+
+def _checkpoint_is_complete(chunk_file, expected_nobj):
+    """Whether ``chunk_file`` already holds a complete, readable batch of
+    ``expected_nobj`` objects, so :func:`_run_fastbayes_chunks` can skip
+    re-fitting it (resume-after-crash support).
+
+    :func:`write_fastbayes` writes to a temporary file and only renames it
+    into place once complete, so an interrupted run cannot leave a partial
+    ``chunk_file`` behind -- the row-count check here is mostly a safety net
+    against, e.g., resuming with a different ``--checkpoint-size`` than the
+    original run used.
+
+    """
+    if not os.path.isfile(chunk_file):
+        return False
+    try:
+        with fitsio.FITS(chunk_file) as F:
+            return F['METADATA'].get_nrows() == expected_nobj
+    except OSError:
+        return False
+
+
+def _run_fastbayes_chunks(data, meta, phot, fastbayes_dtype, units, args, mp_pool, gridfile):
+    """Fit ``data``/``meta`` in resumable batches of ``args.checkpoint_size``
+    objects, so that a very large single-shot sample (e.g. hundreds of
+    thousands of objects run in one process, outside the usual
+    per-healpix-file workflow) never needs every object's result held in
+    memory at once, and an interrupted run can pick back up without redoing
+    completed batches.
+
+    Each batch is fit and written (via :func:`write_fastbayes`, unchanged)
+    to its own self-contained FASTBAYES file under ``args.checkpoint_dir``;
+    a batch whose file already exists and is complete
+    (:func:`_checkpoint_is_complete`) is skipped entirely. Once every batch
+    exists, their ``METADATA``/``FASTBAYES`` tables are concatenated to
+    produce the final result -- cheap now that neither extension holds a
+    per-object model spectrum.
+
+    Parameters
+    ----------
+    data : list of :class:`dict`
+    meta : :class:`astropy.table.Table`
+        Full-catalog per-object data/metadata, from
+        :meth:`fastspecfit.io.DESISpectra.read`.
+    phot : :class:`fastspecfit.photometry.Photometry`
+    fastbayes_dtype : :class:`numpy.dtype`
+    units : :class:`dict`
+    args : :class:`argparse.Namespace`
+        Parsed ``fastbayes`` arguments (uses ``checkpoint_size``,
+        ``checkpoint_dir``, ``outfile``, ``topk``).
+    mp_pool : :class:`fastspecfit.util.MPPool`
+        Worker pool, reused across every batch (the grid is loaded once,
+        not re-initialized per batch).
+    gridfile : :class:`str`
+        Full path of the Bayesian grid file used for fitting.
+
+    Returns
+    -------
+    outmeta : :class:`astropy.table.Table`
+    results : :class:`astropy.table.Table`
+
+    """
+    from astropy.table import vstack
+
+    nobj = len(meta)
+    checkpoint_size = args.checkpoint_size
+    checkpoint_dir = args.checkpoint_dir
+    if checkpoint_dir is None:
+        outbase = os.path.splitext(os.path.basename(args.outfile.removesuffix('.gz')))[0]
+        checkpoint_dir = os.path.join(os.path.dirname(os.path.abspath(args.outfile)),
+                                      f'{outbase}-checkpoints')
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
+    nchunk = int(np.ceil(nobj / checkpoint_size))
+    log.info(f'Checkpointing {nobj:,d} objects in {nchunk} batches of up to '
+            f'{checkpoint_size:,d} under {checkpoint_dir}.')
+
+    chunk_files = []
+    for ichunk in range(nchunk):
+        start = ichunk * checkpoint_size
+        stop = min(start + checkpoint_size, nobj)
+        chunk_file = os.path.join(checkpoint_dir, f'chunk-{ichunk:05d}.fits')
+        chunk_files.append(chunk_file)
+
+        if _checkpoint_is_complete(chunk_file, stop - start):
+            log.info(f'Batch {ichunk+1}/{nchunk} ({chunk_file}) already complete; skipping.')
+            continue
+
+        log.info(f'Fitting batch {ichunk+1}/{nchunk}: objects {start}:{stop} ({stop-start:,d} total).')
+
+        chunk_fitargs = [{
+            'iobj': iobj,
+            'data': data[iobj],
+            'meta': meta[iobj],
+            'fastbayes_dtype': fastbayes_dtype,
+            'topk': args.topk,
+        } for iobj in range(start, stop)]
+
+        t0 = time.time()
+        out = mp_pool.starmap(fastbayes_one, chunk_fitargs)
+        chunk_outmeta, chunk_results = _assemble_fastbayes_results(out, phot, units)
+        log.info(fsftime('fastbayes_chunk', time.time() - t0, context=f'nobj={stop-start}'))
+
+        write_fastbayes(chunk_outmeta, chunk_results, outfile=chunk_file, gridfile=gridfile,
+                        fphotofile=phot.fphotofile, template_file=bg_data.templates_file,
+                        topk=args.topk)
+
+    log.info(f'Merging {nchunk} batches into {args.outfile}.')
+    allmeta, allresults = [], []
+    for chunk_file in chunk_files:
+        with fitsio.FITS(chunk_file) as F:
+            allmeta.append(Table(F['METADATA'].read()))
+            allresults.append(Table(F['FASTBAYES'].read()))
+
+    return vstack(allmeta), vstack(allresults)
+
+
 def fastbayes(args=None, mp_pool=None):
     """Main fastbayes engine: read, fit, and write Bayesian grid photometric results.
 
@@ -1645,8 +1901,7 @@ def fastbayes(args=None, mp_pool=None):
         Exit code (0 on success).
 
     """
-    from astropy.table import vstack
-    from fastspecfit.io import DESISpectra, create_output_meta, create_output_table
+    from fastspecfit.io import DESISpectra
 
     if isinstance(args, (list, tuple, type(None))):
         args = parse(args)
@@ -1688,7 +1943,7 @@ def fastbayes(args=None, mp_pool=None):
 
     init_argdict = {'fphotofile': args.fphotofile, 'gridfile': gridfile,
                     'templatedir': args.templatedir, 'templatesfile': args.templatesfile,
-                    'mapdir': args.mapdir}
+                    'mapdir': args.mapdir, 'flux_cache_mb': args.flux_cache_mb}
 
     t0 = time.time()
     _initialize_fastbayes_workers(**init_argdict)
@@ -1724,38 +1979,30 @@ def fastbayes(args=None, mp_pool=None):
 
     fastbayes_dtype = get_fastbayes_dtype(phot, topk=args.topk)
 
-    fitargs = [{
-        'iobj': iobj,
-        'data': data[iobj],
-        'meta': meta[iobj],
-        'fastbayes_dtype': fastbayes_dtype,
-        'topk': args.topk,
-    } for iobj in range(nobj)]
-
-    t0 = time.time()
-    out = mp_pool.starmap(fastbayes_one, fitargs)
-    out = list(zip(*out))
-
-    allmeta = vstack(out[0])
-    outmeta = create_output_meta(allmeta, phot=phot, fastphot=True)
-    for band in phot.bands:
-        col = f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'
-        outmeta[col] = allmeta[col]
-        outmeta[col].unit = 'nanomaggies'
-
     units = {'LOGAGE': 'dex(Gyr)'}
     units.update({f'LOGAGE_{stat}': 'dex(Gyr)' for stat in ('ERR', 'MEAN', 'MODE', 'P25', 'P50', 'P75')})
-    results = create_output_table(out[1], outmeta, units)
 
-    modelwave = bg_data.template_wave()
-    modelspectra = np.array(out[2])
+    if args.checkpoint_size is not None and args.checkpoint_size > 0 and nobj > args.checkpoint_size:
+        outmeta, results = _run_fastbayes_chunks(
+            data, meta, phot, fastbayes_dtype, units, args, mp_pool, gridfile)
+    else:
+        fitargs = [{
+            'iobj': iobj,
+            'data': data[iobj],
+            'meta': meta[iobj],
+            'fastbayes_dtype': fastbayes_dtype,
+            'topk': args.topk,
+        } for iobj in range(nobj)]
+
+        t0 = time.time()
+        out = mp_pool.starmap(fastbayes_one, fitargs)
+        outmeta, results = _assemble_fastbayes_results(out, phot, units)
+        log.info(fsftime('fastbayes_all', time.time() - t0, context=f'nobj={nobj}'))
 
     if _own_pool:
         mp_pool.close()
 
-    log.info(fsftime('fastbayes_all', time.time() - t0, context=f'nobj={nobj}'))
-
-    write_fastbayes(outmeta, results, modelwave, modelspectra, outfile=args.outfile,
+    write_fastbayes(outmeta, results, outfile=args.outfile,
                     gridfile=gridfile, fphotofile=phot.fphotofile,
                     template_file=bg_data.templates_file, topk=args.topk)
 
@@ -1809,16 +2056,21 @@ def parse_qa(options=None):
     parser.add_argument('--ndraw', type=int, default=50,
                         help='Number of additional grid templates to draw (probability-weighted by '
                         'the discrete posterior, without replacement) and overplot on the SED panel '
-                        'as a visual sense of the model uncertainty. 0 disables this and restores QA '
-                        'regeneration that never touches the raw templates file (see --templatedir/'
-                        '--templatesfile below, only needed when --ndraw > 0).')
+                        'as a visual sense of the model uncertainty, alongside the one refined '
+                        'maximum-likelihood spectrum (always rebuilt from --templatedir/'
+                        '--templatesfile below; 0 just disables the extra overplotted draws).')
     parser.add_argument('--templatedir', type=str, default=None,
                         help='Top-level location of the raw Bayesian templates file '
                         '(default: $FTEMPLATES_DIR/bayesian); ignored if --templatesfile is given. '
-                        'Only needed when --ndraw > 0.')
+                        'Always required, to rebuild the refined rest-frame spectrum.')
     parser.add_argument('--templatesfile', type=str, default=None,
                         help='Full path to the raw Bayesian templates FITS file, overriding '
-                        '--templatedir/$FTEMPLATES_DIR reconstruction. Only needed when --ndraw > 0.')
+                        '--templatedir/$FTEMPLATES_DIR reconstruction. Always required, to rebuild '
+                        'the refined rest-frame spectrum.')
+    parser.add_argument('--flux-cache-mb', dest='flux_cache_mb', type=float, default=DEFAULT_FLUX_CACHE_MB,
+                        help='Preload the full raw-templates FLUX array once per worker when it is '
+                        'smaller than this many MB; otherwise fall back to a bounded per-row LRU '
+                        'cache over lazy per-object reads.')
     parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads.')
     parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 
@@ -1833,17 +2085,17 @@ def parse_qa(options=None):
 def fastbayes_qa(args=None, mp_pool=None):
     """Regenerate QA figures for a FASTBAYES output file, without repeating the fit.
 
-    Reads back an already-written FASTBAYES output file's ``METADATA``,
-    ``FASTBAYES``, ``WAVE``, and ``MODELS`` extensions, then calls
-    :func:`fastbayes_qa_one` for each requested object. The only work redone
-    is the cheap, vectorized :func:`_solve_grid` solve needed to rebuild the
-    per-template posterior weights (the one thing not stored in the output
-    file); no raw DESI spectra are read, so this does not need the original
-    redrock/spectra files to be available. The raw Bayesian templates file
-    (``$FTEMPLATES_DIR``/``--templatedir``/``--templatesfile``) is likewise
-    unneeded when ``--ndraw 0`` -- the default ``--ndraw`` > 0, however, does
-    read a handful of individual raw template rows per object (see
-    :func:`fastbayes_qa_one`), so it is required in that (default) case.
+    Reads back an already-written FASTBAYES output file's ``METADATA`` and
+    ``FASTBAYES`` extensions, then calls :func:`fastbayes_qa_one` for each
+    requested object. No raw DESI spectra are read, so this does not need
+    the original redrock/spectra files to be available. It does, however,
+    always need the raw Bayesian templates file
+    (``$FTEMPLATES_DIR``/``--templatedir``/``--templatesfile``): the refined
+    rest-frame spectrum is not stored in the output file (see
+    :func:`write_fastbayes`) and is always rebuilt from the raw templates,
+    via :func:`_build_refined_spectrum` (cheap in practice, since
+    :meth:`BayesianGrid.template_flux_row` preloads the whole FLUX array for
+    grids under ``--flux-cache-mb``).
 
     ``--gridfile``/``--fphotofile`` must be passed explicitly (matching
     whatever was used to build the grid and run the fit) rather than being
@@ -1894,8 +2146,6 @@ def fastbayes_qa(args=None, mp_pool=None):
     F = fitsio.FITS(fastbayesfile)
     meta = Table(F['METADATA'].read())
     results = F['FASTBAYES'].read()
-    restwave = F['WAVE'].read()
-    modelspectra = F['MODELS'].read()
 
     nobj = len(meta)
     keep = np.arange(nobj)
@@ -1935,7 +2185,8 @@ def fastbayes_qa(args=None, mp_pool=None):
 
     init_argdict = {'fphotofile': fphotofile, 'gridfile': gridfile,
                     'templatedir': args.templatedir, 'templatesfile': args.templatesfile,
-                    'require_templates': args.ndraw > 0, 'cutout_unreachable': cutout_unreachable}
+                    'cutout_unreachable': cutout_unreachable,
+                    'flux_cache_mb': args.flux_cache_mb}
 
     t0 = time.time()
     _initialize_fastbayes_workers(**init_argdict)
@@ -1950,8 +2201,6 @@ def fastbayes_qa(args=None, mp_pool=None):
         'iobj': iobj,
         'meta': meta[iobj],
         'result': results[iobj],
-        'restwave': restwave,
-        'restflux': modelspectra[iobj],
         'qadir': args.qadir,
         'coadd_type': args.coadd_type,
         'ndraw': args.ndraw,

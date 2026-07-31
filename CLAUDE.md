@@ -62,6 +62,10 @@ Defined in `pyproject.toml` and implemented in `py/fastspecfit/fastspecfit.py`:
 - `build-mini-specprod` (bin script) — subset Redrock/coadd/afterburner/Tractor files for a sample of TARGETIDs into a mini `$DESI_ROOT`-like tree, for testing off-NERSC
 - `vac-statistics` (bin script) — print summary statistics for a FastSpecFit VAC
 - `validate-fast-vac` (bin script) — run fitsverify/NaN checks across a VAC directory, or write per-directory SHA-256 checksums
+- `fastbayes` (bin script) — grid-based Bayesian broadband-photometry-only fitting (see `fastspecfit.fastbayes`)
+- `fastbayes-qa` (bin script) — regenerate `fastbayes` QA figures from an already-written output file
+- `build-bayesian-templates` (bin script) — build the FSPS/python-fsps template grid consumed by `fastbayes`, from a YAML grid-axis config (`data/bayesian-grid.yaml`)
+- `build-bayesian-photometry` (bin script) — pre-synthesize broadband photometry for a `build-bayesian-templates` grid on a fixed redshift grid
 
 ## Architecture
 
@@ -84,6 +88,8 @@ The `sc_data` singleton (a `Singletons` instance) is initialized once per proces
 
 This pattern avoids re-reading large files in multiprocessing workers.
 
+`fastbayes.py` has its own parallel singleton, `bg_data` (a `BayesianGrid` instance), holding the pre-synthesized Bayesian grid (metadata, per-axis grid values/dimensions, redshift-interpolated photometry, and a lazy handle to the raw template spectra). It's populated separately from `sc_data` (via `_initialize_fastbayes_workers`) since `fastbayes` never needs the stellar template basis or emission-line tables.
+
 ### Key Modules
 
 | Module | Role |
@@ -102,6 +108,7 @@ This pattern avoids re-reading large files in multiprocessing workers.
 | `mpi.py` | MPI/multiprocessing utilities for large-scale production runs |
 | `qa.py` | Quality assurance figure generation |
 | `linemasker.py` | Masking of spectral regions around emission lines |
+| `fastbayes.py` | `BayesianGrid` class (`bg_data` singleton) and grid-based Bayesian broadband-photometric SED fitting — closed-form per-template mass amplitude, full discrete posterior via likelihood weighting, sub-grid parabola refinement along each grid axis (axis list read per-grid-file from the templates' `AXES` FITS extension, not hard-coded) |
 
 ### Parallelism
 
@@ -118,6 +125,7 @@ This pattern avoids re-reading large files in multiprocessing workers.
 - `stacked-phot.yaml` — photometric configuration for stacked spectra
 - `desi_fiducial_cosmology.dat` — tabulated cosmology table
 - `LAFcoeff.txt` / `DLAcoeff.txt` — IGM attenuation coefficients
+- `bayesian-grid.yaml` — free-parameter grid-axis definitions for `bin/build-bayesian-templates` (axis kind/range/spacing, fixed FSPS params); select an alternate design via `--paramsfile`
 
 ### Performance-Critical Code
 
@@ -132,3 +140,9 @@ Numba `@jit` decorators are used heavily in `emline_fit/model.py`, `emline_fit/j
 - `MODELS` — best-fit model spectra arrays
 
 `fastphot` output lacks `FASTSPEC` and `MODELS` (photometry-only mode).
+
+`fastbayes` output FITS extensions (distinct schema, written by `fastspecfit.fastbayes.write_fastbayes`):
+- `METADATA` — targeting metadata, redshifts, observed/synthesized photometry
+- `FASTBAYES` — per-grid-axis refined values + formal uncertainties + posterior mean/mode/percentiles, plus derived `LOGMSTAR`/`SFR`, K-corrections/absolute magnitudes, rest-frame luminosities, and `DN4000_MODEL`
+
+No `WAVE`/`MODELS` extensions: the refined rest-frame model spectrum is cheap and deterministic to rebuild from the stored `FLUX_*`/`FLUX_IVAR_*`/`Z`/`PHOTSYS` columns (`fastspecfit.fastbayes._solve_grid` + `_build_refined_spectrum`), so `fastbayes-qa` always regenerates it on demand from the raw templates file rather than persisting it per object.
