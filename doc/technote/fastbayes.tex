@@ -74,7 +74,7 @@ Axis & Symbol & $N$ & Range (spacing) \\
 \midrule
 Age (continuity bins) & age [Gyr] & 6 & 0-0.03-0.1, log-spaced to 13.7 \\
 Metallicity & $\log_{10}(Z/Z_\odot)$ & 5 & $-0.8$ to $0.2$ (linear) \\
-Dust optical depth & $\tau$ (\texttt{dust2}) & 10 & 0.0, then log-spaced 0.01 to 4.0 \\
+Dust optical depth & $\tau$ (\texttt{dust2}) & 10 & 0.0, then 9 Exponential(1.5) quantiles \\
 Dust-emission $U_{\rm min}$ & $U_{\rm min}$ & 1 & fixed at 1.0 \\
 Dust-emission $\gamma$ & $\gamma$ & 1 & fixed at 0.01 \\
 Dust-emission $Q_{\rm PAH}$ & $\log_{10}(Q_{\rm PAH})$ & 3 & 0.1 to 7.0 (log) \\
@@ -89,7 +89,7 @@ AGN luminosity fraction & $f_{\rm AGN}$ (\texttt{fagn}) & 4 & 0.0, then log-spac
   their formal uncertainties (Section~\ref{sec:refine}) are symmetric;
   the remaining axes ($\tau$, $\gamma$, $f_{\rm AGN}$) are refined and
   reported in linear space -- required for $\tau$ and $f_{\rm AGN}$, whose
-  hybrid exact-zero-plus-log-spaced design includes a point ($=0$) that
+  hybrid exact-zero-plus-quantile design includes a point ($=0$) that
   $\log_{10}$ cannot represent. The age axis switched from a 20-point
   single-age SSP (\texttt{sfh=0}) grid to a 6-point continuity-bin SFH
   (\texttt{sfh=3}), a more physically realistic star formation history
@@ -109,11 +109,18 @@ AGN luminosity fraction & $f_{\rm AGN}$ (\texttt{fagn}) & 4 & 0.0, then log-spac
   FSPS's default \texttt{dust\_tesc}$=10$~Myr threshold), making it a
   wasted axis for the other age bins. Dropping $n_{\rm dust}$ frees
   roughly $10\times$ the previous grid budget; part of that was reinvested
-  in finer $\tau$ sampling (6 to 10 points, still
-  exact-zero-plus-log-spaced --- better matching the physical clustering
-  of galaxies toward low-to-moderate optical depth than uniform linear
-  spacing) and metallicity (4 to 5 points), with the remainder left
-  unspent for now. $U_{\rm min}$ and $\gamma$ (essentially unconstrained
+  in finer $\tau$ sampling (6 to 10 points) and metallicity (4 to 5
+  points), with the remainder left unspent for now. $\tau$'s grid points
+  are no longer an ad hoc log-spaced set: one point sits at exact zero
+  (dust-free), and the remaining 9 are placed at the quantiles of an
+  Exponential($\theta=1.5$) distribution using equal-probability-mass bin
+  centers ($p_i = (i-0.5)/9$), so point \emph{density} follows an actual
+  continuous prior shape (peaked at zero, falling off toward high $\tau$,
+  matching the physical prevalence of low-dust galaxies) rather than a
+  spacing convention chosen only for convenient coverage; $\theta=1.5$
+  was chosen so the grid's effective reach ($\sim4.3$ at the 9th quantile)
+  roughly matches the previous ad hoc grid's Leja et al. (2017)-informed
+  upper bound. $U_{\rm min}$ and $\gamma$ (essentially unconstrained
   without far-IR photometry, per Leja et al. 2017 App.~C) remain fixed at
   representative ISM values; $f_{\rm AGN}$ (with \texttt{agn\_tau} fixed
   at FSPS's own default) and $Q_{\rm PAH}$ (constrained by mid-IR

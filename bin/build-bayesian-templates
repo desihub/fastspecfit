@@ -40,7 +40,7 @@ Axis                          N    Range
 ===========================  ===  ==================================
 age (continuity bins, Gyr)    6   0-0.03-0.1, then log-spaced to 13.7
 log10(Z/Zsun)                 5   -0.8 to 0.2 (linear spacing)
-tau (dust2 optical depth)    10   0.0, then 9 log-spaced, 0.01 to 4.0
+tau (dust2 optical depth)    10   0.0, then 9 Exponential(1.5) quantiles
 dust-emission Umin            1   fixed at 1.0
 dust-emission gamma           1   fixed at 0.01
 dust-emission Qpah             3   0.1 to 7.0 (log spacing)
@@ -73,15 +73,24 @@ multi-component mass-weighted SFH fits), a birth-cloud term only affects
 the youngest continuity bin (the only one that straddles FSPS's default
 ``dust_tesc=10`` Myr threshold), making it a wasted axis for the other
 age bins. Dropping ``dustn`` frees roughly 10x the previous grid budget;
-some of that was reinvested in finer ``tau`` sampling (6 to 10 points,
-still exact-zero-plus-log-spaced -- better matching the physical
-clustering of galaxies toward low-to-moderate optical depth than uniform
-linear spacing) and metallicity (4 to 5 points), with the remainder left
-unspent for now. ``tau``'s hybrid zero-plus-log design remains safe for
-``fastbayes``'s sub-grid refinement, which fits each axis's local chi2
-curvature using the axis's actual (not assumed-uniform) neighboring
-coordinate values (:func:`fastspecfit.fastbayes._parabola_vertex3`); the
-one requirement is that an axis with an exact-zero point stay out of
+some of that was reinvested in finer ``tau`` sampling (6 to 10 points) and
+metallicity (4 to 5 points), with the remainder left unspent for now.
+
+``tau``'s grid points are no longer an ad hoc log-spaced set: one point
+sits at exact zero (dust-free), and the remaining 9 are placed at the
+quantiles of an Exponential(:data:`TAU_THETA` = 1.5) distribution using
+equal-probability-mass bin centers (see
+:func:`_exponential_quantile_grid`) -- point *density* now follows an
+actual continuous prior shape (peaked at zero, falling off toward high
+tau, matching the physical prevalence of low-dust galaxies), rather than
+a spacing convention chosen only for convenient coverage. ``theta=1.5``
+was chosen so the grid's effective reach (~4.3 at the 9th quantile)
+roughly matches the previous ad hoc grid's Leja+2017-informed upper
+bound. This remains safe for ``fastbayes``'s sub-grid refinement, which
+fits each axis's local chi2 curvature using the axis's actual (not
+assumed-uniform) neighboring coordinate values
+(:func:`fastspecfit.fastbayes._parabola_vertex3`); the one requirement is
+that an axis with an exact-zero point stay out of
 :data:`fastspecfit.fastbayes.LOG_AXES` (log purposes undefined at zero),
 which ``tau`` already was. ``duste_umin``/``duste_gamma`` remain fixed at
 representative ISM values (essentially unconstrained without far-IR
@@ -160,6 +169,38 @@ SFR_AVG_WINDOW_GYR = 0.1 # [Gyr] = 100 Myr
 # and FITS header provenance (see main()'s DUSTIDX keyword).
 DUST_INDEX = -0.7
 
+# Mean (scale) of the Exponential/Gamma(k=1) distribution whose quantiles
+# place the non-zero tau grid points below (see build_bayesian_grid);
+# chosen so the grid's effective upper tau reach (~4.3 at 9 points) roughly
+# matches the previous ad hoc grid's Leja+2017-informed upper bound.
+TAU_THETA = 1.5
+
+
+def _exponential_quantile_grid(npts, theta):
+    """Quantile points of an Exponential(theta) distribution.
+
+    Uses equal-probability-mass bin centers (``p_i = (i-0.5)/npts`` for
+    ``i=1..npts``), i.e. each returned point is the median of its own
+    ``1/npts``-probability slice of the distribution -- point density
+    then follows the distribution's pdf, concentrating resolution where
+    the (assumed) prior expects most galaxies to lie.
+
+    Parameters
+    ----------
+    npts : :class:`int`
+        Number of quantile points.
+    theta : :class:`float`
+        Mean (scale) of the Exponential distribution.
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Quantile values, ascending, shape ``(npts,)``.
+
+    """
+    p = (np.arange(1, npts + 1) - 0.5) / npts
+    return -theta * np.log(1. - p)
+
 
 def build_bayesian_grid(imf='chabrier', test=False):
     """Build the Bayesian continuity-SFH template grid.
@@ -207,14 +248,16 @@ def build_bayesian_grid(imf='chabrier', test=False):
     else:
         nagebins = 6
         nmets, minlogmet, maxlogmet = 5, -0.8, 0.2
-        # tau: exact zero (dust-free) plus 9 log-spaced points spanning
-        # Leja+17's fiducial optical-depth range. This better matches the
-        # physical clustering of galaxies toward low-to-moderate optical
-        # depth than uniform linear spacing. tau is now the sole free
+        # tau: exact zero (dust-free) plus 9 points at the quantiles of an
+        # Exponential(TAU_THETA) distribution (see
+        # _exponential_quantile_grid): point density follows an actual
+        # continuous prior shape -- peaked at zero, falling off toward high
+        # tau, matching the physical prevalence of low-dust galaxies --
+        # rather than an ad hoc log-spaced grid. tau is the sole free
         # dust-attenuation-curve axis (see the module docstring for why
         # dustn was dropped entirely rather than replaced), and inherited
         # part of the budget dustn used to spend.
-        taus = np.concatenate(([0.], np.logspace(np.log10(0.01), np.log10(4.), 9)))
+        taus = np.concatenate(([0.], _exponential_quantile_grid(9, TAU_THETA)))
         # Umin and gamma are essentially unconstrained without far-IR
         # photometry (Leja+17 App. C); fixed at representative ISM values
         # to free their previous coarse 2x2 grid's budget for fagn below.
@@ -459,6 +502,7 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, test=False, cmdline=
     hduflux.header['ZSUN'] = (0.0134, 'adopted solar metallicity (custom C3K_R10K)')
     hduflux.header['AGNTAU'] = (agntau, 'fixed AGN torus optical depth (agn_tau)')
     hduflux.header['DUSTIDX'] = (DUST_INDEX, 'fixed power-law attenuation slope (dust_index)')
+    hduflux.header['TAUTHETA'] = (TAU_THETA, 'Exponential(theta) scale for the tau grid quantiles')
 
     hduwave = fits.ImageHDU(wave)
     hduwave.header['EXTNAME'] = 'WAVE'
