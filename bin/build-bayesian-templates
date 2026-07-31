@@ -17,91 +17,54 @@ Usage
   time python bin/build-bayesian-templates --gridnumber 001 \\
       --templatedir $FTEMPLATES_DIR/bayesian
 
+  time python bin/build-bayesian-templates --gridnumber 002 \\
+      --templatedir $FTEMPLATES_DIR/bayesian --paramsfile /path/to/my-grid.yaml
+
 Grid Design
 -----------
 Each grid point is a single continuity-SFH age bin (``sfh=3``, constant
 SFR within the bin, following the Prospector ``adjust_continuity_agebins``
 prescription -- see :func:`fastspecfit.templates.continuity_agebins`)
 computed with a Charlot & Fall (2000)-style power-law dust attenuation
-curve (``dust_type=0``, ``dust_index=-0.7`` fixed -- the same slope as
+curve (``dust_type=0``, fixed ``dust_index`` -- the same slope as
 ``fastspec``/``fastphot``'s own attenuation curve,
 :func:`fastspecfit.templates.Templates.klambda` -- with ``dust1`` left at
 its FSPS default of 0.0, i.e. no separate birth-cloud attenuation
-component, and ``dust2`` (``tau``) as the sole free diffuse optical
-depth), reradiated dust emission (``add_dust_emission=True``, Draine & Li
-2007 templates), and AGN torus emission (Nenkova et al. 2008 templates,
-via FSPS's own ``fagn``/``agn_tau`` parameters). Nebular line and
-continuum emission are also included directly in the spectrum
-(``add_neb_emission=True``, ``add_neb_continuum=True``). The grid axes,
-hard-coded in :func:`build_bayesian_grid`, are:
+component, and ``dust2`` (``tau``) as a free diffuse optical depth axis),
+reradiated dust emission (``add_dust_emission=True``, Draine & Li 2007
+templates), and AGN torus emission (Nenkova et al. 2008 templates, via
+FSPS's own ``fagn``/``agn_tau`` parameters). Nebular line and continuum
+emission are also included directly in the spectrum
+(``add_neb_emission=True``, ``add_neb_continuum=True``).
 
-===========================  ===  ==================================
-Axis                          N    Range
-===========================  ===  ==================================
-age (continuity bins, Gyr)    6   0-0.03-0.1, then log-spaced to 13.7
-log10(Z/Zsun)                 5   -0.8 to 0.2 (linear spacing)
-tau (dust2 optical depth)    10   0.0, then 9 Exponential(1.5) quantiles
-dust-emission Umin            1   fixed at 1.0
-dust-emission gamma           1   fixed at 0.01
-dust-emission Qpah             3   0.1 to 7.0 (log spacing)
-fagn (AGN/bolometric ratio)    4   0.0, then 3 log-spaced, 0.01 to 3.0
-===========================  ===  ==================================
+The grid's free axes -- which parameters vary, how many grid points each
+gets, and how those points are spaced -- are no longer hard-coded here:
+they are read from a YAML parameter file (bundled default:
+``fastspecfit/data/bayesian-grid.yaml``; override with ``--paramsfile``),
+so different grid designs (more/fewer points, a different axis
+combination entirely, a different prior shape for a given axis) are a
+config-file change, not a code change. See that file's header comment
+for the full axis schema (``kind: fixed | linspace | logspace |
+exp_quantile | zero_plus_logspace | agebins``, plus ``log``/``param``/
+``param_transform``/``outname``/``label``). The YAML also carries two
+fixed (non-gridded) FSPS parameters applied to every model: ``dust_index``
+and ``agn_tau``.
 
-The age axis replaces the previous single-age SSP (``sfh=0``) grid with
-Prospector-style continuity bins (constant SFR within each lookback-time
-bin, ``sfh=3``): more physically realistic than an instantaneous burst,
-and it lets the axis's point count drop (20 to 6) since a continuity bin
-already marginalizes over the ages within it, freeing budget elsewhere.
-The first two bins are hard-coded to 0-30 Myr and 30-100 Myr (see
-:func:`fastspecfit.templates.continuity_agebins`), which both resolves
-the youngest, most rapidly-evolving populations and guarantees a bin edge
-exactly at 100 Myr for the ``sfr`` column's windowed-average calculation
-below.
+Two age-axis and grid-design constraints are baked into the code (not
+YAML-configurable, since they follow directly from the physical model
+rather than being a tunable grid choice):
 
-The dust attenuation model switched from FSPS's Kriek & Conroy (2013)
-curve (free ``dust_index``, i.e. attenuation-curve slope) to a fixed-slope
-Charlot & Fall-style power law: a grid-design review found ``tau`` and
-the free ``dust_index`` (``dustn``) dangerously degenerate/covariant and
-poorly constrained by broadband photometry alone, so ``dustn`` is dropped
-as a grid axis entirely (not merely fixed at one value) rather than
-replaced with another free "shape" parameter -- a birth-cloud
-``dust1``/``dust1``-to-``dust2`` ratio axis was considered and rejected
-for now (see the module git history / design discussion), both because
-its constraining power from photometry alone is weak and because, under
-this grid's one-age-bin-per-template design (unlike Prospector's
-multi-component mass-weighted SFH fits), a birth-cloud term only affects
-the youngest continuity bin (the only one that straddles FSPS's default
-``dust_tesc=10`` Myr threshold), making it a wasted axis for the other
-age bins. Dropping ``dustn`` frees roughly 10x the previous grid budget;
-some of that was reinvested in finer ``tau`` sampling (6 to 10 points) and
-metallicity (4 to 5 points), with the remainder left unspent for now.
-
-``tau``'s grid points are no longer an ad hoc log-spaced set: one point
-sits at exact zero (dust-free), and the remaining 9 are placed at the
-quantiles of an Exponential(:data:`TAU_THETA` = 1.5) distribution using
-equal-probability-mass bin centers (see
-:func:`_exponential_quantile_grid`) -- point *density* now follows an
-actual continuous prior shape (peaked at zero, falling off toward high
-tau, matching the physical prevalence of low-dust galaxies), rather than
-a spacing convention chosen only for convenient coverage. ``theta=1.5``
-was chosen so the grid's effective reach (~4.3 at the 9th quantile)
-roughly matches the previous ad hoc grid's Leja+2017-informed upper
-bound. This remains safe for ``fastbayes``'s sub-grid refinement, which
-fits each axis's local chi2 curvature using the axis's actual (not
-assumed-uniform) neighboring coordinate values
-(:func:`fastspecfit.fastbayes._parabola_vertex3`); the one requirement is
-that an axis with an exact-zero point stay out of
-:data:`fastspecfit.fastbayes.LOG_AXES` (log purposes undefined at zero),
-which ``tau`` already was. ``duste_umin``/``duste_gamma`` remain fixed at
-representative ISM values (essentially unconstrained without far-IR
-photometry, per Leja+2017 App. C); the ``fagn`` axis (0 plus log-spaced
-points spanning Leja+2017/Prospector's fiducial AGN-luminosity-fraction
-prior range) is unchanged, with ``agn_tau`` fixed at FSPS's own default
-(matching ``bin/build-templates``) since it mainly shapes the AGN SED's
-fine structure, not its total luminosity contribution. ``Qpah`` keeps its
-previous 3-point log-spaced resolution, unchanged.
-
-Total grid size: 6 x 5 x 10 x 1 x 1 x 3 x 4 = 3,600 models.
+* The age axis (``kind: agebins``) always uses
+  :func:`fastspecfit.templates.continuity_agebins`, whose first two bins
+  are hard-coded to 0-30 Myr and 30-100 Myr -- this both resolves the
+  youngest, most rapidly evolving populations and guarantees a bin edge
+  exactly at 100 Myr for the ``sfr`` column's windowed-average
+  calculation below. ``nbins`` must be >= 4.
+* Any axis with an exact-zero grid point (e.g. a ``tau``/``fagn``-style
+  ``exp_quantile``/``zero_plus_logspace`` axis) must have ``log: false``
+  in the YAML -- ``log10(0)`` is undefined, and
+  :mod:`fastspecfit.fastbayes`'s sub-grid parabola refinement requires a
+  well-defined coordinate for every axis.
 
 Output Files
 ------------
@@ -112,7 +75,7 @@ Output Files
     dust attenuation + reradiated dust emission + AGN torus emission) in
     units of erg/s/cm2/Angstrom at 10 pc per solar mass formed. ``IMF``,
     ``GRIDNUM``, and the adopted solar metallicity (``ZSUN``, against
-    which ``logmet``/``zzsun`` are defined) are plain header keywords.
+    which the ``zzsun`` axis is defined) are plain header keywords.
     Software/library provenance (loaded module versions,
     ``$FTEMPLATES_DIR``, python-fsps version and commit hash, and the
     FSPS isochrone, spectral, and dust-emission libraries in use) is
@@ -124,19 +87,30 @@ Output Files
 
 ``METADATA`` (table, nmodel rows)
     Per-model grid parameters: ``age`` (Gyr, mean age of the continuity
-    bin), ``dt`` (Gyr, bin width), ``zzsun`` (Z/Zsun), ``tau``,
-    ``umin``, ``gamma``, ``qpah``, ``fagn``, ``sfr`` (Msun/yr per Msun
-    formed, precomputed here rather than at ``fastbayes`` runtime as the
-    fraction of this bin's duration falling within the trailing
-    ``SFR_AVG_WINDOW_GYR`` window -- the same windowed-overlap formula as
-    ``fastspecfit.continuum``'s ``_get_sps_properties``, specialized to a
-    single age-bin template rather than a multi-bin coefficient sum), and
-    ``mstar`` (surviving stellar mass fraction per solar mass formed);
-    plus, for fastbayes's cheap per-object LOGL_*/DN4000_MODEL uncertainty
-    estimates (see fastspecfit.fastbayes.BayesianGrid), the precomputed
-    rest-frame ``dn4000_model`` index and one ``<lumkey>_permass`` column
-    (linear, per solar mass formed) for each of
-    fastspecfit.fastbayes.LUM_KEYS.
+    bin), ``dt`` (Gyr, bin width), one column per non-age axis (named by
+    that axis's ``name`` in the parameter YAML, e.g. ``zzsun``, ``tau``,
+    ``umin``, ``gamma``, ``qpah``, ``fagn`` for the bundled default),
+    ``sfr`` (Msun/yr per Msun formed, precomputed here rather than at
+    ``fastbayes`` runtime as the fraction of this bin's duration falling
+    within the trailing ``SFR_AVG_WINDOW_GYR`` window -- the same
+    windowed-overlap formula as ``fastspecfit.continuum``'s
+    ``_get_sps_properties``, specialized to a single age-bin template
+    rather than a multi-bin coefficient sum), and ``mstar`` (surviving
+    stellar mass fraction per solar mass formed); plus, for
+    ``fastbayes``'s cheap per-object LOGL_*/DN4000_MODEL uncertainty
+    estimates (see :class:`fastspecfit.fastbayes.BayesianGrid`), the
+    precomputed rest-frame ``dn4000_model`` index and one
+    ``<lumkey>_permass`` column (linear, per solar mass formed) for each
+    of :data:`fastspecfit.fastbayes.LUM_KEYS`.
+
+``AXES`` (table, one row per grid axis, in grid order)
+    ``name``, ``log`` (whether :mod:`fastspecfit.fastbayes` refines/
+    reports this axis in log10 space), ``outname`` (FASTBAYES output
+    column name), and ``label`` (QA figure LaTeX label) for every axis,
+    read directly from the parameter YAML -- this is what lets
+    :class:`fastspecfit.fastbayes.BayesianGrid` recover the grid's axis
+    list, order, and log-ness for an arbitrary axis combination without
+    re-parsing YAML at fit time.
 
 Notes
 -----
@@ -162,18 +136,42 @@ from fastspecfit.fastbayes import LUM_KEYS, LUM_WAVES, _PC_CM, _LSUN
 # in fastspecfit.continuum._get_sps_properties.
 SFR_AVG_WINDOW_GYR = 0.1 # [Gyr] = 100 Myr
 
-# Fixed Charlot & Fall (2000)-style power-law attenuation-curve slope,
-# matching fastspec/fastphot's own dust model
-# (fastspecfit.templates.Templates.klambda's dust_power). Also FSPS's own
-# default for dust_type=0, but set explicitly here for self-documentation
-# and FITS header provenance (see main()'s DUSTIDX keyword).
-DUST_INDEX = -0.7
+# Adopted solar metallicity (custom C3K_R10K), against which the zzsun axis
+# is defined; a physical constant, not a per-grid tunable.
+ZSUN = 0.0134
 
-# Mean (scale) of the Exponential/Gamma(k=1) distribution whose quantiles
-# place the non-zero tau grid points below (see build_bayesian_grid);
-# chosen so the grid's effective upper tau reach (~4.3 at 9 points) roughly
-# matches the previous ad hoc grid's Leja+2017-informed upper bound.
-TAU_THETA = 1.5
+
+def _load_grid_params(paramsfile=None):
+    """Load the grid axis-definition YAML file (bundled default or an
+    explicit override).
+
+    Parameters
+    ----------
+    paramsfile : :class:`str` or None, optional
+        Full path to a grid-parameter YAML file. Defaults to the bundled
+        ``fastspecfit/data/bayesian-grid.yaml`` when ``None``.
+
+    Returns
+    -------
+    params : :class:`dict`
+        Parsed YAML content (``axes`` list plus fixed FSPS parameters).
+    paramsfile : :class:`str`
+        Resolved path actually used, for provenance.
+
+    """
+    import yaml
+    from importlib import resources
+
+    if paramsfile is None:
+        paramsfile = str(resources.files('fastspecfit').joinpath('data/bayesian-grid.yaml'))
+    if not os.path.isfile(paramsfile):
+        errmsg = f'Grid parameter file not found: {paramsfile}'
+        raise FileNotFoundError(errmsg)
+
+    with open(paramsfile) as fh:
+        params = yaml.safe_load(fh)
+
+    return params, paramsfile
 
 
 def _exponential_quantile_grid(npts, theta):
@@ -202,7 +200,49 @@ def _exponential_quantile_grid(npts, theta):
     return -theta * np.log(1. - p)
 
 
-def build_bayesian_grid(imf='chabrier', test=False):
+def _axis_fixed(cfg):
+    """Explicit list of grid values (``kind: fixed``)."""
+    return np.asarray(cfg['values'], dtype='f8')
+
+
+def _axis_linspace(cfg):
+    """``npts`` linearly spaced values in ``[min, max]`` (``kind: linspace``)."""
+    npts = cfg['npts']
+    return cfg['min'] + (cfg['max'] - cfg['min']) * np.arange(npts) / np.float64(max(npts - 1, 1))
+
+
+def _axis_logspace(cfg):
+    """``npts`` log-uniformly spaced values in ``[min, max]`` (``kind: logspace``)."""
+    npts = cfg['npts']
+    lo, hi = np.log10(cfg['min']), np.log10(cfg['max'])
+    return 10.**(lo + (hi - lo) * np.arange(npts) / np.float64(max(npts - 1, 1)))
+
+
+def _axis_exp_quantile(cfg):
+    """Exact zero plus ``npts``-1 quantiles of an Exponential(``theta``)
+    distribution (``kind: exp_quantile``); see
+    :func:`_exponential_quantile_grid`. Point density follows an actual
+    continuous prior shape -- peaked at zero, falling off toward high
+    values -- rather than an ad hoc spacing convention."""
+    return np.concatenate(([0.], _exponential_quantile_grid(cfg['npts'] - 1, cfg['theta'])))
+
+
+def _axis_zero_plus_logspace(cfg):
+    """Exact zero plus ``npts``-1 log-spaced values in ``[min, max]``
+    (``kind: zero_plus_logspace``)."""
+    return np.concatenate(([0.], np.logspace(np.log10(cfg['min']), np.log10(cfg['max']), cfg['npts'] - 1)))
+
+
+_AXIS_BUILDERS = {
+    'fixed': _axis_fixed,
+    'linspace': _axis_linspace,
+    'logspace': _axis_logspace,
+    'exp_quantile': _axis_exp_quantile,
+    'zero_plus_logspace': _axis_zero_plus_logspace,
+}
+
+
+def build_bayesian_grid(imf='chabrier', paramsfile=None):
     """Build the Bayesian continuity-SFH template grid.
 
     Parameters
@@ -210,9 +250,9 @@ def build_bayesian_grid(imf='chabrier', test=False):
     imf : :class:`str`, optional
         Initial mass function passed to ``python-fsps``. One of
         ``'chabrier'`` (default), ``'salpeter'``, or ``'kroupa'``.
-    test : :class:`bool`, optional
-        If ``True``, build a tiny grid for quick testing. Default is
-        ``False``.
+    paramsfile : :class:`str` or None, optional
+        Grid axis-definition YAML file. Defaults to the bundled
+        ``fastspecfit/data/bayesian-grid.yaml`` when ``None``.
 
     Returns
     -------
@@ -227,61 +267,40 @@ def build_bayesian_grid(imf='chabrier', test=False):
     libraries : :class:`tuple` of :class:`str`
         FSPS isochrone, spectral, and dust-emission library names, as
         reported by ``fsps.StellarPopulation.libraries``.
-    agntau : :class:`float`
-        Fixed AGN torus optical depth (``agn_tau``) used for every grid
-        point, for header provenance (not itself a grid axis).
+    axes : :class:`list` of :class:`dict`
+        Resolved axis definitions, in grid order (for the ``AXES`` FITS
+        extension).
+    dust_index, agn_tau : :class:`float`
+        Fixed FSPS parameters used for every grid point, for header
+        provenance.
+    paramsfile_used : :class:`str`
+        Resolved grid-parameter YAML path actually used.
 
     """
     # https://dfm.io/python-fsps/current/stellarpop_api/
     imfdict = {'salpeter': 0, 'chabrier': 1, 'kroupa': 2}
 
-    # Grid axes; see the module docstring for the full design.
-    if test:
-        nagebins = 4 # continuity_agebins requires nbins >= 4
-        nmets, minlogmet, maxlogmet = 2, -1., 0.
-        taus = np.array([1.])
-        umins = np.array([1.0])
-        gammas = np.array([0.01])
-        nqpahs, minqpah, maxqpah = 1, 1., 1.
-        fagns = np.array([0.])
-        agntau = 10.
-    else:
-        nagebins = 6
-        nmets, minlogmet, maxlogmet = 5, -0.8, 0.2
-        # tau: exact zero (dust-free) plus 9 points at the quantiles of an
-        # Exponential(TAU_THETA) distribution (see
-        # _exponential_quantile_grid): point density follows an actual
-        # continuous prior shape -- peaked at zero, falling off toward high
-        # tau, matching the physical prevalence of low-dust galaxies --
-        # rather than an ad hoc log-spaced grid. tau is the sole free
-        # dust-attenuation-curve axis (see the module docstring for why
-        # dustn was dropped entirely rather than replaced), and inherited
-        # part of the budget dustn used to spend.
-        taus = np.concatenate(([0.], _exponential_quantile_grid(9, TAU_THETA)))
-        # Umin and gamma are essentially unconstrained without far-IR
-        # photometry (Leja+17 App. C); fixed at representative ISM values
-        # to free their previous coarse 2x2 grid's budget for fagn below.
-        umins = np.array([1.0])
-        gammas = np.array([0.01])
-        # Qpah is comparatively well constrained by mid-IR photometry alone
-        # even without far-IR, so it keeps its previous 3-point resolution.
-        nqpahs, minqpah, maxqpah = 3, 0.1, 7.0
-        # fagn: exact zero (no AGN) plus 3 log-spaced points spanning
-        # Leja+17/Prospector's fiducial AGN-luminosity-fraction prior
-        # range; agn_tau fixed at FSPS's own default (matching
-        # bin/build-templates's default), since it mainly shapes the AGN
-        # SED's fine structure, not its total luminosity contribution.
-        fagns = np.concatenate(([0.], np.logspace(np.log10(0.01), np.log10(3.), 3)))
-        agntau = 10.
+    params, paramsfile_used = _load_grid_params(paramsfile)
+    axes = params['axes']
+    dust_index = float(params['dust_index'])
+    agn_tau = float(params['agn_tau'])
 
-    logmets = minlogmet + (maxlogmet - minlogmet) * np.arange(nmets) / np.float32(max(nmets - 1, 1))
-    qpahs = 10.**(np.log10(minqpah) + (np.log10(maxqpah) - np.log10(minqpah)) *
-                  np.arange(nqpahs) / np.float32(max(nqpahs - 1, 1)))
+    age_axes = [a for a in axes if a['kind'] == 'agebins']
+    if len(age_axes) != 1:
+        errmsg = f"Grid parameter file {paramsfile_used} must define exactly one 'agebins' axis."
+        raise ValueError(errmsg)
+    age_axis = age_axes[0]
+    nagebins = int(age_axis['nbins'])
+    if nagebins < 4:
+        errmsg = f"Age axis 'nbins' ({nagebins}) must be >= 4 (continuity_agebins requirement)."
+        raise ValueError(errmsg)
 
-    ntaus = len(taus)
-    numins = len(umins)
-    ngammas = len(gammas)
-    nfagns = len(fagns)
+    non_age_axes = [a for a in axes if a['kind'] != 'agebins']
+    for axis in non_age_axes:
+        if axis['kind'] not in _AXIS_BUILDERS:
+            errmsg = (f"Unknown axis kind '{axis['kind']}' for axis '{axis['name']}'; "
+                      f'must be one of {sorted(_AXIS_BUILDERS.keys())} (or "agebins").')
+            raise ValueError(errmsg)
 
     # Prospector-style continuity-bin lookback-time edges (Gyr); see
     # fastspecfit.templates.continuity_agebins. The first two bins are
@@ -292,33 +311,19 @@ def build_bayesian_grid(imf='chabrier', test=False):
     age_mean_gyr = np.mean(agebins, axis=1) # [Gyr]
     dt_gyr = np.diff(agebins, axis=1)[:, 0]  # [Gyr]
 
-    models_dtype = np.dtype(
-        [('iagebin', np.int32),
-         ('logmet', np.float32),
-         ('tau', np.float32),
-         ('umin', np.float32),
-         ('gamma', np.float32),
-         ('qpah', np.float32),
-         ('fagn', np.float32)])
+    axis_grids = [_AXIS_BUILDERS[a['kind']](a) for a in non_age_axes]
 
-    dims = (nagebins, nmets, ntaus, numins, ngammas, nqpahs, nfagns)
+    models_dtype = np.dtype(
+        [('iagebin', np.int32)] + [(a['name'], np.float64) for a in non_age_axes])
+
+    dims = (nagebins,) + tuple(len(g) for g in axis_grids)
     models = np.zeros(dims, dtype=models_dtype)
 
-    for iage in range(nagebins):
-        for imet, logmet in enumerate(logmets):
-            for itau, tau in enumerate(taus):
-                for iumin, umin in enumerate(umins):
-                    for igamma, gamma in enumerate(gammas):
-                        for iqpah, qpah in enumerate(qpahs):
-                            for ifagn, fagn in enumerate(fagns):
-                                model = models[iage, imet, itau, iumin, igamma, iqpah, ifagn]
-                                model['iagebin'] = iage
-                                model['logmet'] = logmet
-                                model['tau'] = tau
-                                model['umin'] = umin
-                                model['gamma'] = gamma
-                                model['qpah'] = qpah
-                                model['fagn'] = fagn
+    for multi_index in np.ndindex(dims):
+        model = models[multi_index]
+        model['iagebin'] = multi_index[0]
+        for iaxis, axis in enumerate(non_age_axes):
+            model[axis['name']] = axis_grids[iaxis][multi_index[iaxis + 1]]
 
     models = models.flatten()
     nsed = len(models)
@@ -326,12 +331,8 @@ def build_bayesian_grid(imf='chabrier', test=False):
     meta = Table()
     meta['age'] = age_mean_gyr[models['iagebin']] # [Gyr]
     meta['dt'] = dt_gyr[models['iagebin']]        # [Gyr]
-    meta['zzsun'] = 10.**models['logmet']
-    meta['tau'] = models['tau']
-    meta['umin'] = models['umin']
-    meta['gamma'] = models['gamma']
-    meta['qpah'] = models['qpah']
-    meta['fagn'] = models['fagn']
+    for axis in non_age_axes:
+        meta[axis['name']] = models[axis['name']]
     meta['mstar'] = np.zeros(nsed, 'f4')
     meta['dn4000_model'] = np.zeros(nsed, 'f4')
     for lumkey in LUM_KEYS:
@@ -362,9 +363,9 @@ def build_bayesian_grid(imf='chabrier', test=False):
         add_neb_emission=True,
         add_neb_continuum=True,
         imf_type=imfdict[imf],
-        dust_type=0,           # power-law (Charlot & Fall 2000-style)
-        dust_index=DUST_INDEX, # fixed slope, matching fastspec/fastphot
-        sfh=3,                 # tabular SFH (continuity bins)
+        dust_type=0,            # power-law (Charlot & Fall 2000-style)
+        dust_index=dust_index,  # fixed slope, matching fastspec/fastphot
+        sfh=3,                  # tabular SFH (continuity bins)
     )
     print('...took {:.3f} sec'.format((time.time() - t0)))
     libraries = tuple(lib.decode() for lib in sp.libraries)
@@ -385,13 +386,18 @@ def build_bayesian_grid(imf='chabrier', test=False):
 
     fluxes = None
     for imodel, model in enumerate(models):
-        sp.params['logzsol'] = model['logmet']
-        sp.params['dust2'] = model['tau']
-        sp.params['duste_umin'] = model['umin']
-        sp.params['duste_gamma'] = model['gamma']
-        sp.params['duste_qpah'] = model['qpah']
-        sp.params['fagn'] = model['fagn']
-        sp.params['agn_tau'] = agntau
+        for axis in non_age_axes:
+            if 'param' not in axis:
+                continue
+            val = model[axis['name']]
+            transform = axis.get('param_transform', 'linear')
+            if transform == 'log10':
+                val = np.log10(val)
+            elif transform != 'linear':
+                errmsg = f"Unknown param_transform '{transform}' for axis '{axis['name']}'."
+                raise ValueError(errmsg)
+            sp.params[axis['param']] = val
+        sp.params['agn_tau'] = agn_tau
 
         agebin = agebins[model['iagebin']] # [Gyr]
         fspstime = agebin - agebin[0]      # [Gyr], relative to bin start
@@ -444,10 +450,10 @@ def build_bayesian_grid(imf='chabrier', test=False):
 
     print('Finished {} models in {:.3f} min'.format(nsed, (time.time() - t0) / 60.))
 
-    return meta, wave, fluxes, libraries, agntau
+    return meta, wave, fluxes, libraries, axes, dust_index, agn_tau, paramsfile_used
 
 
-def main(imf='chabrier', gridnumber=None, templatedir=None, test=False, cmdline=None):
+def main(imf='chabrier', gridnumber=None, templatedir=None, paramsfile=None, cmdline=None):
     """Build the Bayesian template grid and write the output FITS file.
 
     Parameters
@@ -462,8 +468,8 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, test=False, cmdline=
         Root output directory; the FITS file is written directly to
         ``<templatedir>/`` (flat -- no per-grid subdirectory, since the
         filename already disambiguates by ``imf`` and ``gridnumber``).
-    test : :class:`bool`, optional
-        If ``True``, build a tiny test grid. Default is ``False``.
+    paramsfile : :class:`str` or None, optional
+        Grid axis-definition YAML file; see :func:`build_bayesian_grid`.
     cmdline : :class:`str` or None, optional
         Exact command-line invocation, recorded verbatim as the ``CMDLINE``
         header keyword (in addition to the individual dependency/parameter
@@ -474,7 +480,8 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, test=False, cmdline=
     """
     from desiutil.depend import add_dependencies, possible_dependencies, setdep
 
-    meta, wave, fluxes, libraries, agntau = build_bayesian_grid(imf=imf, test=test)
+    meta, wave, fluxes, libraries, axes, dust_index, agn_tau, paramsfile_used = \
+        build_bayesian_grid(imf=imf, paramsfile=paramsfile)
 
     if not os.path.isdir(templatedir):
         os.makedirs(templatedir, exist_ok=True)
@@ -499,10 +506,10 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, test=False, cmdline=
     setdep(hduflux.header, 'ISOCHRON', libraries[0])
     setdep(hduflux.header, 'SPECLIB', libraries[1])
     setdep(hduflux.header, 'DUSTLIB', libraries[2])
-    hduflux.header['ZSUN'] = (0.0134, 'adopted solar metallicity (custom C3K_R10K)')
-    hduflux.header['AGNTAU'] = (agntau, 'fixed AGN torus optical depth (agn_tau)')
-    hduflux.header['DUSTIDX'] = (DUST_INDEX, 'fixed power-law attenuation slope (dust_index)')
-    hduflux.header['TAUTHETA'] = (TAU_THETA, 'Exponential(theta) scale for the tau grid quantiles')
+    setdep(hduflux.header, 'GRIDPARF', os.path.abspath(paramsfile_used))
+    hduflux.header['ZSUN'] = (ZSUN, 'adopted solar metallicity (custom C3K_R10K)')
+    hduflux.header['AGNTAU'] = (agn_tau, 'fixed AGN torus optical depth (agn_tau)')
+    hduflux.header['DUSTIDX'] = (dust_index, 'fixed power-law attenuation slope (dust_index)')
 
     hduwave = fits.ImageHDU(wave)
     hduwave.header['EXTNAME'] = 'WAVE'
@@ -513,7 +520,15 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, test=False, cmdline=
     hdutable.header['EXTNAME'] = 'METADATA'
     hdutable.header['IMF'] = imf
 
-    hx = fits.HDUList([hduflux, hduwave, hdutable])
+    axes_table = Table()
+    axes_table['name'] = [a['name'] for a in axes]
+    axes_table['log'] = np.array([bool(a['log']) for a in axes])
+    axes_table['outname'] = [a['outname'] for a in axes]
+    axes_table['label'] = [a['label'] for a in axes]
+    hduaxes = fits.convenience.table_to_hdu(axes_table)
+    hduaxes.header['EXTNAME'] = 'AXES'
+
+    hx = fits.HDUList([hduflux, hduwave, hdutable, hduaxes])
 
     print(f'Writing {len(meta)} model spectra to {outfile}')
     hx.writeto(outfile, overwrite=True)
@@ -529,7 +544,9 @@ if __name__ == '__main__':
     parser.add_argument('--gridnumber', required=True, help='Grid number/identifier (e.g., 001)')
     parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
                         help='Initial mass function')
-    parser.add_argument('--test', action='store_true', help='Generate a tiny test grid.')
+    parser.add_argument('--paramsfile', type=str, default=None,
+                        help='Grid axis-definition YAML file (default: the bundled '
+                        'fastspecfit/data/bayesian-grid.yaml)')
     args = parser.parse_args()
 
     templatedir = args.templatedir
@@ -539,5 +556,5 @@ if __name__ == '__main__':
 
     cmdline = ' '.join([os.path.basename(sys.argv[0])] + sys.argv[1:])
 
-    main(imf=args.imf, gridnumber=args.gridnumber, templatedir=templatedir, test=args.test,
-        cmdline=cmdline)
+    main(imf=args.imf, gridnumber=args.gridnumber, templatedir=templatedir,
+        paramsfile=args.paramsfile, cmdline=cmdline)

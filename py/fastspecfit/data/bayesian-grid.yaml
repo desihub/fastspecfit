@@ -1,0 +1,93 @@
+# Default free-parameter grid design for bin/build-bayesian-templates.
+#
+# `axes` lists the grid's free axes, in the exact order used to build the
+# full-factorial grid (outermost first) -- this order is written to the
+# output FITS file's AXES extension and defines the flattened grid's N-D
+# index mapping consumed by fastspecfit.fastbayes.
+#
+# Each axis entry:
+#   name            metadata column name / grid axis identifier
+#   kind            grid-value construction strategy; one of:
+#                     agebins           continuity_agebins(nbins=...) lookback-time
+#                                       bins (age axis only; no param/param_transform)
+#                     fixed             explicit `values` list
+#                     linspace          `npts` linearly spaced points in [min, max]
+#                     logspace          `npts` log-uniformly spaced points in [min, max]
+#                     exp_quantile      exact zero + `npts`-1 equal-probability-mass
+#                                       quantiles of an Exponential(`theta`) distribution
+#                     zero_plus_logspace exact zero + `npts`-1 log-spaced points in [min, max]
+#   log             whether fastbayes refines/reports this axis in log10 space
+#                   (must be false for any axis with an exact-zero grid point)
+#   param           FSPS StellarPopulation.params key this axis sets (omitted for `age`)
+#   param_transform how the axis's linear grid value maps to `param`; 'linear'
+#                   (default) or 'log10'
+#   outname         FASTBAYES output column name
+#   label           LaTeX label for QA figures
+#
+# Fixed (non-axis) FSPS parameters, applied to every grid point:
+dust_index: -0.7  # CF00-style power-law attenuation slope (sp.params['dust_index'])
+agn_tau: 10.0     # AGN torus optical depth (sp.params['agn_tau'])
+
+axes:
+  - name: age
+    kind: agebins
+    nbins: 6
+    log: true
+    outname: LOGAGE
+    label: '$\log_{10}({\rm Age/Gyr})$'
+
+  - name: zzsun
+    kind: logspace
+    npts: 5
+    min: 0.15848932   # = 10**-0.8
+    max: 1.58489319    # = 10**0.2
+    log: true
+    param: logzsol
+    param_transform: log10
+    outname: LOGZZSUN
+    label: '$\log_{10}(Z/Z_{\odot})$'
+
+  - name: tau
+    kind: exp_quantile
+    npts: 10
+    theta: 1.5
+    log: false
+    param: dust2
+    outname: TAU
+    label: '$\tau$'
+
+  - name: umin
+    kind: fixed
+    values: [1.0]
+    log: true
+    param: duste_umin
+    outname: LOGUMIN
+    label: '$\log_{10}(U_{\rm min})$'
+
+  - name: gamma
+    kind: fixed
+    values: [0.01]
+    log: false
+    param: duste_gamma
+    outname: GAMMA
+    label: '$\gamma$'
+
+  - name: qpah
+    kind: logspace
+    npts: 3
+    min: 0.1
+    max: 7.0
+    log: true
+    param: duste_qpah
+    outname: LOGQPAH
+    label: '$\log_{10}(Q_{\rm PAH})$'
+
+  - name: fagn
+    kind: zero_plus_logspace
+    npts: 4
+    min: 0.01
+    max: 3.0
+    log: false
+    param: fagn
+    outname: FAGN
+    label: '$f_{\rm AGN}$'

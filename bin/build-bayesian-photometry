@@ -45,6 +45,10 @@ does not distinguish photometric systems, e.g. no ``PHOTSYS``)
 ``METADATA`` (table, nmodel rows)
     Copied unchanged from the input template file, for convenience.
 
+``AXES`` (table, one row per grid axis)
+    Copied unchanged from the input template file (see
+    ``bin/build-bayesian-templates``), for convenience.
+
 """
 import os, sys, time
 import numpy as np
@@ -234,6 +238,7 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
     wave = T['WAVE'].read()
     flux = T['FLUX'].read()
     meta = T['METADATA'].read()
+    axes = T['AXES'].read()
     fluxhdr = T['FLUX'].read_header()
 
     if templatesfile is not None:
@@ -303,6 +308,10 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
     hdumeta = fits.convenience.table_to_hdu(Table(meta))
     hdumeta.header['EXTNAME'] = 'METADATA'
     hdus.append(hdumeta)
+
+    hduaxes = fits.convenience.table_to_hdu(Table(axes))
+    hduaxes.header['EXTNAME'] = 'AXES'
+    hdus.append(hduaxes)
 
     hx = fits.HDUList(hdus)
 

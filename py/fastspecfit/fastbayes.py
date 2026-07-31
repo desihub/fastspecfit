@@ -11,9 +11,11 @@ solving for the chi2-minimizing stellar-mass amplitude of every grid template
 in closed form, and building up the posterior probability distribution of
 every grid parameter by weighting each template by its likelihood. The
 discrete maximum-likelihood point is then refined to sub-grid precision via
-a local parabola fit along each of the 7 grid axes and an N-linear
-interpolation over the neighboring templates, so that the reported
-parameters, CHI2, and model spectrum are all mutually consistent.
+a local parabola fit along each grid axis (whose names, order, and log-ness
+are read per-grid-file from the templates' AXES FITS extension, see
+:meth:`BayesianGrid.load`) and an N-linear interpolation over the
+neighboring templates, so that the reported parameters, CHI2, and model
+spectrum are all mutually consistent.
 
 See ``doc/technote/fastbayes.tex`` for the full grid design, statistical
 methodology, sub-grid refinement algorithm, and derived-quantity
@@ -30,37 +32,22 @@ from fastspecfit.util import MPPool, fsftime, ZWarningMask, C_LIGHT
 from fastspecfit.photometry import Photometry
 from fastspecfit.singlecopy import sc_data
 
-# Grid axes in the exact nested-loop order used by bin/build-bayesian-templates
-# (age outermost ... fagn innermost). This order is what lets the flattened
-# grid's N-D structure be recovered via np.unravel_index/np.ravel_multi_index.
-# umin and gamma are fixed (N=1) grid points, not free axes, but are kept in
-# this tuple anyway: a fixed axis is already handled correctly (no
-# refinement, weight fully on the single point) by the generic per-axis edge
-# case in _refine_grid_axes/_corner_weights below, so no special-casing is
-# needed to support them. There is no dust_index/"dustn" axis: the grid uses
-# a fixed-slope Charlot & Fall (2000)-style power-law attenuation curve
-# (matching fastspec/fastphot's own dust model), not FSPS's Kriek & Conroy
-# (2013) curve's free slope -- a grid-design review found tau and a free
-# attenuation-curve slope dangerously degenerate/covariant and poorly
-# constrained by broadband photometry alone.
-GRID_AXIS_COLUMNS = ('age', 'zzsun', 'tau', 'umin', 'gamma', 'qpah', 'fagn')
+# The grid's free axes -- names, nested-loop order, log10-refinement flags,
+# output column names, and QA labels -- are no longer hard-coded here: they
+# are read per-grid-file from the AXES FITS extension (written by
+# bin/build-bayesian-templates from its grid-parameter YAML) into instance
+# attributes on BayesianGrid (axis_columns/log_axes/axis_outname/
+# outname_to_axis/axis_labels/param_names; see BayesianGrid.load below) --
+# this is what lets different grid files use entirely different axis
+# combinations without any code change here. Axis order is what lets the
+# flattened grid's N-D structure be recovered via
+# np.unravel_index/np.ravel_multi_index. A fixed (N=1) grid axis is already
+# handled correctly (no refinement, weight fully on the single point) by the
+# generic per-axis edge case in _refine_grid_axes/_corner_weights below, so
+# no special-casing is needed to support one.
 
-# Axes built log-uniform: refined/reported in log10 space so that the formal
-# (delta-chi2=1) uncertainty is symmetric. The remaining axes (tau, gamma,
-# fagn) were built linear-uniform (some, like tau and fagn, with a hybrid
-# exact-zero-plus-log-spaced design that log10 can't represent at the zero
-# point) and are refined/reported in linear space.
-LOG_AXES = frozenset(('age', 'zzsun', 'umin', 'qpah'))
-
-# Output parameter name for each grid axis, and its inverse.
-_AXIS_OUTNAME = {
-    'age': 'LOGAGE', 'zzsun': 'LOGZZSUN', 'tau': 'TAU',
-    'umin': 'LOGUMIN', 'gamma': 'GAMMA', 'qpah': 'LOGQPAH', 'fagn': 'FAGN',
-}
-_OUTNAME_TO_AXIS = {v: k for k, v in _AXIS_OUTNAME.items()}
-
-# All reported parameters: the 7 grid axes, plus LOGMSTAR and SFR, which
-# are derived per-object from the closed-form amplitude solve. SFR (unlike
+# Derived (non-axis) output parameters, computed per-object from the
+# closed-form amplitude solve rather than read off a grid axis. SFR (unlike
 # LOGMSTAR) is reported in linear space, matching fastspecfit.continuum's
 # SFR/SFR_IVAR convention: bg_data.sfr is exactly zero for every template
 # older than the ~100 Myr window baked into the templates' precomputed sfr
@@ -70,25 +57,29 @@ _OUTNAME_TO_AXIS = {v: k for k, v in _AXIS_OUTNAME.items()}
 # tiny (or exactly zero) log-space posterior variance -- reporting SFR
 # linearly instead lets SFR=0 be an exact, well-behaved output with a
 # meaningful (possibly zero) formal uncertainty.
-PARAM_NAMES = tuple(_AXIS_OUTNAME[col] for col in GRID_AXIS_COLUMNS) + ('LOGMSTAR', 'SFR')
+DERIVED_PARAM_NAMES = ('LOGMSTAR', 'SFR')
 
-# Subset (and display order) of PARAM_NAMES shown in the QA posterior panel
-# (laid out as 2 rows of 3: Z/age/mass, then SFR/tau/fagn); the full
-# 9-parameter grid is overkill for a quick-look figure.
-QA_POSTERIOR_PARAMS = ('LOGZZSUN', 'LOGAGE', 'LOGMSTAR', 'SFR', 'TAU', 'FAGN')
-
-# Human-friendly axis labels for the QA posterior-histogram grid.
-_PARAM_LABELS = {
-    'LOGAGE': r'$\log_{10}({\rm Age/Gyr})$',
-    'LOGZZSUN': r'$\log_{10}(Z/Z_{\odot})$',
-    'TAU': r'$\tau$',
-    'LOGUMIN': r'$\log_{10}(U_{\rm min})$',
-    'GAMMA': r'$\gamma$',
-    'LOGQPAH': r'$\log_{10}(Q_{\rm PAH})$',
-    'FAGN': r'$f_{\rm AGN}$',
+# Human-friendly labels for the two derived (non-axis) parameters; per-grid
+# axis labels come from BayesianGrid.axis_labels instead (see above).
+_DERIVED_PARAM_LABELS = {
     'LOGMSTAR': r'$\log_{10}(M/M_{\odot})$',
     'SFR': r'${\rm SFR}\ [M_{\odot}/{\rm yr}]$',
 }
+
+# Preferred-order candidates for the QA figure's compact text summary
+# (fastbayes_qa_one): (output param name, LaTeX template with one {}
+# placeholder for the formatted value+error, value format spec). Entries
+# whose param name isn't present in this grid's bg_data.param_names (e.g. a
+# custom grid without a 'fagn'/'tau' axis) are simply skipped, rather than
+# hard-requiring this exact axis set to exist.
+_QA_SUMMARY_CANDIDATES = (
+    ('LOGZZSUN', r'$\log_{{10}}(Z/Z_{{\odot}})={}$', '{:.2f}'),
+    ('LOGAGE', r'$\log_{{10}}(\mathrm{{Age}}/\mathrm{{Gyr}})={}$', '{:.2f}'),
+    ('LOGMSTAR', r'$\log_{{10}}(M/M_{{\odot}})={}$', '{:.2f}'),
+    ('SFR', r'$\mathrm{{SFR}}={}\ M_{{\odot}}/\mathrm{{yr}}$', '{:.3g}'),
+    ('TAU', r'$\tau={}$', '{:.2f}'),
+    ('FAGN', r'$f_{{\rm AGN}}={}$', '{:.2f}'),
+)
 
 # Rest-frame luminosity output keys and reference wavelengths (Angstrom).
 # The first six match the LOGL_*/LOGLNU_* columns in fastspecfit's own
@@ -214,17 +205,32 @@ class BayesianGrid(object):
 
         self._axis_cache = {}
 
+        # Per-grid-file axis list/order/log-ness/output names/labels, read
+        # from the AXES extension (written by bin/build-bayesian-templates
+        # from its grid-parameter YAML) rather than hard-coded here -- this
+        # is what lets different grid files use entirely different axis
+        # combinations without any fastbayes.py code change.
+        axes_tbl = T['AXES'].read()
+        self.axis_columns = tuple(n.strip() for n in axes_tbl['name'])
+        self.log_axes = frozenset(n for n, islog in zip(self.axis_columns, axes_tbl['log']) if bool(islog))
+        self.axis_outname = {n: out.strip() for n, out in zip(self.axis_columns, axes_tbl['outname'])}
+        self.outname_to_axis = {v: k for k, v in self.axis_outname.items()}
+        self.axis_labels = {n: lbl.strip() for n, lbl in zip(self.axis_columns, axes_tbl['label'])}
+        self.param_names = tuple(self.axis_outname[col] for col in self.axis_columns) + DERIVED_PARAM_NAMES
+        self.param_labels = {self.axis_outname[col]: self.axis_labels[col] for col in self.axis_columns}
+        self.param_labels.update(_DERIVED_PARAM_LABELS)
+
         # Recover the grid's N-D axis structure. The grid is a full
-        # factorial/Cartesian-product design (every combination of the 7
+        # factorial/Cartesian-product design (every combination of the
         # axes exists), so the per-axis grid values and the flattened
         # index<->multi-index mapping are recoverable directly from the
         # metadata table -- no separate shape bookkeeping needs to be
         # stored in the FITS file.
-        self.axis_values = {col: np.unique(np.asarray(self.meta[col], dtype='f8')) for col in GRID_AXIS_COLUMNS}
-        self.dims = tuple(len(self.axis_values[col]) for col in GRID_AXIS_COLUMNS)
+        self.axis_values = {col: np.unique(np.asarray(self.meta[col], dtype='f8')) for col in self.axis_columns}
+        self.dims = tuple(len(self.axis_values[col]) for col in self.axis_columns)
         if int(np.prod(self.dims)) != self.ntemplate:
             errmsg = (f'Grid file {gridfile} metadata is not a full factorial grid over '
-                      f'{GRID_AXIS_COLUMNS} (dims product {int(np.prod(self.dims))} != ntemplate {self.ntemplate}).')
+                      f'{self.axis_columns} (dims product {int(np.prod(self.dims))} != ntemplate {self.ntemplate}).')
             log.critical(errmsg)
             raise ValueError(errmsg)
 
@@ -317,7 +323,7 @@ class BayesianGrid(object):
         -------
         vals : :class:`numpy.ndarray`
             Per-template values of ``col`` in its fit coordinate (log10 for
-            :data:`LOG_AXES`, linear otherwise).
+            axes in :attr:`log_axes`, linear otherwise).
         order : :class:`numpy.ndarray`
             ``np.argsort(vals)``.
         sorted_vals : :class:`numpy.ndarray`
@@ -331,7 +337,7 @@ class BayesianGrid(object):
         cached = self._axis_cache.get(col)
         if cached is None:
             vals = np.asarray(self.meta[col], dtype='f8')
-            if col in LOG_AXES:
+            if col in self.log_axes:
                 vals = np.log10(vals)
             order = np.argsort(vals)
             sorted_vals = vals[order]
@@ -460,7 +466,7 @@ def _weighted_mode(values, weights, uniq=None, inv=None):
 
 def _axis_posterior_values(col):
     """Per-template values of grid-axis column ``col``, in its fit coordinate
-    (log10 for :data:`LOG_AXES`, linear otherwise)."""
+    (log10 for axes in ``bg_data.log_axes``, linear otherwise)."""
     return bg_data.axis_posterior_cache(col)[0]
 
 
@@ -590,7 +596,7 @@ def _solve_grid(flam, flam_ivar, lambda_eff, photsys, redshift):
 def _refine_grid_axes(ibest, chi2):
     """Locally refine each grid axis's ML value via a 3-point parabola fit.
 
-    For each of the 7 grid axes, holds the other 6 fixed at their best-fit
+    For each grid axis, holds all other axes fixed at their best-fit
     (discrete argmin chi2) index and fits a parabola to the already-computed
     chi2 at the immediate neighboring grid points along that axis alone
     (:func:`fastspecfit.util.minfit`). Because the grid is a full factorial
@@ -622,11 +628,11 @@ def _refine_grid_axes(ibest, chi2):
 
     fit_value, frac, frac_dir = {}, {}, {}
 
-    for axis_pos, col in enumerate(GRID_AXIS_COLUMNS):
+    for axis_pos, col in enumerate(bg_data.axis_columns):
         n = bg_data.dims[axis_pos]
         i0 = multi_index[axis_pos]
         grid_vals = bg_data.axis_values[col]
-        log_axis = col in LOG_AXES
+        log_axis = col in bg_data.log_axes
 
         center_coord = np.log10(grid_vals[i0]) if log_axis else grid_vals[i0]
 
@@ -689,15 +695,15 @@ def _corner_weights(ibest, frac, frac_dir):
     -------
     indices : :class:`numpy.ndarray`
         Flat grid indices of the contributing corner templates (up to
-        2**7 = 128; fewer whenever some axes were not refined).
+        2**naxes; fewer whenever some axes were not refined).
     weights : :class:`numpy.ndarray`
         Corresponding non-negative weights, summing to 1.
 
     """
     multi_index = np.array(np.unravel_index(ibest, bg_data.dims))
-    naxes = len(GRID_AXIS_COLUMNS)
-    t = np.array([frac[col] for col in GRID_AXIS_COLUMNS])
-    direction = np.array([frac_dir[col] for col in GRID_AXIS_COLUMNS])
+    naxes = len(bg_data.axis_columns)
+    t = np.array([frac[col] for col in bg_data.axis_columns])
+    direction = np.array([frac_dir[col] for col in bg_data.axis_columns])
 
     # bits[corner, axis_pos] is the axis_pos-th bit of `corner`, for every
     # corner of the 2**naxes hypercube at once.
@@ -738,7 +744,7 @@ def get_fastbayes_dtype(phot, topk=0):
     # formal uncertainty (the sqrt of the weighted 2nd moment of the
     # marginalized discrete posterior), then descriptive statistics (mean,
     # mode, and the 25th/50th/75th percentiles) of that same posterior.
-    for pname in PARAM_NAMES:
+    for pname in bg_data.param_names:
         cols += [(pname, 'f4'), (f'{pname}_ERR', 'f4'), (f'{pname}_MEAN', 'f4'),
                 (f'{pname}_MODE', 'f4'), (f'{pname}_P25', 'f4'), (f'{pname}_P50', 'f4'),
                 (f'{pname}_P75', 'f4')]
@@ -911,11 +917,11 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
     derived = {'LOGMSTAR': refined_logmstar, 'SFR': refined_sfr}
     posterior = {'LOGMSTAR': logmstar, 'SFR': sfr_per_template}
 
-    for col in GRID_AXIS_COLUMNS:
-        pname = _AXIS_OUTNAME[col]
+    for col in bg_data.axis_columns:
+        pname = bg_data.axis_outname[col]
         result[pname] = fit_value[col]
 
-    for pname in PARAM_NAMES:
+    for pname in bg_data.param_names:
         order = sorted_vals = uniq = inv = None
         if pname in derived:
             result[pname] = derived[pname]
@@ -923,7 +929,7 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
         else:
             # Grid-only data, identical for every object -- fetch the
             # cached argsort/unique instead of recomputing them here.
-            vals, order, sorted_vals, uniq, inv = bg_data.axis_posterior_cache(_OUTNAME_TO_AXIS[pname])
+            vals, order, sorted_vals, uniq, inv = bg_data.axis_posterior_cache(bg_data.outname_to_axis[pname])
         mean = np.sum(weight * vals)
         result[f'{pname}_MEAN'] = mean
         result[f'{pname}_MODE'] = _weighted_mode(vals, weight, uniq=uniq, inv=inv)
@@ -1067,11 +1073,11 @@ def fastbayes_qa_one(iobj, meta, result, restwave, restflux, qadir='.', coadd_ty
     posterior = {'LOGMSTAR': logmstar, 'SFR': sfr_per_template}
 
     posterior_arrays = {}
-    for pname in PARAM_NAMES:
+    for pname in bg_data.param_names:
         if pname in posterior:
             vals = posterior[pname]
         else:
-            vals = bg_data.axis_posterior_cache(_OUTNAME_TO_AXIS[pname])[0]
+            vals = bg_data.axis_posterior_cache(bg_data.outname_to_axis[pname])[0]
         posterior_arrays[pname] = (vals, weight)
 
     zwave = restwave * (1. + redshift)
@@ -1410,30 +1416,22 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     fig.text(cpos.x0, ytext, '\n'.join(txt), ha='left', va='top', fontsize=fontsize1,
              bbox=bbox, linespacing=1.6)
 
-    txt = [
-        r'$\log_{{10}}(Z/Z_{{\odot}})={}$'.format(_fmt(result['LOGZZSUN'], result['LOGZZSUN_ERR'], '{:.2f}')),
-        r'$\log_{{10}}(\mathrm{{Age}}/\mathrm{{Gyr}})={}$'.format(
-            _fmt(result['LOGAGE'], result['LOGAGE_ERR'], '{:.2f}')),
-        r'$\log_{{10}}(M/M_{{\odot}})={}$'.format(_fmt(result['LOGMSTAR'], result['LOGMSTAR_ERR'], '{:.2f}')),
-        r'$\mathrm{{SFR}}={}\ M_{{\odot}}/\mathrm{{yr}}$'.format(
-            _fmt(result['SFR'], result['SFR_ERR'], '{:.3g}')),
-        r'$\tau={}$'.format(_fmt(result['TAU'], result['TAU_ERR'], '{:.2f}')),
-        r'$f_{{\rm AGN}}={}$'.format(_fmt(result['FAGN'], result['FAGN_ERR'], '{:.2f}')),
-    ]
+    txt = [template.format(_fmt(result[pname], result[f'{pname}_ERR'], fmt))
+           for pname, template, fmt in _QA_SUMMARY_CANDIDATES if pname in bg_data.param_names]
     fig.text(cpos.x1+0.04, ytext, '\n'.join(txt), ha='right', va='top', fontsize=fontsize1,
              bbox=bbox, linespacing=1.6)
 
-    # --- posterior panel: weighted 1D marginal histogram, 2 rows x 3 cols of
-    # QA_POSTERIOR_PARAMS (Z/Zsun, age, LOGMSTAR / SFR, tau, fagn) -----------
+    # --- posterior panel: weighted 1D marginal histogram of every fitted
+    # parameter (bg_data.param_names: every grid axis, plus LOGMSTAR/SFR) --
     # A standalone gridspec (not a subgridspec of `gs`) so its right edge can
     # extend past gs's own right margin to cpos.x1 + 0.04, matching the
     # right-hand gray box/Dec label; top/bottom match row 4 of `gs` exactly.
     ncols = 3
-    nrows = -(-len(QA_POSTERIOR_PARAMS) // ncols) # ceil division
+    nrows = -(-len(bg_data.param_names) // ncols) # ceil division
     row4pos = gs[4, 0:8].get_position(fig)
     post_gs = fig.add_gridspec(nrows, ncols, left=spos.x0-0.02, right=cpos.x1 + 0.04,
                                bottom=row4pos.y0, top=row4pos.y1-0.02, wspace=0.1, hspace=0.6)
-    for i, pname in enumerate(QA_POSTERIOR_PARAMS):
+    for i, pname in enumerate(bg_data.param_names):
         row, col = divmod(i, ncols)
         ax = fig.add_subplot(post_gs[row, col])
         vals, w = posterior_arrays[pname]
@@ -1456,7 +1454,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
                         color='gray', edgecolor='k', alpha=0.8)
 
         ax.axvline(result[pname], color='C0', lw=1.5)
-        ax.set_xlabel(_PARAM_LABELS.get(pname, pname), fontsize=16)
+        ax.set_xlabel(bg_data.param_labels.get(pname, pname), fontsize=16)
         ax.tick_params(labelleft=False, labelsize=13)
 
     fig.savefig(pngfile)
