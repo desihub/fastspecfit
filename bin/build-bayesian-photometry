@@ -42,6 +42,17 @@ does not distinguish photometric systems, e.g. no ``PHOTSYS``)
     Band name and the actual filter name used for each photometric
     system.
 
+``RESTMAGGIES`` (float32 [nmodel x nz x nabs])
+    Synthesized rest-frame (band-shifted) AB maggies per solar mass
+    formed, in the photometry configuration's ``absmag_bands`` order.
+    Photsys-independent (a single array, not one per photometric system).
+    Used by ``fastspecfit.fastbayes`` to estimate ``ABSMAG*_SYNTH_ERR_*``/
+    ``KCORR*_ERR_*`` without any per-object filter convolution at fit time.
+
+``RESTFILTERS`` (table, nabs rows)
+    Band name, band-shift, and the actual (shifted) filter name for each
+    rest-frame output band.
+
 ``METADATA`` (table, nmodel rows)
     Copied unchanged from the input template file, for convenience.
 
@@ -113,6 +124,21 @@ def _get_ab_maggies_pre_batch(filters, wave):
 def synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm):
     """Synthesize broadband photometry for every template on the redshift grid.
 
+    Also synthesizes the rest-frame (band-shifted) absolute-magnitude
+    photometry needed by ``fastspecfit.fastbayes`` to estimate
+    ``ABSMAG*_SYNTH_ERR_*``/``KCORR*_ERR_*`` without any per-object filter
+    convolution at fit time. This is cheap to add here: ``phot.filters_out``
+    never redshifts (each band is pre-shifted once, at grid-build time, by
+    its own fixed ``band_shift``; see ``Photometry.__init__``), so its
+    filter-response precompute is done once, outside the redshift loop
+    below, unlike the observed-frame filters which must be redone every
+    ``z`` since ``wave_obs`` shifts. The only per-``z`` ingredient it needs
+    (``igm_trans``, ``dlum``) is already computed for the observed-frame
+    synthesis; the only difference is dropping the ``distfactor``'s
+    ``1/(1+z)`` term, which exactly cancels the explicit ``*(1+z)`` in
+    :meth:`fastspecfit.photometry.Photometry.synth_absmag`'s rest-frame
+    flux argument (see that method).
+
     Parameters
     ----------
     wave : :class:`numpy.ndarray`
@@ -136,17 +162,29 @@ def synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm):
         Mapping of photometric-system key (e.g. ``'N'``, ``'S'``) to an
         array of shape (nmodel, nz, nband) of synthesized AB maggies per
         solar mass formed.
+    restmaggies : :class:`numpy.ndarray`
+        Array of shape (nmodel, nz, nabs) of synthesized rest-frame
+        (band-shifted) AB maggies per solar mass formed, in
+        ``phot.absmag_bands`` order. Photsys-independent (a single array,
+        not one per photometric system), since ``phot.filters_out`` does
+        not depend on photsys.
 
     """
     nsed = flux.shape[0]
     nz = len(zgrid)
     photsys_keys = list(phot.filters.keys())
     nband = len(phot.bands)
+    nabs = len(phot.absmag_bands)
 
     maggies = {key: np.zeros((nsed, nz, nband), dtype=np.float32) for key in photsys_keys}
+    restmaggies = np.zeros((nsed, nz, nabs), dtype=np.float32)
+
+    # Rest-frame filter precompute is loop-invariant (phot.filters_out never
+    # redshifts), unlike the observed-frame filters below.
+    restmaggies_pre, rest_rtw = _get_ab_maggies_pre_batch(phot.filters_out, wave)
 
     print(f'Synthesizing photometry for {nsed} templates x {nz} redshifts x '
-          f'{len(photsys_keys)} photometric system(s)...')
+          f'{len(photsys_keys)} photometric system(s) (plus {nabs} rest-frame bands)...')
     t0 = time.time()
     logevery = int(np.clip(nz // 20, 1, 50))
 
@@ -163,6 +201,14 @@ def synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm):
                 r_tw_z = r_tw * zfactor[lo:hi] # fold in the redshift/IGM/distance factor
                 maggies[key][:, iz, iband] = (flux[:, lo:hi] @ r_tw_z) * idenom
 
+        # Rest-frame synthesis: same igm_trans/dlum, but no 1/(1+z) term (it
+        # cancels against synth_absmag's explicit *(1+z), and the filter
+        # response is evaluated against the rest-frame wave, not wave_obs).
+        rest_zfactor = igm_trans * (10. / (1e6 * dlum))**2 # [nwave]
+        for iband, ((lo, hi, _, idenom), r_tw) in enumerate(zip(restmaggies_pre, rest_rtw)):
+            r_tw_z = r_tw * rest_zfactor[lo:hi]
+            restmaggies[:, iz, iband] = (flux[:, lo:hi] @ r_tw_z) * idenom
+
         ndone = iz + 1
         if ndone % logevery == 0 or ndone == nz:
             rate = ndone / (time.time() - t0)
@@ -172,7 +218,7 @@ def synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm):
 
     print('Finished {} redshifts in {:.3f} min'.format(nz, (time.time() - t0) / 60.))
 
-    return maggies
+    return maggies, restmaggies
 
 
 def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
@@ -253,7 +299,7 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
                                      nbase_weight=nbase_weight, npts_local=npts_local,
                                      lines=lines, bands=edge_bands)
 
-    maggies = synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm)
+    maggies, restmaggies = synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm)
 
     outdir = os.path.dirname(outfile)
     if outdir and not os.path.isdir(outdir):
@@ -304,6 +350,23 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
     hdufilt = fits.convenience.table_to_hdu(filters_table)
     hdufilt.header['EXTNAME'] = 'FILTERS'
     hdus.append(hdufilt)
+
+    # Rest-frame (band-shifted) photometry -- photsys-independent, since
+    # phot.filters_out doesn't depend on photsys -- used by
+    # fastspecfit.fastbayes to estimate ABSMAG*_SYNTH_ERR_*/KCORR*_ERR_*
+    # without any per-object filter convolution at fit time.
+    hdurestmaggies = fits.ImageHDU(restmaggies)
+    hdurestmaggies.header['EXTNAME'] = 'RESTMAGGIES'
+    hdurestmaggies.header['BUNIT'] = 'maggies per solar mass formed'
+    hdus.append(hdurestmaggies)
+
+    restfilters_table = Table()
+    restfilters_table['band'] = phot.absmag_bands
+    restfilters_table['band_shift'] = phot.band_shift
+    restfilters_table['filter'] = [f.name for f in phot.filters_out]
+    hdurestfilt = fits.convenience.table_to_hdu(restfilters_table)
+    hdurestfilt.header['EXTNAME'] = 'RESTFILTERS'
+    hdus.append(hdurestfilt)
 
     hdumeta = fits.convenience.table_to_hdu(Table(meta))
     hdumeta.header['EXTNAME'] = 'METADATA'
