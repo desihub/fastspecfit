@@ -310,8 +310,6 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
     hduprim = fits.PrimaryHDU()
     hduprim.header['GRIDNUM'] = gridnumber
     hduprim.header['IMF'] = imf
-    if cmdline is not None:
-        hduprim.header['CMDLINE'] = (cmdline, 'exact command-line invocation')
     add_dependencies(hduprim.header, module_names=possible_dependencies+['fastspecfit'],
                      envvar_names=('FTEMPLATES_DIR',))
     # Recorded purely as diagnostic/provenance (mirroring write_fastspecfit
@@ -331,6 +329,14 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
     if adaptive:
         hduprim.header['NBASEWT'] = nbase_weight
         hduprim.header['NPTSLOC'] = npts_local
+    if cmdline is not None:
+        # No comment: CMDLINE's value is an arbitrary-length full invocation
+        # string, and pairing it with a comment can silently truncate the
+        # comment once combined they exceed an 80-char FITS card (regardless
+        # of which FITS writer is used) -- the keyword name is self-
+        # explanatory on its own. Written last so it doesn't visually
+        # interrupt the compact bookkeeping cards above it.
+        hduprim.header['CMDLINE'] = cmdline
 
     hduz = fits.ImageHDU(zgrid.astype(np.float32))
     hduz.header['EXTNAME'] = 'REDSHIFT'

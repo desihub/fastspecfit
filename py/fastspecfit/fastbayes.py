@@ -260,6 +260,17 @@ class BayesianGrid(object):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
+        # Output names of single-grid-point (N=1) axes, e.g. UMIN/GAMMA in
+        # the bundled default grid: there is exactly one possible value, so
+        # `vals` (the per-template axis value fed into the weighted
+        # MEAN/MODE/percentile/ERR computation in fastbayes_one/
+        # fastbayes_qa_one) is bit-identical across every template and the
+        # true weighted variance is exactly zero -- computing it anyway
+        # returns floating-point roundoff noise (e.g. ~1e-18) instead, which
+        # both callers special-case away using this set.
+        self.fixed_outnames = frozenset(
+            self.axis_outname[col] for col, n in zip(self.axis_columns, self.dims) if n == 1)
+
         filt = T['FILTERS'].read()
         self.bands = np.array([b.strip() for b in filt['band']])
         self.nband = len(self.bands)
@@ -1194,6 +1205,22 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
             # Grid-only data, identical for every object -- fetch the
             # cached argsort/unique instead of recomputing them here.
             vals, order, sorted_vals, uniq, inv = bg_data.axis_posterior_cache(bg_data.outname_to_axis[pname])
+
+        if pname in bg_data.fixed_outnames:
+            # Single-grid-point axis (e.g. UMIN/GAMMA): `vals` is
+            # bit-identical for every template, so the weighted computation
+            # below would return floating-point roundoff noise (e.g.
+            # ERR ~ 1e-18) instead of the true, exact zero -- report the
+            # fixed value directly and skip it.
+            fixed_value = vals[0]
+            result[f'{pname}_MEAN'] = fixed_value
+            result[f'{pname}_MODE'] = fixed_value
+            result[f'{pname}_P25'] = fixed_value
+            result[f'{pname}_P50'] = fixed_value
+            result[f'{pname}_P75'] = fixed_value
+            result[f'{pname}_ERR'] = 0.
+            continue
+
         mean = np.sum(weight * vals)
         result[f'{pname}_MEAN'] = mean
         result[f'{pname}_MODE'] = _weighted_mode(vals, weight, uniq=uniq, inv=inv)

@@ -550,8 +550,6 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, paramsfile=None, cmd
     hduflux.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
     hduflux.header['IMF'] = imf
     hduflux.header['GRIDNUM'] = gridnumber
-    if cmdline is not None:
-        hduflux.header['CMDLINE'] = (cmdline, 'exact command-line invocation')
     add_dependencies(hduflux.header, module_names=possible_dependencies+['fastspecfit'],
                      envvar_names=('FTEMPLATES_DIR',))
     # python-fsps isn't in possible_dependencies (so add_dependencies never
@@ -569,6 +567,14 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, paramsfile=None, cmd
     hduflux.header['ZSUN'] = (ZSUN, 'adopted solar metallicity (custom C3K_R10K)')
     hduflux.header['AGNTAU'] = (agn_tau, 'fixed AGN torus optical depth (agn_tau)')
     hduflux.header['DUSTIDX'] = (dust_index, 'fixed power-law attenuation slope (dust_index)')
+    if cmdline is not None:
+        # No comment: CMDLINE's value is an arbitrary-length full invocation
+        # string, and pairing it with a comment can silently truncate the
+        # comment once combined they exceed an 80-char FITS card (regardless
+        # of which FITS writer is used) -- the keyword name is self-
+        # explanatory on its own. Written last so it doesn't visually
+        # interrupt the compact bookkeeping cards above it.
+        hduflux.header['CMDLINE'] = cmdline
 
     hduwave = fits.ImageHDU(wave)
     hduwave.header['EXTNAME'] = 'WAVE'
