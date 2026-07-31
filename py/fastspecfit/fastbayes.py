@@ -78,7 +78,7 @@ _QA_SUMMARY_CANDIDATES = (
     ('LOGAGE', r'$\log_{{10}}(\mathrm{{Age}}/\mathrm{{Gyr}})={}$', '{:.2f}'),
     ('LOGMSTAR', r'$\log_{{10}}(M/M_{{\odot}})={}$', '{:.2f}'),
     ('SFR', r'$\mathrm{{SFR}}={}\ M_{{\odot}}/\mathrm{{yr}}$', '{:.3g}'),
-    ('TAU', r'$\tau={}$', '{:.2f}'),
+    ('TAUV', r'$\tau_V={}$', '{:.2f}'),
     ('FAGN', r'$f_{{\rm AGN}}={}$', '{:.2f}'),
 )
 

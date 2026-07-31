@@ -53,7 +53,7 @@ Charlot \& Fall (2000)-style power-law dust attenuation curve
 slope as \texttt{fastspec}/\texttt{fastphot}'s own attenuation curve,
 \texttt{fastspecfit.templates.Templates.klambda} --- with \texttt{dust1}
 left at its FSPS default of 0.0, i.e.\ no separate birth-cloud
-attenuation component, and \texttt{dust2} $\equiv\tau$ as the sole free
+attenuation component, and \texttt{dust2} $\equiv\tau_V$ as the sole free
 diffuse optical depth), reradiated dust emission
 (\texttt{add\_dust\_emission=True}, Draine \& Li 2007 templates), and AGN
 torus emission (Nenkova et al. 2008 templates, via FSPS's own
@@ -88,10 +88,10 @@ Axis & Symbol & $N$ & Range (spacing) \\
 \midrule
 Age (continuity bins) & age [Gyr] & 6 & 0-0.03-0.1, log-spaced to 13.7 \\
 Metallicity & $\log_{10}(Z/Z_\odot)$ & 5 & $-0.8$ to $0.2$ (linear) \\
-Dust optical depth & $\tau$ (\texttt{dust2}) & 10 & 0.0, then 9 Exponential(1.5) quantiles \\
+Dust optical depth & $\tau_V$ (\texttt{dust2}) & 10 & 0.0, then 9 Exponential(1.5) quantiles \\
 Dust-emission $U_{\rm min}$ & $U_{\rm min}$ & 1 & fixed at 1.0 \\
 Dust-emission $\gamma$ & $\gamma$ & 1 & fixed at 0.01 \\
-Dust-emission $Q_{\rm PAH}$ & $\log_{10}(Q_{\rm PAH})$ & 3 & 0.1 to 7.0 (log) \\
+Dust-emission $q_{\rm PAH}$ & $\log_{10}(q_{\rm PAH})$ & 3 & 0.1 to 7.0 (log) \\
 AGN luminosity fraction & $f_{\rm AGN}$ (\texttt{fagn}) & 4 & 0.0, then log-spaced 0.01 to 3.0 \\
 \bottomrule
 \end{tabular}
@@ -99,10 +99,10 @@ AGN luminosity fraction & $f_{\rm AGN}$ (\texttt{fagn}) & 4 & 0.0, then log-spac
   (\texttt{fastspecfit/data/bayesian-grid.yaml}), in full-factorial
   nested-loop order. Total grid size $6\times5\times10\times1\times1\times3\times4 = 3{,}600$
   models. Axes built log-uniform (age, metallicity, $U_{\rm min}$,
-  $Q_{\rm PAH}$) are refined and reported in $\log_{10}$ space so that
+  $q_{\rm PAH}$) are refined and reported in $\log_{10}$ space so that
   their formal uncertainties (Section~\ref{sec:refine}) are symmetric;
-  the remaining axes ($\tau$, $\gamma$, $f_{\rm AGN}$) are refined and
-  reported in linear space -- required for $\tau$ and $f_{\rm AGN}$, whose
+  the remaining axes ($\tau_V$, $\gamma$, $f_{\rm AGN}$) are refined and
+  reported in linear space -- required for $\tau_V$ and $f_{\rm AGN}$, whose
   hybrid exact-zero-plus-quantile design includes a point ($=0$) that
   $\log_{10}$ cannot represent. The age axis switched from a 20-point
   single-age SSP (\texttt{sfh=0}) grid to a 6-point continuity-bin SFH
@@ -111,7 +111,7 @@ AGN luminosity fraction & $f_{\rm AGN}$ (\texttt{fagn}) & 4 & 0.0, then log-spac
   points. The dust attenuation model switched from FSPS's Kriek \& Conroy
   (2013) curve (a free attenuation-curve-slope axis, $n_{\rm dust}$) to
   the fixed-slope Charlot \& Fall form above: a grid-design review found
-  $\tau$ and $n_{\rm dust}$ dangerously degenerate/covariant and poorly
+  $\tau_V$ and $n_{\rm dust}$ dangerously degenerate/covariant and poorly
   constrained by broadband photometry alone, so $n_{\rm dust}$ is dropped
   as a grid axis entirely (not merely fixed at one value) rather than
   replaced with another free ``shape'' parameter --- a birth-cloud
@@ -123,13 +123,13 @@ AGN luminosity fraction & $f_{\rm AGN}$ (\texttt{fagn}) & 4 & 0.0, then log-spac
   FSPS's default \texttt{dust\_tesc}$=10$~Myr threshold), making it a
   wasted axis for the other age bins. Dropping $n_{\rm dust}$ frees
   roughly $10\times$ the previous grid budget; part of that was reinvested
-  in finer $\tau$ sampling (6 to 10 points) and metallicity (4 to 5
-  points), with the remainder left unspent for now. $\tau$'s grid points
+  in finer $\tau_V$ sampling (6 to 10 points) and metallicity (4 to 5
+  points), with the remainder left unspent for now. $\tau_V$'s grid points
   are no longer an ad hoc log-spaced set: one point sits at exact zero
   (dust-free), and the remaining 9 are placed at the quantiles of an
   Exponential($\theta=1.5$) distribution using equal-probability-mass bin
   centers ($p_i = (i-0.5)/9$), so point \emph{density} follows an actual
-  continuous prior shape (peaked at zero, falling off toward high $\tau$,
+  continuous prior shape (peaked at zero, falling off toward high $\tau_V$,
   matching the physical prevalence of low-dust galaxies) rather than a
   spacing convention chosen only for convenient coverage; $\theta=1.5$
   was chosen so the grid's effective reach ($\sim4.3$ at the 9th quantile)
@@ -137,7 +137,7 @@ AGN luminosity fraction & $f_{\rm AGN}$ (\texttt{fagn}) & 4 & 0.0, then log-spac
   upper bound. $U_{\rm min}$ and $\gamma$ (essentially unconstrained
   without far-IR photometry, per Leja et al. 2017 App.~C) remain fixed at
   representative ISM values; $f_{\rm AGN}$ (with \texttt{agn\_tau} fixed
-  at FSPS's own default) and $Q_{\rm PAH}$ (constrained by mid-IR
+  at FSPS's own default) and $q_{\rm PAH}$ (constrained by mid-IR
   photometry alone) are unchanged.}
 \label{tab:grid}
 \end{table}
