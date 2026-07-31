@@ -1154,8 +1154,17 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
         kcorr_mean = np.sum(weight[:, np.newaxis] * kcorr_per_template, axis=0)
         kcorr_err = np.sqrt(np.sum(weight[:, np.newaxis] * (kcorr_per_template - kcorr_mean)**2, axis=0))
 
+        # Floor amplitude (matching the logmstar/refined_logmstar convention
+        # above) rather than leaving exact-zero-amplitude templates (routine
+        # -- the non-negative closed-form solve in _solve_grid clips many
+        # poorly-fitting templates to amplitude=0) to produce log10(0)=-inf:
+        # left unfloored, weight[i]*(+inf) is 0*inf=nan for any such
+        # template whose weight underflows to exactly 0, which corrupts the
+        # *entire* weighted sum (np.sum does not skip NaN) rather than
+        # contributing the intended ~0.
+        amplitude_floor = np.clip(amplitude, 1e-30, None)
         with np.errstate(divide='ignore', invalid='ignore'):
-            synth_absmag_per_template = -2.5 * np.log10(restmaggies_at_z * amplitude[:, np.newaxis]) - dmod
+            synth_absmag_per_template = -2.5 * np.log10(restmaggies_at_z * amplitude_floor[:, np.newaxis]) - dmod
         synth_absmag_mean = np.sum(weight[:, np.newaxis] * synth_absmag_per_template, axis=0)
         absmag_synth_err = np.sqrt(np.sum(weight[:, np.newaxis] * (synth_absmag_per_template - synth_absmag_mean)**2, axis=0))
 
@@ -1466,6 +1475,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
 
     phot = sc_data.photometry
     phot_wavelims = (0.1, 35.) # [micron]
+    logmstar_binwidth = 0.05 # [dex]; natural fixed bin width for the LOGMSTAR posterior panel
 
     photcol1 = colors.to_hex('darkorange')
     fontsize1, fontsize2 = 14, 20
@@ -1709,22 +1719,31 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     fig.text(cpos.x0, ytext, '\n'.join(txt), ha='left', va='top', fontsize=fontsize1,
              bbox=bbox, linespacing=1.6)
 
-    txt = [template.format(_fmt(result[pname], result[f'{pname}_ERR'], fmt))
-           for pname, template, fmt in _QA_SUMMARY_CANDIDATES if pname in bg_data.param_names]
+    # Iterate in bg_data.param_names order (i.e. the AXES order the
+    # posterior panel below also follows), not _QA_SUMMARY_CANDIDATES'
+    # own tuple order, so the two stay visually aligned.
+    _qa_summary = {pname: (template, fmt) for pname, template, fmt in _QA_SUMMARY_CANDIDATES}
+    txt = [_qa_summary[pname][0].format(_fmt(result[pname], result[f'{pname}_ERR'], _qa_summary[pname][1]))
+           for pname in bg_data.param_names if pname in _qa_summary]
     fig.text(cpos.x1+0.04, ytext, '\n'.join(txt), ha='right', va='top', fontsize=fontsize1,
              bbox=bbox, linespacing=1.6)
 
-    # --- posterior panel: weighted 1D marginal histogram of every fitted
-    # parameter (bg_data.param_names: every grid axis, plus LOGMSTAR/SFR) --
-    # A standalone gridspec (not a subgridspec of `gs`) so its right edge can
-    # extend past gs's own right margin to cpos.x1 + 0.04, matching the
-    # right-hand gray box/Dec label; top/bottom match row 4 of `gs` exactly.
-    ncols = 3
-    nrows = -(-len(bg_data.param_names) // ncols) # ceil division
+    # --- posterior panel: weighted 1D marginal histogram of every *free*
+    # fitted parameter (bg_data.param_names minus bg_data.fixed_outnames --
+    # a fixed axis like GAMMA/UMIN has exactly one possible value, so its
+    # panel is never informative), plus LOGMSTAR/SFR. A standalone gridspec
+    # (not a subgridspec of `gs`) so its right edge can extend past gs's own
+    # right margin to cpos.x1 + 0.04, matching the right-hand gray box/Dec
+    # label; top/bottom match row 4 of `gs` exactly. ncols is fixed at 4 (a
+    # layout choice); nrows adapts to however many free parameters this
+    # grid actually has.
+    free_param_names = [pname for pname in bg_data.param_names if pname not in bg_data.fixed_outnames]
+    ncols = 4
+    nrows = -(-len(free_param_names) // ncols) # ceil division
     row4pos = gs[4, 0:8].get_position(fig)
     post_gs = fig.add_gridspec(nrows, ncols, left=spos.x0-0.02, right=cpos.x1 + 0.04,
                                bottom=row4pos.y0, top=row4pos.y1-0.02, wspace=0.1, hspace=0.6)
-    for i, pname in enumerate(bg_data.param_names):
+    for i, pname in enumerate(free_param_names):
         row, col = divmod(i, ncols)
         ax = fig.add_subplot(post_gs[row, col])
         vals, w = posterior_arrays[pname]
@@ -1732,10 +1751,17 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
 
         if len(uniq) <= 5:
             # native grid axis: only a handful of discrete values exist, so
-            # a bar per actual grid value avoids mostly-empty uniform bins
-            binweight = np.bincount(inv, weights=w, minlength=len(uniq))
-            width = np.min(np.diff(uniq)) * 0.8 if len(uniq) > 1 else 1.
-            ax.bar(uniq, binweight, width=width, color='gray', edgecolor='k', alpha=0.8)
+            # a bar per actual grid value avoids mostly-empty uniform bins.
+            # A single distinct value (a fixed axis like GAMMA/UMIN, or a
+            # free axis whose posterior happens to collapse onto one grid
+            # point) has nothing to show beyond the vertical ML line below --
+            # previously fell back to an arbitrary width=1 bar, which drew a
+            # misleadingly fat/wide box unrelated to the parameter's actual
+            # scale.
+            if len(uniq) > 1:
+                binweight = np.bincount(inv, weights=w, minlength=len(uniq))
+                width = np.min(np.diff(uniq)) * 0.8
+                ax.bar(uniq, binweight, width=width, color='gray', edgecolor='k', alpha=0.8)
         else:
             # derived quantity (LOGMSTAR/SFR): continuous across the
             # grid, so zoom the range to where the posterior weight
@@ -1743,8 +1769,28 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
             lo, hi = _weighted_percentile(vals, w, (0.5, 99.5))
             if hi > lo:
                 pad = 0.05 * (hi - lo)
-                ax.hist(vals, bins=30, range=(lo - pad, hi + pad), weights=w,
-                        color='gray', edgecolor='k', alpha=0.8)
+                if pname == 'LOGMSTAR':
+                    # Fixed, natural bin width rather than a fixed bin
+                    # *count*: a narrow posterior (often << 0.1 dex) binned
+                    # into 30 bins across its own tiny range looks like
+                    # noisy scatter rather than a clean, physically
+                    # meaningful histogram.
+                    lo_edge = logmstar_binwidth * np.floor((lo - pad) / logmstar_binwidth)
+                    hi_edge = logmstar_binwidth * np.ceil((hi + pad) / logmstar_binwidth)
+                    hi_edge = max(hi_edge, lo_edge + logmstar_binwidth) # at least one bin
+                    bins = np.arange(lo_edge, hi_edge + logmstar_binwidth, logmstar_binwidth)
+                    ax.hist(vals, bins=bins, weights=w, color='gray', edgecolor='k', alpha=0.8)
+                else:
+                    ax.hist(vals, bins=30, range=(lo - pad, hi + pad), weights=w,
+                            color='gray', edgecolor='k', alpha=0.8)
+
+        # An SFR posterior pinned at exactly zero (every contributing
+        # template passively evolving) has no meaningful spread to show --
+        # suppress the numeric x-tick labels (matplotlib's default
+        # auto-ranged ticks on an otherwise-empty axis are pure noise),
+        # while keeping the axis label so it's still clear what the panel is.
+        if pname == 'SFR' and result['SFR'] == 0.:
+            ax.tick_params(labelbottom=False)
 
         ax.axvline(result[pname], color='C0', lw=1.5)
         ax.set_xlabel(bg_data.param_labels.get(pname, pname), fontsize=16)

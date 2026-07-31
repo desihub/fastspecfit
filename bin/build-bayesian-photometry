@@ -412,7 +412,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--zmin', type=float, default=1e-3, help='Minimum redshift')
     parser.add_argument('--zmax', type=float, default=1.7, help='Maximum redshift')
-    parser.add_argument('--nz', type=int, default=100, help='Number of redshift grid points')
+    parser.add_argument('--nz', type=int, default=200, help='Number of redshift grid points')
     parser.add_argument('--logspace', action='store_true', help='Space the (non-adaptive) redshift '
                         'grid uniformly in log10(1+z) instead of linearly in z; ignored with --adaptive')
     parser.add_argument('--adaptive', action='store_true', help='Build an emission-line-aware '
