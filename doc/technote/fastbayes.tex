@@ -47,16 +47,20 @@ object (Section~\ref{sec:refine}).
 
 Each grid point is a single continuity-bin star formation history
 (\texttt{sfh=3}, constant SFR within a Prospector-style lookback-time bin;
-see \texttt{fastspecfit.templates.continuity\_agebins}) computed with
-FSPS's Kriek \& Conroy (2013) dust attenuation curve
-(\texttt{dust\_type=4}, with \texttt{dust1=0} and \texttt{dust2}
-$\equiv\tau$ as the free diffuse optical depth), reradiated dust emission
+see \texttt{fastspecfit.templates.continuity\_agebins}) computed with a
+Charlot \& Fall (2000)-style power-law dust attenuation curve
+(\texttt{dust\_type=0}, \texttt{dust\_index=$-0.7$} fixed --- the same
+slope as \texttt{fastspec}/\texttt{fastphot}'s own attenuation curve,
+\texttt{fastspecfit.templates.Templates.klambda} --- with \texttt{dust1}
+left at its FSPS default of 0.0, i.e.\ no separate birth-cloud
+attenuation component, and \texttt{dust2} $\equiv\tau$ as the sole free
+diffuse optical depth), reradiated dust emission
 (\texttt{add\_dust\_emission=True}, Draine \& Li 2007 templates), and AGN
 torus emission (Nenkova et al. 2008 templates, via FSPS's own
 \texttt{fagn}/\texttt{agn\_tau} parameters). Nebular line and continuum
 emission are included directly in the spectrum. The grid is a full
-factorial design over the eight axes in Table~\ref{tab:grid}: every
-combination of the eight axis values exists, so the flattened grid's
+factorial design over the seven axes in Table~\ref{tab:grid}: every
+combination of the seven axis values exists, so the flattened grid's
 $N$-dimensional structure --- and the flat index of any neighboring grid
 point --- is recoverable directly from the per-axis values via index
 arithmetic, with no separate shape bookkeeping required.
@@ -69,40 +73,51 @@ arithmetic, with no separate shape bookkeeping required.
 Axis & Symbol & $N$ & Range (spacing) \\
 \midrule
 Age (continuity bins) & age [Gyr] & 6 & 0-0.03-0.1, log-spaced to 13.7 \\
-Metallicity & $\log_{10}(Z/Z_\odot)$ & 4 & $-0.8$ to $0.2$ (linear) \\
-Dust optical depth & $\tau$ (\texttt{dust2}) & 6 & 0.0, then log-spaced 0.01 to 4.0 \\
-Dust index & $n_{\rm dust}$ (\texttt{dust\_index}) & 10 & $-1.5$ to $0.4$ (linear) \\
+Metallicity & $\log_{10}(Z/Z_\odot)$ & 5 & $-0.8$ to $0.2$ (linear) \\
+Dust optical depth & $\tau$ (\texttt{dust2}) & 10 & 0.0, then log-spaced 0.01 to 4.0 \\
 Dust-emission $U_{\rm min}$ & $U_{\rm min}$ & 1 & fixed at 1.0 \\
 Dust-emission $\gamma$ & $\gamma$ & 1 & fixed at 0.01 \\
 Dust-emission $Q_{\rm PAH}$ & $\log_{10}(Q_{\rm PAH})$ & 3 & 0.1 to 7.0 (log) \\
 AGN luminosity fraction & $f_{\rm AGN}$ (\texttt{fagn}) & 4 & 0.0, then log-spaced 0.01 to 3.0 \\
 \bottomrule
 \end{tabular}
-\caption{The eight Bayesian grid axes (\texttt{GRID\_AXIS\_COLUMNS} in
+\caption{The seven Bayesian grid axes (\texttt{GRID\_AXIS\_COLUMNS} in
   \texttt{fastspecfit.fastbayes}), in full-factorial nested-loop order.
-  Total grid size $6\times4\times6\times10\times1\times1\times3\times4 =
-  17{,}280$ models. Axes built log-uniform (age, metallicity, $U_{\rm min}$,
+  Total grid size $6\times5\times10\times1\times1\times3\times4 = 3{,}600$
+  models. Axes built log-uniform (age, metallicity, $U_{\rm min}$,
   $Q_{\rm PAH}$) are refined and reported in $\log_{10}$ space so that
   their formal uncertainties (Section~\ref{sec:refine}) are symmetric;
-  the remaining axes ($\tau$, $n_{\rm dust}$, $\gamma$, $f_{\rm AGN}$) are
-  refined and reported in linear space -- required for $\tau$ and
-  $f_{\rm AGN}$, whose hybrid exact-zero-plus-log-spaced design includes a
-  point ($=0$) that $\log_{10}$ cannot represent. The age axis switched
-  from a 20-point single-age SSP (\texttt{sfh=0}) grid to a 6-point
-  continuity-bin SFH (\texttt{sfh=3}), a more physically realistic star
-  formation history that already marginalizes over the ages within each
-  bin, needing fewer points; $\tau$ likewise dropped from a 12-point
-  linear-uniform grid to a 6-point exact-zero-plus-log-spaced grid, better
-  matching the physical clustering of galaxies toward low-to-moderate
-  optical depth. Both changes free grid budget spent elsewhere: $n_{\rm
-  dust}$ (also well constrained by the UV/optical/NIR SED shape alone, and
-  partially degenerate with $\tau$) gained the resolution $\tau$ gave up
-  (8 to 10 points); $U_{\rm min}$ and $\gamma$ (essentially unconstrained
-  without far-IR photometry, per Leja et al. 2017 App.~C) collapsed from a
-  coarse $2\times2$ grid to single fixed values, freeing budget for the new
-  $f_{\rm AGN}$ axis (with \texttt{agn\_tau} likewise fixed, at FSPS's own
-  default); $Q_{\rm PAH}$ (constrained by mid-IR photometry alone) kept
-  its previous resolution unchanged.}
+  the remaining axes ($\tau$, $\gamma$, $f_{\rm AGN}$) are refined and
+  reported in linear space -- required for $\tau$ and $f_{\rm AGN}$, whose
+  hybrid exact-zero-plus-log-spaced design includes a point ($=0$) that
+  $\log_{10}$ cannot represent. The age axis switched from a 20-point
+  single-age SSP (\texttt{sfh=0}) grid to a 6-point continuity-bin SFH
+  (\texttt{sfh=3}), a more physically realistic star formation history
+  that already marginalizes over the ages within each bin, needing fewer
+  points. The dust attenuation model switched from FSPS's Kriek \& Conroy
+  (2013) curve (a free attenuation-curve-slope axis, $n_{\rm dust}$) to
+  the fixed-slope Charlot \& Fall form above: a grid-design review found
+  $\tau$ and $n_{\rm dust}$ dangerously degenerate/covariant and poorly
+  constrained by broadband photometry alone, so $n_{\rm dust}$ is dropped
+  as a grid axis entirely (not merely fixed at one value) rather than
+  replaced with another free ``shape'' parameter --- a birth-cloud
+  \texttt{dust1}-to-\texttt{dust2} ratio axis was considered and rejected,
+  both because its constraining power from photometry alone is weak and
+  because, under this grid's one-age-bin-per-template design (unlike
+  Prospector's multi-component mass-weighted SFH fits), a birth-cloud term
+  only affects the youngest continuity bin (the only one that straddles
+  FSPS's default \texttt{dust\_tesc}$=10$~Myr threshold), making it a
+  wasted axis for the other age bins. Dropping $n_{\rm dust}$ frees
+  roughly $10\times$ the previous grid budget; part of that was reinvested
+  in finer $\tau$ sampling (6 to 10 points, still
+  exact-zero-plus-log-spaced --- better matching the physical clustering
+  of galaxies toward low-to-moderate optical depth than uniform linear
+  spacing) and metallicity (4 to 5 points), with the remainder left
+  unspent for now. $U_{\rm min}$ and $\gamma$ (essentially unconstrained
+  without far-IR photometry, per Leja et al. 2017 App.~C) remain fixed at
+  representative ISM values; $f_{\rm AGN}$ (with \texttt{agn\_tau} fixed
+  at FSPS's own default) and $Q_{\rm PAH}$ (constrained by mid-IR
+  photometry alone) are unchanged.}
 \label{tab:grid}
 \end{table}
 
@@ -130,7 +145,7 @@ in band $b$. The corresponding $\chisq$ for every template,
   \label{eq:chi2}
 \end{equation}
 is evaluated for the entire grid at once (a single vectorized pass over all
-17{,}280 templates), giving the discrete maximum-likelihood template
+3{,}600 templates), giving the discrete maximum-likelihood template
 $t_{\rm best} = \arg\min_t \chisq(t)$ and, via Gaussian likelihood weighting,
 \begin{equation}
   w(t) \;\propto\; \exp\!\left[-\tfrac{1}{2}\bigl(\chisq(t) - \chisq_{\rm min}\bigr)\right],
@@ -144,7 +159,7 @@ mean, mode, and the 25th/50th/75th percentiles --- are reported for every
 parameter directly from this weighted posterior.
 
 \paragraph{Formal uncertainties.} A formal uncertainty $\sigma_x$ is also
-reported for every parameter $x$ --- the eight grid axes, $\log_{10}
+reported for every parameter $x$ --- the seven grid axes, $\log_{10}
 M_\star$, $\mathrm{SFR}$, and the rest-frame luminosities and $D_n(4000)$
 index of Section~\ref{sec:derived} --- as the square root of the weighted
 second moment of that parameter's marginalized discrete posterior,
@@ -159,7 +174,7 @@ posterior structure --- multiple modes, skewness, parameter degeneracies
 of Section~\ref{sec:refine} cannot see, being confined to a single grid
 corner. The per-template value $x(t)$ entering Equation~\ref{eq:sigma}
 depends on how the parameter scales with the mass amplitude $\amp(t)$: for
-the eight grid axes and the model $D_n(4000)$ index (intensive quantities,
+the seven grid axes and the model $D_n(4000)$ index (intensive quantities,
 unaffected by $\amp(t)$), $x(t)$ is simply the tabulated per-template value;
 for $\log_{10} M_\star$ and the rest-frame luminosities of
 Section~\ref{sec:derived} (both logarithmic and linear in $\amp(t)$),
@@ -224,14 +239,14 @@ three-point bracket.
 
 \paragraph{N-linear interpolation.} The same per-axis fractional offset
 $f_a \in [0,1)$ toward the nearer neighbor (zero when unrefined) feeds an
-N-linear interpolation over the $2^8=256$ grid corners bracketing the
+N-linear interpolation over the $2^7=128$ grid corners bracketing the
 refined point: corner $\kappa$, defined by one bit per axis, carries weight
 \begin{equation}
-  w_\kappa \;=\; \prod_{a=1}^{8} \bigl[\kappa_a\, f_a + (1-\kappa_a)(1-f_a)\bigr],
+  w_\kappa \;=\; \prod_{a=1}^{7} \bigl[\kappa_a\, f_a + (1-\kappa_a)(1-f_a)\bigr],
   \qquad \kappa_a \in \{0, 1\},
   \label{eq:corner_weight}
 \end{equation}
-computed for all 256 corners at once via array broadcasting over the bit
+computed for all 128 corners at once via array broadcasting over the bit
 pattern, rather than a nested loop. Corners with $w_\kappa \le 0$ (any axis
 exactly on a grid point) are dropped and the remaining weights renormalized
 --- which is also how the two fixed ($N=1$) axes, $U_{\rm min}$ and

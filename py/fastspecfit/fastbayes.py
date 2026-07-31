@@ -11,7 +11,7 @@ solving for the chi2-minimizing stellar-mass amplitude of every grid template
 in closed form, and building up the posterior probability distribution of
 every grid parameter by weighting each template by its likelihood. The
 discrete maximum-likelihood point is then refined to sub-grid precision via
-a local parabola fit along each of the 8 grid axes and an N-linear
+a local parabola fit along each of the 7 grid axes and an N-linear
 interpolation over the neighboring templates, so that the reported
 parameters, CHI2, and model spectrum are all mutually consistent.
 
@@ -37,24 +37,29 @@ from fastspecfit.singlecopy import sc_data
 # this tuple anyway: a fixed axis is already handled correctly (no
 # refinement, weight fully on the single point) by the generic per-axis edge
 # case in _refine_grid_axes/_corner_weights below, so no special-casing is
-# needed to support them.
-GRID_AXIS_COLUMNS = ('age', 'zzsun', 'tau', 'dustn', 'umin', 'gamma', 'qpah', 'fagn')
+# needed to support them. There is no dust_index/"dustn" axis: the grid uses
+# a fixed-slope Charlot & Fall (2000)-style power-law attenuation curve
+# (matching fastspec/fastphot's own dust model), not FSPS's Kriek & Conroy
+# (2013) curve's free slope -- a grid-design review found tau and a free
+# attenuation-curve slope dangerously degenerate/covariant and poorly
+# constrained by broadband photometry alone.
+GRID_AXIS_COLUMNS = ('age', 'zzsun', 'tau', 'umin', 'gamma', 'qpah', 'fagn')
 
 # Axes built log-uniform: refined/reported in log10 space so that the formal
-# (delta-chi2=1) uncertainty is symmetric. The remaining axes (tau, dustn,
-# gamma, fagn) were built linear-uniform (some, like tau and fagn, with a
-# hybrid exact-zero-plus-log-spaced design that log10 can't represent at the
-# zero point) and are refined/reported in linear space.
+# (delta-chi2=1) uncertainty is symmetric. The remaining axes (tau, gamma,
+# fagn) were built linear-uniform (some, like tau and fagn, with a hybrid
+# exact-zero-plus-log-spaced design that log10 can't represent at the zero
+# point) and are refined/reported in linear space.
 LOG_AXES = frozenset(('age', 'zzsun', 'umin', 'qpah'))
 
 # Output parameter name for each grid axis, and its inverse.
 _AXIS_OUTNAME = {
-    'age': 'LOGAGE', 'zzsun': 'LOGZZSUN', 'tau': 'TAU', 'dustn': 'DUSTN',
+    'age': 'LOGAGE', 'zzsun': 'LOGZZSUN', 'tau': 'TAU',
     'umin': 'LOGUMIN', 'gamma': 'GAMMA', 'qpah': 'LOGQPAH', 'fagn': 'FAGN',
 }
 _OUTNAME_TO_AXIS = {v: k for k, v in _AXIS_OUTNAME.items()}
 
-# All reported parameters: the 8 grid axes, plus LOGMSTAR and SFR, which
+# All reported parameters: the 7 grid axes, plus LOGMSTAR and SFR, which
 # are derived per-object from the closed-form amplitude solve. SFR (unlike
 # LOGMSTAR) is reported in linear space, matching fastspecfit.continuum's
 # SFR/SFR_IVAR convention: bg_data.sfr is exactly zero for every template
@@ -68,16 +73,15 @@ _OUTNAME_TO_AXIS = {v: k for k, v in _AXIS_OUTNAME.items()}
 PARAM_NAMES = tuple(_AXIS_OUTNAME[col] for col in GRID_AXIS_COLUMNS) + ('LOGMSTAR', 'SFR')
 
 # Subset (and display order) of PARAM_NAMES shown in the QA posterior panel
-# (laid out as 2 rows of 3: Z/age/mass, then SFR/tau/dustn); the full
-# 10-parameter grid is overkill for a quick-look figure.
-QA_POSTERIOR_PARAMS = ('LOGZZSUN', 'LOGAGE', 'LOGMSTAR', 'SFR', 'TAU', 'DUSTN')
+# (laid out as 2 rows of 3: Z/age/mass, then SFR/tau/fagn); the full
+# 9-parameter grid is overkill for a quick-look figure.
+QA_POSTERIOR_PARAMS = ('LOGZZSUN', 'LOGAGE', 'LOGMSTAR', 'SFR', 'TAU', 'FAGN')
 
 # Human-friendly axis labels for the QA posterior-histogram grid.
 _PARAM_LABELS = {
     'LOGAGE': r'$\log_{10}({\rm Age/Gyr})$',
     'LOGZZSUN': r'$\log_{10}(Z/Z_{\odot})$',
     'TAU': r'$\tau$',
-    'DUSTN': r'$n_{\rm dust}$',
     'LOGUMIN': r'$\log_{10}(U_{\rm min})$',
     'GAMMA': r'$\gamma$',
     'LOGQPAH': r'$\log_{10}(Q_{\rm PAH})$',
@@ -586,7 +590,7 @@ def _solve_grid(flam, flam_ivar, lambda_eff, photsys, redshift):
 def _refine_grid_axes(ibest, chi2):
     """Locally refine each grid axis's ML value via a 3-point parabola fit.
 
-    For each of the 8 grid axes, holds the other 7 fixed at their best-fit
+    For each of the 7 grid axes, holds the other 6 fixed at their best-fit
     (discrete argmin chi2) index and fits a parabola to the already-computed
     chi2 at the immediate neighboring grid points along that axis alone
     (:func:`fastspecfit.util.minfit`). Because the grid is a full factorial
@@ -685,7 +689,7 @@ def _corner_weights(ibest, frac, frac_dir):
     -------
     indices : :class:`numpy.ndarray`
         Flat grid indices of the contributing corner templates (up to
-        2**8 = 256; fewer whenever some axes were not refined).
+        2**7 = 128; fewer whenever some axes were not refined).
     weights : :class:`numpy.ndarray`
         Corresponding non-negative weights, summing to 1.
 
@@ -849,8 +853,9 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
     # themselves), so scale by the fitted mass amplitude to get each
     # template's actual SFR estimate for this object. Reported linearly
     # (not logged): bg_data.sfr is exactly zero for every template older
-    # than SFR_AVG_WINDOW_GYR, and SFR=0 is a valid, physically meaningful
-    # value (passively evolving SSP) that a log transform cannot represent.
+    # than the ~100 Myr window baked into the templates' precomputed sfr
+    # column, and SFR=0 is a valid, physically meaningful value (passively
+    # evolving population) that a log transform cannot represent.
     sfr_per_template = amplitude * bg_data.sfr # [ntemplate], Msun/yr
 
     refined_logmstar = np.log10(max(refined_amplitude, 1e-30))
@@ -1413,13 +1418,13 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         r'$\mathrm{{SFR}}={}\ M_{{\odot}}/\mathrm{{yr}}$'.format(
             _fmt(result['SFR'], result['SFR_ERR'], '{:.3g}')),
         r'$\tau={}$'.format(_fmt(result['TAU'], result['TAU_ERR'], '{:.2f}')),
-        r'$n_{{\rm dust}}={}$'.format(_fmt(result['DUSTN'], result['DUSTN_ERR'], '{:.2f}')),
+        r'$f_{{\rm AGN}}={}$'.format(_fmt(result['FAGN'], result['FAGN_ERR'], '{:.2f}')),
     ]
     fig.text(cpos.x1+0.04, ytext, '\n'.join(txt), ha='right', va='top', fontsize=fontsize1,
              bbox=bbox, linespacing=1.6)
 
     # --- posterior panel: weighted 1D marginal histogram, 2 rows x 3 cols of
-    # QA_POSTERIOR_PARAMS (Z/Zsun, age, LOGMSTAR / SFR, tau, dustn) ----------
+    # QA_POSTERIOR_PARAMS (Z/Zsun, age, LOGMSTAR / SFR, tau, fagn) -----------
     # A standalone gridspec (not a subgridspec of `gs`) so its right edge can
     # extend past gs's own right margin to cpos.x1 + 0.04, matching the
     # right-hand gray box/Dec label; top/bottom match row 4 of `gs` exactly.

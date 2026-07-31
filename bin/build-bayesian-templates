@@ -22,23 +22,25 @@ Grid Design
 Each grid point is a single continuity-SFH age bin (``sfh=3``, constant
 SFR within the bin, following the Prospector ``adjust_continuity_agebins``
 prescription -- see :func:`fastspecfit.templates.continuity_agebins`)
-computed with FSPS's Kriek & Conroy (2013) dust attenuation curve
-(``dust_type=4``, with ``dust1=0`` left at its default and ``dust2``
-(``tau``) as the free diffuse optical depth), reradiated dust emission
-(``add_dust_emission=True``, Draine & Li 2007 templates), and AGN torus
-emission (Nenkova et al. 2008 templates, via FSPS's own ``fagn``/
-``agn_tau`` parameters). Nebular line and continuum emission are also
-included directly in the spectrum (``add_neb_emission=True``,
-``add_neb_continuum=True``). The grid axes, hard-coded in
-:func:`build_bayesian_grid`, are:
+computed with a Charlot & Fall (2000)-style power-law dust attenuation
+curve (``dust_type=0``, ``dust_index=-0.7`` fixed -- the same slope as
+``fastspec``/``fastphot``'s own attenuation curve,
+:func:`fastspecfit.templates.Templates.klambda` -- with ``dust1`` left at
+its FSPS default of 0.0, i.e. no separate birth-cloud attenuation
+component, and ``dust2`` (``tau``) as the sole free diffuse optical
+depth), reradiated dust emission (``add_dust_emission=True``, Draine & Li
+2007 templates), and AGN torus emission (Nenkova et al. 2008 templates,
+via FSPS's own ``fagn``/``agn_tau`` parameters). Nebular line and
+continuum emission are also included directly in the spectrum
+(``add_neb_emission=True``, ``add_neb_continuum=True``). The grid axes,
+hard-coded in :func:`build_bayesian_grid`, are:
 
 ===========================  ===  ==================================
 Axis                          N    Range
 ===========================  ===  ==================================
 age (continuity bins, Gyr)    6   0-0.03-0.1, then log-spaced to 13.7
-log10(Z/Zsun)                 4   -0.8 to 0.2 (linear spacing)
-tau (dust2 optical depth)     6   0.0, then 5 log-spaced, 0.01 to 4.0
-dustn (dust_index)           10   -1.5 to 0.4 (linear spacing)
+log10(Z/Zsun)                 5   -0.8 to 0.2 (linear spacing)
+tau (dust2 optical depth)    10   0.0, then 9 log-spaced, 0.01 to 4.0
 dust-emission Umin            1   fixed at 1.0
 dust-emission gamma           1   fixed at 0.01
 dust-emission Qpah             3   0.1 to 7.0 (log spacing)
@@ -56,31 +58,41 @@ the youngest, most rapidly-evolving populations and guarantees a bin edge
 exactly at 100 Myr for the ``sfr`` column's windowed-average calculation
 below.
 
-``tau`` moved from a linear-uniform grid to an exact-zero-plus-log-spaced
-grid at a lower point count (12 to 6): this better matches the physical
+The dust attenuation model switched from FSPS's Kriek & Conroy (2013)
+curve (free ``dust_index``, i.e. attenuation-curve slope) to a fixed-slope
+Charlot & Fall-style power law: a grid-design review found ``tau`` and
+the free ``dust_index`` (``dustn``) dangerously degenerate/covariant and
+poorly constrained by broadband photometry alone, so ``dustn`` is dropped
+as a grid axis entirely (not merely fixed at one value) rather than
+replaced with another free "shape" parameter -- a birth-cloud
+``dust1``/``dust1``-to-``dust2`` ratio axis was considered and rejected
+for now (see the module git history / design discussion), both because
+its constraining power from photometry alone is weak and because, under
+this grid's one-age-bin-per-template design (unlike Prospector's
+multi-component mass-weighted SFH fits), a birth-cloud term only affects
+the youngest continuity bin (the only one that straddles FSPS's default
+``dust_tesc=10`` Myr threshold), making it a wasted axis for the other
+age bins. Dropping ``dustn`` frees roughly 10x the previous grid budget;
+some of that was reinvested in finer ``tau`` sampling (6 to 10 points,
+still exact-zero-plus-log-spaced -- better matching the physical
 clustering of galaxies toward low-to-moderate optical depth than uniform
-linear spacing, at fewer points. This is safe for ``fastbayes``'s
-sub-grid refinement, which fits each axis's local chi2 curvature using
-the axis's actual (not assumed-uniform) neighboring coordinate values
-(:func:`fastspecfit.fastbayes._parabola_vertex3`); the one requirement is
-that an axis with an exact-zero point stay out of
+linear spacing) and metallicity (4 to 5 points), with the remainder left
+unspent for now. ``tau``'s hybrid zero-plus-log design remains safe for
+``fastbayes``'s sub-grid refinement, which fits each axis's local chi2
+curvature using the axis's actual (not assumed-uniform) neighboring
+coordinate values (:func:`fastspecfit.fastbayes._parabola_vertex3`); the
+one requirement is that an axis with an exact-zero point stay out of
 :data:`fastspecfit.fastbayes.LOG_AXES` (log purposes undefined at zero),
-which ``tau`` already was. ``dustn`` -- also well constrained by the
-UV/optical/NIR SED shape alone, per Leja+2017 -- gained the resolution
-``tau`` gave up (8 to 10 points), since the two axes are partially
-degenerate (attenuation normalization vs. curve slope) and are the two
-parameters actually doing the work for grz+WISE broadband fitting.
-``duste_umin``/``duste_gamma`` are fixed at representative ISM values
-(essentially unconstrained without far-IR photometry, per Leja+2017
-App. C) to free the budget spent on their previous coarse 2x2 grid; the
-new ``fagn`` axis (0 plus log-spaced points spanning Leja+2017/
-Prospector's fiducial AGN-luminosity-fraction prior range) spends part of
-that budget instead, with ``agn_tau`` fixed at FSPS's own default
+which ``tau`` already was. ``duste_umin``/``duste_gamma`` remain fixed at
+representative ISM values (essentially unconstrained without far-IR
+photometry, per Leja+2017 App. C); the ``fagn`` axis (0 plus log-spaced
+points spanning Leja+2017/Prospector's fiducial AGN-luminosity-fraction
+prior range) is unchanged, with ``agn_tau`` fixed at FSPS's own default
 (matching ``bin/build-templates``) since it mainly shapes the AGN SED's
 fine structure, not its total luminosity contribution. ``Qpah`` keeps its
 previous 3-point log-spaced resolution, unchanged.
 
-Total grid size: 6 x 4 x 6 x 10 x 1 x 1 x 3 x 4 = 17,280 models.
+Total grid size: 6 x 5 x 10 x 1 x 1 x 3 x 4 = 3,600 models.
 
 Output Files
 ------------
@@ -103,7 +115,7 @@ Output Files
 
 ``METADATA`` (table, nmodel rows)
     Per-model grid parameters: ``age`` (Gyr, mean age of the continuity
-    bin), ``dt`` (Gyr, bin width), ``zzsun`` (Z/Zsun), ``tau``, ``dustn``,
+    bin), ``dt`` (Gyr, bin width), ``zzsun`` (Z/Zsun), ``tau``,
     ``umin``, ``gamma``, ``qpah``, ``fagn``, ``sfr`` (Msun/yr per Msun
     formed, precomputed here rather than at ``fastbayes`` runtime as the
     fraction of this bin's duration falling within the trailing
@@ -140,6 +152,13 @@ from fastspecfit.fastbayes import LUM_KEYS, LUM_WAVES, _PC_CM, _LSUN
 # matching the 100 Myr convention used for the main (tabular-SFH) templates
 # in fastspecfit.continuum._get_sps_properties.
 SFR_AVG_WINDOW_GYR = 0.1 # [Gyr] = 100 Myr
+
+# Fixed Charlot & Fall (2000)-style power-law attenuation-curve slope,
+# matching fastspec/fastphot's own dust model
+# (fastspecfit.templates.Templates.klambda's dust_power). Also FSPS's own
+# default for dust_type=0, but set explicitly here for self-documentation
+# and FITS header provenance (see main()'s DUSTIDX keyword).
+DUST_INDEX = -0.7
 
 
 def build_bayesian_grid(imf='chabrier', test=False):
@@ -180,7 +199,6 @@ def build_bayesian_grid(imf='chabrier', test=False):
         nagebins = 4 # continuity_agebins requires nbins >= 4
         nmets, minlogmet, maxlogmet = 2, -1., 0.
         taus = np.array([1.])
-        ndustns, mindustn, maxdustn = 1, 0., 0.
         umins = np.array([1.0])
         gammas = np.array([0.01])
         nqpahs, minqpah, maxqpah = 1, 1., 1.
@@ -188,17 +206,15 @@ def build_bayesian_grid(imf='chabrier', test=False):
         agntau = 10.
     else:
         nagebins = 6
-        nmets, minlogmet, maxlogmet = 4, -0.8, 0.2
-        # tau: exact zero (dust-free) plus 5 log-spaced points spanning
+        nmets, minlogmet, maxlogmet = 5, -0.8, 0.2
+        # tau: exact zero (dust-free) plus 9 log-spaced points spanning
         # Leja+17's fiducial optical-depth range. This better matches the
         # physical clustering of galaxies toward low-to-moderate optical
-        # depth than the previous linear-uniform grid, at a lower point
-        # count (12 -> 6); see the module docstring for why this is safe
-        # for fastbayes's sub-grid refinement.
-        taus = np.concatenate(([0.], np.logspace(np.log10(0.01), np.log10(4.), 5)))
-        # dustn is likewise well constrained by the SED shape alone, and
-        # gains the resolution tau gave up (8 -> 10 points).
-        ndustns, mindustn, maxdustn = 10, -1.5, 0.4
+        # depth than uniform linear spacing. tau is now the sole free
+        # dust-attenuation-curve axis (see the module docstring for why
+        # dustn was dropped entirely rather than replaced), and inherited
+        # part of the budget dustn used to spend.
+        taus = np.concatenate(([0.], np.logspace(np.log10(0.01), np.log10(4.), 9)))
         # Umin and gamma are essentially unconstrained without far-IR
         # photometry (Leja+17 App. C); fixed at representative ISM values
         # to free their previous coarse 2x2 grid's budget for fagn below.
@@ -216,7 +232,6 @@ def build_bayesian_grid(imf='chabrier', test=False):
         agntau = 10.
 
     logmets = minlogmet + (maxlogmet - minlogmet) * np.arange(nmets) / np.float32(max(nmets - 1, 1))
-    dustns = mindustn + (maxdustn - mindustn) * np.arange(ndustns) / np.float32(max(ndustns - 1, 1))
     qpahs = 10.**(np.log10(minqpah) + (np.log10(maxqpah) - np.log10(minqpah)) *
                   np.arange(nqpahs) / np.float32(max(nqpahs - 1, 1)))
 
@@ -238,32 +253,29 @@ def build_bayesian_grid(imf='chabrier', test=False):
         [('iagebin', np.int32),
          ('logmet', np.float32),
          ('tau', np.float32),
-         ('dustn', np.float32),
          ('umin', np.float32),
          ('gamma', np.float32),
          ('qpah', np.float32),
          ('fagn', np.float32)])
 
-    dims = (nagebins, nmets, ntaus, ndustns, numins, ngammas, nqpahs, nfagns)
+    dims = (nagebins, nmets, ntaus, numins, ngammas, nqpahs, nfagns)
     models = np.zeros(dims, dtype=models_dtype)
 
     for iage in range(nagebins):
         for imet, logmet in enumerate(logmets):
             for itau, tau in enumerate(taus):
-                for idustn, dustn in enumerate(dustns):
-                    for iumin, umin in enumerate(umins):
-                        for igamma, gamma in enumerate(gammas):
-                            for iqpah, qpah in enumerate(qpahs):
-                                for ifagn, fagn in enumerate(fagns):
-                                    model = models[iage, imet, itau, idustn, iumin, igamma, iqpah, ifagn]
-                                    model['iagebin'] = iage
-                                    model['logmet'] = logmet
-                                    model['tau'] = tau
-                                    model['dustn'] = dustn
-                                    model['umin'] = umin
-                                    model['gamma'] = gamma
-                                    model['qpah'] = qpah
-                                    model['fagn'] = fagn
+                for iumin, umin in enumerate(umins):
+                    for igamma, gamma in enumerate(gammas):
+                        for iqpah, qpah in enumerate(qpahs):
+                            for ifagn, fagn in enumerate(fagns):
+                                model = models[iage, imet, itau, iumin, igamma, iqpah, ifagn]
+                                model['iagebin'] = iage
+                                model['logmet'] = logmet
+                                model['tau'] = tau
+                                model['umin'] = umin
+                                model['gamma'] = gamma
+                                model['qpah'] = qpah
+                                model['fagn'] = fagn
 
     models = models.flatten()
     nsed = len(models)
@@ -273,7 +285,6 @@ def build_bayesian_grid(imf='chabrier', test=False):
     meta['dt'] = dt_gyr[models['iagebin']]        # [Gyr]
     meta['zzsun'] = 10.**models['logmet']
     meta['tau'] = models['tau']
-    meta['dustn'] = models['dustn']
     meta['umin'] = models['umin']
     meta['gamma'] = models['gamma']
     meta['qpah'] = models['qpah']
@@ -308,8 +319,9 @@ def build_bayesian_grid(imf='chabrier', test=False):
         add_neb_emission=True,
         add_neb_continuum=True,
         imf_type=imfdict[imf],
-        dust_type=4, # Kriek & Conroy (2013)
-        sfh=3,       # tabular SFH (continuity bins)
+        dust_type=0,           # power-law (Charlot & Fall 2000-style)
+        dust_index=DUST_INDEX, # fixed slope, matching fastspec/fastphot
+        sfh=3,                 # tabular SFH (continuity bins)
     )
     print('...took {:.3f} sec'.format((time.time() - t0)))
     libraries = tuple(lib.decode() for lib in sp.libraries)
@@ -332,7 +344,6 @@ def build_bayesian_grid(imf='chabrier', test=False):
     for imodel, model in enumerate(models):
         sp.params['logzsol'] = model['logmet']
         sp.params['dust2'] = model['tau']
-        sp.params['dust_index'] = model['dustn']
         sp.params['duste_umin'] = model['umin']
         sp.params['duste_gamma'] = model['gamma']
         sp.params['duste_qpah'] = model['qpah']
@@ -447,6 +458,7 @@ def main(imf='chabrier', gridnumber=None, templatedir=None, test=False, cmdline=
     setdep(hduflux.header, 'DUSTLIB', libraries[2])
     hduflux.header['ZSUN'] = (0.0134, 'adopted solar metallicity (custom C3K_R10K)')
     hduflux.header['AGNTAU'] = (agntau, 'fixed AGN torus optical depth (agn_tau)')
+    hduflux.header['DUSTIDX'] = (DUST_INDEX, 'fixed power-law attenuation slope (dust_index)')
 
     hduwave = fits.ImageHDU(wave)
     hduwave.header['EXTNAME'] = 'WAVE'
