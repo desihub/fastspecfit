@@ -481,7 +481,18 @@ class BayesianGrid(object):
 
 
     def interpolate_at_z(self, photsys, redshift):
-        """Linearly interpolate ``MAGGIES(template, z, band)`` to a single redshift.
+        """Interpolate ``MAGGIES(template, z, band)`` to a single redshift.
+
+        The raw tabulated ``MAGGIES`` include the luminosity-distance
+        dimming factor ``(10/(1e6*dlum(z)))**2/(1+z)``, which diverges as
+        ``~1/z**2`` toward ``z=0`` -- far too steep to linearly interpolate
+        across the grid's z nodes without large error close to ``zmin``
+        (e.g. for a nearby-galaxy grid with ``zmin`` pushed well below the
+        grid's node spacing). So the divergent factor is divided out of
+        each bracketing node before interpolating (leaving only the smooth
+        IGM/band-shift shape, safe to interpolate) and the *exact* factor
+        for ``redshift`` -- not a grid-interpolated one -- is multiplied
+        back in via :func:`_distfactor`.
 
         Parameters
         ----------
@@ -504,15 +515,21 @@ class BayesianGrid(object):
 
         maggies = self.maggies[photsys] # [ntemplate, nz, nband]
         idx, frac = self._z_interp_index(redshift)
+        z0, z1 = self.redshift[idx - 1], self.redshift[idx]
 
-        return maggies[:, idx - 1, :] + frac * (maggies[:, idx, :] - maggies[:, idx - 1, :])
+        shape0 = maggies[:, idx - 1, :] / _distfactor(z0)
+        shape1 = maggies[:, idx, :] / _distfactor(z1)
+
+        return (shape0 + frac * (shape1 - shape0)) * _distfactor(redshift)
 
 
     def interpolate_restmaggies_at_z(self, redshift):
-        """Linearly interpolate ``RESTMAGGIES(template, z, absmag_band)`` to a
-        single redshift; mirrors :meth:`interpolate_at_z` but has no photsys
-        split, since ``Photometry.filters_out`` (the rest-frame band-shifted
-        output filters) does not depend on photsys.
+        """Interpolate ``RESTMAGGIES(template, z, absmag_band)`` to a single
+        redshift; mirrors :meth:`interpolate_at_z` (including the exact,
+        non-interpolated re-application of the divergent distance-dimming
+        factor via :func:`_distfactor`) but has no photsys split, since
+        ``Photometry.filters_out`` (the rest-frame band-shifted output
+        filters) does not depend on photsys.
 
         Parameters
         ----------
@@ -527,9 +544,12 @@ class BayesianGrid(object):
 
         """
         idx, frac = self._z_interp_index(redshift)
+        z0, z1 = self.redshift[idx - 1], self.redshift[idx]
 
-        return (self.restmaggies[:, idx - 1, :] +
-               frac * (self.restmaggies[:, idx, :] - self.restmaggies[:, idx - 1, :]))
+        shape0 = self.restmaggies[:, idx - 1, :] / _distfactor(z0, rest=True)
+        shape1 = self.restmaggies[:, idx, :] / _distfactor(z1, rest=True)
+
+        return (shape0 + frac * (shape1 - shape0)) * _distfactor(redshift, rest=True)
 
 
     def axis_posterior_cache(self, col):
@@ -746,6 +766,18 @@ def _parabola_vertex3(x, y):
         zwarn |= ZWarningMask.BAD_MINFIT
 
     return x0, xerr, y0, zwarn
+
+
+def _distfactor(redshift, rest=False):
+    """Exact (non-interpolated) luminosity-distance dimming factor, matching
+    the grid-build convention in ``bin/build-bayesian-photometry``'s
+    ``synthesize_photometry_grid`` (``distfactor``/``rest_zfactor``'s
+    ``dlum``-dependent term).
+
+    """
+    dlum = _cosmo.luminosity_distance(redshift) # [Mpc]
+    df = (10. / (1e6 * dlum))**2
+    return df if rest else df / (1. + redshift)
 
 
 def _solve_grid(flam, flam_ivar, lambda_eff, photsys, redshift):
