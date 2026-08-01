@@ -47,7 +47,7 @@ axes:
 
   - name: t33frac
     kind: linspace
-    npts: 5
+    npts: 10
     min: 0.05
     max: 0.95
     log: false
@@ -56,7 +56,7 @@ axes:
 
   - name: t67frac
     kind: linspace
-    npts: 5
+    npts: 10
     min: 0.05
     max: 0.95
     log: false
@@ -108,13 +108,3 @@ axes:
     param: duste_qpah
     outname: LOGQPAH
     label: '$\log_{10}(q_{\rm PAH})$'
-
-  - name: fagn
-    kind: zero_plus_logspace
-    npts: 4
-    min: 0.01
-    max: 3.0
-    log: false
-    param: fagn
-    outname: FAGN
-    label: '$f_{\rm AGN}$'
