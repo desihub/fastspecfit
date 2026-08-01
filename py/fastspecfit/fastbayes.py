@@ -115,6 +115,20 @@ _QA_SUMMARY_CANDIDATES = (
 # substitutes.
 _QA_HIDDEN_PARAMS = frozenset(('T33FRAC', 'T67FRAC'))
 
+# Above this many distinct posterior values, a QA posterior panel bins the
+# values into a histogram rather than drawing one bar per value; native
+# grid axes never exceed this (the largest in the bundled default grid is
+# TAUV's 10), so a larger unique count means an amplitude-scaled quantity
+# (LOGMSTAR, SFR, SSFR) or a quantity derived from a combination of axes
+# (T50, MSTARAGE, which only depend on the 3 SFH axes but still range over
+# up to 8*5*5=200 distinct values).
+_DISCRETE_UNIQ_MAX = 30
+
+# Natural minimum posterior-histogram bin width [Gyr] for QA panels of
+# these output parameters (see _posterior_binwidth); LOGMSTAR's analogous
+# 0.05 dex width is handled generically for any log-refined quantity.
+_GYR_BINWIDTH_PARAMS = frozenset(('T50', 'MSTARAGE'))
+
 # Rest-frame luminosity output keys and reference wavelengths (Angstrom).
 # The first six match the LOGL_*/LOGLNU_* columns in fastspecfit's own
 # SPECPHOT schema (see fastspecfit.continuum.ContinuumTools.lums_keys); the
@@ -1511,6 +1525,78 @@ def fastbayes_qa_one(iobj, meta, result, qadir='.', coadd_type='healpix', ndraw=
                       coadd_type=coadd_type, outdir=qadir)
 
 
+def _posterior_binwidth(pname):
+    """Natural minimum posterior-histogram bin width for output parameter
+    ``pname`` (see the posterior panel in :func:`_fastbayes_qa_one`), or
+    ``None`` if no natural width applies (fall back to a fixed bin count
+    instead). A narrow posterior sliced into a fixed bin *count* reads as
+    noisy scatter rather than a clean, physically meaningful histogram."""
+    if pname == 'LOGMSTAR' or bg_data.outname_to_axis.get(pname) in bg_data.log_axes:
+        return 0.05 # [dex]
+    if pname in _GYR_BINWIDTH_PARAMS:
+        return 0.2 # [Gyr]
+    return None
+
+
+def _highlight_ml_bar(patches, ml_value):
+    """Recolor whichever bar/bin of a posterior panel contains the
+    reported (ML) value, so it stays identifiable even when the panel is
+    zoomed to the broader marginalized posterior rather than centered on
+    it. No-op if ``patches`` is ``None`` (nothing was plotted)."""
+    if patches is None:
+        return
+    for patch in patches:
+        x0 = patch.get_x()
+        if x0 <= ml_value <= x0 + patch.get_width():
+            patch.set_facecolor('C0')
+            patch.set_alpha(1.0)
+            return
+
+
+def _sfr_like_hist(ax, vals, w, ml_value):
+    """Histogram an SFR/SSFR-like posterior for a QA panel.
+
+    SFR and SSFR are reported and weighted in linear space so that an
+    exact zero (a passively evolving population) is represented exactly,
+    but the nonzero population can span several decades -- for which a
+    linear-space histogram crushes all but the largest values into one
+    bin. The strictly-positive subset is binned in log space instead, at
+    a fixed 0.3~dex minimum width, and the axis uses a symmetric-log
+    (``symlog``) scale so the exact-zero population still has a
+    well-defined position near the origin alongside the log-spaced
+    nonzero bins (a true log scale cannot represent zero at all).
+
+    Returns
+    -------
+    :class:`matplotlib.container.BarContainer` or None
+        The histogram's bar patches (for :func:`_highlight_ml_bar`), or
+        ``None`` if the entire posterior is exactly zero, in which case
+        nothing is plotted.
+
+    """
+    positive = vals > 0.
+    if not np.any(positive):
+        return None
+
+    vals_pos, w_pos = vals[positive], w[positive]
+    logvals = np.log10(vals_pos)
+    lo, hi = _weighted_percentile(logvals, w_pos, (0.5, 99.5))
+    if ml_value > 0.:
+        lo, hi = min(lo, np.log10(ml_value)), max(hi, np.log10(ml_value))
+    pad = 0.05 * max(hi - lo, 1e-6)
+
+    binwidth = 0.3 # [dex]
+    lo_edge = binwidth * np.floor((lo - pad) / binwidth)
+    hi_edge = binwidth * np.ceil((hi + pad) / binwidth)
+    hi_edge = max(hi_edge, lo_edge + binwidth) # at least one bin
+    edges = 10.**np.arange(lo_edge, hi_edge + binwidth, binwidth)
+
+    ax.set_xscale('symlog', linthresh=edges[0])
+    _, _, patches = ax.hist(vals, bins=np.concatenate(([0.], edges)), weights=w,
+                            color='gray', edgecolor='k', alpha=0.8)
+    return patches
+
+
 def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
                       zwave, zflux, synth_maggies, redshift, family_zflux=None,
                       coadd_type='healpix', outdir='.'):
@@ -1569,7 +1655,6 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
 
     phot = sc_data.photometry
     phot_wavelims = (0.1, 35.) # [micron]
-    logmstar_binwidth = 0.05 # [dex]; natural fixed bin width for the LOGMSTAR posterior panel
 
     photcol1 = colors.to_hex('darkorange')
     fontsize1, fontsize2 = 14, 20
@@ -1845,51 +1930,58 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         ax = fig.add_subplot(post_gs[row, col])
         vals, w = posterior_arrays[pname]
         uniq, inv = np.unique(vals, return_inverse=True)
+        ml_value = result[pname]
+        patches = None
 
-        if len(uniq) <= 5:
-            # native grid axis: only a handful of discrete values exist, so
-            # a bar per actual grid value avoids mostly-empty uniform bins.
-            # A single distinct value (a fixed axis like GAMMA/UMIN, or a
-            # free axis whose posterior happens to collapse onto one grid
-            # point) has nothing to show beyond the vertical ML line below --
-            # previously fell back to an arbitrary width=1 bar, which drew a
-            # misleadingly fat/wide box unrelated to the parameter's actual
-            # scale.
+        if len(uniq) <= _DISCRETE_UNIQ_MAX:
+            # discrete axis, or any quantity whose posterior happens to
+            # collapse onto a handful of values: one bar per actual value
+            # avoids mostly-empty uniform bins from arbitrary bin edges
+            # landing between (or splitting) the real, finite set of
+            # values. A single distinct value (a fixed axis like GAMMA/
+            # UMIN, or a posterior that collapses onto one value) has
+            # nothing to show beyond the vertical ML line below.
             if len(uniq) > 1:
                 binweight = np.bincount(inv, weights=w, minlength=len(uniq))
                 width = np.min(np.diff(uniq)) * 0.8
-                ax.bar(uniq, binweight, width=width, color='gray', edgecolor='k', alpha=0.8)
+                patches = ax.bar(uniq, binweight, width=width, color='gray', edgecolor='k', alpha=0.8)
+        elif pname in ('SFR', 'SSFR'):
+            patches = _sfr_like_hist(ax, vals, w, ml_value)
         else:
-            # derived quantity (LOGMSTAR/SFR/SSFR/T50/MSTARAGE): continuous
-            # across the grid, so zoom the range to where the posterior
-            # weight actually is rather than the full (often much wider) range
+            # many distinct values (LOGMSTAR, T50, MSTARAGE, or any axis
+            # with a large point count): bin at a natural minimum width
+            # (_posterior_binwidth), zoomed to where the posterior weight
+            # actually is. The zoom window always includes the reported
+            # (ML) value, even if it falls in a low-weight tail outside
+            # the 0.5-99.5 percentile band.
             lo, hi = _weighted_percentile(vals, w, (0.5, 99.5))
+            lo, hi = min(lo, ml_value), max(hi, ml_value)
             if hi > lo:
                 pad = 0.05 * (hi - lo)
-                if pname == 'LOGMSTAR':
-                    # Fixed, natural bin width rather than a fixed bin
-                    # *count*: a narrow posterior (often << 0.1 dex) binned
-                    # into 30 bins across its own tiny range looks like
-                    # noisy scatter rather than a clean, physically
-                    # meaningful histogram.
-                    lo_edge = logmstar_binwidth * np.floor((lo - pad) / logmstar_binwidth)
-                    hi_edge = logmstar_binwidth * np.ceil((hi + pad) / logmstar_binwidth)
-                    hi_edge = max(hi_edge, lo_edge + logmstar_binwidth) # at least one bin
-                    bins = np.arange(lo_edge, hi_edge + logmstar_binwidth, logmstar_binwidth)
-                    ax.hist(vals, bins=bins, weights=w, color='gray', edgecolor='k', alpha=0.8)
+                binwidth = _posterior_binwidth(pname)
+                if binwidth is not None:
+                    lo_edge = binwidth * np.floor((lo - pad) / binwidth)
+                    hi_edge = binwidth * np.ceil((hi + pad) / binwidth)
+                    hi_edge = max(hi_edge, lo_edge + binwidth) # at least one bin
+                    bins = np.arange(lo_edge, hi_edge + binwidth, binwidth)
                 else:
-                    ax.hist(vals, bins=30, range=(lo - pad, hi + pad), weights=w,
-                            color='gray', edgecolor='k', alpha=0.8)
+                    bins = np.linspace(lo - pad, hi + pad, 31)
+                _, _, patches = ax.hist(vals, bins=bins, weights=w, color='gray', edgecolor='k', alpha=0.8)
 
-        # An SFR/SSFR posterior pinned at exactly zero (every contributing
+        # Recolor whichever bar/bin contains the ML value, so it stays
+        # identifiable even in a panel zoomed/shaped by the broader
+        # marginalized posterior rather than centered on it.
+        _highlight_ml_bar(patches, ml_value)
+
+        # An SFR/SSFR posterior with no nonzero contribution at all (every
         # template passively evolving) has no meaningful spread to show --
         # suppress the numeric x-tick labels (matplotlib's default
         # auto-ranged ticks on an otherwise-empty axis are pure noise),
         # while keeping the axis label so it's still clear what the panel is.
-        if pname in ('SFR', 'SSFR') and result[pname] == 0.:
+        if pname in ('SFR', 'SSFR') and not np.any(vals > 0.):
             ax.tick_params(labelbottom=False)
 
-        ax.axvline(result[pname], color='C0', lw=1.5)
+        ax.axvline(ml_value, color='C0', lw=1.5)
         ax.set_xlabel(bg_data.param_labels.get(pname, pname), fontsize=16)
         ax.tick_params(labelleft=False, labelsize=13)
 
