@@ -40,9 +40,8 @@ fully marginalized alternative to the gradient-based continuum fit in
 \texttt{fastbayes} evaluates every object against a large, pre-synthesized
 grid of fully specified stellar population models --- a Dense Basis (Iyer
 \& Gawiser 2017) mass-quantile star formation history, nebular emission,
-dust attenuation, dust re-emission, and AGN torus emission, all computed by
-FSPS --- and builds up the full discrete posterior over the grid by
-likelihood weighting.
+dust attenuation, and dust re-emission, all computed by FSPS --- and builds
+up the full discrete posterior over the grid by likelihood weighting.
 
 The grid is built once, by \texttt{bin/build-bayesian-templates} (raw
 model spectra) and \texttt{bin/build-bayesian-photometry} (synthesized
@@ -85,10 +84,12 @@ dust attenuation curve: \texttt{dust\_type=0}, a fixed
 FSPS default of 0.0 (no separate birth-cloud attenuation component), and
 \texttt{dust2} $\equiv\tau_V$ as the sole free diffuse optical depth.
 Reradiated dust emission uses the Draine \& Li (2007) templates
-(\texttt{add\_dust\_emission=True}); AGN torus emission uses the Nenkova
-et al. (2008) templates, via FSPS's own \texttt{fagn}/\texttt{agn\_tau}
-parameters. Nebular line and continuum emission are included directly in
-the spectrum.
+(\texttt{add\_dust\_emission=True}). FSPS also supports AGN torus emission
+via the Nenkova et al. (2008) templates (its own \texttt{fagn}/
+\texttt{agn\_tau} parameters), but the bundled default grid fixes
+\texttt{fagn=0} (Section~\ref{sec:grid}), so this component contributes
+nothing to the nominal grid. Nebular line and continuum emission are
+included directly in the spectrum.
 
 The grid's free axes --- which parameters vary, how many grid points each
 gets, and how those points are spaced --- are defined by a YAML parameter
@@ -97,8 +98,8 @@ overridable via \texttt{bin/build-bayesian-templates}'s
 \texttt{--paramsfile} flag. Different grid designs, a different axis
 list, spacing, or point count, require only a new YAML file. The bundled
 default grid, described throughout the rest of this note, is a full
-factorial design over the nine axes in Table~\ref{tab:grid}: every
-combination of the nine axis values exists, so the flattened grid's
+factorial design over the eight axes in Table~\ref{tab:grid}: every
+combination of the eight axis values exists, so the flattened grid's
 $N$-dimensional structure, and the flat index of any neighboring grid
 point, is recoverable directly from the per-axis values via index
 arithmetic.
@@ -119,28 +120,31 @@ defines.
 Axis & Symbol & $N$ & Range (spacing) \\
 \midrule
 Age & age [Gyr] & 8 & 0.03 to 13.7 (log) \\
-Tertile fraction 1 & $f_{33}$ (\texttt{t33frac}) & 5 & 0.05 to 0.95 (linear) \\
-Tertile fraction 2 & $f_{67}$ (\texttt{t67frac}) & 5 & 0.05 to 0.95 (linear) \\
+Tertile fraction 1 & $f_{33}$ (\texttt{t33frac}) & 10 & 0.05 to 0.95 (linear) \\
+Tertile fraction 2 & $f_{67}$ (\texttt{t67frac}) & 10 & 0.05 to 0.95 (linear) \\
 Metallicity & $\log_{10}(Z/Z_\odot)$ & 5 & $-0.8$ to $0.2$ (linear) \\
 Dust optical depth & $\tau_V$ (\texttt{dust2}) & 10 & 0.0, then 9 Exponential(1.5) quantiles \\
 Dust-emission $U_{\rm min}$ & $U_{\rm min}$ & 1 & fixed at 1.0 \\
 Dust-emission $\gamma$ & $\gamma$ & 1 & fixed at 0.01 \\
 Dust-emission $q_{\rm PAH}$ & $\log_{10}(q_{\rm PAH})$ & 3 & 0.1 to 7.0 (log) \\
-AGN luminosity fraction & $f_{\rm AGN}$ (\texttt{fagn}) & 4 & 0.0, then log-spaced 0.01 to 3.0 \\
 \bottomrule
 \end{tabular}
-\caption{The nine axes of the bundled default Bayesian grid
+\caption{The eight axes of the bundled default Bayesian grid
   (\texttt{fastspecfit/data/bayesian-grid.yaml}), in full-factorial
   nested-loop order. Total grid size
-  $8\times5\times5\times5\times10\times1\times1\times3\times4 = 120{,}000$
+  $8\times10\times10\times5\times10\times1\times1\times3 = 120{,}000$
   models. Axes built log-uniform (age, metallicity, $U_{\rm min}$,
   $q_{\rm PAH}$) are refined and reported in $\log_{10}$ space, giving
   symmetric formal uncertainties (Section~\ref{sec:refine}); the
-  remaining axes ($f_{33}$, $f_{67}$, $\tau_V$, $\gamma$, $f_{\rm AGN}$)
-  are refined and reported in linear space. $\tau_V$ and $f_{\rm AGN}$'s
-  grids include an exact-zero point, which $\log_{10}$ cannot represent;
-  $f_{33}$/$f_{67}$ are dimensionless fractions on $(0,1)$, for which
-  linear-space uncertainties are the natural choice.}
+  remaining axes ($f_{33}$, $f_{67}$, $\tau_V$, $\gamma$) are refined and
+  reported in linear space. $\tau_V$'s grid includes an exact-zero point,
+  which $\log_{10}$ cannot represent; $f_{33}$/$f_{67}$ are dimensionless
+  fractions on $(0,1)$, for which linear-space uncertainties are the
+  natural choice. An AGN luminosity-fraction axis ($f_{\rm AGN}$,
+  \texttt{fagn}) was dropped from this default grid (Section~\ref{sec:grid})
+  and its point budget reinvested doubling the tertile-fraction
+  resolution ($f_{33}$/$f_{67}$: 5$\to$10 each) --- the total model count
+  is unchanged at 120{,}000.}
 \label{tab:grid}
 \end{table}
 
@@ -158,9 +162,13 @@ falling off toward high $\tau_V$, with an effective reach of $\sim4.3$ at
 the 9th quantile --- matching the physical prevalence of low-dust
 galaxies, per Leja et al. (2017). $U_{\rm min}$ and $\gamma$ are fixed at
 representative ISM values (essentially unconstrained without far-IR
-photometry, per Leja et al. 2017 App.~C); $f_{\rm AGN}$ (with
-\texttt{agn\_tau} fixed at FSPS's own default) and $q_{\rm PAH}$ are
-constrained by mid-IR photometry alone.
+photometry, per Leja et al. 2017 App.~C); $q_{\rm PAH}$, constrained by
+mid-IR photometry alone, remains a free axis. $f_{\rm AGN}$ was dropped
+from the default grid (\texttt{fagn=0}, AGN torus emission off) after
+testing showed broadband photometry alone gives it little constraining
+power, much as for $U_{\rm min}$/$\gamma$; a dedicated AGN-focused grid
+(non-zero $f_{\rm AGN}$, refit against a subset of the sample) is planned
+as follow-up work rather than as part of the default grid.
 
 \section{Fitting Methodology}
 \label{sec:fit}
