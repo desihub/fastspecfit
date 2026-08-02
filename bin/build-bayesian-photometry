@@ -70,6 +70,7 @@ from astropy.table import Table
 from fastspecfit.photometry import Photometry
 from fastspecfit.cosmo import TabulatedDESI
 from fastspecfit.igm import Inoue14
+from fastspecfit.util import MPPool
 
 
 def _photsys_suffix(key):
@@ -121,7 +122,73 @@ def _get_ab_maggies_pre_batch(filters, wave):
     return maggies_pre, tuple(rtw)
 
 
-def synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm):
+# Per-worker (MPPool) state, populated once at startup by _init_worker rather
+# than being pickled through the pool's task-dispatch path -- mirroring
+# fastspecfit.fastbayes._initialize_fastbayes_workers/bg_data.
+_wave = _flux = _phot = _cosmo = _igm = _restmaggies_pre = _rest_rtw = None
+
+
+def _init_worker(tempfile, fphotofile):
+    """MPPool initializer: load the (large, read-only) templates and
+    photometry configuration once per worker process, from disk, instead of
+    pickling them through the pool's IPC channel for every task.
+
+    """
+    global _wave, _flux, _phot, _cosmo, _igm, _restmaggies_pre, _rest_rtw
+    T = fitsio.FITS(tempfile)
+    _wave = T['WAVE'].read()
+    _flux = T['FLUX'].read()
+    _phot = Photometry(fphotofile=fphotofile)
+    _cosmo = TabulatedDESI()
+    _igm = Inoue14()
+    # Rest-frame filter precompute is loop-invariant (phot.filters_out never
+    # redshifts), so it's done once here rather than per redshift.
+    _restmaggies_pre, _rest_rtw = _get_ab_maggies_pre_batch(_phot.filters_out, _wave)
+
+
+def _synthesize_one_z(iz, z):
+    """Synthesize one redshift's row of MAGGIES/RESTMAGGIES, using the
+    worker-global state populated by :func:`_init_worker`. Factored out of
+    :func:`synthesize_photometry_grid`'s loop body so it can be dispatched
+    across an :class:`~fastspecfit.util.MPPool`.
+
+    Returns
+    -------
+    iz : :class:`int`
+    maggies_row : :class:`dict`
+        Mapping of photsys key to an array of shape (nmodel, nband),
+        float32.
+    restmaggies_row : :class:`numpy.ndarray`
+        Array of shape (nmodel, nabs), float32.
+
+    """
+    wave_obs = _wave * (1. + z)
+    igm_trans = _igm.full_IGM(z, wave_obs)
+    dlum = _cosmo.luminosity_distance(z) # [Mpc]
+    distfactor = (10. / (1e6 * dlum))**2 / (1. + z)
+    zfactor = igm_trans * distfactor # [nwave]
+
+    maggies_row = {}
+    for key in _phot.filters.keys():
+        maggies_pre, rtw = _get_ab_maggies_pre_batch(_phot.filters[key], wave_obs)
+        row = np.zeros((_flux.shape[0], len(_phot.bands)), dtype=np.float32)
+        for iband, ((lo, hi, _, idenom), r_tw) in enumerate(zip(maggies_pre, rtw)):
+            r_tw_z = r_tw * zfactor[lo:hi] # fold in the redshift/IGM/distance factor
+            row[:, iband] = (_flux[:, lo:hi] @ r_tw_z) * idenom
+        maggies_row[key] = row
+
+    # Rest-frame synthesis: same igm_trans/dlum, but no 1/(1+z) term (see
+    # synthesize_photometry_grid's docstring).
+    rest_zfactor = igm_trans * (10. / (1e6 * dlum))**2 # [nwave]
+    restmaggies_row = np.zeros((_flux.shape[0], len(_restmaggies_pre)), dtype=np.float32)
+    for iband, ((lo, hi, _, idenom), r_tw) in enumerate(zip(_restmaggies_pre, _rest_rtw)):
+        r_tw_z = r_tw * rest_zfactor[lo:hi]
+        restmaggies_row[:, iband] = (_flux[:, lo:hi] @ r_tw_z) * idenom
+
+    return iz, maggies_row, restmaggies_row
+
+
+def synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm, mp_pool=None):
     """Synthesize broadband photometry for every template on the redshift grid.
 
     Also synthesizes the rest-frame (band-shifted) absolute-magnitude
@@ -155,6 +222,12 @@ def synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm):
         Cosmology used for the luminosity distance.
     igm : :class:`fastspecfit.igm.Inoue14`
         IGM attenuation model.
+    mp_pool : :class:`fastspecfit.util.MPPool` or None, optional
+        When given, the (fully independent) per-redshift work is dispatched
+        across this pool via :func:`_synthesize_one_z` instead of the
+        sequential loop below; the pool must have been constructed with
+        :func:`_init_worker` as its initializer. Default is ``None``
+        (sequential).
 
     Returns
     -------
@@ -179,38 +252,59 @@ def synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm):
     maggies = {key: np.zeros((nsed, nz, nband), dtype=np.float32) for key in photsys_keys}
     restmaggies = np.zeros((nsed, nz, nabs), dtype=np.float32)
 
-    # Rest-frame filter precompute is loop-invariant (phot.filters_out never
-    # redshifts), unlike the observed-frame filters below.
-    restmaggies_pre, rest_rtw = _get_ab_maggies_pre_batch(phot.filters_out, wave)
-
     print(f'Synthesizing photometry for {nsed} templates x {nz} redshifts x '
           f'{len(photsys_keys)} photometric system(s) (plus {nabs} rest-frame bands)...')
     t0 = time.time()
     logevery = int(np.clip(nz // 20, 1, 50))
 
-    for iz, z in enumerate(zgrid):
-        wave_obs = wave * (1. + z)
-        igm_trans = igm.full_IGM(z, wave_obs)
-        dlum = cosmo.luminosity_distance(z) # [Mpc]
-        distfactor = (10. / (1e6 * dlum))**2 / (1. + z)
-        zfactor = igm_trans * distfactor # [nwave]
+    if mp_pool is None:
+        # Rest-frame filter precompute is loop-invariant (phot.filters_out
+        # never redshifts), unlike the observed-frame filters below.
+        restmaggies_pre, rest_rtw = _get_ab_maggies_pre_batch(phot.filters_out, wave)
 
-        for key in photsys_keys:
-            maggies_pre, rtw = _get_ab_maggies_pre_batch(phot.filters[key], wave_obs)
-            for iband, ((lo, hi, _, idenom), r_tw) in enumerate(zip(maggies_pre, rtw)):
-                r_tw_z = r_tw * zfactor[lo:hi] # fold in the redshift/IGM/distance factor
-                maggies[key][:, iz, iband] = (flux[:, lo:hi] @ r_tw_z) * idenom
+        for iz, z in enumerate(zgrid):
+            wave_obs = wave * (1. + z)
+            igm_trans = igm.full_IGM(z, wave_obs)
+            dlum = cosmo.luminosity_distance(z) # [Mpc]
+            distfactor = (10. / (1e6 * dlum))**2 / (1. + z)
+            zfactor = igm_trans * distfactor # [nwave]
 
-        # Rest-frame synthesis: same igm_trans/dlum, but no 1/(1+z) term (it
-        # cancels against synth_absmag's explicit *(1+z), and the filter
-        # response is evaluated against the rest-frame wave, not wave_obs).
-        rest_zfactor = igm_trans * (10. / (1e6 * dlum))**2 # [nwave]
-        for iband, ((lo, hi, _, idenom), r_tw) in enumerate(zip(restmaggies_pre, rest_rtw)):
-            r_tw_z = r_tw * rest_zfactor[lo:hi]
-            restmaggies[:, iz, iband] = (flux[:, lo:hi] @ r_tw_z) * idenom
+            for key in photsys_keys:
+                maggies_pre, rtw = _get_ab_maggies_pre_batch(phot.filters[key], wave_obs)
+                for iband, ((lo, hi, _, idenom), r_tw) in enumerate(zip(maggies_pre, rtw)):
+                    r_tw_z = r_tw * zfactor[lo:hi] # fold in the redshift/IGM/distance factor
+                    maggies[key][:, iz, iband] = (flux[:, lo:hi] @ r_tw_z) * idenom
 
-        ndone = iz + 1
-        if ndone % logevery == 0 or ndone == nz:
+            # Rest-frame synthesis: same igm_trans/dlum, but no 1/(1+z) term
+            # (it cancels against synth_absmag's explicit *(1+z), and the
+            # filter response is evaluated against the rest-frame wave, not
+            # wave_obs).
+            rest_zfactor = igm_trans * (10. / (1e6 * dlum))**2 # [nwave]
+            for iband, ((lo, hi, _, idenom), r_tw) in enumerate(zip(restmaggies_pre, rest_rtw)):
+                r_tw_z = r_tw * rest_zfactor[lo:hi]
+                restmaggies[:, iz, iband] = (flux[:, lo:hi] @ r_tw_z) * idenom
+
+            ndone = iz + 1
+            if ndone % logevery == 0 or ndone == nz:
+                rate = ndone / (time.time() - t0)
+                remaining = (nz - ndone) / rate / 60. # [min]
+                print('  {}/{} redshifts ({:.1f}%) done in {:.1f} min; ~{:.1f} min remaining'.format(
+                    ndone, nz, 100. * ndone / nz, (time.time() - t0) / 60., remaining))
+    else:
+        # Each redshift is fully independent, so dispatch across mp_pool's
+        # workers (each already holding its own copy of wave/flux/phot,
+        # loaded once by _init_worker) in logevery-sized chunks, both to
+        # bound per-call task-list size and to preserve the sequential
+        # path's periodic progress logging.
+        for chunk_start in range(0, nz, logevery):
+            chunk_stop = min(chunk_start + logevery, nz)
+            argdicts = [{'iz': iz, 'z': zgrid[iz]} for iz in range(chunk_start, chunk_stop)]
+            for iz, maggies_row, restmaggies_row in mp_pool.starmap(_synthesize_one_z, argdicts):
+                for key in photsys_keys:
+                    maggies[key][:, iz, :] = maggies_row[key]
+                restmaggies[:, iz, :] = restmaggies_row
+
+            ndone = chunk_stop
             rate = ndone / (time.time() - t0)
             remaining = (nz - ndone) / rate / 60. # [min]
             print('  {}/{} redshifts ({:.1f}%) done in {:.1f} min; ~{:.1f} min remaining'.format(
@@ -224,7 +318,7 @@ def synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm):
 def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
          templatesfile=None, zmin=0.001, zmax=1.7, nz=100, logspace=False,
          adaptive=False, nbase_weight=40., npts_local=3., lines=None, edge_bands=None,
-         cmdline=None):
+         mp=1, cmdline=None):
     """Synthesize the photometry grid and write the output FITS file.
 
     Parameters
@@ -261,6 +355,11 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
         (``edge_bands`` here is passed through as that method's ``bands``
         argument, renamed to avoid confusion with the templates/photometry
         bands used elsewhere in this script).
+    mp : :class:`int`, optional
+        Number of multiprocessing worker processes to synthesize the
+        (fully independent) per-redshift photometry across. Default is 1
+        (sequential, in-process -- identical to the pre-parallelization
+        code path).
     cmdline : :class:`str` or None, optional
         Exact command-line invocation, recorded verbatim as the ``CMDLINE``
         header keyword (in addition to the individual dependency/parameter
@@ -299,7 +398,16 @@ def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
                                      nbase_weight=nbase_weight, npts_local=npts_local,
                                      lines=lines, bands=edge_bands)
 
-    maggies, restmaggies = synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm)
+    mp_pool = None
+    if mp > 1:
+        mp_pool = MPPool(mp, initializer=_init_worker,
+                         init_argdict={'tempfile': tempfile, 'fphotofile': fphotofile})
+
+    maggies, restmaggies = synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm,
+                                                       mp_pool=mp_pool)
+
+    if mp_pool is not None:
+        mp_pool.close()
 
     outdir = os.path.dirname(outfile)
     if outdir and not os.path.isdir(outdir):
@@ -433,6 +541,9 @@ if __name__ == '__main__':
                         'band names (must match the photometry configuration, e.g. "g,r,z") whose '
                         'edges are searched for line crossings; defaults to all bands')
 
+    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing workers '
+                        'to synthesize the (fully independent) per-redshift photometry across.')
+
     parser.add_argument('--test', action='store_true', help='Generate a tiny test grid.')
     args = parser.parse_args()
 
@@ -468,4 +579,4 @@ if __name__ == '__main__':
     main(args.gridnumber, outfile, imf=args.imf, templatedir=templatedir, fphotofile=args.fphotofile,
         templatesfile=templatesfile, zmin=zmin, zmax=zmax, nz=nz, logspace=args.logspace,
         adaptive=args.adaptive, nbase_weight=args.nbase_weight, npts_local=args.npts_local,
-        lines=lines, edge_bands=edge_bands, cmdline=cmdline)
+        lines=lines, edge_bands=edge_bands, mp=args.mp, cmdline=cmdline)
