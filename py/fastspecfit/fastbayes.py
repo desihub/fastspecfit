@@ -1091,16 +1091,15 @@ def get_fastbayes_dtype(phot, topk=0):
     # was used for K-correction (as before), now combined in quadrature with
     # KCORR_ERR's own model uncertainty; ABSMAG_SYNTH_ERR when there wasn't
     # (absmag falls back to synth_absmag exactly, previously always zero).
-    for band, shift in zip(phot.absmag_bands, phot.band_shift):
-        band = band.upper()
-        shift = int(10 * shift)
-        cols += [(f'KCORR{shift:02d}_{band}', 'f4'),
-                (f'ABSMAG{shift:02d}_{band}', 'f4'),
-                (f'ABSMAG{shift:02d}_SYNTH_{band}', 'f4'),
-                (f'ABSMAG{shift:02d}_IVAR_{band}', 'f4')]
-        if bg_data.has_restmaggies:
-            cols += [(f'KCORR{shift:02d}_ERR_{band}', 'f4'),
-                    (f'ABSMAG{shift:02d}_SYNTH_ERR_{band}', 'f4')]
+    band_shifts = [(band.upper(), int(10 * shift))
+                  for band, shift in zip(phot.absmag_bands, phot.band_shift)]
+    cols += [(f'KCORR{shift:02d}_{band}', 'f4') for band, shift in band_shifts]
+    cols += [(f'ABSMAG{shift:02d}_{band}', 'f4') for band, shift in band_shifts]
+    cols += [(f'ABSMAG{shift:02d}_SYNTH_{band}', 'f4') for band, shift in band_shifts]
+    cols += [(f'ABSMAG{shift:02d}_IVAR_{band}', 'f4') for band, shift in band_shifts]
+    if bg_data.has_restmaggies:
+        cols += [(f'KCORR{shift:02d}_ERR_{band}', 'f4') for band, shift in band_shifts]
+        cols += [(f'ABSMAG{shift:02d}_SYNTH_ERR_{band}', 'f4') for band, shift in band_shifts]
 
     # Rest-frame luminosities and the model Dn(4000) index, computed from the
     # refined rest-frame spectrum, plus their formal uncertainty (sqrt of the
