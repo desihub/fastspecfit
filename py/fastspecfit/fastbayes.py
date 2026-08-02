@@ -1239,11 +1239,11 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
     # (refined_model_maggies/refined_amplitude, already computed above by
     # _solve_grid) -- consistent with what CHI2 was actually computed from,
     # unlike a fresh speclite resynthesis of the resampled spectrum. Written
-    # into the METADATA row (FLUX_SYNTH_PHOTMODEL_*, pre-declared by the
-    # fastbayes() driver), alongside the real FLUX_*/FLUX_IVAR_* columns.
+    # into the METADATA row (FLUX_SYNTH_*, pre-declared by the fastbayes()
+    # driver), alongside the real FLUX_*/FLUX_IVAR_* columns.
     synth_maggies_grid = refined_model_maggies * refined_amplitude # [nband], observed-frame maggies
     for iband, band in enumerate(phot.bands):
-        meta[f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'] = 1e9 * synth_maggies_grid[iband] # [nanomaggies]
+        meta[f'FLUX_SYNTH_{band.upper()}'] = 1e9 * synth_maggies_grid[iband] # [nanomaggies]
 
     # --- K-corrections, absolute magnitudes, rest-frame luminosities, and
     # the model Dn(4000) index, all derived from the refined rest-frame
@@ -2227,7 +2227,7 @@ def _assemble_fastbayes_results(out, phot, units):
     allmeta = vstack(out[0])
     outmeta = create_output_meta(allmeta, phot=phot, fastphot=True)
     for band in phot.bands:
-        col = f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'
+        col = f'FLUX_SYNTH_{band.upper()}'
         outmeta[col] = allmeta[col]
         outmeta[col].unit = 'nanomaggies'
 
@@ -2444,7 +2444,7 @@ def fastbayes(args=None, mp_pool=None):
     # fastbayes_one) on the whole metadata table before it's sliced into
     # per-object rows and dispatched to the worker pool.
     for band in phot.bands:
-        meta[f'FLUX_SYNTH_PHOTMODEL_{band.upper()}'] = np.zeros(nobj, dtype='f4')
+        meta[f'FLUX_SYNTH_{band.upper()}'] = np.zeros(nobj, dtype='f4')
 
     fastbayes_dtype = get_fastbayes_dtype(phot, topk=args.topk)
 
