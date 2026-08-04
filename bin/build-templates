@@ -12,10 +12,10 @@ Usage
 -----
 ::
 
-  time python bin/build-templates --version 3.0.0 \\
+  time python bin/build-templates --version 3.0.1 \\
       --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates
 
-  time python bin/build-templates --version 3.0.0 \\
+  time python bin/build-templates --version 3.0.1 \\
       --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates \\
       --logmets=-1.,0.,0.3
 
@@ -629,8 +629,9 @@ def main(imf='chabrier', logmets=[0.0], agelims=None, qpah=1.0, umin=1., gamma=0
         ``'salpeter'``, or ``'kroupa'``.
     logmets : :class:`list` of :class:`float`, optional
         log10(Z/Zsun) metallicity grid values. Default is ``[0.0]``
-        (solar metallicity only). The production templates use
-        ``[-1.0, 0.0, 0.3]``.
+        (solar metallicity only), which is also what the production
+        templates use. Pass e.g. ``[-1.0, 0.0, 0.3]`` for a
+        multi-metallicity grid.
     agelims : :class:`list` of :class:`float` or None, optional
         Lookback time bin edges in Gyr, ascending, of length ``nages+1``.
         When ``None`` (default), generated with the production 5-bin
