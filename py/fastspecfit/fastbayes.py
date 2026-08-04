@@ -87,7 +87,7 @@ DERIVED_PARAM_NAMES = ('LOGMSTAR', 'SFR', 'SSFR', 'T50', 'MSTARAGE')
 _DERIVED_PARAM_LABELS = {
     'LOGMSTAR': r'$\log_{10}(M_\star/M_{\odot})$',
     'SFR': r'${\rm SFR}\ [M_{\odot}/{\rm yr}]$',
-    'SSFR': r'${\rm sSFR}\ [{\rm yr}^{-1}]$',
+    'SSFR': r'${\rm sSFR}\ [{\rm Gyr}^{-1}]$',
     'T50': r'$t_{50}\ [{\rm Gyr}]$',
     'MSTARAGE': r'$\langle{\rm Age}\rangle_M\ [{\rm Gyr}]$',
 }
@@ -97,15 +97,31 @@ _DERIVED_PARAM_LABELS = {
 # placeholder for the formatted value+error, value format spec). Entries
 # whose param name isn't present in this grid's bg_data.param_names (e.g. a
 # custom grid without a 'fagn'/'tau' axis) are simply skipped, rather than
-# hard-requiring this exact axis set to exist.
+# hard-requiring this exact axis set to exist. LOGZZSUN/LOGAGE are displayed
+# here (and in the posterior panel below) as linear Z/Zsun and Age -- see
+# _QA_LOG_TO_LINEAR -- even though the stored/output columns stay in log10
+# space. All entries share the same fixed-decimal format spec so that a
+# value and its error always print at the same number of decimal places
+# (a per-entry '{:.3g}' spec instead made SFR's error round to a wildly
+# different decimal place than its value, e.g. "1.65+/-0.000866").
 _QA_SUMMARY_CANDIDATES = (
-    ('LOGZZSUN', r'$\log_{{10}}(Z/Z_{{\odot}})={}$', '{:.2f}'),
-    ('LOGAGE', r'$\log_{{10}}(\mathrm{{Age}}/\mathrm{{Gyr}})={}$', '{:.2f}'),
+    ('LOGZZSUN', r'$Z/Z_{{\odot}}={}$', '{:.2f}'),
+    ('LOGAGE', r'${{\rm Age}}={}\ {{\rm Gyr}}$', '{:.2f}'),
     ('LOGMSTAR', r'$\log_{{10}}(M_\star/M_{{\odot}})={}$', '{:.2f}'),
-    ('SFR', r'$\mathrm{{SFR}}={}\ M_{{\odot}}/\mathrm{{yr}}$', '{:.3g}'),
+    ('SFR', r'$\mathrm{{SFR}}={}\ M_{{\odot}}/\mathrm{{yr}}$', '{:.2f}'),
     ('TAUV', r'$\tau_V={}$', '{:.2f}'),
     ('FAGN', r'$f_{{\rm AGN}}={}$', '{:.2f}'),
 )
+
+# Grid-axis output columns whose stored value/error are in log10 space but
+# are shown in the QA text summary and posterior panel as their linear
+# equivalent (Age in Gyr, Z/Zsun) -- see _log_to_linear for the (division-
+# free) error propagation.
+_QA_LOG_TO_LINEAR = frozenset(('LOGAGE', 'LOGZZSUN'))
+_QA_LINEAR_LABELS = {
+    'LOGAGE': r'${\rm Age}\ [{\rm Gyr}]$',
+    'LOGZZSUN': r'$Z/Z_{\odot}$',
+}
 
 # Grid axes that are still legitimate FASTBAYES output columns (refined and
 # reported like any other axis) but excluded from the QA posterior-panel
@@ -1172,6 +1188,25 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
     flam_ivar = np.asarray(data['photometry']['flam_ivar'], dtype='f8') * phot.bands_to_fit
     lambda_eff = np.asarray(data['photometry']['lambda_eff'], dtype='f8')
 
+    # With <=1 usable band the closed-form amplitude solve in _solve_grid
+    # can drive chi2 to *exactly* zero for every template in the grid (with
+    # 0 bands because denom==0 everywhere forces amplitude=0; with exactly
+    # 1 band because a single free amplitude always exactly zeros a
+    # single-point residual, for any template shape) -- np.argmin then
+    # silently returns the grid's arbitrary first/lowest-edge template
+    # instead of a real fit, poisoning every output column (LOGMSTAR floors
+    # to log10(1e-30)=-30, every grid-axis column snaps to its lowest grid
+    # value, SSFR/T50/MSTARAGE report that arbitrary template's intrinsic
+    # values, and CHI2 comes out exactly 0 as if it were a perfect fit).
+    # Skip the fit entirely and leave `result` at its all-zeros default
+    # instead, mirroring both the redshift-out-of-grid-range return above
+    # and continuum.py's analogous `ndof_phot == 0` branch.
+    nbands_used = int(np.sum(flam_ivar > 0.))
+    if nbands_used <= 1:
+        log.warning(f'Object {iobj} [{phot.uniqueid_col.lower()} {data["uniqueid"]}] has only '
+                   f'{nbands_used} usable photometric band(s); skipping the fit.')
+        return meta, result
+
     soln = _solve_grid(flam, flam_ivar, lambda_eff, photsys, redshift)
     chi2 = soln['chi2']
     weight = soln['weight']
@@ -1382,8 +1417,8 @@ def fastbayes_one(iobj, data, meta, fastbayes_dtype, topk=0):
         result[f'{pname}_ERR'] = np.sqrt(var)
 
     # dof = number of fitted bands minus the one continuous free parameter
-    # (the per-template mass amplitude) solved for above.
-    nbands_used = int(np.sum(flam_ivar > 0.))
+    # (the per-template mass amplitude) solved for above (nbands_used
+    # computed above, before the guard that skips the fit entirely).
     result['CHI2'] = chi2_refined
     result['NDOF'] = max(nbands_used - 1, 0)
 
@@ -1444,6 +1479,14 @@ def fastbayes_qa_one(iobj, meta, result, qadir='.', coadd_type='healpix', ndraw=
     templates file (unlike the original design, where ``--ndraw 0`` could
     skip it entirely).
 
+    Always produces a figure, even for an object with no real fit (redshift
+    beyond the grid, or <=1 usable photometric band -- see ``fit_ok`` in
+    :func:`_fastbayes_qa_one`): the cutout, observed photometry, and
+    redshift are always genuine data independent of whether a model could
+    be solved for, so only the model curve/synthesized photometry, the
+    Bayesian-fit text summary, and the posterior-panel histograms are
+    omitted in that case.
+
     Parameters
     ----------
     iobj : :class:`int`
@@ -1482,11 +1525,6 @@ def fastbayes_qa_one(iobj, meta, result, qadir='.', coadd_type='healpix', ndraw=
     log.info(f'Regenerating QA for object {iobj} [{phot.uniqueid_col.lower()} '
             f'{meta[phot.uniqueid_col]}, z={redshift:.6f}].')
 
-    if redshift > bg_data.redshift[-1]:
-        log.warning(f'Object {iobj} [{phot.uniqueid_col.lower()} {meta[phot.uniqueid_col]}] redshift '
-                   f'{redshift:.6f} exceeds the grid maximum {bg_data.redshift[-1]:.6f}; skipping QA.')
-        return
-
     nanomaggies = np.array([meta[f'FLUX_{band.upper()}'] for band in phot.bands], dtype='f8')
     nanomaggies_ivar = np.array([meta[f'FLUX_IVAR_{band.upper()}'] for band in phot.bands], dtype='f8')
     lambda_eff = phot.filters[photsys].effective_wavelengths.value
@@ -1497,53 +1535,72 @@ def fastbayes_qa_one(iobj, meta, result, qadir='.', coadd_type='healpix', ndraw=
     flam = np.asarray(phot_tbl['flam'], dtype='f8')
     flam_ivar = np.asarray(phot_tbl['flam_ivar'], dtype='f8') * phot.bands_to_fit
 
-    soln = _solve_grid(flam, flam_ivar, lambda_eff, photsys, redshift)
-    weight = soln['weight']
-    amplitude = soln['amplitude']
-    corner_idx = soln['corner_idx']
-    corner_weight = soln['corner_weight']
-    refined_model_maggies = soln['refined_model_maggies']
-    refined_amplitude = soln['refined_amplitude']
+    restwave = restflux = zwave = zflux = synth_maggies = posterior_arrays = None
+    family_zflux = np.empty((0, 0))
 
-    restwave = bg_data.template_wave()
-    restflux = _build_refined_spectrum(corner_idx, corner_weight, refined_amplitude)
+    # Same two degenerate conditions guarded against in fastbayes_one (see
+    # there for why <=1 usable band makes the grid solve meaningless): QA
+    # still gets a figure below (cutout, observed photometry, redshift,
+    # placeholder posterior panels) -- it just has no model/fit to show.
+    nbands_used = int(np.sum(flam_ivar > 0.))
+    fit_ok = (redshift <= bg_data.redshift[-1]) and (nbands_used > 1)
 
-    logmstar = np.log10(np.clip(amplitude * bg_data.mstar, 1e-30, None)) # [ntemplate]; surviving mass
-    sfr_per_template = amplitude * bg_data.sfr # [ntemplate], Msun/yr
-    posterior = {'LOGMSTAR': logmstar, 'SFR': sfr_per_template, 'SSFR': bg_data.ssfr,
-                'T50': bg_data.t50, 'MSTARAGE': bg_data.mstarage}
-
-    posterior_arrays = {}
-    for pname in bg_data.param_names:
-        if pname in posterior:
-            vals = posterior[pname]
+    if not fit_ok:
+        if redshift > bg_data.redshift[-1]:
+            log.warning(f'Object {iobj} [{phot.uniqueid_col.lower()} {meta[phot.uniqueid_col]}] redshift '
+                       f'{redshift:.6f} exceeds the grid maximum {bg_data.redshift[-1]:.6f}; '
+                       f'QA will show the cutout and observed photometry only.')
         else:
-            vals = bg_data.axis_posterior_cache(bg_data.outname_to_axis[pname])[0]
-        posterior_arrays[pname] = (vals, weight)
+            log.warning(f'Object {iobj} [{phot.uniqueid_col.lower()} {meta[phot.uniqueid_col]}] has only '
+                       f'{nbands_used} usable photometric band(s); QA will show the cutout and '
+                       f'observed photometry only.')
+    else:
+        soln = _solve_grid(flam, flam_ivar, lambda_eff, photsys, redshift)
+        weight = soln['weight']
+        amplitude = soln['amplitude']
+        corner_idx = soln['corner_idx']
+        corner_weight = soln['corner_weight']
+        refined_model_maggies = soln['refined_model_maggies']
+        refined_amplitude = soln['refined_amplitude']
 
-    zwave = restwave * (1. + redshift)
-    igm_trans = _igm.full_IGM(redshift, zwave)
-    dlum = _cosmo.luminosity_distance(redshift) # [Mpc]
-    zfactor = igm_trans * (10. / (1e6 * dlum))**2 / (1. + redshift)
-    zflux = restflux * zfactor # [erg/s/cm2/A, observed frame]
+        restwave = bg_data.template_wave()
+        restflux = _build_refined_spectrum(corner_idx, corner_weight, refined_amplitude)
 
-    synth_maggies = refined_model_maggies * refined_amplitude # [nband], observed-frame maggies
+        logmstar = np.log10(np.clip(amplitude * bg_data.mstar, 1e-30, None)) # [ntemplate]; surviving mass
+        sfr_per_template = amplitude * bg_data.sfr # [ntemplate], Msun/yr
+        posterior = {'LOGMSTAR': logmstar, 'SFR': sfr_per_template, 'SSFR': bg_data.ssfr,
+                    'T50': bg_data.t50, 'MSTARAGE': bg_data.mstarage}
 
-    # Additional templates drawn (without replacement) with probability
-    # proportional to the discrete posterior weight, purely for a visual
-    # sense of the model uncertainty in the SED panel -- distinct from the
-    # one refined (N-linearly interpolated) maximum-likelihood spectrum
-    # above. Seeded per-object so repeated QA regeneration is reproducible.
-    family_zflux = np.empty((0, len(restwave)))
-    if ndraw > 0:
-        nonzero = np.flatnonzero(weight > 0.)
-        ndraw_actual = min(ndraw, len(nonzero)) # don't force replacement/padding
-        if ndraw_actual > 0:
-            rng = np.random.default_rng(int(meta[phot.uniqueid_col]))
-            p = weight[nonzero] / weight[nonzero].sum()
-            draw_idx = rng.choice(nonzero, size=ndraw_actual, replace=False, p=p)
-            family_zflux = np.array([bg_data.template_flux_row(idx) * amplitude[idx]
-                                     for idx in draw_idx]) * zfactor
+        posterior_arrays = {}
+        for pname in bg_data.param_names:
+            if pname in posterior:
+                vals = posterior[pname]
+            else:
+                vals = bg_data.axis_posterior_cache(bg_data.outname_to_axis[pname])[0]
+            posterior_arrays[pname] = (vals, weight)
+
+        zwave = restwave * (1. + redshift)
+        igm_trans = _igm.full_IGM(redshift, zwave)
+        dlum = _cosmo.luminosity_distance(redshift) # [Mpc]
+        zfactor = igm_trans * (10. / (1e6 * dlum))**2 / (1. + redshift)
+        zflux = restflux * zfactor # [erg/s/cm2/A, observed frame]
+
+        synth_maggies = refined_model_maggies * refined_amplitude # [nband], observed-frame maggies
+
+        # Additional templates drawn (without replacement) with probability
+        # proportional to the discrete posterior weight, purely for a visual
+        # sense of the model uncertainty in the SED panel -- distinct from the
+        # one refined (N-linearly interpolated) maximum-likelihood spectrum
+        # above. Seeded per-object so repeated QA regeneration is reproducible.
+        if ndraw > 0:
+            nonzero = np.flatnonzero(weight > 0.)
+            ndraw_actual = min(ndraw, len(nonzero)) # don't force replacement/padding
+            if ndraw_actual > 0:
+                rng = np.random.default_rng(int(meta[phot.uniqueid_col]))
+                p = weight[nonzero] / weight[nonzero].sum()
+                draw_idx = rng.choice(nonzero, size=ndraw_actual, replace=False, p=p)
+                family_zflux = np.array([bg_data.template_flux_row(idx) * amplitude[idx]
+                                         for idx in draw_idx]) * zfactor
 
     data = {'photometry': {
         'nanomaggies': nanomaggies,
@@ -1553,7 +1610,7 @@ def fastbayes_qa_one(iobj, meta, result, qadir='.', coadd_type='healpix', ndraw=
 
     _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
                       zwave, zflux, synth_maggies, redshift, family_zflux=family_zflux,
-                      coadd_type=coadd_type, outdir=qadir)
+                      fit_ok=fit_ok, coadd_type=coadd_type, outdir=qadir)
 
 
 def _posterior_binwidth(pname):
@@ -1562,10 +1619,15 @@ def _posterior_binwidth(pname):
     ``None`` if no natural width applies (fall back to a fixed bin count
     instead). A narrow posterior sliced into a fixed bin *count* reads as
     noisy scatter rather than a clean, physically meaningful histogram."""
+    if pname in _QA_LOG_TO_LINEAR:
+        # displayed/binned linearly (see _QA_LOG_TO_LINEAR), so a fixed
+        # dex-space width doesn't apply here -- fall back to a fixed bin
+        # count instead.
+        return None
     if pname == 'LOGMSTAR' or bg_data.outname_to_axis.get(pname) in bg_data.log_axes:
         return 0.05 # [dex]
     if pname in _GYR_BINWIDTH_PARAMS:
-        return 0.2 # [Gyr]
+        return 0.3 # [Gyr]
     return None
 
 
@@ -1630,7 +1692,7 @@ def _sfr_like_hist(ax, vals, w, ml_value):
 
 def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
                       zwave, zflux, synth_maggies, redshift, family_zflux=None,
-                      coadd_type='healpix', outdir='.'):
+                      fit_ok=True, coadd_type='healpix', outdir='.'):
     """Generate a QA figure for one Bayesian-fit object.
 
     Reuses :func:`fastspecfit.qa._target_label` and
@@ -1648,17 +1710,20 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         Metadata row for this object.
     result : :class:`numpy.ndarray`
         Bayesian-fitting output row, from :func:`fastbayes_one`.
-    posterior_arrays : :class:`dict`
+    posterior_arrays : :class:`dict` or None
         Mapping of parameter name to ``(values, weights)`` per-template
-        posterior arrays.
-    restwave, restflux : :class:`numpy.ndarray`
-        Refined rest-frame maximum-likelihood spectrum.
-    zwave, zflux : :class:`numpy.ndarray`
+        posterior arrays. ``None`` when ``fit_ok`` is ``False``.
+    restwave, restflux : :class:`numpy.ndarray` or None
+        Refined rest-frame maximum-likelihood spectrum (``restwave`` is not
+        otherwise used by this function). Both ``None`` when ``fit_ok`` is
+        ``False``.
+    zwave, zflux : :class:`numpy.ndarray` or None
         The same spectrum redshifted (and IGM/distance-attenuated) to the
-        observed frame.
-    synth_maggies : :class:`numpy.ndarray`
+        observed frame. ``None`` when ``fit_ok`` is ``False``.
+    synth_maggies : :class:`numpy.ndarray` or None
         Observed-frame photometry (AB maggies) synthesized from the refined
-        maximum-likelihood model in each band.
+        maximum-likelihood model in each band. ``None`` when ``fit_ok`` is
+        ``False``.
     redshift : :class:`float`
     family_zflux : :class:`numpy.ndarray` or None, optional
         Shape ``(ndraw, npix)`` observed-frame spectra of additional
@@ -1666,6 +1731,15 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         (:func:`fastbayes_qa_one`), overplotted faintly behind the one
         refined maximum-likelihood curve as a visual sense of the model
         uncertainty. Empty or ``None`` (default) plots none.
+    fit_ok : :class:`bool`, optional
+        Whether a real grid fit was actually performed for this object
+        (default ``True``). ``False`` means the redshift was beyond the
+        grid, or too few photometric bands were usable to constrain a fit
+        (see :func:`fastbayes_one`/:func:`fastbayes_qa_one`) -- the figure
+        is still generated (cutout, observed photometry, redshift), but the
+        model curve/synthesized photometry, the Bayesian-fit text summary,
+        and the posterior-panel histograms are omitted (empty placeholder
+        panels only) since there is nothing genuine to show for them.
     coadd_type : :class:`str`, optional
     outdir : :class:`str`, optional
 
@@ -1706,6 +1780,15 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
         if err > 0.:
             return fmt.format(val) + r'\pm' + fmt.format(err)
         return fmt.format(val)
+
+    def _log_to_linear(val, err):
+        # d(10**x)/dx = ln(10) * 10**x, so this never divides by val/err
+        # (which, unlike a naive value_linear/value_log ratio, is safe even
+        # when the log-space value is exactly 0, e.g. Age = 1 Gyr or
+        # Z/Zsun = 1).
+        linear_val = 10.**val
+        linear_err = np.log(10.) * linear_val * err
+        return linear_val, linear_err
 
     pngfile = get_qa_filename(meta, coadd_type, outprefix='fastbayes', outdir=outdir,
                               uniqueid_col=phot.uniqueid_col)
@@ -1780,12 +1863,18 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
 
     # best-fit model curve, converted from erg/s/cm2/A to AB mag; restrict to
     # the plotted wavelength range so that, e.g., far-IR dust emission well
-    # beyond phot_wavelims doesn't skew the y-axis limits below.
-    factor = 10**(0.4 * 48.6) * zwave**2 / (C_LIGHT * 1e13) # [erg/s/cm2/A --> maggies]
-    zwave_um = zwave / 1e4
-    mgood = (zflux > 0.) & (zwave_um >= phot_wavelims[0]) & (zwave_um <= phot_wavelims[1])
-    sedmodel_abmag = np.full_like(zflux, np.nan)
-    sedmodel_abmag[mgood] = -2.5 * np.log10(zflux[mgood] * factor[mgood])
+    # beyond phot_wavelims doesn't skew the y-axis limits below. Skipped
+    # entirely when fit_ok is False (no model to show -- see fit_ok in the
+    # docstring above): the SED panel then shows only real, model-
+    # independent data (observed photometry, both axes' wavelength scales).
+    if fit_ok:
+        factor = 10**(0.4 * 48.6) * zwave**2 / (C_LIGHT * 1e13) # [erg/s/cm2/A --> maggies]
+        zwave_um = zwave / 1e4
+        mgood = (zflux > 0.) & (zwave_um >= phot_wavelims[0]) & (zwave_um <= phot_wavelims[1])
+        sedmodel_abmag = np.full_like(zflux, np.nan)
+        sedmodel_abmag[mgood] = -2.5 * np.log10(zflux[mgood] * factor[mgood])
+    else:
+        mgood = np.array([], dtype=bool)
 
     # y-axis limits (AB mag; brighter/smaller values at the top) -- set
     # *before* any errorbar(lolims=True) calls below: matplotlib bakes in
@@ -1811,25 +1900,26 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     sedax.set_xlim(phot_wavelims[0], phot_wavelims[1])
     sedax.set_ylim(sed_ymin, sed_ymax)
 
-    # additional posterior-weighted draws, plotted faintly behind the one
-    # refined maximum-likelihood curve as a visual sense of the model
-    # uncertainty (same grey hue, distinguished only by opacity/linewidth so
-    # as not to clash with the photometry's orange color scheme below)
-    if family_zflux is not None and len(family_zflux) > 0:
-        for fam_flux in family_zflux:
-            fam_mgood = (fam_flux > 0.) & (zwave_um >= phot_wavelims[0]) & (zwave_um <= phot_wavelims[1])
-            if np.any(fam_mgood):
-                fam_abmag = -2.5 * np.log10(fam_flux[fam_mgood] * factor[fam_mgood])
-                sedax.plot(zwave_um[fam_mgood], fam_abmag, color='grey', alpha=0.12, lw=0.5, zorder=0)
+    if fit_ok:
+        # additional posterior-weighted draws, plotted faintly behind the one
+        # refined maximum-likelihood curve as a visual sense of the model
+        # uncertainty (same grey hue, distinguished only by opacity/linewidth so
+        # as not to clash with the photometry's orange color scheme below)
+        if family_zflux is not None and len(family_zflux) > 0:
+            for fam_flux in family_zflux:
+                fam_mgood = (fam_flux > 0.) & (zwave_um >= phot_wavelims[0]) & (zwave_um <= phot_wavelims[1])
+                if np.any(fam_mgood):
+                    fam_abmag = -2.5 * np.log10(fam_flux[fam_mgood] * factor[fam_mgood])
+                    sedax.plot(zwave_um[fam_mgood], fam_abmag, color='grey', alpha=0.12, lw=0.5, zorder=0)
 
-    sedax.plot(zwave_um[mgood], sedmodel_abmag[mgood], color='grey', alpha=0.9, zorder=1)
+        sedax.plot(zwave_um[mgood], sedmodel_abmag[mgood], color='grey', alpha=0.9, zorder=1)
 
-    # synthesized photometry (open diamonds)
-    synth_good = synth_maggies > 0.
-    synth_abmag = np.full_like(synth_maggies, np.nan, dtype='f8')
-    synth_abmag[synth_good] = -2.5 * np.log10(synth_maggies[synth_good])
-    sedax.scatter(lambda_eff[synth_good] / 1e4, synth_abmag[synth_good], marker='D',
-                 s=450, color='k', facecolor='none', linewidth=2, alpha=1.0, zorder=2)
+        # synthesized photometry (open diamonds)
+        synth_good = synth_maggies > 0.
+        synth_abmag = np.full_like(synth_maggies, np.nan, dtype='f8')
+        synth_abmag[synth_good] = -2.5 * np.log10(synth_maggies[synth_good])
+        sedax.scatter(lambda_eff[synth_good] / 1e4, synth_abmag[synth_good], marker='D',
+                     s=450, color='k', facecolor='none', linewidth=2, alpha=1.0, zorder=2)
 
     # observed photometry: filled markers (fitted bands) or hollow markers
     # (bands not used in the fit) for detections, upper limits (lolims)
@@ -1872,10 +1962,14 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
                          (restticks <= phot_wavelims[1] / (1. + redshift))]
     sedax_twin.set_xticks(restticks)
 
-    # reduced chi2 (top-left, no box)
-    rchi2 = result['CHI2'] / result['NDOF'] if result['NDOF'] > 0 else result['CHI2']
-    sedax.text(0.02, 0.94, r'$\chi^{2}_{\nu,\mathrm{phot}}=$' + r'${:.2f}$'.format(rchi2),
-              ha='left', va='top', transform=sedax.transAxes, fontsize=legfntsz)
+    # reduced chi2 (top-left, no box) -- omitted when fit_ok is False: CHI2/
+    # NDOF are both exactly 0 in that case (no fit was attempted), and
+    # "chi2=0.00" would misleadingly read as a perfect fit rather than "no
+    # fit".
+    if fit_ok:
+        rchi2 = result['CHI2'] / result['NDOF'] if result['NDOF'] > 0 else result['CHI2']
+        sedax.text(0.02, 0.94, r'$\chi^{2}_{\nu,\mathrm{phot}}=$' + r'${:.2f}$'.format(rchi2),
+                  ha='left', va='top', transform=sedax.transAxes, fontsize=legfntsz)
 
     # target label above the cutout, and rest-frame wavelength label above the SED.
     # Use the cutout's *gridspec cell* position, not cutax.get_position(): the
@@ -1911,30 +2005,47 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     def _absmag_col(band, shift):
         return f'ABSMAG{int(10 * shift):02d}_{band.upper()}'
 
-    txt = [r'$z={:.7f}$'.format(redshift),
-          r'$D_{{n}}(4000)_{{\mathrm{{model}}}}={:.3f}$'.format(result['DN4000_MODEL']), '']
-    txt += [r'$M_{{{}{}}}={:.2f}$'.format(
-        str(shift_rband), absmag_rband.lower().replace('decam_', '').replace('sdss_', ''),
-        result[_absmag_col(absmag_rband, shift_rband)])]
-    if gindx != rindx:
-        gr = result[_absmag_col(absmag_gband, shift_gband)] - result[_absmag_col(absmag_rband, shift_rband)]
-        txt += [r'$M_{{{}{}}}-M_{{{}{}}}={:.3f}$'.format(
-            str(shift_gband), absmag_gband.lower(), str(shift_rband), absmag_rband.lower(),
-            gr).replace('decam_', '').replace('sdss_', '')]
-    if zindx != rindx:
-        rz = result[_absmag_col(absmag_rband, shift_rband)] - result[_absmag_col(absmag_zband, shift_zband)]
-        txt += [r'$M_{{{}{}}}-M_{{{}{}}}={:.3f}$'.format(
-            str(shift_rband), absmag_rband.lower(), str(shift_zband), absmag_zband.lower(),
-            rz).replace('decam_', '').replace('sdss_', '')]
+    # DN4000_MODEL/absolute-magnitude/color lines all come from the refined
+    # rest-frame model, so they're meaningless (still at their all-zeros
+    # init) when fit_ok is False -- z is real data either way, so it's the
+    # only line kept in that case.
+    txt = [r'$z={:.7f}$'.format(redshift)]
+    if fit_ok:
+        txt += [r'$D_{{n}}(4000)_{{\mathrm{{model}}}}={:.3f}$'.format(result['DN4000_MODEL']), '']
+        txt += [r'$M_{{{}{}}}={:.2f}$'.format(
+            str(shift_rband), absmag_rband.lower().replace('decam_', '').replace('sdss_', ''),
+            result[_absmag_col(absmag_rband, shift_rband)])]
+        if gindx != rindx:
+            gr = result[_absmag_col(absmag_gband, shift_gband)] - result[_absmag_col(absmag_rband, shift_rband)]
+            txt += [r'$M_{{{}{}}}-M_{{{}{}}}={:.3f}$'.format(
+                str(shift_gband), absmag_gband.lower(), str(shift_rband), absmag_rband.lower(),
+                gr).replace('decam_', '').replace('sdss_', '')]
+        if zindx != rindx:
+            rz = result[_absmag_col(absmag_rband, shift_rband)] - result[_absmag_col(absmag_zband, shift_zband)]
+            txt += [r'$M_{{{}{}}}-M_{{{}{}}}={:.3f}$'.format(
+                str(shift_rband), absmag_rband.lower(), str(shift_zband), absmag_zband.lower(),
+                rz).replace('decam_', '').replace('sdss_', '')]
     fig.text(cpos.x0, ytext, '\n'.join(txt), ha='left', va='top', fontsize=fontsize1,
              bbox=bbox, linespacing=1.6)
 
     # Iterate in bg_data.param_names order (i.e. the AXES order the
     # posterior panel below also follows), not _QA_SUMMARY_CANDIDATES'
-    # own tuple order, so the two stay visually aligned.
-    _qa_summary = {pname: (template, fmt) for pname, template, fmt in _QA_SUMMARY_CANDIDATES}
-    txt = [_qa_summary[pname][0].format(_fmt(result[pname], result[f'{pname}_ERR'], _qa_summary[pname][1]))
-           for pname in bg_data.param_names if pname in _qa_summary]
+    # own tuple order, so the two stay visually aligned. A short placeholder
+    # note stands in for the whole box when fit_ok is False, rather than
+    # printing e.g. LOGMSTAR's all-zeros init as if it were a measurement.
+    if fit_ok:
+        _qa_summary = {pname: (template, fmt) for pname, template, fmt in _QA_SUMMARY_CANDIDATES}
+        txt = []
+        for pname in bg_data.param_names:
+            if pname not in _qa_summary:
+                continue
+            template, fmt = _qa_summary[pname]
+            val, err = result[pname], result[f'{pname}_ERR']
+            if pname in _QA_LOG_TO_LINEAR:
+                val, err = _log_to_linear(val, err)
+            txt.append(template.format(_fmt(val, err, fmt)))
+    else:
+        txt = ['No fit', '(insufficient', 'photometry or', 'redshift beyond', 'the grid)']
     fig.text(cpos.x1+0.04, ytext, '\n'.join(txt), ha='right', va='top', fontsize=fontsize1,
              bbox=bbox, linespacing=1.6)
 
@@ -1959,9 +2070,29 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
     for i, pname in enumerate(free_param_names):
         row, col = divmod(i, ncols)
         ax = fig.add_subplot(post_gs[row, col])
+
+        if not fit_ok:
+            # Placeholder-only panel: no posterior to show (see fit_ok in
+            # the docstring above), so just the empty frame and axis label,
+            # keeping the same panel layout/count as a real fit's figure.
+            ax.tick_params(labelbottom=False)
+            ax.set_xlabel(_QA_LINEAR_LABELS.get(pname, bg_data.param_labels.get(pname, pname)), fontsize=16)
+            ax.tick_params(labelleft=False, labelsize=13)
+            continue
+
         vals, w = posterior_arrays[pname]
-        uniq, inv = np.unique(vals, return_inverse=True)
         ml_value = result[pname]
+
+        # LOGAGE/LOGZZSUN are plotted here (and summarized in the text box
+        # above) as linear Age/Z-Zsun rather than their stored log10 form;
+        # SSFR is rescaled yr^-1 -> Gyr^-1. See _log_to_linear/
+        # _QA_LOG_TO_LINEAR and _DERIVED_PARAM_LABELS['SSFR'].
+        if pname in _QA_LOG_TO_LINEAR:
+            vals, ml_value = 10.**vals, 10.**ml_value
+        elif pname == 'SSFR':
+            vals, ml_value = vals * 1e9, ml_value * 1e9
+
+        uniq, inv = np.unique(vals, return_inverse=True)
         patches = None
 
         if len(uniq) <= _DISCRETE_UNIQ_MAX:
@@ -1974,7 +2105,16 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
             # nothing to show beyond the vertical ML line below.
             if len(uniq) > 1:
                 binweight = np.bincount(inv, weights=w, minlength=len(uniq))
-                width = np.min(np.diff(uniq)) * 0.8
+                # Per-point width (0.8x the narrower of its two neighbor
+                # gaps) rather than one global width: axes that are
+                # log-uniformly spaced in their stored (log) form -- e.g.
+                # LOGAGE/LOGZZSUN converted to linear above -- are not
+                # evenly spaced once linear, so a single global min-diff
+                # width would make the widely-separated high-value bars
+                # a barely visible sliver. Reduces to the original global
+                # width for genuinely uniform axes.
+                diffs = np.diff(uniq)
+                width = 0.8 * np.minimum(np.r_[diffs[0], diffs], np.r_[diffs, diffs[-1]])
                 patches = ax.bar(uniq, binweight, width=width, color='gray', edgecolor='k', alpha=0.8)
         elif pname in ('SFR', 'SSFR'):
             patches = _sfr_like_hist(ax, vals, w, ml_value)
@@ -2013,7 +2153,7 @@ def _fastbayes_qa_one(data, meta, result, posterior_arrays, restwave, restflux,
             ax.tick_params(labelbottom=False)
 
         ax.axvline(ml_value, color='C0', lw=1.5)
-        ax.set_xlabel(bg_data.param_labels.get(pname, pname), fontsize=16)
+        ax.set_xlabel(_QA_LINEAR_LABELS.get(pname, bg_data.param_labels.get(pname, pname)), fontsize=16)
         ax.tick_params(labelleft=False, labelsize=13)
 
     fig.savefig(pngfile)
