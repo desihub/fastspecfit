@@ -75,7 +75,7 @@ class Templates(object):
     AGN_PIXKMS = 75.  # [km/s]
     AGN_PIXKMS_BOUNDS = (1075., 3090.)
 
-    DEFAULT_TEMPLATEVERSION = '3.0.0'
+    DEFAULT_TEMPLATEVERSION = '3.0.1'
     DEFAULT_IMF = 'chabrier'
 
     # highest vdisp for which we attempt to use cached FFTs

@@ -15,7 +15,8 @@ os.environ.setdefault('MPLBACKEND', 'Agg')
 
 @pytest.fixture(scope='session')
 def template_version():
-    yield '3.0.0'
+    from fastspecfit.templates import Templates
+    yield Templates.DEFAULT_TEMPLATEVERSION
 
 
 @pytest.fixture(scope='session')

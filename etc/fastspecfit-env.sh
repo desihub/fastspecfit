@@ -11,15 +11,15 @@
 #   DESIUTIL_VERSION, DESISPEC_VERSION, DESITARGET_VERSION,
 #   SPECLITE_VERSION
 
-FASTSPECFIT_VERSION=${1:-"3.4.1"}
+FASTSPECFIT_VERSION=${1:-"3.6.1"}
 
 DESIUTIL_VERSION=${DESIUTIL_VERSION:-"3.6.1"}
-DESISPEC_VERSION=${DESISPEC_VERSION:-"0.71.2"}
-DESITARGET_VERSION=${DESITARGET_VERSION:-"4.7.2"}
+DESISPEC_VERSION=${DESISPEC_VERSION:-"0.71.6"}
+DESITARGET_VERSION=${DESITARGET_VERSION:-"5.3.0"}
 SPECLITE_VERSION=${SPECLITE_VERSION:-"v1.0.0"}
 
 echo "Loading DESI software stack"
-source /dvs_ro/common/software/desi/desi_environment.sh main
+source /dvs_ro/common/software/desi/desi_environment.sh 26.3
 module swap desiutil/${DESIUTIL_VERSION}
 module swap desispec/${DESISPEC_VERSION}
 module swap desitarget/${DESITARGET_VERSION}
