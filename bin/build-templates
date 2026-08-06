@@ -12,10 +12,10 @@ Usage
 -----
 ::
 
-  time python bin/build-templates --version 3.0.1 \\
+  time python bin/build-templates --version 2.2.0 \\
       --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates
 
-  time python bin/build-templates --version 3.0.1 \\
+  time python bin/build-templates --version 2.2.0 \\
       --templatedir $DESI_ROOT/users/ioannis/fastspecfit/templates \\
       --logmets=-1.,0.,0.3
 
