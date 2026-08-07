@@ -1208,6 +1208,10 @@ def _gather_tractorphot_onebrick(input_cat, legacysurveydir, radius_match, racol
             region = 'south'
         elif photsys == 'N':
             region = 'north'
+        else:
+            errmsg = f"Unrecognized PHOTSYS value '{photsys}'; expected 'N' or 'S'."
+            log.critical(errmsg)
+            raise ValueError(errmsg)
 
         #raslice = np.array(['{:06d}'.format(int(ra*1000))[:3] for ra in input_cat['RA']])
         tractorfile = os.path.join(legacysurveydir, region, 'tractor', brick[:3], f'tractor-{brick}.fits')
@@ -1361,6 +1365,7 @@ def gather_tractorphot(input_cat, racolumn='TARGET_RA', deccolumn='TARGET_DEC',
             raise ValueError(errmsg)
 
     # If these columns don't exist, add them with blank entries:
+    has_release = 'RELEASE' in input_cat.colnames
     COLS = [('RELEASE', (1,), '>i2'), ('BRICKID', (1,), '>i4'),
             ('BRICKNAME', (1,), '<U8'), ('BRICK_OBJID', (1,), '>i4'),
             ('PHOTSYS', (1,), '<U1')]
@@ -1426,7 +1431,7 @@ def gather_tractorphot(input_cat, racolumn='TARGET_RA', deccolumn='TARGET_DEC',
         out[I] = _gather_tractorphot_onebrick(input_cat[I], legacysurveydir, radius_match, racolumn,
                                               deccolumn, datamodel, restrict_region)
 
-    if 'RELEASE' in input_cat.colnames:
+    if has_release:
         _, _, check_release, _, _, _ = decode_targetid(input_cat['TARGETID'])
         bug = np.where(out['RELEASE'] != check_release)[0]
         if len(bug) > 0:
@@ -1441,6 +1446,7 @@ def gather_tractorphot(input_cat, racolumn='TARGET_RA', deccolumn='TARGET_DEC',
                 I = np.where(onebrickname == input_cat['BRICKNAME'][bug])[0]
                 bugout[I] = _gather_tractorphot_onebrick(input_cat[bug][I], legacysurveydir, radius_match, racolumn, deccolumn,
                                                          datamodel, restrict_region)
+            out[bug] = bugout
 
     if columns is not None:
         if type(columns) is not list:
