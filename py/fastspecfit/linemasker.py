@@ -318,7 +318,8 @@ class LineMasker(object):
                        initsigma_broad=None, initsigma_narrow=None,
                        initsigma_balmer_broad=None, initvshift_broad=None,
                        initvshift_narrow=None, initvshift_balmer_broad=None,
-                       niter=2, nsigma_mask=5., debug_plots=False):
+                       niter=2, nsigma_mask=5., debug_plots=False,
+                       return_patchfit=False):
         """Generate a mask which identifies pixels impacted by emission lines.
 
         Parameters
@@ -361,6 +362,14 @@ class LineMasker(object):
         debug_plots : :class:`bool`, optional
             If ``True``, write per-patch and per-line diagnostic PNG files.
             Default is ``False``.
+        return_patchfit : :class:`bool`, optional
+            If ``True``, include a ``patchfit`` entry in the returned
+            dictionary with the per-patch model arrays (``parameters``,
+            ``bestfit``, ``contfit``, ``patchMap``, ``linetable``,
+            ``noises``, ``linesnrs``, ``camerapix``) for the adopted
+            (broad or narrow-only) fit-in-patches solution, i.e., the same
+            arrays used to build the ``qa-patches-*.png`` debug figure.
+            Default is ``False``.
 
         Returns
         -------
@@ -368,7 +377,8 @@ class LineMasker(object):
             Dictionary with fitted line-width and velocity-shift scalars for
             broad, narrow, and broad-Balmer populations, a ``balmerbroad``
             boolean flag, and ``coadd_linepix`` mapping each line name to its
-            pixel indices in the coadded spectrum.
+            pixel indices in the coadded spectrum. If ``return_patchfit=True``,
+            also contains ``patchfit`` (see above).
 
         """
         from astropy.table import vstack
@@ -393,7 +403,8 @@ class LineMasker(object):
 
         def fit_patches(continuum_patches, patchMap, linemodel,
                         testBalmerBroad=False, minsnr=1.5, modelname='',
-                        suffix='nobroad', debug_plots=False):
+                        suffix='nobroad', debug_plots=False,
+                        return_patchfit=False):
             """Iteratively fit all the lines in patches."""
 
             linesigmas = np.zeros(nline)
@@ -692,7 +703,20 @@ class LineMasker(object):
                 plt.close()
                 log.info(f'Wrote {pngfile}')
 
-            return linefit, contfit, residuals, final_linesigmas, final_linevshifts, maxsnrs
+            patchfit = None
+            if return_patchfit:
+                patchfit = {
+                    'parameters': parameters,
+                    'bestfit': bestfit,
+                    'contfit': contfit,
+                    'patchMap': patchMap,
+                    'linetable': linetable,
+                    'noises': noises,
+                    'linesnrs': linesnrs,
+                    'camerapix': camerapix,
+                }
+
+            return linefit, contfit, residuals, final_linesigmas, final_linevshifts, maxsnrs, patchfit
 
 
         # main function begins here
@@ -749,21 +773,23 @@ class LineMasker(object):
 
         # Need to pass copies of continuum_patches and patchMap because they can
         # get modified dynamically by fit_patches.
-        linefit_nobroad, contfit_nobroad, residuals_nobroad, linesigmas_nobroad, linevshifts_nobroad, maxsnrs_nobroad = \
+        linefit_nobroad, contfit_nobroad, residuals_nobroad, linesigmas_nobroad, linevshifts_nobroad, maxsnrs_nobroad, patchfit_nobroad = \
             fit_patches(continuum_patches.copy(), patchMap.copy(),
                         linemodel_nobroad, testBalmerBroad=False,
                         debug_plots=debug_plots, suffix='nobroad',
-                        modelname='narrow lines only')
+                        modelname='narrow lines only',
+                        return_patchfit=return_patchfit)
 
         # Only fit with broad Balmer lines if at least one patch contains a
         # broad line.
         B = contfit_nobroad['balmerbroad']
         if np.any(B):
-            linefit_broad, contfit_broad, residuals_broad, linesigmas_broad, linevshifts_broad, maxsnrs_broad = \
+            linefit_broad, contfit_broad, residuals_broad, linesigmas_broad, linevshifts_broad, maxsnrs_broad, patchfit_broad = \
                 fit_patches(continuum_patches.copy(), patchMap.copy(),
                             linemodel_broad, testBalmerBroad=True,
                             debug_plots=debug_plots, suffix='broad',
-                            modelname='narrow+broad lines')
+                            modelname='narrow+broad lines',
+                            return_patchfit=return_patchfit)
 
             # if a broad Balmer line is well-detected, take its linewidth
             if maxsnrs_broad[2] > minsnr_balmer_broad:
@@ -773,6 +799,7 @@ class LineMasker(object):
                 finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_broad
                 finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_broad
                 maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_broad
+                patchfit = patchfit_broad
             else:
                 log.debug(f'Adopting narrow Balmer-line masking: S/N(broad Balmer) ' + \
                           f'{maxsnrs_broad[2]:.1f} < {minsnr_balmer_broad:.1f}')
@@ -780,12 +807,14 @@ class LineMasker(object):
                 finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_nobroad
                 finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_nobroad
                 maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_nobroad
+                patchfit = patchfit_nobroad
         else:
             log.debug(f'Adopting narrow Balmer-line masking: no Balmer lines in wavelength range.')
             residuals = residuals_nobroad
             finalsigma_broad, finalsigma_narrow, finalsigma_balmer_broad = linesigmas_nobroad
             finalvshift_broad, finalvshift_narrow, finalvshift_balmer_broad = linevshifts_nobroad
             maxsnr_broad, maxsnr_narrow, maxsnr_balmer_broad = maxsnrs_nobroad
+            patchfit = patchfit_nobroad
 
         log.debug(f'Masking line-widths: broad {finalsigma_broad:.0f} km/s; narrow {finalsigma_narrow:.0f} km/s; ' + \
                   f'broad Balmer {finalsigma_balmer_broad:.0f} km/s.')
@@ -948,5 +977,8 @@ class LineMasker(object):
             'balmerbroad': np.any(contfit_nobroad['balmerbroad']), # True = one or more broad Balmer line in range
             'coadd_linepix': linepix,
         }
+
+        if return_patchfit:
+            out['patchfit'] = patchfit
 
         return out
