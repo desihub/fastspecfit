@@ -5,6 +5,7 @@ Change Log
 3.6.1 (not released yet)
 ------------------------
 
+* Minor bug fix in ``photometry.gather_tractorphot`` [`PR #280`_].
 * Abandoned ``3.0.x`` templates with ``R=10000`` in favor of ``2.2.0``
   templates with ``R=3000`` [`PR #279`_].
 * New LCDM cosmology class and CLI; re-organized ``argparse`` help
@@ -12,6 +13,7 @@ Change Log
 * More flexible ``build-templates`` script and improved header
   metadata [`PR #277`_].
 
+.. _`PR #280`: https://github.com/desihub/fastspecfit/pull/280
 .. _`PR #279`: https://github.com/desihub/fastspecfit/pull/279
 .. _`PR #278`: https://github.com/desihub/fastspecfit/pull/278
 .. _`PR #277`: https://github.com/desihub/fastspecfit/pull/277
