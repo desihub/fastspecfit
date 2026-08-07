@@ -5,11 +5,14 @@ Change Log
 3.6.1 (not released yet)
 ------------------------
 
+* Abandoned ``3.0.x`` templates with ``R=10000`` in favor of ``2.2.0``
+  templates with ``R=3000`` [`PR #279`_].
 * New LCDM cosmology class and CLI; re-organized ``argparse`` help
   messages [`PR #278`_].
 * More flexible ``build-templates`` script and improved header
   metadata [`PR #277`_].
 
+.. _`PR #279`: https://github.com/desihub/fastspecfit/pull/279
 .. _`PR #278`: https://github.com/desihub/fastspecfit/pull/278
 .. _`PR #277`: https://github.com/desihub/fastspecfit/pull/277
 
