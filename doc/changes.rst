@@ -6,8 +6,9 @@ Change Log
 ------------------------
 
 * Minor bug fix in ``photometry.gather_tractorphot`` [`PR #280`_].
-* Abandoned ``3.0.x`` templates with ``R=10000`` in favor of ``2.2.0``
-  templates with ``R=3000`` [`PR #279`_].
+* Switched to ``2.2.0`` templates with ``R=3000`` in lieu of the
+  ``3.0.x`` templates (with ``R=10000``) used in ``3.6.0`` [`PR
+  #279`_].
 * New LCDM cosmology class and CLI; re-organized ``argparse`` help
   messages [`PR #278`_].
 * More flexible ``build-templates`` script and improved header
