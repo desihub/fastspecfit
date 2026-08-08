@@ -2,8 +2,12 @@
 Change Log
 ==========
 
-3.6.1 (not released yet)
+3.6.2 (not released yet)
 ------------------------
+*
+
+3.6.1 (2026-08-07)
+------------------
 
 * Minor bug fix in ``photometry.gather_tractorphot`` [`PR #280`_].
 * Switched to ``2.2.0`` templates with ``R=3000`` in lieu of the
