@@ -18,7 +18,8 @@ from fastspecfit.util import trapz, C_LIGHT, FLUXNORM
 releasedict = {3000: 'S', 4000: 'N', 5000: 'S', 6000: 'N', 7000: 'S', 7999: 'S',
                8000: 'S', 8001: 'N', 9000: 'S', 9001: 'N', 9002: 'S', 9003: 'N',
                9004: 'S', 9005: 'N', 9006: 'S', 9007: 'N', 9008: 'S', 9009: 'N',
-               9010: 'S', 9011: 'N', 9012: 'S', 9013: 'N', 10000: 'S'}
+               9010: 'S', 9011: 'N', 9012: 'S', 9013: 'N', 10000: 'S', 10099: 'S',
+               11000: 'S', 11001: 'N', 11010: 'S', 11011: 'N'}
 
 
 # Default rest-frame vacuum wavelengths (Angstrom) of prominent emission
@@ -1477,6 +1478,10 @@ def _gather_tractorphot_onebrick(input_cat, legacysurveydir, radius_match, racol
             region = 'south'
         elif photsys == 'N':
             region = 'north'
+        else:
+            errmsg = f"Unrecognized PHOTSYS value '{photsys}'; expected 'N' or 'S'."
+            log.critical(errmsg)
+            raise ValueError(errmsg)
 
         #raslice = np.array(['{:06d}'.format(int(ra*1000))[:3] for ra in input_cat['RA']])
         tractorfile = os.path.join(legacysurveydir, region, 'tractor', brick[:3], f'tractor-{brick}.fits')
@@ -1630,6 +1635,7 @@ def gather_tractorphot(input_cat, racolumn='TARGET_RA', deccolumn='TARGET_DEC',
             raise ValueError(errmsg)
 
     # If these columns don't exist, add them with blank entries:
+    has_release = 'RELEASE' in input_cat.colnames
     COLS = [('RELEASE', (1,), '>i2'), ('BRICKID', (1,), '>i4'),
             ('BRICKNAME', (1,), '<U8'), ('BRICK_OBJID', (1,), '>i4'),
             ('PHOTSYS', (1,), '<U1')]
@@ -1695,7 +1701,7 @@ def gather_tractorphot(input_cat, racolumn='TARGET_RA', deccolumn='TARGET_DEC',
         out[I] = _gather_tractorphot_onebrick(input_cat[I], legacysurveydir, radius_match, racolumn,
                                               deccolumn, datamodel, restrict_region)
 
-    if 'RELEASE' in input_cat.colnames:
+    if has_release:
         _, _, check_release, _, _, _ = decode_targetid(input_cat['TARGETID'])
         bug = np.where(out['RELEASE'] != check_release)[0]
         if len(bug) > 0:
@@ -1710,6 +1716,7 @@ def gather_tractorphot(input_cat, racolumn='TARGET_RA', deccolumn='TARGET_DEC',
                 I = np.where(onebrickname == input_cat['BRICKNAME'][bug])[0]
                 bugout[I] = _gather_tractorphot_onebrick(input_cat[bug][I], legacysurveydir, radius_match, racolumn, deccolumn,
                                                          datamodel, restrict_region)
+            out[bug] = bugout
 
     if columns is not None:
         if type(columns) is not list:

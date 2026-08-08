@@ -103,16 +103,16 @@ class Templates(object):
 
     # SPS template constants (used by build-templates)
     # https://github.com/moustakas/fsps/tree/master/SPECTRA/C3K_R10K#readme
-    R_C3K = 10000.  # [lambda/FWHM]; C3K_R10K resolution in the rest-frame optical
+    R_C3K = 3000.  # [lambda/FWHM]; C3K_R10K resolution in the rest-frame optical
     PIXKMS = C_LIGHT / (R_C3K * 2.)  # [km/s]; native pixel spacing (oversample=2)
     PIXKMS_BOUNDS = (3500., 9800.)
     # Gaussian sigma of C3K templates: σ = c/(R·2√(2 ln 2))
-    SIGMA_C3K = C_LIGHT / (R_C3K * np.sqrt(8. * np.log(2.))) # 12.7 [km/s]
+    SIGMA_C3K = C_LIGHT / (R_C3K * np.sqrt(8. * np.log(2.))) # 42.3 [km/s]
 
     AGN_PIXKMS = 75.  # [km/s]
     AGN_PIXKMS_BOUNDS = (1075., 3090.)
 
-    DEFAULT_TEMPLATEVERSION = '3.0.0'
+    DEFAULT_TEMPLATEVERSION = '2.2.0'
     DEFAULT_IMF = 'chabrier'
 
     # highest vdisp for which we attempt to use cached FFTs
