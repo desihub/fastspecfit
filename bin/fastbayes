@@ -1,0 +1,13 @@
+#!/usr/bin/env python
+
+"""Fit broadband photometry against a pre-synthesized Bayesian SSP grid.
+
+See ``fastspecfit.fastbayes`` for the fitting algorithm, and
+``bin/build-bayesian-templates`` / ``bin/build-bayesian-photometry`` for
+building the required grid file.
+
+"""
+from fastspecfit.fastbayes import fastbayes
+
+if __name__ == '__main__':
+    fastbayes()

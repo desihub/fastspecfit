@@ -1,0 +1,741 @@
+#!/usr/bin/env python
+
+"""Build a large grid of FSPS stellar population synthesis templates for
+FastSpecFit's Bayesian grid-based, broadband-photometry-only fitting
+mode.
+
+Each grid point is a complete, fully specified stellar population model: a
+three-epoch Dense Basis star formation history, dust attenuation,
+reradiated dust emission, and (optionally significant) AGN torus emission
+are all computed by FSPS itself and baked directly into the output
+spectrum.
+
+Usage
+-----
+::
+
+  time python bin/build-bayesian-templates --gridnumber 001 \\
+      --templatedir $FTEMPLATES_DIR/bayesian --mp 32
+
+  time python bin/build-bayesian-templates --gridnumber 002 \\
+      --templatedir $FTEMPLATES_DIR/bayesian --paramsfile /path/to/my-grid.yaml --mp 32
+
+``--mp`` sets the number of worker processes used to build the grid (each
+worker gets its own ``fsps.StellarPopulation`` instance -- FSPS state
+can't be shared across processes); default is 1 (serial).
+
+``--gridnumber`` is purely a filename/provenance label (embedded in the
+output filename and the ``GRIDNUM`` header keyword); it has no other
+connection to ``--paramsfile``. To guard against accidentally overwriting
+a grid file with a *different* grid design under the same ``--gridnumber``
+(and thus the same output filename), a sha256 hash of the resolved
+grid-parameter YAML's content is stored as the ``GRIDPHSH`` header
+keyword; if an output file already exists for the requested ``--imf``/
+``--gridnumber`` and its ``GRIDPHSH`` disagrees with the one about to be
+written, the script refuses to proceed (raises rather than silently
+overwriting) unless ``--force`` is given. In short: pick a fresh
+``--gridnumber`` for each distinct grid design; reuse a ``--gridnumber``
+only to rebuild the *same* design (e.g. after an FSPS/library update).
+
+Grid Design
+-----------
+Each grid point is a complete Dense Basis (Iyer & Gawiser 2017) SFH,
+tertile form: ``age`` is the total time since the onset of star formation
+(FSPS ``tage``), and ``t33frac``/``t67frac`` are stick-broken fractions
+that place the two interior tertile boundaries -- ``t33 = t33frac*age``,
+``t67 = t33 + t67frac*(age - t33)`` -- guaranteeing ``0 < t33 < t67 <
+age`` for any grid values, so every combination on the ``age``/
+``t33frac``/``t67frac`` axes is a valid model (no rejected/invalid
+combinations). The resulting three segments ``[0,t33]``, ``[t33,t67]``,
+``[t67,age]`` each carry exactly 1/3 of the total mass formed, and are
+passed to FSPS as a tabular SFH (``sfh=3``) -- a three-step SFR(t)
+function built directly on FSPS's native forward-time-since-onset
+convention, so ``tage = age`` with no lookback-time translation needed
+(see :func:`_build_one_model`). This replaces galaxy-scale mutually-
+exclusive age bins (only one bin ever "on" at a time, degenerate with an
+arbitrarily-confined burst) with a genuine three-epoch SFH shape.
+
+Spectra are computed with a Charlot & Fall (2000)-style power-law dust
+attenuation curve (``dust_type=0``, fixed ``dust_index`` -- the same
+slope as ``fastspec``/``fastphot``'s own attenuation curve,
+:func:`fastspecfit.templates.Templates.klambda` -- with ``dust1`` left at
+its FSPS default of 0.0, i.e. no separate birth-cloud attenuation
+component, and ``dust2`` (``tau``) as a free diffuse optical depth axis),
+reradiated dust emission (``add_dust_emission=True``, Draine & Li 2007
+templates), and AGN torus emission (Nenkova et al. 2008 templates, via
+FSPS's own ``fagn``/``agn_tau`` parameters). Nebular line and continuum
+emission are also included directly in the spectrum
+(``add_neb_emission=True``, ``add_neb_continuum=True``).
+
+The grid's free axes -- which parameters vary, how many grid points each
+gets, and how those points are spaced -- are no longer hard-coded here:
+they are read from a YAML parameter file (bundled default:
+``fastspecfit/data/bayesian-grid.yaml``; override with ``--paramsfile``),
+so different grid designs (more/fewer points, a different axis
+combination entirely, a different prior shape for a given axis) are a
+config-file change, not a code change. See that file's header comment
+for the full axis schema (``kind: fixed | linspace | logspace |
+exp_quantile | zero_plus_logspace``, plus ``log``/``param``/
+``param_transform``/``outname``/``label``). The YAML also carries two
+fixed (non-gridded) FSPS parameters applied to every model: ``dust_index``
+and ``agn_tau``.
+
+One grid-design constraint is baked into the code (not YAML-configurable,
+since it follows directly from the physical model rather than being a
+tunable grid choice): any axis with an exact-zero grid point (e.g. a
+``tau``/``fagn``-style ``exp_quantile``/``zero_plus_logspace`` axis) must
+have ``log: false`` in the YAML -- ``log10(0)`` is undefined, and
+:mod:`fastspecfit.fastbayes`'s sub-grid parabola refinement requires a
+well-defined coordinate for every axis. The ``age``/``t33frac``/
+``t67frac`` axis names themselves are hard-coded (the SFH construction
+looks them up by name), unlike every other axis, which is generic.
+
+Output Files
+------------
+``<templatedir>/bayesian-templates-{imf}-{gridnumber}.fits``
+
+``FLUX`` (Primary HDU, float32 [nwave x nmodel])
+    Continuity-bin SFH spectra (stellar continuum + nebular emission +
+    dust attenuation + reradiated dust emission + AGN torus emission) in
+    units of erg/s/cm2/Angstrom at 10 pc per solar mass formed. ``IMF``,
+    ``GRIDNUM``, and the adopted solar metallicity (``ZSUN``, against
+    which the ``zzsun`` axis is defined) are plain header keywords.
+    Software/library provenance (loaded module versions,
+    ``$FTEMPLATES_DIR``, python-fsps version and commit hash, and the
+    FSPS isochrone, spectral, and dust-emission libraries in use) is
+    recorded via ``desiutil.depend`` as ``DEPNAMnn``/``DEPVERnn`` keyword
+    pairs, mirroring ``bin/build-templates``.
+
+``WAVE`` (float64 [nwave])
+    Native (unmodified) FSPS vacuum wavelength array in Angstroms.
+
+``METADATA`` (table, nmodel rows)
+    Per-model grid parameters: one column per axis (named by that axis's
+    ``name`` in the parameter YAML -- ``age``, ``t33frac``, ``t67frac``,
+    plus ``zzsun``, ``tau``, ``umin``, ``gamma``, ``qpah``, ``fagn`` for
+    the bundled default), the derived Dense Basis tertile boundaries
+    ``t33``/``t67`` (Gyr, informational only -- not grid axes themselves),
+    ``sfr`` (Msun/yr per Msun formed, precomputed here rather than at
+    ``fastbayes`` runtime as this template's three-segment SFH integrated
+    against the trailing ``SFR_AVG_WINDOW_GYR`` window -- the same
+    windowed-average convention as ``fastspecfit.continuum``'s
+    ``_get_sps_properties``, generalized from a single age-bin template to
+    a three-segment SFH), and ``mstar`` (surviving stellar mass fraction
+    per solar mass formed); plus, for
+    ``fastbayes``'s cheap per-object LOGL_*/DN4000_MODEL uncertainty
+    estimates (see :class:`fastspecfit.fastbayes.BayesianGrid`), the
+    precomputed rest-frame ``dn4000_model`` index and one
+    ``<lumkey>_permass`` column (linear, per solar mass formed) for each
+    of :data:`fastspecfit.fastbayes.LUM_KEYS`.
+
+``AXES`` (table, one row per grid axis, in grid order)
+    ``name``, ``log`` (whether :mod:`fastspecfit.fastbayes` refines/
+    reports this axis in log10 space), ``outname`` (FASTBAYES output
+    column name), and ``label`` (QA figure LaTeX label) for every axis,
+    read directly from the parameter YAML -- this is what lets
+    :class:`fastspecfit.fastbayes.BayesianGrid` recover the grid's axis
+    list, order, and log-ness for an arbitrary axis combination without
+    re-parsing YAML at fit time.
+
+Notes
+-----
+* See ``bin/build-templates`` for FSPS/python-fsps installation
+  instructions.
+
+"""
+import os, sys, time, hashlib
+import numpy as np
+import fitsio
+import fsps
+
+from astropy.io import fits
+from astropy.table import Table
+
+from fastspecfit.photometry import Photometry
+from fastspecfit.util import C_LIGHT, MPPool
+from fastspecfit.fastbayes import LUM_KEYS, LUM_WAVES, _PC_CM, _LSUN
+
+# Averaging window for the precomputed SFR proxy (see build_bayesian_grid),
+# matching the 100 Myr convention used for the main (tabular-SFH) templates
+# in fastspecfit.continuum._get_sps_properties.
+SFR_AVG_WINDOW_GYR = 0.1 # [Gyr] = 100 Myr
+
+# Adopted solar metallicity (custom C3K_R10K), against which the zzsun axis
+# is defined; a physical constant, not a per-grid tunable.
+ZSUN = 0.0134
+
+
+def _load_grid_params(paramsfile=None):
+    """Load the grid axis-definition YAML file (bundled default or an
+    explicit override).
+
+    Parameters
+    ----------
+    paramsfile : :class:`str` or None, optional
+        Full path to a grid-parameter YAML file. Defaults to the bundled
+        ``fastspecfit/data/bayesian-grid.yaml`` when ``None``.
+
+    Returns
+    -------
+    params : :class:`dict`
+        Parsed YAML content (``axes`` list plus fixed FSPS parameters).
+    paramsfile : :class:`str`
+        Resolved path actually used, for provenance.
+
+    """
+    import yaml
+    from importlib import resources
+
+    if paramsfile is None:
+        paramsfile = str(resources.files('fastspecfit').joinpath('data/bayesian-grid.yaml'))
+    if not os.path.isfile(paramsfile):
+        errmsg = f'Grid parameter file not found: {paramsfile}'
+        raise FileNotFoundError(errmsg)
+
+    with open(paramsfile) as fh:
+        params = yaml.safe_load(fh)
+
+    return params, paramsfile
+
+
+def _grid_params_hash(paramsfile):
+    """Short content hash of a grid-parameter YAML file, for the
+    ``GRIDPHSH`` header keyword (see :func:`main`'s ``--gridnumber``/
+    ``--force`` overwrite guard)."""
+    with open(paramsfile, 'rb') as fh:
+        return hashlib.sha256(fh.read()).hexdigest()[:16]
+
+
+def _exponential_quantile_grid(npts, theta):
+    """Quantile points of an Exponential(theta) distribution.
+
+    Uses equal-probability-mass bin centers (``p_i = (i-0.5)/npts`` for
+    ``i=1..npts``), i.e. each returned point is the median of its own
+    ``1/npts``-probability slice of the distribution -- point density
+    then follows the distribution's pdf, concentrating resolution where
+    the (assumed) prior expects most galaxies to lie.
+
+    Parameters
+    ----------
+    npts : :class:`int`
+        Number of quantile points.
+    theta : :class:`float`
+        Mean (scale) of the Exponential distribution.
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Quantile values, ascending, shape ``(npts,)``.
+
+    """
+    p = (np.arange(1, npts + 1) - 0.5) / npts
+    return -theta * np.log(1. - p)
+
+
+def _axis_fixed(cfg):
+    """Explicit list of grid values (``kind: fixed``)."""
+    return np.asarray(cfg['values'], dtype='f8')
+
+
+def _axis_linspace(cfg):
+    """``npts`` linearly spaced values in ``[min, max]`` (``kind: linspace``)."""
+    npts = cfg['npts']
+    return cfg['min'] + (cfg['max'] - cfg['min']) * np.arange(npts) / np.float64(max(npts - 1, 1))
+
+
+def _axis_logspace(cfg):
+    """``npts`` log-uniformly spaced values in ``[min, max]`` (``kind: logspace``)."""
+    npts = cfg['npts']
+    lo, hi = np.log10(cfg['min']), np.log10(cfg['max'])
+    return 10.**(lo + (hi - lo) * np.arange(npts) / np.float64(max(npts - 1, 1)))
+
+
+def _axis_exp_quantile(cfg):
+    """Exact zero plus ``npts``-1 quantiles of an Exponential(``theta``)
+    distribution (``kind: exp_quantile``); see
+    :func:`_exponential_quantile_grid`. Point density follows an actual
+    continuous prior shape -- peaked at zero, falling off toward high
+    values -- rather than an ad hoc spacing convention."""
+    return np.concatenate(([0.], _exponential_quantile_grid(cfg['npts'] - 1, cfg['theta'])))
+
+
+def _axis_zero_plus_logspace(cfg):
+    """Exact zero plus ``npts``-1 log-spaced values in ``[min, max]``
+    (``kind: zero_plus_logspace``)."""
+    return np.concatenate(([0.], np.logspace(np.log10(cfg['min']), np.log10(cfg['max']), cfg['npts'] - 1)))
+
+
+_AXIS_BUILDERS = {
+    'fixed': _axis_fixed,
+    'linspace': _axis_linspace,
+    'logspace': _axis_logspace,
+    'exp_quantile': _axis_exp_quantile,
+    'zero_plus_logspace': _axis_zero_plus_logspace,
+}
+
+# Hard-coded (not YAML-configurable) Dense Basis SFH axis names; see module
+# docstring's "Grid Design" section.
+_SFH_AXIS_NAMES = ('age', 't33frac', 't67frac')
+
+_IMF_DICT = {'salpeter': 0, 'chabrier': 1, 'kroupa': 2}
+
+_worker_sp = None # per-worker fsps.StellarPopulation instance; set by _init_worker
+
+
+def _init_worker(imf, dust_index):
+    """``MPPool`` worker initializer: build this worker's own
+    ``fsps.StellarPopulation`` instance (FSPS state can't be shared across
+    processes)."""
+    global _worker_sp
+    _worker_sp = fsps.StellarPopulation(
+        compute_vega_mags=False,
+        zcontinuous=1,
+        add_dust_emission=True,
+        add_neb_emission=True,
+        add_neb_continuum=True,
+        imf_type=_IMF_DICT[imf],
+        dust_type=0,            # power-law (Charlot & Fall 2000-style)
+        dust_index=dust_index,  # fixed slope, matching fastspec/fastphot
+        sfh=3,                  # tabular SFH
+    )
+
+
+def _build_one_model(imodel, age, t33, t67, sfr1, sfr2, sfr3, agn_tau, paramvals):
+    """Build a single Dense Basis tertile-SFH model spectrum (``MPPool``
+    worker function).
+
+    Parameters
+    ----------
+    imodel : :class:`int`
+        Flattened grid index, passed through unchanged so the parent
+        process can scatter this result into the right row.
+    age, t33, t67 : :class:`float`
+        Dense Basis tertile boundaries [Gyr]; ``0 < t33 < t67 < age``.
+    sfr1, sfr2, sfr3 : :class:`float`
+        Constant SFR in each of the three tertile segments [Msun/yr, per
+        Msun formed].
+    agn_tau : :class:`float`
+        Fixed AGN torus optical depth.
+    paramvals : :class:`dict`
+        ``{fsps_param_name: value}`` for this model's non-SFH axes.
+
+    Returns
+    -------
+    imodel : :class:`int`
+    flux : :class:`numpy.ndarray` (float32)
+        [erg/s/cm2/Angstrom at 10 pc per solar mass formed]
+    mstar : :class:`float`
+        Surviving stellar mass fraction per solar mass formed.
+    dn4000 : :class:`float`
+        Rest-frame Dn(4000) index.
+    lum_permass : :class:`dict`
+        ``{lumkey: value}`` for each of :data:`fastspecfit.fastbayes.LUM_KEYS`
+        (linear, per solar mass formed).
+
+    """
+    global _worker_sp
+    sp = _worker_sp
+
+    for pname, val in paramvals.items():
+        sp.params[pname] = val
+    sp.params['agn_tau'] = agn_tau
+
+    # Encode the three-segment SFR(t) step function as a piecewise-linear
+    # tabular SFH: each interior boundary is doubled with a tiny epsilon
+    # offset (scaled to the smallest segment duration, so it's always well
+    # inside every segment regardless of the age/fraction combination) to
+    # approximate an instantaneous jump between segments.
+    d1, d2, d3 = t33, t67 - t33, age - t67
+    eps = 1e-3 * min(d1, d2, d3) # [Gyr]
+
+    fspstime = np.array([0., t33, t33 + eps, t67, t67 + eps, age])
+    sfh_rate = np.array([sfr1, sfr1, sfr2, sfr2, sfr3, sfr3])
+    sp.set_tabular_sfh(fspstime, sfh_rate)
+
+    wave, flux = sp.get_spectrum(tage=age, peraa=True)
+
+    lodot = 3.828e33                # [erg/s]
+    tenpc2 = (10. * 3.085678e18)**2 # [cm2]
+    flux = flux * lodot / (4. * np.pi * tenpc2) # [erg/s/cm2/A/Msun at 10pc]
+
+    mstar = sp.stellar_mass
+    if mstar < 0:
+        errmsg = 'Stellar mass is negative!'
+        raise ValueError(errmsg)
+
+    # Rest-frame Dn(4000) and monochromatic luminosities per solar mass
+    # formed, precomputed once here (rather than once per DESI object at
+    # fastbayes runtime) since both depend only on this template's
+    # intrinsic rest-frame spectral shape, not on redshift or observed
+    # photometry -- see fastspecfit.fastbayes.fastbayes_one for the
+    # equivalent per-object formula this mirrors.
+    fourpi_10pc2 = 4. * np.pi * (10. * _PC_CM)**2 # [cm2]
+    dn4000 = Photometry.get_dn4000(wave, flux, rest=True)[0]
+
+    lum_permass = {}
+    for cwave, lumkey in zip(LUM_WAVES, LUM_KEYS):
+        cflux = np.interp(cwave, wave, flux) * fourpi_10pc2 # [erg/s/A]
+        if 'LOGL_' in lumkey:
+            val = cflux * cwave / _LSUN / 1e10 # [1e10 Lsun]
+        else:
+            val = cflux * cwave**2 / (C_LIGHT * 1e13) / 1e28 # [1e-28 erg/s/Hz]
+        lum_permass[lumkey] = val
+
+    return imodel, flux.astype(np.float32), mstar, dn4000, lum_permass
+
+
+def build_bayesian_grid(imf='chabrier', paramsfile=None, mp=1):
+    """Build the Bayesian Dense Basis SFH template grid.
+
+    Parameters
+    ----------
+    imf : :class:`str`, optional
+        Initial mass function passed to ``python-fsps``. One of
+        ``'chabrier'`` (default), ``'salpeter'``, or ``'kroupa'``.
+    paramsfile : :class:`str` or None, optional
+        Grid axis-definition YAML file. Defaults to the bundled
+        ``fastspecfit/data/bayesian-grid.yaml`` when ``None``.
+    mp : :class:`int`, optional
+        Number of worker processes (each with its own
+        ``fsps.StellarPopulation`` instance) used to build the grid.
+        Default is 1 (serial).
+
+    Returns
+    -------
+    meta : :class:`astropy.table.Table`
+        Per-model grid parameters and derived quantities (see module
+        docstring).
+    wave : :class:`numpy.ndarray`
+        Native FSPS vacuum wavelength array in Angstroms.
+    fluxes : :class:`numpy.ndarray`
+        Model spectra of shape (nmodel, nwave) in units of
+        erg/s/cm2/Angstrom at 10 pc per solar mass formed.
+    libraries : :class:`tuple` of :class:`str`
+        FSPS isochrone, spectral, and dust-emission library names, as
+        reported by ``fsps.StellarPopulation.libraries``.
+    axes : :class:`list` of :class:`dict`
+        Resolved axis definitions, in grid order (for the ``AXES`` FITS
+        extension).
+    dust_index, agn_tau : :class:`float`
+        Fixed FSPS parameters used for every grid point, for header
+        provenance.
+    paramsfile_used : :class:`str`
+        Resolved grid-parameter YAML path actually used.
+
+    """
+    params, paramsfile_used = _load_grid_params(paramsfile)
+    axes = params['axes']
+    dust_index = float(params['dust_index'])
+    agn_tau = float(params['agn_tau'])
+
+    axis_names = [a['name'] for a in axes]
+    missing = sorted(set(_SFH_AXIS_NAMES) - set(axis_names))
+    if missing:
+        errmsg = (f"Grid parameter file {paramsfile_used} is missing required Dense "
+                  f"Basis SFH axes: {missing}.")
+        raise ValueError(errmsg)
+
+    for axis in axes:
+        if axis['kind'] not in _AXIS_BUILDERS:
+            errmsg = (f"Unknown axis kind '{axis['kind']}' for axis '{axis['name']}'; "
+                      f'must be one of {sorted(_AXIS_BUILDERS.keys())}.')
+            raise ValueError(errmsg)
+
+    axis_grids = [_AXIS_BUILDERS[a['kind']](a) for a in axes]
+
+    models_dtype = np.dtype([(a['name'], np.float64) for a in axes])
+
+    dims = tuple(len(g) for g in axis_grids)
+    models = np.zeros(dims, dtype=models_dtype)
+
+    for multi_index in np.ndindex(dims):
+        model = models[multi_index]
+        for iaxis, axis in enumerate(axes):
+            model[axis['name']] = axis_grids[iaxis][multi_index[iaxis]]
+
+    models = models.flatten()
+    nsed = len(models)
+
+    # Dense Basis tertile boundaries (Gyr); see module docstring's "Grid
+    # Design" section. Stick-breaking guarantees 0 < t33 < t67 < age for
+    # any (age, t33frac, t67frac) grid combination.
+    age_gyr = models['age']
+    t33 = models['t33frac'] * age_gyr
+    t67 = t33 + models['t67frac'] * (age_gyr - t33)
+
+    meta = Table()
+    for axis in axes:
+        meta[axis['name']] = models[axis['name']]
+    meta['t33'] = t33 # [Gyr]; informational only, not a grid axis
+    meta['t67'] = t67 # [Gyr]; informational only, not a grid axis
+    meta['mstar'] = np.zeros(nsed, 'f4')
+    meta['dn4000_model'] = np.zeros(nsed, 'f4')
+    for lumkey in LUM_KEYS:
+        meta[f'{lumkey.lower()}_permass'] = np.zeros(nsed, 'f4')
+
+    # Each of the three tertile segments carries exactly 1/3 of the total
+    # mass formed (1 Msun, matching the existing "per Msun formed"
+    # convention).
+    d1_gyr, d2_gyr, d3_gyr = t33, t67 - t33, age_gyr - t67
+    sfr1 = (1. / 3.) / (d1_gyr * 1e9) # [Msun/yr per Msun formed]
+    sfr2 = (1. / 3.) / (d2_gyr * 1e9)
+    sfr3 = (1. / 3.) / (d3_gyr * 1e9)
+
+    # Precompute the trailing-SFR_AVG_WINDOW_GYR-averaged SFR proxy per
+    # template (Msun/yr per Msun formed), generalizing the windowed-overlap
+    # formula in fastspecfit.continuum._get_sps_properties from a single
+    # age-bin template to this three-segment SFH: each segment's overlap
+    # with the trailing window [max(age-window, 0), age], weighted by that
+    # segment's SFR, summed and divided by the window itself.
+    window_lo = np.maximum(age_gyr - SFR_AVG_WINDOW_GYR, 0.) # [Gyr]
+    def _overlap(lo, hi):
+        return np.clip(np.minimum(hi, age_gyr) - np.maximum(lo, window_lo), 0., None)
+    overlap1 = _overlap(0., t33)
+    overlap2 = _overlap(t33, t67)
+    overlap3 = _overlap(t67, age_gyr)
+    # overlap1/2/3 are in Gyr; sfr1/2/3 are already in Msun/yr (their own
+    # Gyr-to-yr conversion is baked into their definition above), so no
+    # further unit conversion is needed here: the Gyr-to-yr factor that
+    # would apply to the numerator (converting overlap to years) and to
+    # the denominator (converting the window to years) cancels exactly.
+    meta['sfr'] = ((overlap1 * sfr1 + overlap2 * sfr2 + overlap3 * sfr3) /
+                  SFR_AVG_WINDOW_GYR) # [Msun/yr per Msun formed]
+
+    print('Instantiating the StellarPopulation object...', end='')
+    t0 = time.time()
+    sp = fsps.StellarPopulation(
+        compute_vega_mags=False,
+        zcontinuous=1,
+        add_dust_emission=True,
+        add_neb_emission=True,
+        add_neb_continuum=True,
+        imf_type=_IMF_DICT[imf],
+        dust_type=0,
+        dust_index=dust_index,
+        sfh=3,
+    )
+    print('...took {:.3f} sec'.format((time.time() - t0)))
+    libraries = tuple(lib.decode() for lib in sp.libraries)
+    wave = sp.wavelengths
+    npix = len(wave)
+    print('FSPS libraries: {}'.format(', '.join(libraries)))
+    del sp # per-worker copies (see _init_worker) do the actual model building
+
+    # Precompute each model's fixed FSPS sp.params dict once (cheap, pure
+    # Python) so worker processes only need to apply, not derive, them.
+    paramvals_list = []
+    for imodel in range(nsed):
+        paramvals = {}
+        for axis in axes:
+            if 'param' not in axis:
+                continue
+            val = models[axis['name']][imodel]
+            transform = axis.get('param_transform', 'linear')
+            if transform == 'log10':
+                val = np.log10(val)
+            elif transform != 'linear':
+                errmsg = f"Unknown param_transform '{transform}' for axis '{axis['name']}'."
+                raise ValueError(errmsg)
+            paramvals[axis['param']] = val
+        paramvals_list.append(paramvals)
+
+    argdicts = [
+        dict(imodel=imodel, age=age_gyr[imodel], t33=t33[imodel], t67=t67[imodel],
+             sfr1=sfr1[imodel], sfr2=sfr2[imodel], sfr3=sfr3[imodel],
+             agn_tau=agn_tau, paramvals=paramvals_list[imodel])
+        for imodel in range(nsed)
+    ]
+
+    print(f'Creating {nsed} model spectra using {mp} worker(s)...')
+    t0 = time.time()
+
+    fluxes = np.zeros((nsed, npix), dtype=np.float32)
+
+    pool = MPPool(mp, initializer=_init_worker,
+                  init_argdict=dict(imf=imf, dust_index=dust_index))
+
+    # Chunk the work so progress can still be reported periodically --
+    # MPPool.starmap otherwise blocks until every model in the batch is done.
+    nchunks = int(np.clip(nsed // 5000, 1, 40))
+    chunks = np.array_split(np.arange(nsed), nchunks)
+
+    ndone = 0
+    for chunk in chunks:
+        results = pool.starmap(_build_one_model, [argdicts[i] for i in chunk])
+        for imodel, flux, mstar, dn4000, lum_permass in results:
+            fluxes[imodel, :] = flux
+            meta['mstar'][imodel] = mstar
+            meta['dn4000_model'][imodel] = dn4000
+            for lumkey, val in lum_permass.items():
+                meta[f'{lumkey.lower()}_permass'][imodel] = val
+
+        ndone += len(chunk)
+        rate = ndone / (time.time() - t0) # [models/sec]
+        remaining = (nsed - ndone) / rate / 60. # [min]
+        print('  {}/{} models ({:.1f}%) done in {:.1f} min; ~{:.1f} min remaining'.format(
+            ndone, nsed, 100. * ndone / nsed, (time.time() - t0) / 60., remaining))
+
+    pool.close()
+
+    print('Finished {} models in {:.3f} min'.format(nsed, (time.time() - t0) / 60.))
+
+    return meta, wave, fluxes, libraries, axes, dust_index, agn_tau, paramsfile_used
+
+
+def main(imf='chabrier', gridnumber=None, templatedir=None, paramsfile=None, cmdline=None,
+        force=False, mp=1):
+    """Build the Bayesian template grid and write the output FITS file.
+
+    Parameters
+    ----------
+    imf : :class:`str`, optional
+        Initial mass function. One of ``'chabrier'`` (default),
+        ``'salpeter'``, or ``'kroupa'``.
+    gridnumber : :class:`str`
+        Grid identifier (e.g., ``'001'``), embedded in the output
+        filename in place of a version string. Purely a filename/
+        provenance label -- not otherwise linked to ``paramsfile`` -- so
+        an existing output file for this ``imf``/``gridnumber`` is checked
+        against the resolved ``paramsfile``'s content hash before being
+        overwritten (see ``force``).
+    templatedir : :class:`str`
+        Root output directory; the FITS file is written directly to
+        ``<templatedir>/`` (flat -- no per-grid subdirectory, since the
+        filename already disambiguates by ``imf`` and ``gridnumber``).
+    paramsfile : :class:`str` or None, optional
+        Grid axis-definition YAML file; see :func:`build_bayesian_grid`.
+    mp : :class:`int`, optional
+        Number of worker processes used to build the grid; see
+        :func:`build_bayesian_grid`. Default is 1 (serial).
+    cmdline : :class:`str` or None, optional
+        Exact command-line invocation, recorded verbatim as the ``CMDLINE``
+        header keyword (in addition to the individual dependency/parameter
+        cards already written) for easier provenance at a glance. Left out
+        of the header entirely when ``None`` (e.g. calling :func:`main`
+        directly, not via the command line).
+    force : :class:`bool`, optional
+        If ``True``, overwrite an existing output file for this ``imf``/
+        ``gridnumber`` even if it was built from a different grid-parameter
+        file (different ``GRIDPHSH``). Default is ``False``.
+
+    Raises
+    ------
+    ValueError
+        If an output file already exists for this ``imf``/``gridnumber``
+        and was built from a grid-parameter file with different content
+        (different ``GRIDPHSH``), and ``force`` is ``False``.
+
+    """
+    from desiutil.depend import add_dependencies, possible_dependencies, setdep
+
+    if not os.path.isdir(templatedir):
+        os.makedirs(templatedir, exist_ok=True)
+    outfile = os.path.join(templatedir, f'bayesian-templates-{imf}-{gridnumber}.fits')
+
+    # Resolve the grid-parameter file and its content hash up front (cheap --
+    # just a YAML parse), so a --gridnumber/--paramsfile mismatch against an
+    # existing output file is caught before paying for the (potentially very
+    # slow) FSPS spectrum synthesis in build_bayesian_grid below.
+    _, paramsfile_used = _load_grid_params(paramsfile)
+    grid_hash = _grid_params_hash(paramsfile_used)
+
+    if not force and os.path.isfile(outfile):
+        old_hash = None
+        try:
+            old_hash = fitsio.FITS(outfile)[0].read_header().get('GRIDPHSH')
+        except Exception:
+            pass
+        if old_hash is not None and old_hash != grid_hash:
+            errmsg = (f"{outfile} already exists and was built from a different grid-parameter "
+                      f"file (existing GRIDPHSH '{old_hash}' != '{grid_hash}' for "
+                      f"'{paramsfile_used}'); refusing to overwrite a different grid design "
+                      "under the same --gridnumber/--imf. Pass --force to overwrite anyway, or "
+                      "use a different --gridnumber.")
+            raise ValueError(errmsg)
+
+    meta, wave, fluxes, libraries, axes, dust_index, agn_tau, paramsfile_used = \
+        build_bayesian_grid(imf=imf, paramsfile=paramsfile_used, mp=mp)
+
+    hduflux = fits.PrimaryHDU(fluxes)
+    hduflux.header['EXTNAME'] = 'FLUX'
+    hduflux.header['BUNIT'] = 'erg/(s cm2 Angstrom)'
+    hduflux.header['IMF'] = imf
+    hduflux.header['GRIDNUM'] = gridnumber
+    add_dependencies(hduflux.header, module_names=possible_dependencies+['fastspecfit'],
+                     envvar_names=('FTEMPLATES_DIR',))
+    # python-fsps isn't in possible_dependencies (so add_dependencies never
+    # auto-detects it), and the FSPS libraries in use aren't module versions
+    # at all but configuration choices baked into this specific grid file --
+    # both recorded explicitly here as dependency entries, mirroring
+    # bin/build-templates.
+    setdep(hduflux.header, 'PYFSPSV', fsps.__version__)
+    setdep(hduflux.header, 'FSPSHASH', fsps.fsps_version.commit_id)
+    setdep(hduflux.header, 'ISOCHRON', libraries[0])
+    setdep(hduflux.header, 'SPECLIB', libraries[1])
+    setdep(hduflux.header, 'DUSTLIB', libraries[2])
+    setdep(hduflux.header, 'GRIDPARF', os.path.abspath(paramsfile_used))
+    hduflux.header['GRIDPHSH'] = (grid_hash, 'sha256[:16] of the grid-parameter YAML content')
+    hduflux.header['ZSUN'] = (ZSUN, 'adopted solar metallicity (custom C3K_R10K)')
+    hduflux.header['AGNTAU'] = (agn_tau, 'fixed AGN torus optical depth (agn_tau)')
+    hduflux.header['DUSTIDX'] = (dust_index, 'fixed power-law attenuation slope (dust_index)')
+    if cmdline is not None:
+        # No comment: CMDLINE's value is an arbitrary-length full invocation
+        # string, and pairing it with a comment can silently truncate the
+        # comment once combined they exceed an 80-char FITS card (regardless
+        # of which FITS writer is used) -- the keyword name is self-
+        # explanatory on its own. Written last so it doesn't visually
+        # interrupt the compact bookkeeping cards above it.
+        hduflux.header['CMDLINE'] = cmdline
+
+    hduwave = fits.ImageHDU(wave)
+    hduwave.header['EXTNAME'] = 'WAVE'
+    hduwave.header['BUNIT'] = 'Angstrom'
+    hduwave.header['AIRORVAC'] = ('vac', 'vacuum wavelengths')
+
+    hdutable = fits.convenience.table_to_hdu(meta)
+    hdutable.header['EXTNAME'] = 'METADATA'
+    hdutable.header['IMF'] = imf
+
+    axes_table = Table()
+    axes_table['name'] = [a['name'] for a in axes]
+    axes_table['log'] = np.array([bool(a['log']) for a in axes])
+    axes_table['outname'] = [a['outname'] for a in axes]
+    axes_table['label'] = [a['label'] for a in axes]
+    hduaxes = fits.convenience.table_to_hdu(axes_table)
+    hduaxes.header['EXTNAME'] = 'AXES'
+
+    hx = fits.HDUList([hduflux, hduwave, hdutable, hduaxes])
+
+    print(f'Writing {len(meta)} model spectra to {outfile}')
+    hx.writeto(outfile, overwrite=True)
+
+
+if __name__ == '__main__':
+
+    import argparse
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--templatedir', default=None,
+                        help='Output directory (default $FTEMPLATES_DIR/bayesian)')
+    parser.add_argument('--gridnumber', required=True, help='Grid number/identifier (e.g., 001)')
+    parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
+                        help='Initial mass function')
+    parser.add_argument('--paramsfile', type=str, default=None,
+                        help='Grid axis-definition YAML file (default: the bundled '
+                        'fastspecfit/data/bayesian-grid.yaml)')
+    parser.add_argument('--force', action='store_true', help='Overwrite an existing output '
+                        'file for this --imf/--gridnumber even if it was built from a '
+                        'different --paramsfile (different GRIDPHSH).')
+    parser.add_argument('--mp', type=int, default=1, help='Number of worker processes to use '
+                        'to build the grid (each with its own fsps.StellarPopulation instance).')
+    args = parser.parse_args()
+
+    templatedir = args.templatedir
+    if templatedir is None:
+        templatedir = os.path.join(os.environ['FTEMPLATES_DIR'], 'bayesian')
+    templatedir = os.path.expandvars(templatedir)
+
+    cmdline = ' '.join([os.path.basename(sys.argv[0])] + sys.argv[1:])
+
+    main(imf=args.imf, gridnumber=args.gridnumber, templatedir=templatedir,
+        paramsfile=args.paramsfile, cmdline=cmdline, force=args.force, mp=args.mp)

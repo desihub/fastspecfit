@@ -1,0 +1,16 @@
+#!/usr/bin/env python
+
+"""Regenerate QA figures for a FASTBAYES output file, without repeating the fit.
+
+Reads back an already-written FASTBAYES output file (as produced by
+``bin/fastbayes``) and regenerates its per-object QA figures directly from
+that file -- no raw DESI spectra or redrock files are needed. Pass the same
+``--gridfile``/``--fphotofile`` used to produce that file (they are not read
+back from its header, since a grid built on one machine may be fit and
+QA'd on another). See ``fastspecfit.fastbayes.fastbayes_qa`` for details.
+
+"""
+from fastspecfit.fastbayes import fastbayes_qa
+
+if __name__ == '__main__':
+    fastbayes_qa()
