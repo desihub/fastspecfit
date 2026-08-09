@@ -9,6 +9,7 @@ import os, time
 import numpy as np
 from glob import glob
 import multiprocessing
+from concurrent.futures import ThreadPoolExecutor
 import fitsio
 from astropy.table import Table, vstack
 
@@ -48,7 +49,7 @@ def get_ntargets_one(specfile, htmldir_root, outdir_root, coadd_type='healpix',
 
 def findfiles(filedir, prefix='redrock', coadd_type=None, survey=None,
               program=None, healpix=None, tile=None, night=None,
-              gzip=False, sample=None):
+              gzip=False, sample=None, nthreads=1):
     """Find all DESI spectral files matching the given selection criteria.
 
     Parameters
@@ -78,6 +79,14 @@ def findfiles(filedir, prefix='redrock', coadd_type=None, survey=None,
         Input sample catalog; when provided, file paths are built directly
         from ``SURVEY``, ``PROGRAM``, and ``UNIQPIX`` (or ``HEALPIX``)
         columns.
+    nthreads : :class:`int`, optional
+        Number of threads used to resolve per-healpix-directory glob
+        patterns concurrently (``coadd_type in ('healpix', 'uniqpix')``,
+        no explicit ``healpix`` list). This step is dominated by
+        filesystem round-trip latency, not CPU, so threads (which release
+        the GIL during the underlying syscalls) give a real speedup even
+        under CPython. Default of 1 preserves the original sequential
+        behavior.
 
     Returns
     -------
@@ -112,19 +121,33 @@ def findfiles(filedir, prefix='redrock', coadd_type=None, survey=None,
         return thesefiles, ntargets
     elif coadd_type in ('healpix', 'uniqpix'):
         thesefiles = []
-        for onesurvey in np.atleast_1d(survey):
-            for oneprogram in np.atleast_1d(program):
-                log.info(f'Building file list for survey={onesurvey} and program={oneprogram}')
-                if healpix is not None:
+        if healpix is not None:
+            for onesurvey in np.atleast_1d(survey):
+                for oneprogram in np.atleast_1d(program):
+                    log.info(f'Building file list for survey={onesurvey} and program={oneprogram}')
                     for onepix in healpix:
                         _thesefiles = os.path.join(filedir, onesurvey, oneprogram, str(int(onepix)//100), onepix,
                                                    f'{prefix}-{onesurvey}-{oneprogram}-{onepix}.{fitssuffix}')
                         thesefiles.append(glob(_thesefiles))
-                else:
+        else:
+            # Collect every per-healpix-directory glob pattern across all
+            # survey/program combinations first, then resolve them
+            # concurrently -- this is the expensive part (one filesystem
+            # round trip per pattern) and is embarrassingly parallel.
+            patterns = []
+            for onesurvey in np.atleast_1d(survey):
+                for oneprogram in np.atleast_1d(program):
+                    log.info(f'Building file list for survey={onesurvey} and program={oneprogram}')
                     allpix = os.path.join(filedir, onesurvey, oneprogram, '*')
                     for onepix in glob(allpix):
-                        _thesefiles = os.path.join(onepix, '*', f'{prefix}-{onesurvey}-{oneprogram}-*.{fitssuffix}')
-                        thesefiles.append(glob(_thesefiles))
+                        patterns.append(os.path.join(onepix, '*', f'{prefix}-{onesurvey}-{oneprogram}-*.{fitssuffix}'))
+
+            if nthreads > 1 and len(patterns) > 1:
+                with ThreadPoolExecutor(max_workers=nthreads) as executor:
+                    thesefiles = list(executor.map(glob, patterns))
+            else:
+                thesefiles = [glob(pattern) for pattern in patterns]
+
         if len(thesefiles) > 0:
             thesefiles = np.array(sorted(np.unique(np.hstack(thesefiles))))
     elif coadd_type == 'cumulative':
@@ -174,7 +197,7 @@ def findfiles(filedir, prefix='redrock', coadd_type=None, survey=None,
 
 
 def plan_merge(outdir, outprefix, coadd_type, survey, program, healpix,
-               tile, night, sample=None, gzip=False):
+               tile, night, sample=None, gzip=False, nthreads=1):
     """Build the list of output files to be merged."""
     redrockfiles = None
     if sample is not None: # special case of an input catalog
@@ -182,17 +205,17 @@ def plan_merge(outdir, outprefix, coadd_type, survey, program, healpix,
     else:
         outfiles = findfiles(outdir, prefix=outprefix, coadd_type=coadd_type,
                              survey=survey, program=program, healpix=healpix,
-                             tile=tile, night=night, gzip=gzip)
+                             tile=tile, night=night, gzip=gzip, nthreads=nthreads)
     log.info(f'Found {len(outfiles)} {outprefix} files to be merged.')
     return redrockfiles, outfiles
 
 
 def plan_makeqa(outdir, htmldir, outprefix, coadd_type, survey, program,
-                healpix, tile, night, sample=None, gzip=False):
+                healpix, tile, night, sample=None, gzip=False, nthreads=1):
     """Build the list of output files and HTML directories for QA generation."""
     outfiles = findfiles(outdir, prefix=outprefix, coadd_type=coadd_type,
                          survey=survey, program=program, healpix=healpix,
-                         tile=tile, night=night, gzip=gzip)
+                         tile=tile, night=night, gzip=gzip, nthreads=nthreads)
     log.info(f'Found {len(outfiles)} {outprefix} files for QA.')
 
     #  Hack!--build the output directories and pass them in the 'redrockfiles'
@@ -214,7 +237,7 @@ def plan_makeqa(outdir, htmldir, outprefix, coadd_type, survey, program,
 def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
          survey=None, program=None, healpix=None, tile=None, night=None,
          sample=None, outdir_data='.', mp=1, merge=False, makeqa=False,
-         fastphot=False, overwrite=False):
+         fastphot=False, overwrite=False, nthreads=1):
     """Determine which files still need to be processed.
 
     Parameters
@@ -258,6 +281,10 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
     overwrite : :class:`bool`, optional
         If ``True``, include files that already have output. Default is
         ``False``.
+    nthreads : :class:`int`, optional
+        Number of threads used to resolve filesystem glob patterns
+        concurrently during planning (see :func:`findfiles`). Default of 1
+        preserves the original sequential behavior.
 
     Returns
     -------
@@ -320,7 +347,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         if merge:
             redrockfiles, outfiles = plan_merge(
                 outdir, outprefix, coadd_type, survey, program,
-                healpix, tile, night, sample=sample, gzip=gzip)
+                healpix, tile, night, sample=sample, gzip=gzip, nthreads=nthreads)
             if len(outfiles) == 0:
                 log.debug(f'No {outprefix} files in {outdir} found!')
                 return '', list(), list(), None
@@ -328,7 +355,7 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
         elif makeqa:
             redrockfiles, outfiles = plan_makeqa(
                 outdir, htmldir, outprefix, coadd_type, survey, program,
-                healpix, tile, night, sample=sample, gzip=gzip)
+                healpix, tile, night, sample=sample, gzip=gzip, nthreads=nthreads)
             if len(outfiles) == 0:
                 log.debug(f'No {outprefix} files in {outdir} left to do!')
                 return '', list(), list(), None
@@ -340,7 +367,8 @@ def plan(comm=None, specprod=None, specprod_dir=None, coadd_type='healpix',
             else:
                 redrockfiles = findfiles(specprod_dir, prefix='redrock', coadd_type=coadd_type,
                                          survey=survey, program=program,
-                                         healpix=healpix, tile=tile, night=night)
+                                         healpix=healpix, tile=tile, night=night,
+                                         nthreads=nthreads)
 
             # In principle, we could parallelize this piece of code...
             nfile = len(redrockfiles)

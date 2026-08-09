@@ -172,7 +172,7 @@ fi
 
 
 def query_remaining(specprod, coadd_type, survey, program, fastphot, healpix,
-                    outdir_data, mp=1):
+                    outdir_data, mp=1, plan_threads=16):
     """Return (redrockfiles, healpix_ids, ntargets) for files not yet processed."""
     from fastspecfit.mpi import plan
 
@@ -191,6 +191,7 @@ def query_remaining(specprod, coadd_type, survey, program, fastphot, healpix,
         mp=mp,
         fastphot=fastphot,
         overwrite=False,
+        nthreads=plan_threads,
     )
 
     if len(redrockfiles) == 0:
@@ -332,6 +333,10 @@ def main():
     parser.add_argument('--mp', type=int, default=16, help='Multiprocessing workers per MPI rank.')
     parser.add_argument('--time', default=None,
                         help='Wall time per job as HH:MM:SS; auto-estimated when omitted.')
+    parser.add_argument('--plan-threads', type=int, default=16, help='Number of threads used to list healpix '
+                        'directories concurrently while querying remaining work. This is filesystem I/O '
+                        'concurrency (safe to run on a login node), not compute parallelism, and is '
+                        'independent of --mp.')
 
     # Slurm metadata
     parser.add_argument('--account', default=_ACCOUNT)
@@ -361,7 +366,8 @@ def main():
     _, healpix_ids, ntargets = query_remaining(
         specprod=args.specprod, coadd_type=args.coadd_type,
         survey=args.survey, program=args.program, healpix=args.healpix,
-        fastphot=fastphot, outdir_data=outdir_data)
+        fastphot=fastphot, outdir_data=outdir_data,
+        plan_threads=args.plan_threads)
 
     if args.healpix is not None:
         requested = set(int(h) for h in args.healpix.split(','))

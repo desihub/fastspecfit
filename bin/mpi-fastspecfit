@@ -71,7 +71,8 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         coadd_type=args.coadd_type, survey=args.survey, program=args.program,
         healpix=args.healpix, tile=args.tile, night=args.night,
         makeqa=args.makeqa, mp=args.mp, fastphot=fastphot,
-        outdir_data=outdir_data, overwrite=args.overwrite, sample=sample)
+        outdir_data=outdir_data, overwrite=args.overwrite, sample=sample,
+        nthreads=args.plan_threads)
     if rank == 0:
         log.info(fsftime('plan', time.time()-t0))
         # If no work is left to do, let the other ranks know so they can return
@@ -277,6 +278,9 @@ def main():
     parallel_group = parser.add_argument_group('Parallelism')
     parallel_group.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
     parallel_group.add_argument('--mp-per-file', default=False, action='store_true', help='Run multiprocessing on one core per spectra file with multiple simultaneous files.')
+    parallel_group.add_argument('--plan-threads', type=int, default=16, help='Number of threads used to list healpix '
+                                'directories concurrently during planning (rank 0 only). This is filesystem I/O '
+                                'concurrency, not compute parallelism, and is independent of --mp.')
 
     merge_group = parser.add_argument_group('Merging')
     merge_group.add_argument('--merge', action='store_true', help='Merge all individual catalogs (for a given survey and program) into one large file.')
@@ -447,7 +451,7 @@ def main():
              healpix=args.healpix, tile=args.tile, night=args.night,
              makeqa=args.makeqa, mp=args.mp, fastphot=args.fastphot,
              outdir_data=outdir_data, overwrite=args.overwrite,
-             sample=sample)
+             sample=sample, nthreads=args.plan_threads)
     else:
         if args.profile:
             import cProfile
