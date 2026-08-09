@@ -88,11 +88,16 @@ _OUTDIR = (os.environ.get('OUTDIR_DATA')
 # Maximum wall-clock hours allowed for the chosen QOS (used when --time is not given).
 _MAX_HOURS = {'regular': 12, 'debug': 0.5, 'premium': 24}
 
-# Empirical throughput from loa benchmarks (sv3, --mp=16):
-#   dark:   ~8 s/obj/core  (~10 obj/min/core)
-#   bright: ~11 s/obj/core (~5 obj/min/core)
-# Value below is weighted for a 2:1 dark:bright mix.
-_OBJ_PER_MIN_PER_CORE = 8.0
+# Empirical throughput from the loa v3.6.1 production run (--mp=16), blended
+# across all programs/surveys:
+#   fastspec: ~6 s/obj/core (~10 obj/min/core)   — see loa-3.6.1-benchmarks.txt
+#   fastphot: ~0.56 s/obj/core (~107 obj/min/core) — see
+#             loa-3.6.1-projections-fastphot.txt (rescaled from iron/DR1;
+#             no direct fastphot v3.6.1 benchmark exists yet)
+# makeqa has no throughput benchmark; falls back to the fastspec rate as a
+# conservative default (QA reads fitted output rather than re-fitting, so
+# actual makeqa jobs should finish well inside this estimate).
+_OBJ_PER_MIN_PER_CORE = {'fastspec': 10.0, 'fastphot': 107.0, 'makeqa': 10.0}
 
 # ---------------------------------------------------------------------------
 
@@ -218,10 +223,10 @@ def balanced_partition(ntargets, njobs):
     return groups, totals
 
 
-def estimate_walltime(ntargets_total, nodes, mp, qos, padding=1.5):
+def estimate_walltime(ntargets_total, nodes, mp, qos, stage, padding=1.5):
     """Rough wall time estimate based on empirical throughput."""
     n_cores = nodes * 128
-    throughput = n_cores * _OBJ_PER_MIN_PER_CORE
+    throughput = n_cores * _OBJ_PER_MIN_PER_CORE[stage]
     minutes = ntargets_total / throughput * padding
     hours = max(1, int(np.ceil(minutes / 60)))
     hours = min(hours, _MAX_HOURS.get(qos, 12))
@@ -264,7 +269,7 @@ def generate_slurm(args, groups, group_totals, healpix_ids, ntargets):
         pixels_csv = ','.join(str(p) for p in sorted(group_pixels))
         pixel_flag = '--uniqpix' if args.coadd_type == 'uniqpix' else '--healpix'
 
-        walltime = args.time or estimate_walltime(int(total), args.nodes, args.mp, args.qos)
+        walltime = args.time or estimate_walltime(int(total), args.nodes, args.mp, args.qos, args.stage)
         job_name = f'{prefix}-{args.specprod}-job{job_index:0{idx_width}d}'
 
         slurm_file = os.path.join(args.outdir_scripts, f'{job_name}.slurm')
@@ -388,7 +393,7 @@ def main():
     print(f'\nPartition across {njobs} job(s)  '
           f'[imbalance: {max(totals)/max(min(totals), 1):.2f}x]:')
     for i, (g, t) in enumerate(nonempty, 1):
-        est = args.time or estimate_walltime(int(t), args.nodes, args.mp, args.qos)
+        est = args.time or estimate_walltime(int(t), args.nodes, args.mp, args.qos, args.stage)
         print(f'  Job {i:0{idx_width}d}: {len(g):5,d} pixels  {int(t):9,d} targets  est. walltime {est}')
 
     if args.plan:
