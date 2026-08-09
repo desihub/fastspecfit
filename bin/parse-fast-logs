@@ -13,20 +13,29 @@ from pathlib import Path
 def main():
     parser = argparse.ArgumentParser(
         description='Parse fastspecfit log files and report timing statistics.')
-    parser.add_argument('logdir',
-                        help='Top-level directory to search recursively for log files.')
+    parser.add_argument('logdir', nargs='+',
+                        help='One or more top-level directories to search recursively '
+                             'for log files (e.g., for shell brace expansion).')
     parser.add_argument('--pattern', default='*.log', metavar='GLOB',
                         help='Glob pattern for log files (default: %(default)s).')
     args = parser.parse_args()
 
-    logdir = Path(args.logdir)
-    if not logdir.is_dir():
-        print(f'Error: {logdir} is not a directory.', file=sys.stderr)
+    logdirs = []
+    for d in args.logdir:
+        logdir = Path(d)
+        if logdir.is_dir():
+            logdirs.append(logdir)
+        else:
+            print(f'Skipping {logdir}: not a directory.', file=sys.stderr)
+
+    if not logdirs:
+        print('Error: none of the given paths are directories.', file=sys.stderr)
         sys.exit(1)
 
-    logfiles = sorted(logdir.rglob(args.pattern))
+    logfiles = sorted(set().union(*(logdir.rglob(args.pattern) for logdir in logdirs)))
     if not logfiles:
-        print(f'No files matching "{args.pattern}" found under {logdir}.', file=sys.stderr)
+        dirlist = ', '.join(str(d) for d in logdirs)
+        print(f'No files matching "{args.pattern}" found under {dirlist}.', file=sys.stderr)
         sys.exit(1)
 
     from fastspecfit.util import parse_fsftime
@@ -105,7 +114,11 @@ def main():
     ]
 
     skip_msg = f', {n_skipped} skipped' if n_skipped else ''
-    print(f'\nParsed {n} log files{skip_msg} under {logdir}')
+    if len(logdirs) == 1:
+        where = f'under {logdirs[0]}'
+    else:
+        where = f'under {len(logdirs)} directories:\n  ' + '\n  '.join(str(d) for d in logdirs)
+    print(f'\nParsed {n} log files{skip_msg} {where}')
     print(f'Total objects: {total_obj:,}')
     print()
 
