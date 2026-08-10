@@ -25,11 +25,22 @@ Examples:
   # in production
   salloc -N 1 -C cpu -A desi -t 01:00:00 --qos interactive
   source ~/code/impy/bin/fastspecfit-env-nersc
-  srun --ntasks=64 validate-fast-vac --vacdir=$PSCRATCH/fastspecfit/loa-3.4.2/loa --mp 8
+  srun --ntasks=32 validate-fast-vac --vacdir=$PSCRATCH/fastspecfit/loa-3.4.2/loa \\
+      --mp 16 --plan-threads 16
+
+  --ntasks parallelizes the actual per-file validation (fitsverify + NaN
+  checks) and is the one that hits filesystem I/O limits on a single node
+  (32-64 is typically the ceiling; going higher rarely helps and can hurt).
+  --mp and --plan-threads both only speed up one-time, rank-0-only setup
+  steps that run before work is distributed to the other ranks (target-
+  counting and directory-listing, respectively); both are thread pools
+  sized for filesystem I/O concurrency, not CPU-bound compute, so they can
+  reasonably run higher than --ntasks without the same I/O ceiling, since
+  --plan-threads only touches metadata (glob/listdir) and --mp only reads
+  small file headers rather than full FITS data.
 
 """
 import hashlib
-import multiprocessing
 import os
 import re
 import shutil
@@ -37,6 +48,7 @@ import subprocess
 import argparse
 from pathlib import Path
 from glob import glob
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import fitsio
 
@@ -78,15 +90,69 @@ def _get_ntargets_vac(filepath):
         return 1
 
 
-def discover_vac_files(vacdir, surveys=None, programs=None):
+def detect_vac_prefix(vacdir):
+    """Return the single [(prefix, gzip)] pairing actually used by this VAC.
+
+    A fastspec VAC and a fastphot VAC live in entirely separate directories
+    and never coexist under the same vacdir, and each stage always uses a
+    fixed gzip setting (fastspec output is gzipped, fastphot is not), so
+    there are only two valid pairings to begin with -- not the four
+    (prefix, gzip) combinations a naive search would try. Checks
+    catalogs/ first (one cheap glob), then falls back to a shallow probe
+    of the healpix/spectra tree (depth-first, so it should hit a real
+    file within the first few directories). If neither finds anything
+    (e.g., an unusual or still-empty VAC), returns both valid pairings so
+    the caller falls back to searching for either.
+    """
+    catdir = os.path.join(vacdir, 'catalogs')
+    if os.path.isdir(catdir):
+        if glob(os.path.join(catdir, 'fastspec-*')):
+            return [('fastspec', True)]
+        if glob(os.path.join(catdir, 'fastphot-*')):
+            return [('fastphot', False)]
+
+    for subdir in ('healpix', 'spectra'):
+        base = os.path.join(vacdir, subdir)
+        if not os.path.isdir(base):
+            continue
+        for root, _, files in os.walk(base):
+            for name in files:
+                if name.startswith('fastspec-'):
+                    return [('fastspec', True)]
+                if name.startswith('fastphot-'):
+                    return [('fastphot', False)]
+
+    log.warning(f'Could not auto-detect fastspec vs. fastphot under {vacdir}; '
+                'searching for both.')
+    return [('fastspec', True), ('fastphot', False)]
+
+
+def discover_vac_files(vacdir, surveys=None, programs=None, prefix='auto', nthreads=1):
     """Discover all VAC FITS files to validate.
 
     Uses ``findfiles`` from ``fastspecfit.mpi`` for healpix/spectra trees
     (supports survey/program filtering) and a simple glob for catalogs/.
     Surveys and programs are auto-detected from the directory tree when not
     provided.
+
+    Parameters
+    ----------
+    prefix : {'auto', 'fastspec', 'fastphot'}
+        Which stage's output to search for. ``'auto'`` (default) detects it
+        via :func:`detect_vac_prefix` rather than searching for both stages
+        (a fastspec VAC and a fastphot VAC never share a vacdir).
+    nthreads : int
+        Threads used to resolve per-healpix-directory glob patterns
+        concurrently; see ``fastspecfit.mpi.findfiles``.
     """
     from fastspecfit.mpi import findfiles
+
+    if prefix == 'auto':
+        pairs = detect_vac_prefix(vacdir)
+    elif prefix == 'fastspec':
+        pairs = [('fastspec', True)]
+    else:
+        pairs = [('fastphot', False)]
 
     all_files = []
 
@@ -111,12 +177,12 @@ def discover_vac_files(vacdir, surveys=None, programs=None):
             local_programs = sorted(progs)
 
         log.info(f'Searching {subdir} tree: surveys={local_surveys}, programs={local_programs}')
-        for prefix in ('fastspec', 'fastphot'):
-            for gzip in (True, False):
-                found = findfiles(pixel_base, prefix=prefix, coadd_type=coadd_type,
-                                  survey=local_surveys, program=local_programs, gzip=gzip)
-                if len(found) > 0:
-                    all_files.extend(found)
+        for one_prefix, one_gzip in pairs:
+            found = findfiles(pixel_base, prefix=one_prefix, coadd_type=coadd_type,
+                              survey=local_surveys, program=local_programs,
+                              gzip=one_gzip, nthreads=nthreads)
+            if len(found) > 0:
+                all_files.extend(found)
 
     catdir = os.path.join(vacdir, 'catalogs')
     if os.path.isdir(catdir):
@@ -233,7 +299,9 @@ def run_validation(args, comm, rank, size):
     if rank == 0:
         all_files = discover_vac_files(args.vacdir,
                                        surveys=args.survey,
-                                       programs=args.program)
+                                       programs=args.program,
+                                       prefix=args.prefix,
+                                       nthreads=args.plan_threads)
         if len(all_files) == 0:
             log.error(f'No FITS files found under {args.vacdir}')
             if comm:
@@ -241,8 +309,8 @@ def run_validation(args, comm, rank, size):
             return 1
         log.info(f'Found {len(all_files):,d} FITS file(s). Counting targets (mp={args.mp})...')
         if args.mp > 1:
-            with multiprocessing.Pool(args.mp) as P:
-                ntargets = np.array(P.map(_get_ntargets_vac, all_files))
+            with ThreadPoolExecutor(max_workers=args.mp) as executor:
+                ntargets = np.array(list(executor.map(_get_ntargets_vac, all_files)))
         else:
             ntargets = np.array([_get_ntargets_vac(f) for f in all_files])
         log.info(f'Total targets: {np.sum(ntargets):,d}')
@@ -395,11 +463,20 @@ def _parse_args():
     p.add_argument('--vacdir', type=str, required=True,
                    help='top-level VAC directory')
     p.add_argument('--mp', type=int, default=1,
-                   help='number of multiprocessing workers on rank 0 for target counting (default 1)')
+                   help='number of threads on rank 0 for target counting (I/O concurrency, '
+                        'not compute; default 1)')
     p.add_argument('--survey', nargs='+', default=None,
                    help='survey(s) to validate (default: all detected)')
     p.add_argument('--program', nargs='+', default=None,
                    help='program(s) to validate (default: all detected)')
+    p.add_argument('--prefix', choices=['auto', 'fastspec', 'fastphot'], default='auto',
+                   help='which stage output to search for (default: auto-detect; a fastspec VAC '
+                        'and a fastphot VAC never share a vacdir, so this normally does not need '
+                        'to be set explicitly)')
+    p.add_argument('--plan-threads', type=int, default=16,
+                   help='number of threads used to list healpix directories concurrently during '
+                        'file discovery (rank 0 only); filesystem I/O concurrency, not compute '
+                        'parallelism, and independent of --mp (default 16)')
     p.add_argument('--write-checksums', action='store_true',
                    help='write per-directory SHA-256 checksum files instead of validating')
     p.add_argument('--dr', type=str, default=None,
