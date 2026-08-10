@@ -2,8 +2,10 @@
 """Validate all FITS files in a FastSpecFit VAC directory, or write checksums.
 
 Validation: runs fitsverify and checks for NaN/inf values in all non-MODELS
-BinTable extensions.  Work is distributed across MPI ranks weighted by number
-of targets per file.
+BinTable extensions.  Work is split evenly by file count across MPI ranks
+(MODELS -- the one extension whose cost scales badly with row count -- is
+skipped, so per-file validation cost is close to flat; weighting by target
+count isn't worth the cost of opening every file up front to find out).
 
 Checksums: computes SHA-256 digests for every file in each directory under
 catalogs/ and healpix/, writing one checksum file per directory.  Directories
@@ -25,19 +27,16 @@ Examples:
   # in production
   salloc -N 1 -C cpu -A desi -t 01:00:00 --qos interactive
   source ~/code/impy/bin/fastspecfit-env-nersc
-  srun --ntasks=32 validate-fast-vac --vacdir=$PSCRATCH/fastspecfit/loa-3.4.2/loa \\
-      --mp 16 --plan-threads 16
+  srun --ntasks=64 validate-fast-vac --vacdir=$PSCRATCH/fastspecfit/loa-v2.0/loa \\
+      --plan-threads 16
 
   --ntasks parallelizes the actual per-file validation (fitsverify + NaN
   checks) and is the one that hits filesystem I/O limits on a single node
   (32-64 is typically the ceiling; going higher rarely helps and can hurt).
-  --mp and --plan-threads both only speed up one-time, rank-0-only setup
-  steps that run before work is distributed to the other ranks (target-
-  counting and directory-listing, respectively); both are thread pools
-  sized for filesystem I/O concurrency, not CPU-bound compute, so they can
-  reasonably run higher than --ntasks without the same I/O ceiling, since
-  --plan-threads only touches metadata (glob/listdir) and --mp only reads
-  small file headers rather than full FITS data.
+  --plan-threads only speeds up the one-time, rank-0-only directory-listing
+  step that runs before work is distributed; it's a thread pool sized for
+  filesystem metadata I/O (glob/listdir), not CPU-bound compute, so it can
+  reasonably run higher than --ntasks without hitting the same I/O ceiling.
 
 """
 import hashlib
@@ -48,7 +47,6 @@ import subprocess
 import argparse
 from pathlib import Path
 from glob import glob
-from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import fitsio
 
@@ -63,8 +61,14 @@ log = getFastspecLogger()
 def _distribute(items, weights, comm, rank, size):
     """Rank-0 partitions *items* by *weights* and sends each rank its slice.
 
+    Pass ``weights=None`` for a simple even split by count, with no
+    per-item cost to compute upfront (see module docstring).
+
     Returns the slice assigned to the calling rank.
     """
+    if weights is None:
+        weights = np.ones(len(items)) if items is not None else None
+
     if comm and size > 1:
         if rank == 0:
             from desispec.parallel import weighted_partition
@@ -81,14 +85,6 @@ def _distribute(items, weights, comm, rank, size):
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
-
-def _get_ntargets_vac(filepath):
-    """Return the row count of the first BinTable extension; fall back to 1."""
-    try:
-        return fitsio.FITS(filepath)[1].get_nrows()
-    except Exception:
-        return 1
-
 
 def detect_vac_prefix(vacdir):
     """Return the single [(prefix, gzip)] pairing actually used by this VAC.
@@ -307,24 +303,23 @@ def run_validation(args, comm, rank, size):
             if comm:
                 comm.Abort(1)
             return 1
-        log.info(f'Found {len(all_files):,d} FITS file(s). Counting targets (mp={args.mp})...')
-        if args.mp > 1:
-            with ThreadPoolExecutor(max_workers=args.mp) as executor:
-                ntargets = np.array(list(executor.map(_get_ntargets_vac, all_files)))
-        else:
-            ntargets = np.array([_get_ntargets_vac(f) for f in all_files])
-        log.info(f'Total targets: {np.sum(ntargets):,d}')
+        log.info(f'Found {len(all_files):,d} FITS file(s).')
     else:
-        all_files = ntargets = None
+        all_files = None
 
-    my_files = _distribute(all_files, ntargets, comm, rank, size)
+    my_files = _distribute(all_files, None, comm, rank, size)
     log.info(f'Rank {rank}: validating {len(my_files):,d} file(s).')
 
     n_checked = n_issues = 0
     checked_dirs = set()
+    nfiles = len(my_files)
+    # ~20 progress lines per rank regardless of how many files it got, so a
+    # single file's worth of log output doesn't drown in 800+ per-file lines
+    # (which is what --ntasks=64 on ~50k files would otherwise produce) while
+    # a --ntasks=1 debug run still gets periodic checkpoints, not silence.
+    checkpoint = max(1, nfiles // 20)
     for filepath in my_files:
         filepath = Path(filepath)
-        log.info(f'Rank {rank} [{n_checked + 1}/{len(my_files)}]: {filepath.name}')
 
         # Check the parent directory for extraneous files (once per directory).
         if filepath.parent not in checked_dirs:
@@ -341,6 +336,10 @@ def run_validation(args, comm, rank, size):
             n_issues += 1
             for msg in problems:
                 log.warning(msg)
+
+        if n_checked % checkpoint == 0 or n_checked == nfiles:
+            log.info(f'Rank {rank}: {n_checked:,d}/{nfiles:,d} file(s) checked '
+                     f'({n_issues:,d} with issues so far).')
 
     counts = comm.gather((n_checked, n_issues), root=0) if comm else [(n_checked, n_issues)]
     if rank == 0:
@@ -462,9 +461,6 @@ def _parse_args():
     p = argparse.ArgumentParser()
     p.add_argument('--vacdir', type=str, required=True,
                    help='top-level VAC directory')
-    p.add_argument('--mp', type=int, default=1,
-                   help='number of threads on rank 0 for target counting (I/O concurrency, '
-                        'not compute; default 1)')
     p.add_argument('--survey', nargs='+', default=None,
                    help='survey(s) to validate (default: all detected)')
     p.add_argument('--program', nargs='+', default=None,
