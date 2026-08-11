@@ -156,7 +156,7 @@ args+=" --mp=$mp"
 args+=" --outdir-data={outdir_data}"
 args+=" {pixel_flag}=$PIXELS"
 {stage_flag}
-srun_args="--nodes=$N --ntasks=$ntasks --cpus-per-task=$cpus_per_task --cpu-bind=$cpu_bind"
+srun_args="--nodes=$N --ntasks=$ntasks --cpus-per-task=$cpus_per_task --cpu-bind=$cpu_bind{distribution_flag}"
 
 cmd="time srun $srun_args $mpiscript $args"
 echo "$cmd"
@@ -258,6 +258,7 @@ def generate_slurm(args, groups, group_totals, healpix_ids, ntargets):
 
     env_script = os.path.abspath(args.env_script)
     outdir_data = os.path.expandvars(args.outdir_data)
+    distribution_flag = f' --distribution={args.distribution}' if args.distribution else ''
 
     slurm_files = []
     job_index = 0
@@ -300,6 +301,7 @@ def generate_slurm(args, groups, group_totals, healpix_ids, ntargets):
             pixel_flag=pixel_flag,
             stage_flag=stage_flag,
             stage_flag_warmup=stage_flag_warmup,
+            distribution_flag=distribution_flag,
         )
 
         with open(slurm_file, 'w') as fh:
@@ -331,6 +333,12 @@ def main():
     parser.add_argument('--njobs', type=int, default=1, help='Number of Slurm jobs to generate.')
     parser.add_argument('--nodes', type=int, default=32, help='Perlmutter CPU nodes per job.')
     parser.add_argument('--mp', type=int, default=16, help='Multiprocessing workers per MPI rank.')
+    parser.add_argument('--distribution', default=None,
+                        help='Optional Slurm --distribution value for the srun line (e.g. "cyclic"), '
+                             'to control rank-to-node placement. Under the default block distribution, '
+                             'weighted_partition\'s greedy packing can put the largest files on the same '
+                             'node; cyclic spreads consecutive ranks across nodes instead. Useful for '
+                             'scopes with a few oversized files (e.g. survey=special). Omitted by default.')
     parser.add_argument('--time', default=None,
                         help='Wall time per job as HH:MM:SS; auto-estimated when omitted.')
     parser.add_argument('--plan-threads', type=int, default=16, help='Number of threads used to list healpix '
