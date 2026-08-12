@@ -57,11 +57,15 @@ def _survey_groups(files, specprod, script):
 
 def _format_size(sz):
     if sz < 1024**2:
-        return '{:.3g} KB'.format(sz / 1024)
+        value, unit = sz / 1024, 'KB'
     elif sz < 1024**3:
-        return '{:.3g} MB'.format(sz / 1024**2)
+        value, unit = sz / 1024**2, 'MB'
     else:
-        return '{:.3g} GB'.format(sz / 1024**3)
+        value, unit = sz / 1024**3, 'GB'
+    # Fixed-point with ~3 significant figures; {:g} would fall back to
+    # scientific notation (e.g. "1.01e+03 MB") once value >= 1000.
+    decimals = max(0, 2 - len(str(int(value))))
+    return '{:.{decimals}f} {unit}'.format(value, decimals=decimals, unit=unit)
 
 
 def gather_catalogs(vacdir, specprod, script):
