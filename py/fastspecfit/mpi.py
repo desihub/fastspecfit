@@ -548,6 +548,7 @@ def _domerge(outfiles, outprefix=None, specprod=None, coadd_type=None,
     deps2['FPHOTO_FILE'] = None
     deps2['FTEMPLATES_FILE'] = None
     deps2['EMLINES_FILE'] = None
+    deps2['CONSTRAINTS_FILE'] = None
     for key in deps2.keys():
         if hasdep(hdr, key):
             deps2[key] = getdep(hdr, key)
@@ -555,7 +556,8 @@ def _domerge(outfiles, outprefix=None, specprod=None, coadd_type=None,
     write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=mergefile,
                       specprod=specprod, coadd_type=coadd_type, fastphot=fastphot,
                       fphotofile=deps2['FPHOTO_FILE'], template_file=deps2['FTEMPLATES_FILE'],
-                      emlinesfile=deps2['EMLINES_FILE'], inputz=deps['INPUTZ'],
+                      emlinesfile=deps2['EMLINES_FILE'], constraintsfile=deps2['CONSTRAINTS_FILE'],
+                      inputz=deps['INPUTZ'],
                       ignore_photometry=deps['NOPHOTO'], broadlinefit=deps['BRDLFIT'],
                       constrain_age=deps['CONSAGE'], use_quasarnet=deps['USEQNET'],
                       no_smooth_continuum=deps['NOSCORR'], split_hdu=split_hdu,
