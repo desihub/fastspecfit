@@ -30,8 +30,8 @@ Data Content & Access
 Data from the ``Iron`` VAC can be accessed at any of the following links:
 
 ============================ ==================================================================
-Data url                     https://data.desi.lbl.gov/public/dr1/vac/dr1/fastspecfit/iron/v3.0
-`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/dr1/vac/dr1/fastspecfit/iron/v3.0``
+Data url                     https://data.desi.lbl.gov/public/dr1/vac/dr1/fastspecfit/iron/v4.0
+`NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/dr1/vac/dr1/fastspecfit/iron/v4.0``
 ============================ ==================================================================
 
 For more information regarding the content and organization of the VAC, please
@@ -59,70 +59,70 @@ fastspec-iron-cmx-other.fits 12 MB     2,762
 ============================= ========= =================
 File Name                     File Size Number of Targets
 ============================= ========= =================
-fastspec-iron-sv1-backup.fits 14.5 MB   3,331
+fastspec-iron-sv1-backup.fits 15 MB     3,331
 fastspec-iron-sv1-bright.fits 542 MB    126,650
-fastspec-iron-sv1-dark.fits   997 MB    233,202
+fastspec-iron-sv1-dark.fits   999 MB    233,202
 fastspec-iron-sv1-other.fits  146 MB    34,112
-Total (sv1)                   1.66 GB   397,295
+Total (sv1)                   1.7 GB    397,295
 ============================= ========= =================
 
 ============================= ========= =================
 File Name                     File Size Number of Targets
 ============================= ========= =================
 fastspec-iron-sv2-backup.fits 647 KB    105
-fastspec-iron-sv2-bright.fits 199 MB    46,486
-fastspec-iron-sv2-dark.fits   225 MB    52,690
-Total (sv2)                   425 MB    99,281
+fastspec-iron-sv2-bright.fits 200 MB    46,486
+fastspec-iron-sv2-dark.fits   226 MB    52,690
+Total (sv2)                   426 MB    99,281
 ============================= ========= =================
 
 ============================= ========= =================
 File Name                     File Size Number of Targets
 ============================= ========= =================
 fastspec-iron-sv3-backup.fits 6.7 MB    1,524
-fastspec-iron-sv3-bright.fits 1.11 GB   265,293
-fastspec-iron-sv3-dark.fits   2.48 GB   592,191
+fastspec-iron-sv3-bright.fits 1.1 GB    265,293
+fastspec-iron-sv3-dark.fits   2.5 GB    592,191
 Total (sv3)                   3.6 GB    859,008
 ============================= ========= =================
 
 ================================= ========= =================
 File Name                         File Size Number of Targets
 ================================= ========= =================
-fastspec-iron-special-backup.fits 2.49 MB   552
+fastspec-iron-special-backup.fits 2.5 MB    552
 fastspec-iron-special-bright.fits 181 MB    43,261
-fastspec-iron-special-dark.fits   62.6 MB   14,954
+fastspec-iron-special-dark.fits   63 MB     14,954
 fastspec-iron-special-other.fits  178 MB    42,064
-Total (special)                   424 MB    100,831
+Total (special)                   425 MB    100,831
 ================================= ========= =================
 
 ========================================== ========= =================
 File Name                                  File Size Number of Targets
 ========================================== ========= =================
-fastspec-iron-main-backup.fits             63.4 MB   15,163
-fastspec-iron-main-bright-nside1-hp00.fits 427 MB    101,838
-fastspec-iron-main-bright-nside1-hp01.fits 4.16 GB   1,017,041
-fastspec-iron-main-bright-nside1-hp02.fits 5.56 GB   1,358,627
-fastspec-iron-main-bright-nside1-hp03.fits 1.65 GB   403,581
-fastspec-iron-main-bright-nside1-hp04.fits 4.02 GB   981,600
-fastspec-iron-main-bright-nside1-hp05.fits 1.23 GB   301,057
-fastspec-iron-main-bright-nside1-hp06.fits 5.51 GB   1,347,464
-fastspec-iron-main-bright-nside1-hp07.fits 2.76 GB   673,711
+fastspec-iron-main-backup.fits             64 MB     15,163
+fastspec-iron-main-bright-nside1-hp00.fits 428 MB    101,838
+fastspec-iron-main-bright-nside1-hp01.fits 4.2 GB    1,017,041
+fastspec-iron-main-bright-nside1-hp02.fits 5.6 GB    1,358,627
+fastspec-iron-main-bright-nside1-hp03.fits 1.7 GB    403,581
+fastspec-iron-main-bright-nside1-hp04.fits 4.0 GB    981,600
+fastspec-iron-main-bright-nside1-hp05.fits 1.2 GB    301,057
+fastspec-iron-main-bright-nside1-hp06.fits 5.5 GB    1,347,464
+fastspec-iron-main-bright-nside1-hp07.fits 2.8 GB    673,711
 fastspec-iron-main-bright-nside1-hp08.fits 343 MB    81,734
-fastspec-iron-main-bright-nside1-hp09.fits 280 MB    66,856
+fastspec-iron-main-bright-nside1-hp09.fits 281 MB    66,856
 fastspec-iron-main-bright-nside1-hp10.fits 191 MB    45,570
-fastspec-iron-main-bright-nside1-hp11.fits 280 MB    66,848
-fastspec-iron-main-dark-nside1-hp00.fits   1.44 GB   352,447
-fastspec-iron-main-dark-nside1-hp01.fits   4.58 GB   1,118,746
-fastspec-iron-main-dark-nside1-hp02.fits   6.96 GB   1,699,122
-fastspec-iron-main-dark-nside1-hp03.fits   901 MB    214,658
-fastspec-iron-main-dark-nside1-hp04.fits   7.13 GB   1,739,317
-fastspec-iron-main-dark-nside1-hp05.fits   2.37 GB   579,026
-fastspec-iron-main-dark-nside1-hp06.fits   11.7 GB   2,851,879
-fastspec-iron-main-dark-nside1-hp07.fits   4.23 GB   1,032,151
-fastspec-iron-main-dark-nside1-hp08.fits   910 MB    216,757
-fastspec-iron-main-dark-nside1-hp09.fits   657 MB    156,454
+fastspec-iron-main-bright-nside1-hp11.fits 281 MB    66,848
+fastspec-iron-main-dark-nside1-hp00.fits   1.4 GB    352,447
+fastspec-iron-main-dark-nside1-hp01.fits   4.6 GB    1,118,746
+fastspec-iron-main-dark-nside1-hp02.fits   7.0 GB    1,699,122
+fastspec-iron-main-dark-nside1-hp03.fits   903 MB    214,658
+fastspec-iron-main-dark-nside1-hp04.fits   7.1 GB    1,739,317
+fastspec-iron-main-dark-nside1-hp05.fits   2.4 GB    579,026
+fastspec-iron-main-dark-nside1-hp06.fits   12 GB     2,851,879
+fastspec-iron-main-dark-nside1-hp07.fits   4.2 GB    1,032,151
+fastspec-iron-main-dark-nside1-hp08.fits   911 MB    216,757
+fastspec-iron-main-dark-nside1-hp09.fits   658 MB    156,454
 fastspec-iron-main-dark-nside1-hp10.fits   313 MB    74,463
 fastspec-iron-main-dark-nside1-hp11.fits   171 MB    40,609
-Total (main)                               67.7 GB   16,536,719
+Total (main)                               68 GB     16,536,719
 ========================================== ========= =================
 
 The following tables summarize the number of QSO targets whose redshift has been
@@ -139,11 +139,11 @@ fastspec-iron-cmx-other.fits 2,762             33
 ============================= ================= ===============================
 Catalog                       Number of Objects Number with Corrected Redshifts
 ============================= ================= ===============================
-fastspec-iron-sv1-backup.fits 3,331             41
+fastspec-iron-sv1-backup.fits 3,331             40
 fastspec-iron-sv1-bright.fits 126,650           27
-fastspec-iron-sv1-dark.fits   233,202           2,246
-fastspec-iron-sv1-other.fits  34,112            69
-Total (sv1)                   397,295           2,383
+fastspec-iron-sv1-dark.fits   233,202           2,220
+fastspec-iron-sv1-other.fits  34,112            68
+Total (sv1)                   397,295           2,355
 ============================= ================= ===============================
 
 ============================= ================= ===============================
@@ -160,8 +160,8 @@ Catalog                       Number of Objects Number with Corrected Redshifts
 ============================= ================= ===============================
 fastspec-iron-sv3-backup.fits 1,524             0
 fastspec-iron-sv3-bright.fits 265,293           33
-fastspec-iron-sv3-dark.fits   592,191           1,872
-Total (sv3)                   859,008           1,905
+fastspec-iron-sv3-dark.fits   592,191           1,801
+Total (sv3)                   859,008           1,834
 ============================= ================= ===============================
 
 ================================= ================= ===============================
@@ -169,42 +169,41 @@ Catalog                           Number of Objects Number with Corrected Redshi
 ================================= ================= ===============================
 fastspec-iron-special-backup.fits 552               0
 fastspec-iron-special-bright.fits 43,261            2
-fastspec-iron-special-dark.fits   14,954            162
+fastspec-iron-special-dark.fits   14,954            149
 fastspec-iron-special-other.fits  42,064            0
-Total (special)                   100,831           164
+Total (special)                   100,831           151
 ================================= ================= ===============================
 
 ========================================== ================= ===============================
 Catalog                                    Number of Objects Number with Corrected Redshifts
 ========================================== ================= ===============================
 fastspec-iron-main-backup.fits             15,163            0
-fastspec-iron-main-bright-nside1-hp00.fits 101,838           7
-fastspec-iron-main-bright-nside1-hp01.fits 1,017,041         61
+fastspec-iron-main-bright-nside1-hp00.fits 101,838           6
+fastspec-iron-main-bright-nside1-hp01.fits 1,017,041         59
 fastspec-iron-main-bright-nside1-hp02.fits 1,358,627         95
 fastspec-iron-main-bright-nside1-hp03.fits 403,581           21
-fastspec-iron-main-bright-nside1-hp04.fits 981,600           50
-fastspec-iron-main-bright-nside1-hp05.fits 301,057           19
-fastspec-iron-main-bright-nside1-hp06.fits 1,347,464         99
-fastspec-iron-main-bright-nside1-hp07.fits 673,711           27
-fastspec-iron-main-bright-nside1-hp08.fits 81,734            7
+fastspec-iron-main-bright-nside1-hp04.fits 981,600           48
+fastspec-iron-main-bright-nside1-hp05.fits 301,057           18
+fastspec-iron-main-bright-nside1-hp06.fits 1,347,464         96
+fastspec-iron-main-bright-nside1-hp07.fits 673,711           26
+fastspec-iron-main-bright-nside1-hp08.fits 81,734            6
 fastspec-iron-main-bright-nside1-hp09.fits 66,856            4
 fastspec-iron-main-bright-nside1-hp10.fits 45,570            2
 fastspec-iron-main-bright-nside1-hp11.fits 66,848            2
-fastspec-iron-main-dark-nside1-hp00.fits   352,447           3,080
-fastspec-iron-main-dark-nside1-hp01.fits   1,118,746         9,187
-fastspec-iron-main-dark-nside1-hp02.fits   1,699,122         11,118
-fastspec-iron-main-dark-nside1-hp03.fits   214,658           2,319
-fastspec-iron-main-dark-nside1-hp04.fits   1,739,317         15,201
-fastspec-iron-main-dark-nside1-hp05.fits   579,026           3,798
-fastspec-iron-main-dark-nside1-hp06.fits   2,851,879         13,900
-fastspec-iron-main-dark-nside1-hp07.fits   1,032,151         6,267
-fastspec-iron-main-dark-nside1-hp08.fits   216,757           2,063
-fastspec-iron-main-dark-nside1-hp09.fits   156,454           672
-fastspec-iron-main-dark-nside1-hp10.fits   74,463            451
-fastspec-iron-main-dark-nside1-hp11.fits   40,609            463
-Total (main)                               16,536,719        68,913
+fastspec-iron-main-dark-nside1-hp00.fits   352,447           2,952
+fastspec-iron-main-dark-nside1-hp01.fits   1,118,746         8,760
+fastspec-iron-main-dark-nside1-hp02.fits   1,699,122         10,383
+fastspec-iron-main-dark-nside1-hp03.fits   214,658           2,181
+fastspec-iron-main-dark-nside1-hp04.fits   1,739,317         14,399
+fastspec-iron-main-dark-nside1-hp05.fits   579,026           3,615
+fastspec-iron-main-dark-nside1-hp06.fits   2,851,879         13,275
+fastspec-iron-main-dark-nside1-hp07.fits   1,032,151         5,949
+fastspec-iron-main-dark-nside1-hp08.fits   216,757           1,969
+fastspec-iron-main-dark-nside1-hp09.fits   156,454           644
+fastspec-iron-main-dark-nside1-hp10.fits   74,463            431
+fastspec-iron-main-dark-nside1-hp11.fits   40,609            433
+Total (main)                               16,536,719        65,374
 ========================================== ================= ===============================
-
 
 Code & Template Versions
 ------------------------
@@ -218,20 +217,20 @@ to produce this VAC. For details regarding the revision history of
 ================ ==========
 Software Package Version(s)
 ================ ==========
-python           3.10.14
-numpy            1.22.4
-scipy            1.8.1
-astropy          6.0.1
-yaml             6.0.1
-matplotlib       3.8.4
-fitsio           1.2.1
-mpi4py           3.1.6
-healpy           1.16.6
-desiutil         3.4.3
-desispec         0.68.1
-desitarget       2.8.0
-speclite         0.20
-fastspecfit      3.1.5
+python           3.13.12
+numpy            2.3.5
+scipy            1.16.3
+astropy          7.2.0
+yaml             6.0.3
+matplotlib       3.10.8
+fitsio           1.3.0
+mpi4py           4.1.1
+healpy           1.19.0
+desiutil         3.6.1
+desispec         0.71.0
+desitarget       4.5.0
+speclite         1.0.0
+fastspecfit      3.6.1
 ================ ==========
 
 .. rst-class:: columns
@@ -239,11 +238,14 @@ fastspecfit      3.1.5
 ==================== ============================================================
 Environment Variable Value
 ==================== ============================================================
-DESI_ROOT            /global/cfs/cdirs/desi
-DUST_DIR             /dvs_ro/cfs/cdirs/desi/external/dust/v0_1
+DESI_SPECTRO_REDUX   /dvs_ro/cfs/cdirs/desi/spectro/redux
+DUST_DIR             /dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
 FPHOTO_DIR           /dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9
 FTEMPLATES_DIR       /dvs_ro/cfs/cdirs/desi/public/external/templates/fastspecfit
-FTEMPLATES_FILE      ftemplates-chabrier-2.0.0.fits (see `README.txt`_)
+FTEMPLATES_FILE      ftemplates-chabrier-2.2.0.fits
+FPHOTO_FILE          legacysurvey-dr9.yaml
+EMLINES_FILE         emlines.ecsv
+CONSTRAINTS_FILE     emline-constraints.yaml
 ==================== ============================================================
 
 .. _previous versions - iron:
@@ -251,8 +253,18 @@ FTEMPLATES_FILE      ftemplates-chabrier-2.0.0.fits (see `README.txt`_)
 Notes & Known Issues
 --------------------
 
-v3.0 (latest release)
+v4.0 (latest release)
 ~~~~~~~~~~~~~~~~~~~~~
+
+* Release date: 2027 (Exact date TBD)
+* ``FastSpecFit`` version: ``3.6.1``
+* Templates: ``ftemplates-chabrier-2.2.0.fits``  (see `README.txt`_).
+* Known issues:
+
+  * None at this time.
+
+v3.0
+~~~~
 
 * Release date: June 2025
 * ``FastSpecFit`` version: ``3.1.5``
