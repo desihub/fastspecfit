@@ -258,7 +258,6 @@ v2.0 (latest release)
 
   * None at this time.
 
-
 v1.0
 ~~~~
 
