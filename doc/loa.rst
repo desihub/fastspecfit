@@ -236,11 +236,14 @@ fastspecfit      3.6.1
 ==================== ============================================================
 Environment Variable Value
 ==================== ============================================================
-DESI_ROOT            /global/cfs/cdirs/desi
-DUST_DIR             /dvs_ro/cfs/cdirs/desi/external/dust/v0_1
+DESI_SPECTRO_REDUX   /dvs_ro/cfs/cdirs/desi/spectro/redux
+DUST_DIR             /dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
 FPHOTO_DIR           /dvs_ro/cfs/cdirs/desi/external/legacysurvey/dr9
 FTEMPLATES_DIR       /dvs_ro/cfs/cdirs/desi/public/external/templates/fastspecfit
-FTEMPLATES_FILE      ftemplates-chabrier-2.2.0.fits (see `README.txt`_)
+FTEMPLATES_FILE      ftemplates-chabrier-2.2.0.fits
+FPHOTO_FILE          legacysurvey-dr9.yaml
+EMLINES_FILE         emlines.ecsv
+CONSTRAINTS_FILE     emline-constraints.yaml
 ==================== ============================================================
 
 .. _previous versions - loa:
