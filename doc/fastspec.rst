@@ -271,7 +271,7 @@ Name                          Type         Units                         Descrip
       ABSMAG00_TWOMASS_J [4]_      float32                           mag Absolute magnitude in 2MASS *J*-band band-shifted to z=0.0 assuming h=1.0.
       ABSMAG00_IVAR_TWOMASS_J      float32                      1 / mag2 Inverse variance corresponding to ABSMAG00_TWOMASS_J.
      ABSMAG00_SYNTH_TWOMASS_J      float32                           mag Synthesized absolute magnitude in 2MASS *J*-band band-shifted to z=0.0 assuming h=1.0.
-ABSMAG00_SYNTH_IVAR_TWOMASS_J      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_SYNTH_TWOMASS_J.
+ABSMAG00_SYNTH_IVAR_TWOMASS_J      float32                      1 / mag2 Inverse variance corresponding to ABSMAG00_SYNTH_TWOMASS_J.
          ABSMAG01_SDSS_U [4]_      float32                           mag Absolute magnitude in SDSS *u*-band band-shifted to z=0.1 assuming h=1.0.
          ABSMAG01_IVAR_SDSS_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_SDSS_U.
         ABSMAG01_SYNTH_SDSS_U      float32                           mag Synthesized absolute magnitude in SDSS *u*-band band-shifted to z=0.1 assuming h=1.0.
@@ -302,12 +302,13 @@ ABSMAG00_SYNTH_IVAR_TWOMASS_J      float32                      1 / mag2 Inverse
                     KCORR00_U      float32                           mag K-correction used to derive ABSMAG00_U band-shifted to z=0.0.
                     KCORR00_B      float32                           mag Like KCORR00_U but for Johnson/Cousins *B*-band.
                     KCORR00_V      float32                           mag Like KCORR00_U but for Johnson/Cousins *V*-band.
+            KCORR00_TWOMASS_J      float32                           mag K-correction used to derive ABSMAG00_TWOMASS_J band-shifted to z=0.0.
                KCORR01_SDSS_U      float32                           mag K-correction used to derive ABSMAG01_SDSS_U band-shifted to z=0.1.
                KCORR01_SDSS_G      float32                           mag Like KCORR01_SDSS_U but for SDSS *g*-band.
                KCORR01_SDSS_R      float32                           mag Like KCORR01_SDSS_U but for SDSS *r*-band.
                KCORR01_SDSS_I      float32                           mag Like KCORR01_SDSS_U but for SDSS *i*-band.
                KCORR01_SDSS_Z      float32                           mag Like KCORR01_SDSS_U but for SDSS *z*-band.
-                   KCORR01_W1      float32                           mag K-correction used to derive ABSMAG01_W1 band-shifted to z=0.0.
+                   KCORR01_W1      float32                           mag K-correction used to derive ABSMAG01_W1 band-shifted to z=0.1.
                   LOGLNU_1500      float32            1e-28 erg / (Hz s) Monochromatic luminosity at 1500 A in the rest-frame.
              LOGLNU_1500_IVAR      float32           1e+56 Hz2 s2 / erg2 Inverse variance in LOGLNU_1500.
                   LOGLNU_2800      float32            1e-28 erg / (Hz s) Monochromatic luminosity at 2800 A in the rest-frame.
@@ -324,11 +325,11 @@ ABSMAG00_SYNTH_IVAR_TWOMASS_J      float32                      1 / mag2 Inverse
           FLYA_1215_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FLYA_1215_CONT.
                FOII_3727_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 3728.483 A in the rest-frame.
           FOII_3727_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FOII_3727_CONT.
-                  FHBETA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 4862.683 A in the rest-frame.
+                  FHBETA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 4862.71 A in the rest-frame.
              FHBETA_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FHBETA_CONT.
               FOIII_5007_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 5008.239 A in the rest-frame.
          FOIII_5007_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FOIII_5007_CONT.
-                 FHALPHA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 6564.613 A in the rest-frame.
+                 FHALPHA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 6564.6 A in the rest-frame.
             FHALPHA_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FHALPHA_CONT.
 ============================= ============ ============================= ============================================
 
@@ -483,8 +484,8 @@ Data: FITS image [int32, 7781x3,338]
 .. [5] Column only present in Commissioning and Survey Validation spectroscopic
        observations.
 
-.. [6] `LINENAME` represents the following modeled emission lines: NV_1240,
-       OI_1304, SILIV_1396, CIV_1549, HEII_1640, ALIII_1857, SILIII_1892,
+.. [6] `LINENAME` represents the following modeled emission lines: LYALPHA,
+       NV_1240, OI_1304, SILIV_1396, CIV_1549, HEII_1640, ALIII_1857, SILIII_1892,
        CIII_1908, MGII_2796, MGII_2803, NEV_3346, NEV_3426, OII_3726, OII_3729,
        NEIII_3869, H6, H6_BROAD, HEPSILON, HEPSILON_BROAD, HDELTA, HDELTA_BROAD,
        HGAMMA, HGAMMA_BROAD, OIII_4363, HEI_4471, HEII_4686, HBETA, HBETA_BROAD,
