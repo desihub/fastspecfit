@@ -364,14 +364,15 @@ def sha256_file(filepath):
     return h.hexdigest()
 
 
-def _checksum_filename(dirpath, vacdir, dr, specprod, version):
+def _checksum_filename(dirpath, vacdir, dr, specprod, version, prefix='fastspec'):
     """Return the checksum filename for *dirpath* (placed inside that dir)."""
     rel = os.path.relpath(dirpath, vacdir)
     rel_underscored = rel.replace(os.sep, '_')
-    return f'{dr}_vac_{dr}_fastspecfit_{specprod}_{version}_{rel_underscored}.sha256sum'
+    name = 'fastphot' if prefix == 'fastphot' else 'fastspecfit'
+    return f'{dr}_vac_{dr}_{name}_{specprod}_{version}_{rel_underscored}.sha256sum'
 
 
-def discover_checksum_dirs(vacdir, dr, specprod, version):
+def discover_checksum_dirs(vacdir, dr, specprod, version, prefix='fastspec'):
     """Return arrays of (dirpath, total_bytes) for directories that need checksums.
 
     Scans catalogs/, healpix/, and spectra/ under vacdir.  Directories whose
@@ -388,7 +389,7 @@ def discover_checksum_dirs(vacdir, dr, specprod, version):
 
     pending, weights = [], []
     for d in sorted(dirs):
-        csum_name = _checksum_filename(d, vacdir, dr, specprod, version)
+        csum_name = _checksum_filename(d, vacdir, dr, specprod, version, prefix)
         if os.path.exists(os.path.join(d, csum_name)):
             log.info(f'Skipping {d} (checksum exists)')
             continue
@@ -403,10 +404,10 @@ def discover_checksum_dirs(vacdir, dr, specprod, version):
     return np.array(pending), np.array(weights)
 
 
-def write_checksums_for_dir(dirpath, vacdir, dr, specprod, version):
+def write_checksums_for_dir(dirpath, vacdir, dr, specprod, version, prefix='fastspec'):
     """Compute and write the checksum file for all files in dirpath."""
     dirpath = Path(dirpath)
-    csum_name = _checksum_filename(str(dirpath), vacdir, dr, specprod, version)
+    csum_name = _checksum_filename(str(dirpath), vacdir, dr, specprod, version, prefix)
     csum_path = dirpath / csum_name
 
     files = sorted(f for f in dirpath.iterdir() if f.is_file() and f.name != csum_name)
@@ -429,9 +430,13 @@ def write_checksums_for_dir(dirpath, vacdir, dr, specprod, version):
 
 
 def run_checksums(args, comm, rank, size):
+    prefix = args.prefix
+    if prefix == 'auto':
+        prefix = detect_vac_prefix(args.vacdir)[0][0]
+
     if rank == 0:
         pending, weights = discover_checksum_dirs(
-            args.vacdir, args.dr, args.specprod, args.version)
+            args.vacdir, args.dr, args.specprod, args.version, prefix)
         if len(pending) == 0:
             log.info('All checksum files already exist; nothing to do.')
             if comm:
@@ -445,7 +450,7 @@ def run_checksums(args, comm, rank, size):
 
     n_written = 0
     for dirpath in my_dirs:
-        write_checksums_for_dir(dirpath, args.vacdir, args.dr, args.specprod, args.version)
+        write_checksums_for_dir(dirpath, args.vacdir, args.dr, args.specprod, args.version, prefix)
         n_written += 1
 
     counts = comm.gather(n_written, root=0) if comm else [n_written]
