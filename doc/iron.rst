@@ -29,10 +29,11 @@ Data Content & Access
 
 Data from the ``Iron`` VAC can be accessed at any of the following links:
 
-============================ ==================================================================
+============================ ================================================================================
 Data url                     https://data.desi.lbl.gov/public/dr1/vac/dr1/fastspecfit/iron/v4.0
 `NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/dr1/vac/dr1/fastspecfit/iron/v4.0``
-============================ ==================================================================
+Documentation                `v3.6.1 data model <https://fastspecfit.readthedocs.io/en/3.6.1/fastspec.html>`_
+============================ ================================================================================
 
 For more information regarding the content and organization of the VAC, please
 click on the following links:

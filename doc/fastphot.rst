@@ -12,6 +12,16 @@ Fastphot Data Model
 :Regex: ``fastphot-(cmx|main|special|sv1|sv2|sv3)-(backup|bright|dark|other)-[0-9]+\.fits``
 :File Type: FITS
 
+.. important::
+
+   This page documents the data model of the *current* (development) version of
+   ``FastSpecFit``. The data model has evolved substantially between releases,
+   so if you are working with a public value-added catalog (VAC), the columns
+   described here may not match your files. Each VAC page (e.g., :ref:`Iron
+   fastphot <iron fastphot vac>`, :ref:`Loa fastphot <loa fastphot vac>`) links
+   to the documentation build that matches the ``FastSpecFit`` version used to
+   produce it, in its "Data Content & Access" table.
+
 Contents
 ========
 
