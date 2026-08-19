@@ -796,7 +796,18 @@ class DESISpectra(object):
 
             # add targeting columns
             allfmcols = set(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
-            READFMCOLS = list(FMCOLS) + [col for col in TARGETINGCOLS if col in allfmcols]
+
+            # COADD_FIBERSTATUS is always present in standard productions
+            # (stamped by desi_coadd_spectra) but can be missing from
+            # non-standard, custom-built FIBERMAPs (coadd_type == 'custom');
+            # treat it as optional there, consistent with how it is already
+            # treated as optional when writing the output METADATA table.
+            _fmcols = list(FMCOLS)
+            if 'COADD_FIBERSTATUS' not in allfmcols:
+                log.warning(f'COADD_FIBERSTATUS not found in FIBERMAP of {specfile}; omitting from metadata.')
+                _fmcols.remove('COADD_FIBERSTATUS')
+
+            READFMCOLS = _fmcols + [col for col in TARGETINGCOLS if col in allfmcols]
 
             # If targetids is *not* given we have to choose "good" objects
             # before subselecting (e.g., we don't want sky spectra).
