@@ -29,6 +29,11 @@ class ParamType(IntEnum):
     SIGMA = 2
 
 
+def _getlist(d, key):
+    """Like ``d.get(key, [])`` but also treats an explicit YAML ``null`` as empty."""
+    return d.get(key) or []
+
+
 class EmlineConstraints:
     """Parsed and validated emission-line kinematic constraint file.
 
@@ -63,13 +68,13 @@ class EmlineConstraints:
 
         # amplitude constraints (profile-independent)
         ac = raw['amplitude_constraints']
-        self.amplitude_fixed = ac.get('fixed', [])
-        self.doublet_ratios  = ac.get('doublet_ratios', [])
+        self.amplitude_fixed = _getlist(ac, 'fixed')
+        self.doublet_ratios  = _getlist(ac, 'doublet_ratios')
 
         # global placements (shared across all profiles)
         g = raw['global']
-        self.global_free_lines       = list(g.get('free_lines', []))
-        self.global_kinematic_groups = list(g.get('kinematic_groups', []))
+        self.global_free_lines       = list(_getlist(g, 'free_lines'))
+        self.global_kinematic_groups = list(_getlist(g, 'kinematic_groups'))
         self.global_default_bounds   = g['default_bounds']
         self.global_default_initial  = g['default_initial']
 
@@ -82,7 +87,7 @@ class EmlineConstraints:
         # physically identical transitions different sigma or vshift.
         doublet_lines = frozenset(
             item
-            for entry in ac.get('fixed', []) + ac.get('doublet_ratios', [])
+            for entry in _getlist(ac, 'fixed') + _getlist(ac, 'doublet_ratios')
             for item in (entry['line'], entry['ref'])
         )
 
@@ -100,7 +105,7 @@ class EmlineConstraints:
                         f"is missing required key '{key}'.")
             dvm = gfp.get('delta_vshift_max')
             dsm = gfp.get('delta_sigma_max')
-            members = set(g.get('members', [])) | {g.get('anchor', '')}
+            members = set(_getlist(g, 'members')) | {g.get('anchor', '')}
             return {
                 'free_vshift':      bool(gfp['free_vshift']),
                 'free_sigma':       bool(gfp['free_sigma']),
@@ -117,7 +122,7 @@ class EmlineConstraints:
         _fp_required = {'enabled', 'warm_start', 'adopt_if', 'inherit_in_mc'}
         self.final_pass = {}
         for pname, profile in self.profiles.items():
-            for g in profile.get('kinematic_groups', []):
+            for g in _getlist(profile, 'kinematic_groups'):
                 self.group_final_pass[f'{pname}.{g["name"]}'] = _parse_group_fp(g, f"profile '{pname}'")
             if 'final_pass' not in profile:
                 raise ValueError(
@@ -137,7 +142,7 @@ class EmlineConstraints:
         # non-parametric moment groups: {output_label: [line_names]}
         self.moments = {
             entry['label']: list(entry['lines'])
-            for entry in raw.get('moments', [])
+            for entry in _getlist(raw, 'moments')
         }
 
         if line_table is not None:
@@ -161,7 +166,7 @@ class EmlineConstraints:
 
         """
         for g in self.global_kinematic_groups:
-            if line_name == g['anchor'] or line_name in g.get('members', []):
+            if line_name == g['anchor'] or line_name in _getlist(g, 'members'):
                 return self._unpack_bounds(g)
         if line_name in self.global_free_lines:
             db, di = self.global_default_bounds, self.global_default_initial
@@ -169,12 +174,12 @@ class EmlineConstraints:
                     db['vshift']['max'], di['sigma'], di['vshift'])
         # Check kinematic groups across ALL profiles before fixed_lines.
         for profile in self.profiles.values():
-            for g in profile.get('kinematic_groups', []):
-                if line_name == g['anchor'] or line_name in g.get('members', []):
+            for g in _getlist(profile, 'kinematic_groups'):
+                if line_name == g['anchor'] or line_name in _getlist(g, 'members'):
                     return self._unpack_bounds(g)
         # Only return zeros if the line appears in no kinematic group at all.
         for profile in self.profiles.values():
-            if line_name in profile.get('fixed_lines', []):
+            if line_name in _getlist(profile, 'fixed_lines'):
                 return (0., 0., 0., 0., 0.)
         raise ValueError(
             f"Line '{line_name}' not found in constraint file '{self.file}'")
@@ -193,12 +198,12 @@ class EmlineConstraints:
             placed = set(self.global_free_lines)
             for g in self.global_kinematic_groups:
                 placed.add(g['anchor'])
-                placed.update(g.get('members', []))
-            for g in profile.get('kinematic_groups', []):
+                placed.update(_getlist(g, 'members'))
+            for g in _getlist(profile, 'kinematic_groups'):
                 placed.add(g['anchor'])
-                placed.update(g.get('members', []))
-            placed.update(profile.get('free_lines', []))
-            placed.update(profile.get('fixed_lines', []))
+                placed.update(_getlist(g, 'members'))
+            placed.update(_getlist(profile, 'free_lines'))
+            placed.update(_getlist(profile, 'fixed_lines'))
             missing = emline_names - placed
             extra   = placed - emline_names
             if missing:
@@ -456,7 +461,7 @@ class EMFitTools(object):
                     _, src_vshift, src_sigma = self.line_table['params'][anchor_line]
                     group_name[src_vshift] = gname
                     group_name[src_sigma]  = gname
-                    for member_name in g.get('members', []):
+                    for member_name in _getlist(g, 'members'):
                         if member_name not in self.line_map:
                             continue
                         member_line = self.line_map[member_name]
@@ -469,7 +474,7 @@ class EMFitTools(object):
                         tiedtoparam[sigma]  = src_sigma
 
             _tie_kinematics(self.constraints.global_kinematic_groups, prefix='global.')
-            _tie_kinematics(self.constraints.profiles[profile_name].get('kinematic_groups', []),
+            _tie_kinematics(_getlist(self.constraints.profiles[profile_name], 'kinematic_groups'),
                             prefix=f'{profile_name}.')
 
             for fc in self.constraints.amplitude_fixed:
@@ -490,7 +495,7 @@ class EMFitTools(object):
         # narrow_only model: forbidden + narrow_balmer groups; broad fixed to zero
         tiedtoparam_no, tiedfactor_no, group_name_no = _build_tying_info('narrow_only')
         forceFixed = []
-        for line_name in self.constraints.profiles['narrow_only'].get('fixed_lines', []):
+        for line_name in _getlist(self.constraints.profiles['narrow_only'], 'fixed_lines'):
             if line_name in self.line_map:
                 for p in self.line_table['params'][self.line_map[line_name]]:
                     forceFixed.append(p)
