@@ -2100,6 +2100,26 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                         line_str += f'   EW = {ew:7.1f} Å'
                 print(line_str)
 
+        # Non-parametric moments (see EmlineConstraints.moments) for labels
+        # with at least one constituent line in range.
+        if EMFit.moment_lines:
+            fnames = fastfit.value.dtype.names
+            moments_inrange = []
+            for label, moment_line_names in EMFit.moment_lines.items():
+                idxs = [EMFit.line_map[name] for name in moment_line_names if name in EMFit.line_map]
+                if idxs and np.any(EMFit.line_in_range[idxs]):
+                    moments_inrange.append(label)
+
+            if moments_inrange:
+                print('  moments  [moment1 (Å) | sigma=sqrt(moment2) (Å) | moment3 (Å³)]:')
+                for label in moments_inrange:
+                    col1, col2, col3 = f'{label}_MOMENT1', f'{label}_MOMENT2', f'{label}_MOMENT3'
+                    if col1 not in fnames or col2 not in fnames or col3 not in fnames:
+                        continue
+                    m1, m2, m3 = float(fastfit[col1]), float(fastfit[col2]), float(fastfit[col3])
+                    sigma = np.sqrt(m2) if m2 > 0. else 0.
+                    print(f'    {label:12s}  moment1 = {m1:9.3f} Å   sigma = {sigma:6.3f} Å   moment3 = {m3:10.3f} Å³')
+
         # Specphot summary.
         snames = specphot.value.dtype.names
 
