@@ -2088,7 +2088,15 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                 flux     = float(fastfit[f'{ucol}_FLUX'])
                 flux_err = 1. / np.sqrt(ivar)
                 snr      = flux * np.sqrt(ivar)
-                line_str = f'    {ucol:20s}  {flux:8.1f} ±{flux_err:5.1f}   S/N = {snr:5.1f}'
+                line_str = f'    {ucol:20s}  {flux:8.1f} ±{flux_err:5.1f}   S/N(flux) = {snr:5.1f}'
+                amp_col     = f'{ucol}_AMP'
+                ampivar_col = f'{ucol}_AMP_IVAR'
+                if amp_col in fnames and ampivar_col in fnames:
+                    ampivar = float(fastfit[ampivar_col])
+                    if ampivar > 0.:
+                        amp     = float(fastfit[amp_col])
+                        ampsnr  = amp * np.sqrt(ampivar)
+                        line_str += f'   S/N(amp) = {ampsnr:5.1f}'
                 ew_col     = f'{ucol}_EW'
                 ewivar_col = f'{ucol}_EW_IVAR'
                 ew     = float(fastfit[ew_col])     if ew_col     in fnames else 0.
