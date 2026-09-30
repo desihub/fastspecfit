@@ -119,6 +119,7 @@ def parse(options=None, rank=0):
     fit_group.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
     fit_group.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, metavar=('MIN', 'MAX'),
                         help='Minimum and maximum velocity dispersion in km/s, given as two space-separated values, e.g. --vdisp-bounds 50 500.')
+    fit_group.add_argument('--vdisp-nbin', type=int, default=6, help='Number of grid points for the velocity dispersion chi2 scan.')
     fit_group.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not model broad Balmer and helium line-emission.')
     fit_group.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
@@ -144,7 +145,7 @@ def parse(options=None, rank=0):
 def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=True,
                  fastphot=False, fitstack=False, constrain_age=False,
                  no_smooth_continuum=False, debug_plots=False, uncertainty_floor=0.01,
-                 minsnr_balmer_broad=2.5, nmonte=NMONTE_DEFAULT, seed=1):
+                 minsnr_balmer_broad=2.5, nmonte=NMONTE_DEFAULT, seed=1, vdisp_nbin=6):
     """Fit the continuum and emission lines for a single DESI object.
 
     Parameters
@@ -183,6 +184,9 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
         Number of Monte Carlo realizations for uncertainty estimation.
     seed : int, optional
         Random seed for Monte Carlo reproducibility. Defaults to 1.
+    vdisp_nbin : int, optional
+        Number of grid points for the velocity dispersion chi2 scan.
+        Defaults to 6.
 
     Returns
     -------
@@ -243,7 +247,7 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
         continuum_specfit(data, fastfit, specphot, templates, igm, phot, constrain_age=constrain_age,
                           no_smooth_continuum=no_smooth_continuum, fastphot=fastphot,
                           fitstack=fitstack, debug_plots=debug_plots, nmonte=nmonte,
-                          seed=seed)
+                          seed=seed, vdisp_nbin=vdisp_nbin)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
@@ -437,6 +441,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             'minsnr_balmer_broad': args.minsnr_balmer_broad,
             'nmonte':              args.nmonte,
             'seed':                seeds[iobj],
+            'vdisp_nbin':          args.vdisp_nbin,
         } for iobj in range(nobj)]
 
 

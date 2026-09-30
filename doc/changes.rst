@@ -4,7 +4,10 @@ Change Log
 
 3.6.2 (not released yet)
 ------------------------
-*
+
+* New ``Loa`` and ``Iron`` VACs [`PR #281`_].
+
+.. _`PR #281`: https://github.com/desihub/fastspecfit/pull/281
 
 3.6.1 (2026-08-07)
 ------------------
