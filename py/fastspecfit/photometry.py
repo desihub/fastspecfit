@@ -13,6 +13,36 @@ from astropy.table import Table
 from fastspecfit.logger import log
 from fastspecfit.util import trapz, C_LIGHT, FLUXNORM
 
+# Ported from desitarget.io (see https://github.com/desihub/desitarget/issues/893)
+# to avoid desitarget.io's module-level desimodel import.
+releasedict = {3000: 'S', 4000: 'N', 5000: 'S', 6000: 'N', 7000: 'S', 7999: 'S',
+               8000: 'S', 8001: 'N', 9000: 'S', 9001: 'N', 9002: 'S', 9003: 'N',
+               9004: 'S', 9005: 'N', 9006: 'S', 9007: 'N', 9008: 'S', 9009: 'N',
+               9010: 'S', 9011: 'N', 9012: 'S', 9013: 'N', 10000: 'S', 10099: 'S',
+               11000: 'S', 11001: 'N', 11010: 'S', 11011: 'N'}
+
+
+def desitarget_resolve_dec():
+    """Default Dec cut to separate targets in BASS/MzLS from DECaLS."""
+    return 32.375
+
+
+def release_to_photsys(release):
+    """Convert RELEASE to PHOTSYS using the releasedict lookup table."""
+    releasenums = np.array(list(releasedict.keys()))
+    photstrings = np.array(list(releasedict.values()))
+
+    unknown = set(release) - set(releasenums)
+    if bool(unknown):
+        errmsg = 'Unknown release number {}'.format(unknown)
+        log.critical(errmsg)
+        raise ValueError(errmsg)
+
+    r2p = np.empty(np.max(releasenums)+1, dtype='|S1')
+    r2p[releasenums] = photstrings
+
+    return r2p[release]
+
 
 class Photometry(object):
     """Load filter curves and provide photometric synthesis methods.
@@ -1155,8 +1185,7 @@ def _gather_tractorphot_onebrick(input_cat, legacysurveydir, radius_match, racol
     """Retrieve Tractor photometry for targets sharing a single brick."""
     import astropy.units as u
     from astropy.coordinates import SkyCoord
-    from desitarget import geomask
-    from desitarget.io import desitarget_resolve_dec
+    from desitarget.geomask import match_to
 
     assert(np.all(input_cat['BRICKNAME'] == input_cat['BRICKNAME'][0]))
     brick = input_cat['BRICKNAME'][0]
@@ -1179,6 +1208,10 @@ def _gather_tractorphot_onebrick(input_cat, legacysurveydir, radius_match, racol
             region = 'south'
         elif photsys == 'N':
             region = 'north'
+        else:
+            errmsg = f"Unrecognized PHOTSYS value '{photsys}'; expected 'N' or 'S'."
+            log.critical(errmsg)
+            raise ValueError(errmsg)
 
         #raslice = np.array(['{:06d}'.format(int(ra*1000))[:3] for ra in input_cat['RA']])
         tractorfile = os.path.join(legacysurveydir, region, 'tractor', brick[:3], f'tractor-{brick}.fits')
@@ -1213,7 +1246,7 @@ def _gather_tractorphot_onebrick(input_cat, legacysurveydir, radius_match, racol
         tractor_dr9 = Table(fitsio.read(tractorfile, rows=I, upper=True))
 
         # sort explicitly in order to ensure order
-        srt = geomask.match_to(tractor_dr9['OBJID'], input_cat['BRICK_OBJID'][idr9])
+        srt = match_to(tractor_dr9['OBJID'], input_cat['BRICK_OBJID'][idr9])
         tractor_dr9 = tractor_dr9[srt]
         assert(np.all((tractor_dr9['BRICKID'] == input_cat['BRICKID'][idr9])*(tractor_dr9['OBJID'] == input_cat['BRICK_OBJID'][idr9])))
 
@@ -1332,6 +1365,7 @@ def gather_tractorphot(input_cat, racolumn='TARGET_RA', deccolumn='TARGET_DEC',
             raise ValueError(errmsg)
 
     # If these columns don't exist, add them with blank entries:
+    has_release = 'RELEASE' in input_cat.colnames
     COLS = [('RELEASE', (1,), '>i2'), ('BRICKID', (1,), '>i4'),
             ('BRICKNAME', (1,), '<U8'), ('BRICK_OBJID', (1,), '>i4'),
             ('PHOTSYS', (1,), '<U1')]
@@ -1349,7 +1383,8 @@ def gather_tractorphot(input_cat, racolumn='TARGET_RA', deccolumn='TARGET_DEC',
         legacysurveydir = os.path.join(desi_root, 'external', 'legacysurvey', 'dr9')
 
     if not os.path.isdir(legacysurveydir):
-        errmsg = f'Legacy Surveys directory {legacysurveydir} not found.'
+        errmsg = (f'Legacy Surveys directory {legacysurveydir} not found; set the correct '
+                  f'path via --fphotodir or the $FPHOTO_DIR environment variable.')
         log.critical(errmsg)
         raise IOError(errmsg)
 
@@ -1396,7 +1431,7 @@ def gather_tractorphot(input_cat, racolumn='TARGET_RA', deccolumn='TARGET_DEC',
         out[I] = _gather_tractorphot_onebrick(input_cat[I], legacysurveydir, radius_match, racolumn,
                                               deccolumn, datamodel, restrict_region)
 
-    if 'RELEASE' in input_cat.colnames:
+    if has_release:
         _, _, check_release, _, _, _ = decode_targetid(input_cat['TARGETID'])
         bug = np.where(out['RELEASE'] != check_release)[0]
         if len(bug) > 0:
@@ -1411,6 +1446,7 @@ def gather_tractorphot(input_cat, racolumn='TARGET_RA', deccolumn='TARGET_DEC',
                 I = np.where(onebrickname == input_cat['BRICKNAME'][bug])[0]
                 bugout[I] = _gather_tractorphot_onebrick(input_cat[bug][I], legacysurveydir, radius_match, racolumn, deccolumn,
                                                          datamodel, restrict_region)
+            out[bug] = bugout
 
     if columns is not None:
         if type(columns) is not list:

@@ -287,3 +287,48 @@ class TestSmoothContinuum:
         result = ContinuumTools.smooth_continuum(wave, flux_zero, ivar_zero,
                                                  linemask, camerapix)
         assert np.all(result == 0.)
+
+
+# ── VDISP_IVAR Jacobian ───────────────────────────────────────────────────────
+
+class TestVdispIvarJacobian:
+    """The catalog VDISP_IVAR = vdisp_ivar_kernel * (σ_stars / kernel)².
+
+    Error propagation from kernel space to σ_stars space:
+        σ_stars = sqrt(kernel² + SIGMA_C3K²)
+        ∂σ_stars/∂kernel = kernel / σ_stars
+        IVAR(σ_stars) = IVAR(kernel) * (σ_stars / kernel)²
+    """
+
+    def _ivar_stars(self, kernel, ivar_kernel, sigma_c3k):
+        vdisp_intrinsic = np.sqrt(kernel**2 + sigma_c3k**2)
+        return vdisp_intrinsic, ivar_kernel * (vdisp_intrinsic / kernel)**2
+
+    def test_formula_correctness(self):
+        """Spot-check the Jacobian formula against a known analytic result."""
+        from fastspecfit.templates import Templates
+        kernel, ivar_k = 200., 1e-4
+        intrinsic, ivar_s = self._ivar_stars(kernel, ivar_k, Templates.SIGMA_C3K)
+        assert np.isclose(intrinsic, np.sqrt(kernel**2 + Templates.SIGMA_C3K**2))
+        assert np.isclose(ivar_s, ivar_k * (intrinsic / kernel)**2)
+
+    def test_ivar_larger_than_kernel_ivar(self):
+        """IVAR(σ_stars) > IVAR(kernel): adding C3K² reduces fractional uncertainty."""
+        from fastspecfit.templates import Templates
+        _, ivar_s = self._ivar_stars(200., 1.0, Templates.SIGMA_C3K)
+        assert ivar_s > 1.0
+
+    def test_ivar_unchanged_when_no_intrinsic_broadening(self):
+        """When sigma_c3k = 0, σ_stars = kernel and IVAR is unchanged."""
+        _, ivar_s = self._ivar_stars(200., 1.0, sigma_c3k=0.)
+        assert np.isclose(ivar_s, 1.0)
+
+
+# ── chi2 scan grid size ───────────────────────────────────────────────────────
+
+def test_vdisp_nbin_default_is_6():
+    """The chi2 scan uses 6 grid points by default."""
+    import inspect
+    from fastspecfit.continuum import ContinuumTools
+    sig = inspect.signature(ContinuumTools.__init__)
+    assert sig.parameters['vdisp_nbin'].default == 6

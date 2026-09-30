@@ -22,10 +22,12 @@ class Singletons(object):
 
     """
     def __init__(self):
-        pass
+        self._mapdir = None
+        self._sfdmap = None
 
     def initialize(self,
                    emlines_file=None,
+                   constraints_file=None,
                    fphotofile=None,
                    fastphot=False,
                    vdisp_nominal=VDISP_NOMINAL,
@@ -36,6 +38,8 @@ class Singletons(object):
                    template_version=None,
                    template_imf=None,
                    log_verbose=False,
+                   mapdir=None,
+                   cosmology=None,
     ):
         """Load all singleton data structures from disk.
 
@@ -44,6 +48,10 @@ class Singletons(object):
         emlines_file : :class:`str` or None, optional
             Path to the emission-line parameter file; uses the bundled
             default when ``None``.
+        constraints_file : :class:`str` or None, optional
+            Path to the emission-line kinematic constraint YAML file; uses
+            the bundled default when ``None``. A consistency check against
+            ``emlines_file`` is run at startup.
         fphotofile : :class:`str` or None, optional
             Path to the photometric configuration YAML file; uses the
             bundled DR9 default when ``None``.
@@ -70,17 +78,31 @@ class Singletons(object):
         log_verbose : :class:`bool`, optional
             If ``True``, set the logger level to ``DEBUG``. Default is
             ``False``.
+        mapdir : :class:`str` or None, optional
+            Directory containing the Milky Way dust maps; defaults to
+            ``$DUST_DIR/maps``. Only consulted if something actually
+            accesses :attr:`sfdmap` (the map itself is loaded lazily, on
+            first access, not here); stacked-spectra fits and other callers
+            that never touch dust corrections never require it.
+        cosmology : optional
+            Pre-built cosmology object (e.g., an instance of
+            :class:`~fastspecfit.cosmo.FlatLambdaCDM`) to use in place of
+            the :class:`~fastspecfit.cosmo.TabulatedDESI` default. Intended
+            for one-off projects that need a non-fiducial cosmology.
 
         """
         if log_verbose:
             log.setLevel(DEBUG)
 
-        key = (emlines_file, fphotofile, fastphot, fitstack, ignore_photometry,
-               template_file, template_version, template_imf,
-               vdisp_nominal, tuple(vdisp_bounds) if vdisp_bounds is not None else None)
+        key = (emlines_file, constraints_file, fphotofile, fastphot, fitstack,
+               ignore_photometry, template_file, template_version, template_imf,
+               vdisp_nominal, tuple(vdisp_bounds) if vdisp_bounds is not None else None,
+               mapdir, cosmology)
         if getattr(self, '_init_key', None) == key:
             return
         self._init_key = key
+        self._mapdir = mapdir
+        self._sfdmap = None
 
         # templates for continuum fitting
         self.templates = Templates(template_file=template_file,
@@ -97,18 +119,39 @@ class Singletons(object):
         self.emlines = LineTable(emlines_file)
         log.debug(f'Cached emission-line table {self.emlines.file}')
 
+        # kinematic constraint file (validated against emlines at startup)
+        from fastspecfit.emlines import EmlineConstraints
+        self.constraints = EmlineConstraints(constraints_file, self.emlines.table)
+        log.debug(f'Cached emission-line constraints {self.constraints.file}')
+
         # photometry
         self.photometry = Photometry(fphotofile, fitstack,
                                      ignore_photometry)
         log.debug(f'Cached photometric filters and parameters {self.photometry.fphotofile}')
 
         # fiducial cosmology
-        self.cosmology = TabulatedDESI()
-        log.debug(f'Cached cosmology table {self.cosmology.file}')
+        self.cosmology = cosmology if cosmology is not None else TabulatedDESI()
+        log.debug(f'Cached cosmology {self.cosmology!r}')
 
         # IGM model
         self.igm = Inoue14()
         log.debug(f'Cached {self.igm.reference} IGM attenuation parameters.')
+
+    @property
+    def sfdmap(self):
+        """Milky Way dust map (:class:`desiutil.dust.SFDMap`), shared across
+        every :meth:`~fastspecfit.io.DESISpectra.read` call in this process.
+
+        Built lazily on first access rather than in :meth:`initialize`, so
+        that stacked-spectra fits and any other caller that never touches
+        dust corrections neither pay the load cost nor require ``$DUST_DIR``
+        to be set.
+        """
+        if self._sfdmap is None:
+            from desiutil.dust import SFDMap
+            self._sfdmap = SFDMap(scaling=1.0, mapdir=self._mapdir)
+            log.debug(f'Cached Milky Way dust map {self._sfdmap.mapdir}')
+        return self._sfdmap
 
 
 # global structure with single-copy data, initially empty

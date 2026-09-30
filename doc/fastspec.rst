@@ -12,6 +12,16 @@ Fastspec Data Model
 :Regex: ``fastspec-(cmx|main|special|sv1|sv2|sv3)-(backup|bright|dark|other)-[0-9]+\.fits.gz``
 :File Type: FITS
 
+.. important::
+
+   This page documents the data model of the *current* (development) version of
+   ``FastSpecFit``. The data model has evolved substantially between releases,
+   so if you are working with a public value-added catalog (VAC), the columns
+   described here may not match your files. Each VAC page (e.g., :ref:`Fuji
+   <fuji vac>`, :ref:`Iron <iron vac>`, :ref:`Loa <loa vac>`) links to the
+   documentation build that matches the ``FastSpecFit`` version used to
+   produce it, in its "Data Content & Access" table.
+
 Contents
 ========
 
@@ -124,12 +134,13 @@ Name                   Type        Units      Description
   SV1_SCND_TARGET [5]_   int64                SV1 secondary targeting bit.
   SV2_SCND_TARGET [5]_   int64                SV2 secondary targeting bit.
   SV3_SCND_TARGET [5]_   int64                SV3 secondary targeting bit.
-                     Z float64                Redshift based on Redrock or QuasarNet (for QSO targets only).
-                 ZWARN    int8                Redrock zwarning bit.
+                     Z float64                Redshift based on either Redrock or QuasarNet (for QSO targets only).
+                 ZWARN    int8                Redshift zwarning bit based on either Redrock or QuasarNet (for QSO targets only).
              DELTACHI2 float64                Redrock delta-chi-squared.
               SPECTYPE    str6                Redrock spectral classification type.
                SUBTYPE   str20                Redrock spectral subtype.
                   Z_RR float64                Redrock redshift.
+              ZWARN_RR    int8                Redrock zwarning bit.
              TSNR2_BGS float32                Template signal-to-noise ratio squared for BGS targets.
              TSNR2_LRG float32                Like TSNR2_BGS but for LRG targets.
              TSNR2_ELG float32                Like TSNR2_BGS but for ELG targets.
@@ -270,7 +281,7 @@ Name                          Type         Units                         Descrip
       ABSMAG00_TWOMASS_J [4]_      float32                           mag Absolute magnitude in 2MASS *J*-band band-shifted to z=0.0 assuming h=1.0.
       ABSMAG00_IVAR_TWOMASS_J      float32                      1 / mag2 Inverse variance corresponding to ABSMAG00_TWOMASS_J.
      ABSMAG00_SYNTH_TWOMASS_J      float32                           mag Synthesized absolute magnitude in 2MASS *J*-band band-shifted to z=0.0 assuming h=1.0.
-ABSMAG00_SYNTH_IVAR_TWOMASS_J      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_SYNTH_TWOMASS_J.
+ABSMAG00_SYNTH_IVAR_TWOMASS_J      float32                      1 / mag2 Inverse variance corresponding to ABSMAG00_SYNTH_TWOMASS_J.
          ABSMAG01_SDSS_U [4]_      float32                           mag Absolute magnitude in SDSS *u*-band band-shifted to z=0.1 assuming h=1.0.
          ABSMAG01_IVAR_SDSS_U      float32                      1 / mag2 Inverse variance corresponding to ABSMAG01_SDSS_U.
         ABSMAG01_SYNTH_SDSS_U      float32                           mag Synthesized absolute magnitude in SDSS *u*-band band-shifted to z=0.1 assuming h=1.0.
@@ -301,12 +312,13 @@ ABSMAG00_SYNTH_IVAR_TWOMASS_J      float32                      1 / mag2 Inverse
                     KCORR00_U      float32                           mag K-correction used to derive ABSMAG00_U band-shifted to z=0.0.
                     KCORR00_B      float32                           mag Like KCORR00_U but for Johnson/Cousins *B*-band.
                     KCORR00_V      float32                           mag Like KCORR00_U but for Johnson/Cousins *V*-band.
+            KCORR00_TWOMASS_J      float32                           mag K-correction used to derive ABSMAG00_TWOMASS_J band-shifted to z=0.0.
                KCORR01_SDSS_U      float32                           mag K-correction used to derive ABSMAG01_SDSS_U band-shifted to z=0.1.
                KCORR01_SDSS_G      float32                           mag Like KCORR01_SDSS_U but for SDSS *g*-band.
                KCORR01_SDSS_R      float32                           mag Like KCORR01_SDSS_U but for SDSS *r*-band.
                KCORR01_SDSS_I      float32                           mag Like KCORR01_SDSS_U but for SDSS *i*-band.
                KCORR01_SDSS_Z      float32                           mag Like KCORR01_SDSS_U but for SDSS *z*-band.
-                   KCORR01_W1      float32                           mag K-correction used to derive ABSMAG01_W1 band-shifted to z=0.0.
+                   KCORR01_W1      float32                           mag K-correction used to derive ABSMAG01_W1 band-shifted to z=0.1.
                   LOGLNU_1500      float32            1e-28 erg / (Hz s) Monochromatic luminosity at 1500 A in the rest-frame.
              LOGLNU_1500_IVAR      float32           1e+56 Hz2 s2 / erg2 Inverse variance in LOGLNU_1500.
                   LOGLNU_2800      float32            1e-28 erg / (Hz s) Monochromatic luminosity at 2800 A in the rest-frame.
@@ -323,11 +335,11 @@ ABSMAG00_SYNTH_IVAR_TWOMASS_J      float32                      1 / mag2 Inverse
           FLYA_1215_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FLYA_1215_CONT.
                FOII_3727_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 3728.483 A in the rest-frame.
           FOII_3727_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FOII_3727_CONT.
-                  FHBETA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 4862.683 A in the rest-frame.
+                  FHBETA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 4862.71 A in the rest-frame.
              FHBETA_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FHBETA_CONT.
               FOIII_5007_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 5008.239 A in the rest-frame.
          FOIII_5007_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FOIII_5007_CONT.
-                 FHALPHA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 6564.613 A in the rest-frame.
+                 FHALPHA_CONT      float32  1e-17 erg / (Angstrom cm2 s) Continuum flux at 6564.6 A in the rest-frame.
             FHALPHA_CONT_IVAR      float32 1e+34 cm4 Angstrom2 s2 / erg2 Inverse variance in FHALPHA_CONT.
 ============================= ============ ============================= ============================================
 
@@ -390,6 +402,8 @@ Name                        Type         Units                         Descripti
           INIT_BALMER_BROAD         bool                               Boolean flag indicating whether a broad Balmer emission line was initially identified in the spectral range.
              DELTA_LINECHI2      float32                               Chi-squared difference between an emission-line model without and with broad lines.
              DELTA_LINENDOF        int32                               Difference in the degrees of freedom between an emission-line model without and with broad lines.
+             DELTA_KINECHI2      float32                               Chi-squared difference between the constrained and relaxed emission-line model.
+             DELTA_KINENDOF        int32                               Difference in the degrees of freedom between the constrained and relaxed emission-line model.
          MGII_DOUBLET_RATIO      float32                               MgII 2796 / 2803 doublet line-ratio.
     MGII_DOUBLET_RATIO_IVAR      float32                               Inverse variance in MGII_DOUBLET_RATIO.
           OII_DOUBLET_RATIO      float32                               [OII] 3726 / 3729 doublet line-ratio.
@@ -480,8 +494,8 @@ Data: FITS image [int32, 7781x3,338]
 .. [5] Column only present in Commissioning and Survey Validation spectroscopic
        observations.
 
-.. [6] `LINENAME` represents the following modeled emission lines: NV_1240,
-       OI_1304, SILIV_1396, CIV_1549, HEII_1640, ALIII_1857, SILIII_1892,
+.. [6] `LINENAME` represents the following modeled emission lines: LYALPHA,
+       NV_1240, OI_1304, SILIV_1396, CIV_1549, HEII_1640, ALIII_1857, SILIII_1892,
        CIII_1908, MGII_2796, MGII_2803, NEV_3346, NEV_3426, OII_3726, OII_3729,
        NEIII_3869, H6, H6_BROAD, HEPSILON, HEPSILON_BROAD, HDELTA, HDELTA_BROAD,
        HGAMMA, HGAMMA_BROAD, OIII_4363, HEI_4471, HEII_4686, HBETA, HBETA_BROAD,

@@ -14,8 +14,9 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 
-VDISP_NOMINAL = 250. # [km/s]
-VDISP_BOUNDS = (75., 500.) # [km/s]
+VDISP_NOMINAL = 150. # [km/s]
+VDISP_BOUNDS = (50., 500.) # [km/s]
+VDISP_SIGMA_RELATION = (2.30, 0.25) # (a, b): log σ = a + b*(log M* − 11) [km/s]
 
 class Templates(object):
     """Stellar population synthesis templates for continuum fitting.
@@ -42,11 +43,18 @@ class Templates(object):
         Maximum wavelength to load into memory (Angstroms). Default is
         400 000 Å.
     vdisp_nominal : :class:`float`, optional
-        Nominal velocity dispersion in km/s used to pre-broaden the
-        templates. Default is :data:`VDISP_NOMINAL`.
+        Default σ_stars (km/s) reported in the catalog when vdisp cannot be
+        measured. ``vdisp_nominal_kernel = sqrt(vdisp_nominal² − SIGMA_C3K²)``
+        is derived from this value and used for template pre-convolution and
+        as the optimizer starting point. Default is :data:`VDISP_NOMINAL`.
     vdisp_bounds : tuple of float, optional
-        ``(min, max)`` velocity dispersion bounds in km/s. Default is
+        ``(min, max)`` velocity dispersion kernel bounds in km/s. Default is
         :data:`VDISP_BOUNDS`.
+    vdisp_sigma_relation : tuple of float, optional
+        Coefficients ``(a, b)`` of the σ–M* scaling relation
+        ``log σ_stars = a + b*(log M* − 11)`` used to derive a fallback
+        velocity dispersion when σ cannot be measured. Default is
+        :data:`VDISP_SIGMA_RELATION`.
     fastphot : :class:`bool`, optional
         If ``True``, load in photometry-only mode. Default is ``False``.
     read_linefluxes : :class:`bool`, optional
@@ -54,17 +62,21 @@ class Templates(object):
         Default is ``False``.
 
     """
+    from fastspecfit.util import C_LIGHT
 
     # SPS template constants (used by build-templates)
-    # https://github.com/cconroy20/fsps/tree/master/SPECTRA/C3K#readme
-    PIXKMS = 25.  # [km/s]
-    PIXKMS_BOUNDS = (2750., 9100.)
+    # https://github.com/moustakas/fsps/tree/master/SPECTRA/C3K_R10K#readme
+    R_C3K = 3000.  # [lambda/FWHM]; C3K_R10K resolution in the rest-frame optical
+    PIXKMS = C_LIGHT / (R_C3K * 2.)  # [km/s]; native pixel spacing (oversample=2)
+    PIXKMS_BOUNDS = (3500., 9800.)
+    # Gaussian sigma of C3K templates: σ = c/(R·2√(2 ln 2))
+    SIGMA_C3K = C_LIGHT / (R_C3K * np.sqrt(8. * np.log(2.))) # 42.3 [km/s]
 
     AGN_PIXKMS = 75.  # [km/s]
     AGN_PIXKMS_BOUNDS = (1075., 3090.)
     FE_VDISP_DEFAULT = 3000.  # [km/s] fallback when Fe-window coverage is insufficient
 
-    DEFAULT_TEMPLATEVERSION = '2.0.0'
+    DEFAULT_TEMPLATEVERSION = '2.2.0'
     DEFAULT_IMF = 'chabrier'
 
     # highest vdisp for which we attempt to use cached FFTs
@@ -72,7 +84,8 @@ class Templates(object):
 
     def __init__(self, template_file=None, template_version=None, imf=None,
                  mintemplatewave=None, maxtemplatewave=40e4, vdisp_nominal=VDISP_NOMINAL,
-                 vdisp_bounds=VDISP_BOUNDS, fastphot=False, read_linefluxes=False):
+                 vdisp_bounds=VDISP_BOUNDS, vdisp_sigma_relation=VDISP_SIGMA_RELATION,
+                 fastphot=False, read_linefluxes=False):
         self.init_ffts()
 
         if template_file is None:
@@ -100,7 +113,30 @@ class Templates(object):
         templateflux     = np.transpose(templateflux).copy()
         templatelineflux = np.transpose(templatelineflux).copy()
 
-        self.version = T[0].read_header()['VERSION']
+        primhdr = T[0].read_header()
+        if 'VERSION' in primhdr:
+            self.version = primhdr['VERSION']
+        else:
+            self.version = Templates.DEFAULT_TEMPLATEVERSION
+            log.warning(f'Templates file {template_file} is missing the VERSION header '
+                        f'keyword; assuming {self.version}.')
+
+        # Templates built with a SIGC3K keyword in the WAVE header record
+        # their own grid parameters directly, so no inference is needed.
+        # Older files lack this keyword; <3.0.0 of those were built on the
+        # C3K_a (R~3000) grid with a different segment/pixel-size convention,
+        # so fall back to the values that actually match how those files
+        # were resampled (bin/build-templates was technically wrong to
+        # resample to 25 km/s pixels for that R, but this matches what's
+        # actually baked into those files).
+        if 'SIGC3K' in wavehdr:
+            self.PIXKMS = wavehdr['PIXKMS']
+            self.PIXKMS_BOUNDS = (wavehdr['PIXWAVLO'], wavehdr['PIXWAVHI'])
+            self.SIGMA_C3K = wavehdr['SIGC3K']
+        elif int(self.version.split('.')[0]) < 3:
+            self.PIXKMS = 25.  # [km/s]
+            self.PIXKMS_BOUNDS = (2750., 9100.)
+            self.SIGMA_C3K = Templates.C_LIGHT / (3000. * np.sqrt(8. * np.log(2.))) # 42.4 [km/s]
 
         self.imf = templatehdr['IMF']
         self.ntemplates = len(templateinfo)
@@ -118,33 +154,48 @@ class Templates(object):
         # dust attenuation curves
         self.dust_klambda = Templates.klambda(self.wave)
         self.qso_dust_klambda = Templates.qso_klambda(self.wave)
-        self.vdisp_nominal = vdisp_nominal # [km/s]
+        if vdisp_bounds[0] > vdisp_bounds[1]:
+            errmsg = f'vdisp_bounds must be (lo, hi) with lo <= hi; got {vdisp_bounds}'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+        self.vdisp_nominal = vdisp_nominal # [km/s] σ_stars reported when vdisp unmeasured
+        self.vdisp_nominal_kernel = float(np.sqrt(max(0., vdisp_nominal**2 - self.SIGMA_C3K**2)))
         self.vdisp_bounds = vdisp_bounds # [km/s]
+        self.vdisp_sigma_relation = vdisp_sigma_relation # (a, b): log σ = a + b*(log M* − 11)
 
-        pixkms_bounds = np.searchsorted(self.wave, Templates.PIXKMS_BOUNDS, 'left')
+        pixkms_bounds = np.searchsorted(self.wave, self.PIXKMS_BOUNDS, 'left')
         self.pixkms_bounds = pixkms_bounds
 
         self.conv_pre = self.convolve_vdisp_pre(self.flux)
-        self.flux_nomvdisp = self.convolve_vdisp(self.flux, vdisp_nominal)
+        self.flux_nomvdisp = self.convolve_vdisp(self.flux, self.vdisp_nominal_kernel)
 
         self.conv_pre_nolines = self.convolve_vdisp_pre(self.flux_nolines)
-        self.flux_nolines_nomvdisp = self.convolve_vdisp(self.flux_nolines, vdisp_nominal)
+        self.flux_nolines_nomvdisp = self.convolve_vdisp(self.flux_nolines, self.vdisp_nominal_kernel)
 
         self.info = Table(templateinfo)
 
-        if 'DUSTFLUX' in T and 'AGNFLUX' in T:
-            from fastspecfit.util import trapz
+        if 'dt' not in self.info.colnames:
+            log.warning('Template file lacks dt column; SFR will be averaged over ~30 Myr instead of 100 Myr.')
 
-            # make sure fluxes are normalized to unity
-            dustflux = T['DUSTFLUX'].read()
-            #dustflux /= trapz(dustflux, x=templatewave) # should already be 1.0
-            self.dustflux = dustflux[keeplo:keephi]
+        if 'DUSTFLUX' not in T:
+            errmsg = f'Templates file {template_file} missing mandatory extension DUSTFLUX.'
+            log.critical(errmsg)
+            raise IOError(errmsg)
 
-            #dusthdr = T['DUSTFLUX'].read_header()
-            #self.qpah     = dusthdr['QPAH']
-            #self.umin     = dusthdr['UMIN']
-            #self.gamma    = dusthdr['GAMMA']
+        # make sure fluxes are normalized to unity
+        dustflux = T['DUSTFLUX'].read()
+        #dustflux /= trapz(dustflux, x=templatewave) # should already be 1.0
+        self.dustflux = dustflux[keeplo:keephi]
 
+        #dusthdr = T['DUSTFLUX'].read_header()
+        #self.qpah     = dusthdr['QPAH']
+        #self.umin     = dusthdr['UMIN']
+        #self.gamma    = dusthdr['GAMMA']
+
+        # AGNFLUX/AGNWAVE/FEFLUX/FEWAVE are only used by the
+        # still-in-development fastqso mode, and are absent from template
+        # files built with --no-agn.
+        if 'AGNFLUX' in T and 'FEFLUX' in T:
             # construct the AGN wavelength vector
             iragnflux = T['AGNFLUX'].read()
             iragnwave = T['AGNWAVE'].read()
@@ -170,10 +221,6 @@ class Templates(object):
                                       templatewave[febounds[1]:irbounds],
                                       iragnwave))
             self.agnflux = iragnflux
-        else:
-            errmsg = f'Templates file {template_file} missing mandatory extensions DUSTFLUX and AGNFLUX.'
-            log.critical(errmsg)
-            raise IOError(errmsg)
 
         # Read the model emission-line fluxes; only present for
         # template_version>=1.1.1 and generally only useful to a power-user.
@@ -227,7 +274,7 @@ class Templates(object):
 
         # determine largest kernel we will support
         # based on the maximum supported vdisp.
-        pixsize_kms = Templates.PIXKMS
+        pixsize_kms = self.PIXKMS
         sigma = Templates.MAX_PRE_VDISP / pixsize_kms # [pixels]
         radius = Templates._gaussian_radius(sigma)
         kernel_size = 2*radius + 1
@@ -307,7 +354,7 @@ class Templates(object):
 
         output = np.empty(flux_len)
 
-        pixsize_kms = Templates.PIXKMS
+        pixsize_kms = self.PIXKMS
         sigma = vdisp / pixsize_kms # [pixels]
 
         radius = Templates._gaussian_radius(sigma)
@@ -358,7 +405,7 @@ class Templates(object):
             output = templateflux.copy()
         else:
             output = np.empty_like(templateflux)
-            pixsize_kms = Templates.PIXKMS
+            pixsize_kms = self.PIXKMS
             sigma = vdisp / pixsize_kms # [pixels]
 
             radius = Templates._gaussian_radius(sigma)

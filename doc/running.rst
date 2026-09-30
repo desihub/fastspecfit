@@ -201,6 +201,96 @@ results:
   * *Lower-right panel*: Zoomed panels showing the data and best-fit model for
     all the emission lines within the observed spectral range.
 
+.. _`fastspec external photometry`:
+
+Running fastspec with External Photometry
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default ``fastspec`` reads broadband photometry from the *Legacy Surveys*
+DR9 catalog. To use a custom photometric dataset instead, pass two additional
+arguments:
+
+* ``--fphotodir`` — path to a FITS file containing the photometric catalog,
+  with the FITS extension name (optionally) appended in square brackets
+  (e.g. ``catalog.fits[PHOTINFO]``).
+* ``--fphotofile`` — path to a YAML file that defines the photometric bands,
+  filter curves, flux column names, and fitting strategy. See
+  ``py/fastspecfit/data/legacysurvey-dr9.yaml`` for an annotated example.
+
+The example below fits a high-redshift galaxy observed with the *loa*
+spectroscopic production against Subaru Suprime-Cam and HSC photometry.
+``--input-redshifts`` overrides the Redrock redshift with a better-determined
+value, and ``--constrain-age`` restricts stellar templates to ages younger than
+the age of the Universe at the object's redshift::
+
+  fastspec $DESI_SPECTRO_REDUX/loa/healpix/special/dark/272/27247/redrock-special-dark-27247.fits \
+    --fphotodir=$DESI_ROOT/users/ioannis/desihiz/suprime/v20260616/desi-suprime.fits[PHOTINFO] \
+    --fphotofile=$DESI_ROOT/users/ioannis/desihiz/phot/suprime-photinfo.yaml \
+    --targetids=39089837499744649 --input-redshifts=3.1484 \
+    --constrain-age -o ./fastspec-suprime.fits
+
+.. dropdown:: Click to view the logging output.
+
+    .. code-block:: none
+
+        INFO:fastspecfit.py:327:fastspec: fsftime 1.74 sec for sc_data_init at 2026-06-23T10:35:49.708
+        INFO:fastspecfit.py:340:fastspec: Cached stellar templates /dvs_ro/cfs/cdirs/desi/public/external/templates/fastspecfit/2.1.0/ftemplates-chabrier-2.1.0.fits
+        INFO:fastspecfit.py:341:fastspec: Cached emission-line table /global/common/software/desi/users/ioannis/fastspecfit/py/fastspecfit/data/emlines.ecsv
+        INFO:fastspecfit.py:342:fastspec: Cached photometric filters and parameters /global/cfs/cdirs/desi/users/ioannis/desihiz/phot/suprime-photinfo.yaml
+        INFO:fastspecfit.py:343:fastspec: Cached cosmology table /global/common/software/desi/users/ioannis/fastspecfit/py/fastspecfit/data/desi_fiducial_cosmology.dat
+        INFO:fastspecfit.py:344:fastspec: Cached Inoue+2014 IGM attenuation parameters.
+        INFO:io.py:729:gather_metadata: specprod=loa, coadd_type=healpix, survey=special, program=dark, healpix=27247
+        INFO:io.py:852:gather_metadata: Applying 1 input_redshifts.
+        INFO:io.py:1468:_gather_photometry: Read 3,145 objects from /global/cfs/cdirs/desi/users/ioannis/desihiz/suprime/v20260616/desi-suprime.fits
+        INFO:io.py:1072:read: Reading 1 spectrum from /dvs_ro/cfs/cdirs/desi/spectro/redux/loa/healpix/special/dark/272/27247/coadd-special-dark-27247.fits
+        INFO:io.py:1180:read: fsftime 0.70 sec for read_spectra [nobj=1, nfiles=1] at 2026-06-23T10:36:46.665
+        INFO:fastspecfit.py:191:fastspec_one: Continuum- and emission-line fitting object 0 [targetid 39089837499744649, seed 2032329983, z=3.148400].
+        INFO:continuum.py:1728:continuum_fastspec: Median spectral S/N_b=0.52 S/N_r=0.71 S/N_z=0.70
+        INFO:continuum.py:1920:continuum_fastspec: Median aperture correction 0.923 [0.895-1.047].
+        INFO:continuum.py:2128:continuum_specfit: Smooth continuum correction: b=2.620% r=-5.696% z=2.798%
+        INFO:continuum.py:2322:continuum_specfit: vdisp=95.45 km/s log(M/Msun)=9.94+/-0.07 tau(V)=0.00+/-0.00 Age=0.53+/-0.02 Gyr SFR=13.43+/-1.64 Msun/yr Z/Zsun=0.00
+        INFO:emlines.py:1775:emline_specfit: Skipping broad-line fitting (no broad Balmer lines in the spectral range).
+        INFO:emlines.py:1942:emline_specfit: delta(v) UV=258.8+/-544.4 km/s Balmer broad=0.0 km/s narrow=0.0 km/s
+        INFO:emlines.py:1952:emline_specfit: sigma UV=2857+/-2098 km/s Balmer broad=0 km/s narrow=0 km/s
+        INFO:fastspecfit.py:236:fastspec_one: fsftime 2.14 sec for fastspec_one [targetid=39089837499744649] at 2026-06-23T10:36:48.878
+        INFO:fastspecfit.py:478:fastspec: fsftime 2.61 sec for fit_all [nobj=1,2.61s/obj/core] at 2026-06-23T10:36:49.341
+        INFO:io.py:1671:write: Writing 1 object to ./fastspec-suprime.fits
+        INFO:io.py:1742:write_fastspecfit: fsftime 1.73 sec for write_fastspecfit [file=fastspec-suprime.fits] at 2026-06-23T10:36:51.076
+
+|
+
+Generate the QA figure with::
+
+  fastqa ./fastspec-suprime.fits \
+    --redrockfiles=$DESI_SPECTRO_REDUX/loa/healpix/special/dark/272/27247/redrock-special-dark-27247.fits \
+    --fphotodir=$DESI_ROOT/users/ioannis/desihiz/suprime/v20260616/desi-suprime.fits[PHOTINFO] \
+    --fphotofile=$DESI_ROOT/users/ioannis/desihiz/phot/suprime-photinfo.yaml \
+    --outdir ./
+
+.. dropdown:: Click to view the logging output.
+
+    .. code-block:: none
+
+        INFO:io.py:1549:read_fastspecfit: Read 1 object(s) from ./fastspec-suprime.fits
+        INFO:qa.py:1837:fastqa: Building QA for 1 objects.
+        INFO:qa.py:1877:fastqa: Cached stellar templates /dvs_ro/cfs/cdirs/desi/public/external/templates/fastspecfit/2.1.0/ftemplates-chabrier-2.1.0.fits
+        INFO:qa.py:1878:fastqa: Cached emission-line table /global/common/software/desi/users/ioannis/fastspecfit/py/fastspecfit/data/emlines.ecsv
+        INFO:qa.py:1879:fastqa: Cached photometric filters and parameters /global/cfs/cdirs/desi/users/ioannis/desihiz/phot/suprime-photinfo.yaml
+        INFO:qa.py:1880:fastqa: Cached cosmology table /global/common/software/desi/users/ioannis/fastspecfit/py/fastspecfit/data/desi_fiducial_cosmology.dat
+        INFO:qa.py:1881:fastqa: Cached Inoue+2014 IGM attenuation parameters.
+        INFO:io.py:729:gather_metadata: specprod=loa, coadd_type=healpix, survey=special, program=dark, healpix=27247
+        INFO:io.py:852:gather_metadata: Applying 1 input_redshifts.
+        INFO:io.py:1468:_gather_photometry: Read 3,145 objects from /global/cfs/cdirs/desi/users/ioannis/desihiz/suprime/v20260616/desi-suprime.fits
+        INFO:io.py:1072:read: Reading 1 spectrum from /dvs_ro/cfs/cdirs/desi/spectro/redux/loa/healpix/special/dark/272/27247/coadd-special-dark-27247.fits
+        INFO:io.py:1180:read: fsftime 0.28 sec for read_spectra [nobj=1, nfiles=1] at 2026-06-23T10:38:50.824
+        INFO:qa.py:734:_fetch_cutout: https://www.legacysurvey.org/viewer/jpeg-cutout?ra=149.465404248889&dec=1.7936467486355945&width=176&height=135&layer=hsc-dr3
+        INFO:qa.py:1686:qa_fastspec: Writing ./fastspec-special-dark-27247-39089837499744649.png
+
+|
+
+.. figure:: _static/fastspec-special-dark-27247-39089837499744649.png
+   :target: _static/fastspec-special-dark-27247-39089837499744649.png
+
 .. _`fastphot example`:
 
 Running fastphot

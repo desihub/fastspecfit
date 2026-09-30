@@ -22,7 +22,7 @@
 #         * [NeV] 3346,3426; [NeIII] 3869; [OII] 3726,29; [SII] 6716,31; [ArIII] 7135; and [OII] 7320,30
 #         * (Ritz) - [OI] 6300; [SIII] 6312; and [SIII] 9069,9532
 #       * vanden Berk et al. 2001 - https://iopscience.iop.org/article/10.1086/321167/pdf, Table 2
-#         * [NV] 1240; OI 1304; Si IV 1396; CIV 1549; AlIII 1857; Si III] 1892; CIII] 1908; HeII 1640; and HeII 4686
+#         * NV 1240; OI 1304; Si IV 1396; CIV 1549; AlIII 1857; Si III] 1892; CIII] 1908; HeII 1640; and HeII 4686
 #       * Chianti Database - https://db.chiantidatabase.org; https://aas.aanda.org/articles/aas/pdf/1997/13/ds1260.pdf
 #         * [NII] 5755; [NII] 6548,84; [OIII] 4363; and [OIII] 4959,5007
 #         * Note that the Chianti [SIII] 9069,9532 wavelengths are quite wrong.'

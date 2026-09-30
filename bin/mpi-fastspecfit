@@ -14,7 +14,7 @@ from fastspecfit.logger import log
 def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=False,
                     sample=None, input_redshifts=False, outdir_data='.', templates=None,
                     templateversion=None, fphotodir=None, fphotofile=None, emlinesfile=None,
-                    mp_per_file=False):
+                    constraintsfile=None, mp_per_file=False):
     """Run fastspec, fastphot, or fastqa across MPI ranks.
 
     Parameters
@@ -45,6 +45,8 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         Photometry configuration file override.
     emlinesfile : :class:`str` or None, optional
         Emission-line parameter file override.
+    constraintsfile : :class:`str` or None, optional
+        Emission-line constraints file override.
     mp_per_file : :class:`bool`, optional
         If ``True``, run multiple files in parallel (one file per worker).
 
@@ -69,7 +71,8 @@ def run_fastspecfit(args, comm=None, fastphot=False, specprod_dir=None, makeqa=F
         coadd_type=args.coadd_type, survey=args.survey, program=args.program,
         healpix=args.healpix, tile=args.tile, night=args.night,
         makeqa=args.makeqa, mp=args.mp, fastphot=fastphot,
-        outdir_data=outdir_data, overwrite=args.overwrite, sample=sample)
+        outdir_data=outdir_data, overwrite=args.overwrite, sample=sample,
+        nthreads=args.plan_threads)
     if rank == 0:
         log.info(fsftime('plan', time.time()-t0))
         # If no work is left to do, let the other ranks know so they can return
@@ -223,64 +226,90 @@ def main():
     import argparse
     from fastspecfit.mpi import plan
     from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
+    from fastspecfit.cosmo import COSMOLOGY_MODELS
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'cumulative', 'pernight', 'perexp'],
+
+    data_group = parser.add_argument_group('Data selection')
+    data_group.add_argument('--coadd-type', type=str, default='healpix', choices=['healpix', 'uniqpix', 'cumulative', 'pernight', 'perexp'],
                         help='Specify which type of spectra/zbest files to process.')
-    parser.add_argument('--specprod', type=str, default='loa', help='Spectroscopic production to process.')
+    data_group.add_argument('--specprod', type=str, default='loa', help='Spectroscopic production to process.')
+    data_group.add_argument('--healpix', type=str, default=None, help='Comma-separated list of healpix pixels to process (use with --coadd-type healpix).')
+    data_group.add_argument('--uniqpix', type=str, default=None, help='Comma-separated list of uniqpix pixels to process (use with --coadd-type uniqpix).')
+    data_group.add_argument('--survey', type=str, default='main,special,cmx,sv1,sv2,sv3', help='Comma-separated list of surveys to process.')
+    data_group.add_argument('--program', type=str, default='bright,dark,other,backup', help='Comma-separated list of programs to process.') # backup not supported
+    data_group.add_argument('--tile', default=None, type=str, nargs='*', help='Space-separated list of tile(s) to process.')
+    data_group.add_argument('--night', default=None, type=str, nargs='*', help='Space-separated list of night(s) to process (ignored if coadd-type is cumulative).')
+    data_group.add_argument('--samplefile', default=None, type=str, help='Full path to sample (FITS) file with {SURVEY,PROGRAM,TARGETID} and either HEALPIX or UNIQPIX.')
+    data_group.add_argument('--input-redshifts', action='store_true', help='Only used with --samplefile; if set, fit with redshift "Z" values.')
+    data_group.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
+    data_group.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
+    data_group.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.')
 
-    parser.add_argument('--healpix', type=str, default=None, help='Comma-separated list of healpixels to process.')
-    parser.add_argument('--survey', type=str, default='main,special,cmx,sv1,sv2,sv3', help='Survey to process.')
-    parser.add_argument('--program', type=str, default='bright,dark,other,backup', help='Program to process.') # backup not supported
-    parser.add_argument('--tile', default=None, type=str, nargs='*', help='Tile(s) to process.')
-    parser.add_argument('--night', default=None, type=str, nargs='*', help='Night(s) to process (ignored if coadd-type is cumulative).')
+    mode_group = parser.add_argument_group('Fitting mode')
+    mode_group.add_argument('--fastphot', action='store_true', help='Fit the broadband photometry.')
+    mode_group.add_argument('--makeqa', action='store_true', help='Build QA in parallel.')
 
-    parser.add_argument('--samplefile', default=None, type=str, help='Full path to sample (FITS) file with {survey,program,healpix,targetid}.')
-    parser.add_argument('--input-redshifts', action='store_true', help='Only used with --samplefile; if set, fit with redshift "Z" values.')
-    parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
-    parser.add_argument('--nmonte', type=int, default=NMONTE_DEFAULT, help='Number of Monte Carlo realizations.')
-    parser.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
-    parser.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, help='Nominal (default) velocity dispersion in km/s.')
-    parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
+    monte_group = parser.add_argument_group('Monte Carlo')
+    monte_group.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
+    monte_group.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
+    monte_group.add_argument('--nmonte', type=int, default=NMONTE_DEFAULT, help='Number of Monte Carlo realizations.')
 
-    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
-    parser.add_argument('--mp-per-file', default=False, action='store_true', help='Run multiprocessing on one core per spectra file with multiple simultaneous files.')
-    parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
-    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.') 
-    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
+    model_group = parser.add_argument_group('Physical model')
+    model_group.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
+    model_group.add_argument('--templateversion', type=str, default=None, help='Template version number.')
+    model_group.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
+    model_group.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
+    model_group.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
+    model_group.add_argument('--constraintsfile', type=str, default=None, help='Emission-line kinematic constraint YAML file.')
+    model_group.add_argument('--cosmology', type=str, default=None, choices=COSMOLOGY_MODELS,
+                        help='Use an alternate cosmology model instead of the tabulated DESI fiducial cosmology.')
+    model_group.add_argument('--omega-m', type=float, default=0.3,
+                        help='Matter density parameter; only used with --cosmology flatLCDM (h is fixed at 1).')
 
-    parser.add_argument('--fastphot', action='store_true', help='Fit the broadband photometry.')
+    fit_group = parser.add_argument_group('Fitting options')
+    fit_group.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
+    fit_group.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, metavar=('MIN', 'MAX'),
+                        help='Minimum and maximum velocity dispersion in km/s, given as two space-separated values, e.g. --vdisp-bounds 50 500.')
+    fit_group.add_argument('--ignore-quasarnet', default=False, action='store_true', help='Do not use QuasarNet to improve QSO redshifts.')
+    fit_group.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
+    fit_group.add_argument('--no-smooth-continuum', default=False, action='store_true', help='Do not fit the smooth continuum.')
 
-    parser.add_argument('--templateversion', type=str, default=None, help='Template version number.')
-    parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
-    parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
-    parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
-    parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
+    parallel_group = parser.add_argument_group('Parallelism')
+    parallel_group.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
+    parallel_group.add_argument('--mp-per-file', default=False, action='store_true', help='Run multiprocessing on one core per spectra file with multiple simultaneous files.')
+    parallel_group.add_argument('--plan-threads', type=int, default=16, help='Number of threads used to list healpix '
+                                'directories concurrently during planning (rank 0 only). This is filesystem I/O '
+                                'concurrency, not compute parallelism, and is independent of --mp.')
 
-    parser.add_argument('--merge', action='store_true', help='Merge all individual catalogs (for a given survey and program) into one large file.')
-    parser.add_argument('--mergedir', type=str, help='Output directory for merged catalogs.')
-    parser.add_argument('--merge-suffix', type=str, help='Filename suffix for merged catalogs.')
-    parser.add_argument('--mergeall', action='store_true', help='Merge all the individual merged catalogs into a single merged catalog.')
-    parser.add_argument('--mergeall-main', action='store_true', help='Merge all the main catalogs.')
-    parser.add_argument('--mergeall-sv', action='store_true', help='Merge all the SV catalogs.')
-    parser.add_argument('--mergeall-special', action='store_true', help='Merge all the special catalogs.')
-    parser.add_argument('--makeqa', action='store_true', help='Build QA in parallel.')
+    merge_group = parser.add_argument_group('Merging')
+    merge_group.add_argument('--merge', action='store_true', help='Merge all individual catalogs (for a given survey and program) into one large file.')
+    merge_group.add_argument('--mergedir', type=str, help='Output directory for merged catalogs.')
+    merge_group.add_argument('--merge-suffix', type=str, help='Filename suffix for merged catalogs.')
+    merge_group.add_argument('--mergeall', action='store_true', help='Merge all the individual merged catalogs into a single merged catalog.')
+    merge_group.add_argument('--mergeall-main', action='store_true', help='Merge all the main catalogs.')
+    merge_group.add_argument('--mergeall-sv', action='store_true', help='Merge all the SV catalogs.')
+    merge_group.add_argument('--mergeall-special', action='store_true', help='Merge all the special catalogs.')
 
-    parser.add_argument('--ignore-quasarnet', default=False, action='store_true', help='Do not use QuasarNet to improve QSO redshifts.')
-    parser.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
-    parser.add_argument('--no-smooth-continuum', default=False, action='store_true', help='Do not fit the smooth continuum.')
-
-    parser.add_argument('--verbose', action='store_true', help='More verbose output.')
-    parser.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
-    parser.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
-    parser.add_argument('--profile', action='store_true', help='Write out profiling / timing files..')
-    parser.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
-    parser.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
-    parser.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
-
-    parser.add_argument('--outdir-data', default='$PSCRATCH/fastspecfit/data', type=str, help='Base output data directory.')
+    exec_group = parser.add_argument_group('Execution control')
+    exec_group.add_argument('--verbose', action='store_true', help='More verbose output.')
+    exec_group.add_argument('--overwrite', action='store_true', help='Overwrite any existing output files.')
+    exec_group.add_argument('--plan', action='store_true', help='Plan how many nodes to use and how to distribute the targets.')
+    exec_group.add_argument('--profile', action='store_true', help='Write out profiling / timing files..')
+    exec_group.add_argument('--nompi', action='store_true', help='Do not use MPI parallelism.')
+    exec_group.add_argument('--nolog', action='store_true', help='Do not write to the log file.')
+    exec_group.add_argument('--dry-run', action='store_true', help='Generate but do not run commands.')
+    exec_group.add_argument('--outdir-data', default='$PSCRATCH/fastspecfit/data', type=str, help='Base output data directory.')
 
     args = parser.parse_args()
+
+    if args.healpix is not None and args.uniqpix is not None:
+        parser.error('--healpix and --uniqpix are mutually exclusive.')
+
+    # Normalize: store whichever pixel list was given back into args.healpix so
+    # all downstream code that reads args.healpix continues to work unchanged.
+    if args.uniqpix is not None:
+        args.healpix = args.uniqpix
 
     specprod_dir = None
     outdir_data = os.path.expanduser(os.path.expandvars(args.outdir_data))
@@ -315,26 +344,36 @@ def main():
     if args.samplefile is None:
         sample = None
     else:
-        if args.coadd_type != 'healpix':
-            errmsg = 'Input --samplefile is only currently compatible with --coadd-type="healpix"'
-            log.critical(errmsg)
-            raise NotImplementedError(errmsg)
-
         if rank == 0:
             import fitsio
             if not os.path.isfile(args.samplefile):
                 log.warning(f'{args.samplefile} does not exist.')
                 return
+
+            colnames = fitsio.FITS(args.samplefile)[1].get_colnames()
+            has_healpix = 'HEALPIX' in colnames
+            has_uniqpix = 'UNIQPIX' in colnames
+
+            if has_healpix and has_uniqpix:
+                errmsg = (f'Sample file {args.samplefile} contains both HEALPIX and UNIQPIX columns; '
+                          'remove one to avoid ambiguity.')
+                log.critical(errmsg)
+                raise ValueError(errmsg)
+            if not has_healpix and not has_uniqpix:
+                errmsg = (f'Sample file {args.samplefile} missing required pixel column '
+                          '(expected HEALPIX or UNIQPIX).')
+                log.critical(errmsg)
+                raise ValueError(errmsg)
+
+            pixcol = 'UNIQPIX' if has_uniqpix else 'HEALPIX'
+            readcols = ['SURVEY', 'PROGRAM', pixcol, 'TARGETID']
+            if args.input_redshifts:
+                readcols.append('Z')
             try:
-                sample = Table(fitsio.read(args.samplefile, columns=['SURVEY', 'PROGRAM', 'HEALPIX', 'TARGETID']))
-                log.info(f'Read {len(sample)} rows from {args.samplefile}')
-            except:
-                if args.input_redshifts:
-                    errmsg = f'Sample file {args.samplefile} with --input-redshifts missing required columns ' + \
-                        '{SURVEY,PROGRAM,HEALPIX,TARGETID,Z}'
-                else:
-                    errmsg = f'Sample file {args.samplefile} missing required columns ' + \
-                        '{SURVEY,PROGRAM,HEALPIX,TARGETID}'
+                sample = Table(fitsio.read(args.samplefile, columns=readcols))
+                log.info(f'Read {len(sample):,d} rows from {args.samplefile} (pixel column: {pixcol})')
+            except Exception as e:
+                errmsg = f'Failed to read required columns {readcols} from {args.samplefile}: {e}'
                 log.critical(errmsg)
                 raise ValueError(errmsg)
         else:
@@ -344,7 +383,7 @@ def main():
             sample = comm.bcast(sample, root=0)
 
     # Parse some of the inputs.
-    if args.samplefile is None and args.coadd_type == 'healpix':
+    if args.samplefile is None and args.coadd_type in ('healpix', 'uniqpix'):
         args.survey = args.survey.split(',')
         args.program = args.program.split(',')
         if args.healpix is not None:
@@ -389,7 +428,7 @@ def main():
             fastfiles_to_merge = None
 
         if args.samplefile is not None:
-            merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type='healpix',
+            merge_fastspecfit(specprod=args.specprod, specprod_dir=specprod_dir, coadd_type=args.coadd_type,
                               sample=sample, merge_suffix=args.merge_suffix,
                               outdir_data=outdir_data, fastfiles_to_merge=fastfiles_to_merge,
                               outsuffix=args.merge_suffix, mergedir=args.mergedir, overwrite=args.overwrite,
@@ -412,7 +451,7 @@ def main():
              healpix=args.healpix, tile=args.tile, night=args.night,
              makeqa=args.makeqa, mp=args.mp, fastphot=args.fastphot,
              outdir_data=outdir_data, overwrite=args.overwrite,
-             sample=sample)
+             sample=sample, nthreads=args.plan_threads)
     else:
         if args.profile:
             import cProfile
@@ -425,7 +464,8 @@ def main():
                                   makeqa=args.makeqa, outdir_data=outdir_data, sample=sample,
                                   input_redshifts=args.input_redshifts, templates=args.templates,
                                   templateversion=args.templateversion, fphotodir=args.fphotodir,
-                                  fphotofile=args.fphotofile, emlinesfile=args.emlinesfile, mp_per_file=args.mp_per_file)
+                                  fphotofile=args.fphotofile, emlinesfile=args.emlinesfile, 
+                                  constraintsfile=args.constraintsfile, mp_per_file=args.mp_per_file)
 
         if args.profile:
             profiler.disable()

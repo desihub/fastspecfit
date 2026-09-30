@@ -33,6 +33,8 @@ Contents
    api.rst
    changes.rst
 
+.. _vacs index:
+
 Value Added Catalogs (VACs)
 ---------------------------
 
@@ -40,10 +42,33 @@ Value Added Catalogs (VACs)
    :maxdepth: 1
 
    vacs.rst
-   fuji.rst
-   iron.rst
-   guadalupe.rst
    acknowledgments.rst
+
+.. toctree::
+   :maxdepth: 1
+   :caption: DR2 (Loa)
+
+   loa.rst
+   loa-fastphot.rst
+
+.. toctree::
+   :maxdepth: 1
+   :caption: DR1 (Iron)
+
+   iron.rst
+   iron-fastphot.rst
+
+.. toctree::
+   :maxdepth: 1
+   :caption: DR1 Supplement (Guadalupe)
+
+   guadalupe.rst
+
+.. toctree::
+   :maxdepth: 1
+   :caption: EDR (Fuji)
+
+   fuji.rst
 
 Data Model
 ----------

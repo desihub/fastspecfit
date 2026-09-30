@@ -15,7 +15,8 @@ os.environ.setdefault('MPLBACKEND', 'Agg')
 
 @pytest.fixture(scope='session')
 def template_version():
-    yield '2.0.0'
+    from fastspecfit.templates import Templates
+    yield Templates.DEFAULT_TEMPLATEVERSION
 
 
 @pytest.fixture(scope='session')
@@ -41,9 +42,27 @@ def templates(templatedir, template_version):
     templates_file = f'ftemplates-chabrier-{template_version}.fits'
     templates = os.path.join(templatedir, templates_file)
 
-    url = f"https://data.desi.lbl.gov/public/external/templates/fastspecfit/2.0.0/{templates_file}"
     if not os.path.isfile(templates):
-        urlretrieve(url, templates)
+        if os.path.islink(templates):  # stale symlink from a prior cached run
+            os.remove(templates)
+
+        # Prefer a local FTEMPLATES_DIR checkout (e.g. a template version not
+        # yet published to the public URL) over hitting the network; symlink
+        # it into templatedir so it's still found at the usual
+        # <templatedir>/<file> location expected elsewhere (e.g.
+        # get_templates_filename's FTEMPLATES_DIR auto-detection).
+        ftemplates_dir = os.environ.get('FTEMPLATES_DIR')
+        local = os.path.join(ftemplates_dir, template_version, templates_file) if ftemplates_dir else None
+        if local and os.path.isfile(local):
+            os.symlink(local, templates)
+        else:
+            url = f"https://data.desi.lbl.gov/public/external/templates/fastspecfit/{template_version}/{templates_file}"
+            try:
+                urlretrieve(url, templates)
+            except Exception as e:
+                pytest.skip(f'{url} unreachable ({e}) and no local copy at '
+                            f'$FTEMPLATES_DIR/{template_version}/{templates_file}')
+
     yield templates
 
     # Skip cleanup when using a persistent cache directory.
@@ -55,14 +74,14 @@ def templates(templatedir, template_version):
 def filenames(outdir):
     from importlib import resources
     redux_dir    = resources.files('fastspecfit').joinpath('test/data')
-    specproddir  = resources.files('fastspecfit').joinpath('test/data')
+    specprod     = resources.files('fastspecfit').joinpath('test/data')
     mapdir       = resources.files('fastspecfit').joinpath('test/data')
     fphotodir    = resources.files('fastspecfit').joinpath('test/data')
     redrockfile  = resources.files('fastspecfit').joinpath('test/data/redrock-4-80613-thru20210324.fits')
     stackfile    = resources.files('fastspecfit').joinpath('test/data/stack-LRG.fits')
     yield {
         'redux_dir':        redux_dir,
-        'specproddir':      specproddir,
+        'specprod':         specprod,
         'mapdir':           mapdir,
         'fphotodir':        fphotodir,
         'redrockfile':      redrockfile,
@@ -80,7 +99,7 @@ def fastphot_output(filenames, templates):
     cmd = (f'fastphot {filenames["redrockfile"]} -o {outfile} '
            f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
            f'--redux_dir {filenames["redux_dir"]} '
-           f'--specproddir {filenames["specproddir"]} --templates {templates}')
+           f'--specprod {filenames["specprod"]} --templates {templates}')
     fastphot(args=parse(options=cmd.split()[1:]))
     yield outfile
 
@@ -92,7 +111,41 @@ def fastspec_output(filenames, templates):
     cmd = (f'fastspec {filenames["redrockfile"]} -o {outfile} '
            f'--redux_dir {filenames["redux_dir"]} '
            f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
-           f'--specproddir {filenames["specproddir"]} --templates {templates}')
+           f'--specprod {filenames["specprod"]} --templates {templates}')
+    fastspec(args=parse(options=cmd.split()[1:]))
+    yield outfile
+
+
+@pytest.fixture(scope='session')
+def fastspec_hii_output(filenames, templates, outdir):
+    """fastspec with the HII-region maximal line list (--emlinesfile/
+    --constraintsfile): 63 lines, enough to exceed the FITS 999-column limit
+    and trigger the FASTSPEC/MORELINES HDU split (see issue #236)."""
+    from importlib import resources
+    from fastspecfit.fastspecfit import fastspec, parse
+    emlinesfile = str(resources.files('fastspecfit').joinpath('data/emlines-hii.ecsv'))
+    constraintsfile = str(resources.files('fastspecfit').joinpath('data/emline-constraints-hii.yaml'))
+    outfile = os.path.join(outdir, 'fastspec-hii.fits')
+    cmd = (f'fastspec {filenames["redrockfile"]} -o {outfile} '
+           f'--redux_dir {filenames["redux_dir"]} '
+           f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
+           f'--specprod {filenames["specprod"]} --templates {templates} '
+           f'--emlinesfile {emlinesfile} --constraintsfile {constraintsfile}')
+    fastspec(args=parse(options=cmd.split()[1:]))
+    yield outfile
+
+
+@pytest.fixture(scope='session')
+def fastspec_fixedvdisp_output(filenames, templates, outdir):
+    """fastspec with equal --vdisp-bounds: fixed convolution kernel, no
+    chi2 scan/optimizer (see issue #266)."""
+    from fastspecfit.fastspecfit import fastspec, parse
+    outfile = os.path.join(outdir, 'fastspec-fixedvdisp.fits')
+    cmd = (f'fastspec {filenames["redrockfile"]} -o {outfile} '
+           f'--redux_dir {filenames["redux_dir"]} '
+           f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
+           f'--specprod {filenames["specprod"]} --templates {templates} '
+           f'--vdisp-bounds 0 0')
     fastspec(args=parse(options=cmd.split()[1:]))
     yield outfile
 
@@ -103,4 +156,48 @@ def stackfit_output(filenames, templates):
     outfile = filenames['stackfit_outfile']
     cmd = f'stackfit {filenames["stackfile"]} -o {outfile} --templates {templates}'
     stackfit(args=parse(options=cmd.split()[1:]))
+    yield outfile
+
+
+@pytest.fixture(scope='session')
+def suprime_filenames(outdir):
+    from importlib import resources
+    from fastspecfit.test.build_test_spectra import TARGETS
+
+    target = next(t for t in TARGETS if t['label'] == 'loa-suprime')
+
+    datadir      = resources.files('fastspecfit').joinpath('test/data')
+    redrockfile  = datadir.joinpath('redrock-special-dark-27247.fits')
+    photinfofile = datadir.joinpath('suprime-photinfo.fits')
+    phoyamlfile  = datadir.joinpath('suprime-photinfo.yaml')
+
+    for f in [redrockfile, photinfofile]:
+        if not os.path.isfile(str(f)):
+            pytest.skip(f'Missing test fixture: {f}')
+
+    yield {
+        'redrockfile':      str(redrockfile),
+        'fphotodir':        f'{photinfofile}[{target["phot_ext"]}]',
+        'fphotofile':       str(phoyamlfile),
+        'mapdir':           str(datadir),
+        'targetid':         target['targetid'],
+        'input_redshift':   target['input_redshift'],
+        'fastspec_outfile': os.path.join(outdir, 'fastspec-suprime.fits'),
+    }
+
+
+@pytest.fixture(scope='session')
+def fastspec_suprime_output(suprime_filenames, templates):
+    from fastspecfit.fastspecfit import fastspec, parse
+    outfile = suprime_filenames['fastspec_outfile']
+    tid     = suprime_filenames['targetid']
+    z       = suprime_filenames['input_redshift']
+    cmd = (f'fastspec {suprime_filenames["redrockfile"]} -o {outfile} '
+           f'--redux_dir {suprime_filenames["mapdir"]} '
+           f'--fphotodir {suprime_filenames["fphotodir"]} '
+           f'--fphotofile {suprime_filenames["fphotofile"]} '
+           f'--mapdir {suprime_filenames["mapdir"]} '
+           f'--targetids {tid} --input-redshifts {z} --constrain-age '
+           f'--templates {templates}')
+    fastspec(args=parse(options=cmd.split()[1:]))
     yield outfile

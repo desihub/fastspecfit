@@ -33,14 +33,16 @@ class ContinuumTools(object):
     tauv_guess : float, optional
         Initial guess for the V-band optical depth. Defaults to 0.1.
     vdisp_guess : float, optional
-        Initial guess for the velocity dispersion in km/s.
+        Initial guess for the velocity dispersion kernel in km/s.
+        Defaults to :data:`~fastspecfit.templates.VDISP_NOMINAL`.
     tauv_bounds : tuple, optional
         Lower and upper bounds on tau(V). Defaults to (0., 2.).
     vdisp_bounds : tuple, optional
-        Lower and upper bounds on the velocity dispersion in km/s.
+        Lower and upper bounds on the velocity dispersion kernel in km/s.
+        Defaults to :data:`~fastspecfit.templates.VDISP_BOUNDS`.
     vdisp_nbin : int, optional
         Number of grid points for the velocity dispersion chi2 scan.
-        Defaults to 5.
+        Defaults to 6.
     fluxnorm : float, optional
         Flux normalization factor in erg/s/cm2/A. Defaults to 1e17.
     massnorm : float, optional
@@ -75,7 +77,7 @@ class ContinuumTools(object):
     """
     def __init__(self, data, templates, phot, igm, tauv_guess=0.1,
                  vdisp_guess=VDISP_NOMINAL, tauv_bounds=(0., 2.),
-                 vdisp_bounds=VDISP_BOUNDS, vdisp_nbin=5,
+                 vdisp_bounds=VDISP_BOUNDS, vdisp_nbin=6,
                  fluxnorm=FLUXNORM, massnorm=MASSNORM, fastphot=False,
                  constrain_age=False):
 
@@ -1015,6 +1017,19 @@ class ContinuumTools(object):
         # Precompute quantities that are independent of tauv.
         wave_diff    = np.diff(wave)
         dustflux_zf  = dustflux * zfactors
+        if dust_emission:
+            # Trapezoidal-quadrature weights on the (fixed) template
+            # wavelength grid, so that trapz(f, wave) == f @ trapz_weights
+            # for any f. The energy-balance term is
+            #   d = trapz(templateflux * (1 - A), wave)
+            #     = trapz(templateflux, wave) - trapz(templateflux * A, wave)
+            #     = template_wave_integral - templateflux @ (A * trapz_weights)
+            # and since templateflux doesn't depend on tauv, the first term
+            # can be computed once here instead of on every _fill(tauv) call.
+            trapz_weights = np.zeros_like(wave)
+            trapz_weights[:-1] += 0.5 * wave_diff
+            trapz_weights[1:]  += 0.5 * wave_diff
+            template_wave_integral = templateflux @ trapz_weights   # (ntemplates,)
 
         b   = np.empty(nrows)
         Psi = np.empty((nrows, ntemplates))
@@ -1025,23 +1040,41 @@ class ContinuumTools(object):
         if synthphot:
             b[nspec:] = objflam * objflamistd
 
+        bad_b = ~np.isfinite(b)
+        if np.any(bad_b):
+            nspec_bad = np.sum(bad_b[:nspec]) if synthspec else 0
+            nphot_bad = np.sum(bad_b[nspec:]) if synthphot else 0
+            errmsg = (f'Non-finite values in fit vector: {nspec_bad} spectroscopic pixel(s), '
+                      f'{nphot_bad} photometric band(s) [{_uid(self.data)}]')
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+
+        # Scratch buffers reused across every _fill(tauv) call (Brent's method
+        # evaluates this ~10-15 times per fit) so the outer-product-sized
+        # arrays aren't reallocated on every trial tauv.
+        npix   = templateflux.shape[1]
+        A_buf  = np.empty(npix)
+        Az_buf = np.empty(npix)
+        if dust_emission:
+            Aw_buf    = np.empty(npix)
+            outer_buf = np.empty((ntemplates, npix))
+
         def _fill(tauv):
-            A           = np.exp(-tauv * dust_kl)     # (npix,)
-            Az          = A * zfactors                 # (npix,)
-            phi[:]      = templateflux * Az            # (ntemplates, npix)
+            np.multiply(dust_kl, -tauv, out=A_buf)
+            np.exp(A_buf, out=A_buf)                       # A_buf: A = exp(-tauv*dust_kl)
+            np.multiply(A_buf, zfactors, out=Az_buf)       # Az_buf: Az
+            np.multiply(templateflux, Az_buf, out=phi)     # phi = templateflux * Az
             if dust_emission:
-                one_minus_A = 1. - A
-                d = 0.5 * (
-                    templateflux[:, :-1] * one_minus_A[:-1] +
-                    templateflux[:, 1:]  * one_minus_A[1:]
-                ) @ wave_diff                          # (ntemplates,)
-                phi[:] += d[:, None] * dustflux_zf
+                np.multiply(A_buf, trapz_weights, out=Aw_buf)
+                d = template_wave_integral - templateflux @ Aw_buf  # (ntemplates,)
+                np.multiply(d[:, None], dustflux_zf, out=outer_buf)
+                phi[:] += outer_buf
             if synthspec:
                 spec_batch = self.continuum_to_spectroscopy_batch(phi)  # (ntemplates, nspec)
-                Psi[:nspec, :] = spec_batch.T * specistd[:, None]
+                np.multiply(spec_batch.T, specistd[:, None], out=Psi[:nspec, :])
             if synthphot:
                 phot_batch = self.continuum_to_photometry_batch(phi)    # (ntemplates, nphot)
-                Psi[nspec:, :] = phot_batch.T * objflamistd[:, None]
+                np.multiply(phot_batch.T, objflamistd[:, None], out=Psi[nspec:, :])
 
         def objective(tauv):
             _fill(tauv)
@@ -1072,7 +1105,7 @@ class ContinuumTools(object):
         self.optimizer_saved_contmodel = coeff @ phi
         resid = Psi @ coeff - b
 
-        return tauv, self.templates.vdisp_nominal, coeff, resid
+        return tauv, self.templates.vdisp_nominal_kernel, coeff, resid
 
 
     def fit_stellar_continuum(self, templateflux, fit_vdisp=False, conv_pre=None,
@@ -1222,7 +1255,7 @@ class ContinuumTools(object):
         else:
             tauv = bestparams[0]
             templatecoeff = bestparams[1:]
-            vdisp = self.templates.vdisp_nominal
+            vdisp = self.templates.vdisp_nominal_kernel
 
         return tauv, vdisp, templatecoeff, resid
 
@@ -1318,8 +1351,7 @@ def build_stellar_continuum(coeff, tauv, redshift, templates, cosmo, igm,
     vdisp : float or None, optional
         Velocity dispersion in km/s.  If ``None``, the raw (unbroadened)
         ``templates.flux`` is used without any convolution.  To match the
-        default production behavior, pass ``vdisp=templates.vdisp_nominal``
-        (250 km/s).
+        default production behavior, pass ``vdisp=templates.vdisp_nominal_kernel``.
     fluxnorm : float, optional
         Flux normalization factor in erg/s/cm²/Å.
         Defaults to :data:`~fastspecfit.util.FLUXNORM` (10\ :sup:`17`).
@@ -1367,7 +1399,7 @@ def build_stellar_continuum(coeff, tauv, redshift, templates, cosmo, igm,
     return ztemplatewave, contmodel
 
 
-def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4800.), fit_restrange=(3800., 6000.)):
+def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4900.), fit_restrange=(3800., 6000.)):
     """Determine whether the spectrum has sufficient coverage to fit velocity dispersion.
 
     Parameters
@@ -1378,9 +1410,13 @@ def can_compute_vdisp(redshift, specwave, min_restrange=(3800., 4800.), fit_rest
         Observed-frame wavelength array in Angstroms.
     min_restrange : tuple, optional
         Minimum required rest-frame wavelength range (lo, hi) in Angstroms.
-        Defaults to (3800., 4800.).
+        The low end guards against missing blue-camera data (Ca H&K would be
+        absent); the high end sets the effective redshift gate. Defaults to
+        (3800., 4900.), which requires coverage through Hβ (4861 Å) and
+        corresponds to z ≲ 1.0 for DESI.
     fit_restrange : tuple, optional
-        Rest-frame wavelength range used when fitting velocity dispersion.
+        Rest-frame wavelength range used when fitting velocity dispersion,
+        covering Ca H&K, G band, Hβ, Mg b, and the Fe complex.
         Defaults to (3800., 6000.).
 
     Returns
@@ -1443,7 +1479,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
     agekeep = CTools.agekeep
     nage = CTools.nage
 
-    vdisp = templates.vdisp_nominal
+    vdisp = templates.vdisp_nominal_kernel
 
     ndof_phot = np.sum(objflamivar > 0.)
 
@@ -1532,6 +1568,13 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
                 msg.append(f'{label}={val:.3f}{var_msg}{units}')
             msg.append(f'vdisp={vdisp:.0f} km/s')
             log.info(' '.join(msg))
+        else:
+            coeff_monte = None
+            tauv_monte = None
+            sedmodel_monte = None
+            sedmodel_nolines_monte = None
+            tauv_ivar = 0.
+            dn4000_model_ivar = 0.
 
     return (coeff, coeff_monte, rchi2_phot, tauv, tauv_monte, tauv_ivar, vdisp,
             dn4000_model, dn4000_model_ivar, sedmodel, sedmodel_monte,
@@ -1568,7 +1611,8 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
         If ``True``, fit a parabola to refine the chi2 minimum.
         Defaults to ``False``.
     debug_plots : bool, optional
-        If ``True``, write a QA plot to the current directory.
+        If ``True``, write a QA plot and an ECSV table (VDISP, TAUV, CHI2
+        columns, float32) of the full chi2 grid to the current directory.
 
     Returns
     -------
@@ -1583,17 +1627,29 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
 
     ngrid = len(CTools.vdisp_grid)
     chi2grid = np.zeros(ngrid)
+    tauvgrid = np.zeros(ngrid)
     for iv, vdisp1 in enumerate(CTools.vdisp_grid):
         # convolve the templates at the derived vdisp and fit
         input_templateflux_nolines = templates.convolve_vdisp(
             templates.flux_nolines[agekeep, :], vdisp1)
-        tauv, _, coeff, resid1 = CTools.fit_stellar_continuum(
+        tauv1, _, coeff, resid1 = CTools.fit_stellar_continuum(
             input_templateflux_nolines, fit_vdisp=False, conv_pre=None,
             #tauv_bounds=(0., 2.),
             specflux=specflux, specistd=specistd*fitmask,
             dust_emission=False, synthspec=True,
             ftol=1e-3, xtol=1e-5)
         chi2grid[iv] = resid1.dot(resid1)
+        tauvgrid[iv] = tauv1
+
+    if debug_plots:
+        from astropy.table import Table
+        gridfile = f'qa-vdisp-chi2scan-{uniqueid}.ecsv'
+        gridtable = Table()
+        gridtable['VDISP'] = CTools.vdisp_grid.astype(np.float32)
+        gridtable['TAUV'] = tauvgrid.astype(np.float32)
+        gridtable['CHI2'] = chi2grid.astype(np.float32)
+        gridtable.write(gridfile, overwrite=True)
+        log.info(f'Wrote {gridfile}')
 
     # Require the peak-to-peak delta-chi2 to be at least deltachi2min and the
     # minimum to not be on either endpoint.
@@ -1601,7 +1657,7 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
     deltachi2 = np.ptp(chi2grid)
     if deltachi2 < deltachi2min or imin == 0 or imin == ngrid-1:
         vdisp_init = CTools.vdisp_grid[imin]
-        vdisp = templates.vdisp_nominal
+        vdisp = templates.vdisp_nominal_kernel
         vdisp_ivar = 0.
         if deltachi2 < deltachi2min:
             log.info('Initial velocity dispersion fit failed: delta-chi2=' + \
@@ -1624,7 +1680,7 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
 
         # Did fitting fail?
         if vdisp < 0.:
-            vdisp = templates.vdisp_nominal
+            vdisp = templates.vdisp_nominal_kernel
             vdisp_ivar = 0.
             chi2min = 0.
         else:
@@ -1662,7 +1718,14 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
 
 def _continuum_nominal_vdisp(CTools, templates, specflux, specwave,
                              specistd, agekeep, compute_chi2=False):
-    """Support routine to fit a spectrum at the nominal velocity dispersion.
+    """Fit a spectrum at the nominal velocity dispersion.
+
+    Used in two contexts: (1) as a quick preliminary fit whose template
+    coefficients are passed to :func:`_vdisp_from_mstar` to derive a
+    better fallback velocity dispersion via the σ–M* relation; and (2) to
+    supply the continuum model used for the aperture-correction estimate.
+    The templates used here are pre-broadened to
+    ``templates.vdisp_nominal_kernel`` (i.e., ``templates.flux_nolines_nomvdisp``).
 
     """
     tauv, vdisp, coeff, resid = CTools.fit_stellar_continuum(
@@ -1774,19 +1837,65 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
     # Attempt to solve for the velocity dispersion based on the rest-wavelength coverage.
     compute_vdisp, (vdisp_s, vdisp_e) = can_compute_vdisp(redshift, specwave)
 
+    # Equal vdisp_bounds signals a fixed convolution kernel (e.g. 0 for
+    # native template resolution, with no extra broadening); skip the chi2
+    # scan/optimizer and the sigma-M* fallback entirely (see issue #266).
+    fixed_vdisp = (templates.vdisp_bounds[0] == templates.vdisp_bounds[1])
+    if fixed_vdisp:
+        compute_vdisp = False
+
+    def _vdisp_from_mstar(coeff):
+        """Return a fallback vdisp kernel (km/s) derived from the σ–M* relation.
+
+        Uses the preliminary template coefficients to estimate log M*, then
+        applies log σ = a + b*(log M* − 11) to get σ_stars.  Converts to the
+        convolution kernel σ_kernel = sqrt(σ_stars² − σ_C3K²) and clamps to
+        vdisp_bounds.  Returns (vdisp_kernel, logmstar) on success, or
+        (vdisp_nominal_kernel, None) when M* cannot be estimated.
+        """
+        tinfo = templates.info[agekeep]
+        masstot = coeff.dot(tinfo['mstar'])
+        if masstot > 0. and np.sum(coeff) > 0.:
+            logmstar = np.log10(CTools.massnorm * masstot)
+            a, b = templates.vdisp_sigma_relation
+            vdisp_stars = 10.**(a + b * (logmstar - 11.))
+            vdisp_kernel = float(np.sqrt(max(0., vdisp_stars**2 - templates.SIGMA_C3K**2)))
+            vdisp_kernel = float(np.clip(vdisp_kernel, *templates.vdisp_bounds))
+            return vdisp_kernel, logmstar
+        return templates.vdisp_nominal_kernel, None
+
+    def _apply_mstar_vdisp_fallback(coeff, reason):
+        """Set vdisp, input_templateflux, and input_templateflux_nolines for a fallback case."""
+        vdisp_kernel, logmstar = _vdisp_from_mstar(coeff)
+        if logmstar is not None:
+            itf = templates.convolve_vdisp(templates.flux[agekeep, :], vdisp_kernel)
+            itf_nl = templates.convolve_vdisp(templates.flux_nolines[agekeep, :], vdisp_kernel)
+            log.debug(f'{reason}; adopting σ–M* vdisp={vdisp_kernel:.0f} km/s '
+                      f'(log M*≈{logmstar:.2f})')
+        else:
+            itf = templates.flux_nomvdisp[agekeep, :]
+            itf_nl = templates.flux_nolines_nomvdisp[agekeep, :]
+            log.debug(f'{reason}; adopting nominal vdisp={vdisp_kernel:.0f} km/s')
+        return vdisp_kernel, itf, itf_nl
+
     if not compute_vdisp:
-        # Fit to the cached templates at the nominal velocity dispersion.
-        tauv, vdisp, coeff, contmodel, _ = _continuum_nominal_vdisp(
+        # Fit to the cached templates at the nominal velocity dispersion to
+        # get preliminary coefficients, then derive a better fallback vdisp
+        # from the σ–M* relation.
+        tauv, _, coeff, contmodel, _ = _continuum_nominal_vdisp(
             CTools, templates, specflux, specwave,
             specistd, agekeep, compute_chi2=False)
 
         vdisp_ivar = 0.
 
-        input_templateflux = templates.flux_nomvdisp[agekeep, :]
-        input_templateflux_nolines = templates.flux_nolines_nomvdisp[agekeep, :]
-
-        log.debug('Insufficient wavelength coverage to compute velocity ' + \
-                  f'dispersion; adopting {vdisp:.0f} km/s')
+        if fixed_vdisp:
+            vdisp = templates.vdisp_bounds[0]
+            input_templateflux = templates.convolve_vdisp(templates.flux[agekeep, :], vdisp)
+            input_templateflux_nolines = templates.convolve_vdisp(templates.flux_nolines[agekeep, :], vdisp)
+            log.debug(f'Fixed vdisp_bounds={templates.vdisp_bounds}; using constant kernel={vdisp:.0f} km/s')
+        else:
+            vdisp, input_templateflux, input_templateflux_nolines = \
+                _apply_mstar_vdisp_fallback(coeff, 'Insufficient wavelength coverage to compute vdisp')
     else:
         t0 = time.time()
 
@@ -1800,15 +1909,14 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
             specistd, fitmask, agekeep, deltachi2min=25.,
             fit_for_min=False, debug_plots=debug_plots)
 
-        # If the scan is unsuccessful, adopt the nominal velocity dispersion
-        # and continue....
+        # If the scan is unsuccessful, derive a fallback from the σ–M* relation.
         if vdisp_ivar == 0.:
-            tauv, vdisp, coeff, contmodel, _ = _continuum_nominal_vdisp(
+            tauv, _, coeff, contmodel, _ = _continuum_nominal_vdisp(
                 CTools, templates, specflux, specwave,
                 specistd, agekeep, compute_chi2=False)
 
-            input_templateflux = templates.flux_nomvdisp[agekeep, :]
-            input_templateflux_nolines = templates.flux_nolines_nomvdisp[agekeep, :]
+            vdisp, input_templateflux, input_templateflux_nolines = \
+                _apply_mstar_vdisp_fallback(coeff, 'vdisp chi2 scan failed')
         else:
             # ...otherwise fit for the maximum likelihood value.
 
@@ -2465,7 +2573,7 @@ def qso_continuum_fastspec(redshift, objflam, objflamivar, CTools, igm,
 def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                       nmonte=NMONTE_DEFAULT, seed=1, constrain_age=False,
                       no_smooth_continuum=False, fitstack=False,
-                      fastphot=False, fastqso=False, debug_plots=False):
+                      fastphot=False, fastqso=False, debug_plots=False, vdisp_nbin=6):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -2473,6 +2581,9 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
     data : :class:`dict`
         Dictionary of input spectroscopy (plus ancillary data) populated by
         :func:`fastspecfit.io.DESISpectra.read`.
+    vdisp_nbin : int, optional
+        Number of grid points for the velocity dispersion chi2 scan.
+        Defaults to 6.
 
     Returns
     -------
@@ -2500,6 +2611,12 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
     objflam = data['photometry']['flam'].value * FLUXNORM
     objflamivar = (data['photometry']['flam_ivar'].value / FLUXNORM**2) * phot.bands_to_fit
 
+    bad = ~np.isfinite(objflam)
+    if np.any(bad):
+        log.warning(f'Masking {np.sum(bad):,d} photometric band(s) with non-finite flux [{_uid(data)}].')
+        objflam[bad] = 0.
+        objflamivar[bad] = 0.
+
     if np.any(phot.bands_to_fit):
         # Require at least one *optical* photometric band; do not just fit the
         # IR because we will not be able to compute the aperture correction.
@@ -2511,8 +2628,9 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
 
     # Instantiate the continuum tools class.
     CTools = ContinuumTools(data, templates, phot, igm, fastphot=fastphot,
-                            vdisp_guess=templates.vdisp_nominal,
+                            vdisp_guess=templates.vdisp_nominal_kernel,
                             vdisp_bounds=templates.vdisp_bounds,
+                            vdisp_nbin=vdisp_nbin,
                             fluxnorm=FLUXNORM, constrain_age=constrain_age)
 
     # Instantiate the random-number generator.
@@ -2586,7 +2704,6 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
     #result['Z'] = redshift
     specphot['SEED'] = seed
     specphot['RCHI2_PHOT'] = rchi2_phot
-
     if fastqso:
         specphot['PL_SLOPE'] = pl_slope
         specphot['PL_SLOPE_IVAR'] = pl_slope_ivar
@@ -2602,9 +2719,13 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
         specphot['TORUS_AMPLITUDE_IVAR'] = torus_amplitude_ivar
     else:
         specphot['COEFF'][CTools.agekeep] = coeff
-        specphot['VDISP'] = vdisp  # * u.kilometer/u.second
-        specphot['DN4000_MODEL'] = dn4000_model
-        specphot['DN4000_MODEL_IVAR'] = dn4000_model_ivar
+        vdisp_intrinsic = np.sqrt(vdisp**2 + templates.SIGMA_C3K**2)
+        specphot['VDISP'] = vdisp_intrinsic
+        if 0. < dn4000_model_ivar < F32MAX:
+            specphot['DN4000_MODEL'] = dn4000_model
+            specphot['DN4000_MODEL_IVAR'] = dn4000_model_ivar
+        elif coeff_monte is None:
+            specphot['DN4000_MODEL'] = dn4000_model
 
     if not fastphot:
         specphot['RCHI2_CONT'] = rchi2_cont
@@ -2624,7 +2745,12 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
         if not fastqso:
             specphot['DN4000_OBS'] = dn4000
             specphot['DN4000_IVAR'] = dn4000_ivar
-            specphot['VDISP_IVAR'] = vdisp_ivar  # * (u.second/u.kilometer)**2
+            # Avoid a divide-by-zero (e.g. a fixed vdisp=0 kernel; see issue
+            # #266) when there is no uncertainty to propagate in the first place.
+            if vdisp_ivar > 0.:
+                specphot['VDISP_IVAR'] = vdisp_ivar * (vdisp_intrinsic / vdisp)**2
+            else:
+                specphot['VDISP_IVAR'] = 0.
 
     # Compute K-corrections, rest-frame quantities, and physical properties.
     if has_continuum:
@@ -2695,8 +2821,8 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                 if var > TINY:
                     specphot[f'{cfluxkey}_IVAR'] = 1. / var
 
-        # get the SPS properties (galaxy only; not applicable for QSO or fastphot)
-        if not fastphot and not fastqso:
+        # get the SPS properties (galaxy and fastphot only; not applicable for QSO)
+        if not fastqso:
             def _get_sps_properties(coeff):
                 tinfo = templates.info[CTools.agekeep]
                 mstars = tinfo['mstar'] # [current mass in stars, Msun]
@@ -2707,14 +2833,24 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                     zzsun = np.log10(coeff.dot(mstars * 10.**tinfo['zzsun']) / masstot) # mass-weighted
                     age = coeff.dot(tinfo['age']) / coefftot / 1e9           # luminosity-weighted [Gyr]
                     #age = coeff.dot(mstars * tinfo['age']) / masstot / 1e9  # mass-weighted [Gyr]
-                    sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])          # [Msun/yr]
+                    if 'dt' in tinfo.colnames:
+                        sfr_dt = 100e6  # [yr]
+                        t_near = tinfo['age'] - tinfo['dt'] / 2.
+                        frac = np.clip((np.minimum(tinfo['age'] + tinfo['dt'] / 2., sfr_dt) - t_near) / tinfo['dt'], 0., 1.)
+                        sfr = CTools.massnorm * coeff.dot(frac) / sfr_dt     # [Msun/yr], averaged over 100 Myr
+                    else:
+                        # old templates (<v2.1.0) lack dt; fall back to sp.sfr-based estimate (~30 Myr)
+                        sfr = CTools.massnorm * coeff.dot(tinfo['sfr'])      # [Msun/yr]
                 else:
                     logmstar, zzsun, age, sfr = 0., 0., 0., 0.
                 return age, zzsun, logmstar, sfr
 
             age, zzsun, logmstar, sfr = _get_sps_properties(coeff)
-            specphot['TAUV'] = tauv
-            specphot['TAUV_IVAR'] = tauv_ivar
+            if 0. < tauv_ivar < F32MAX:
+                specphot['TAUV'] = tauv
+                specphot['TAUV_IVAR'] = tauv_ivar
+            elif coeff_monte is None:
+                specphot['TAUV'] = tauv
             specphot['AGE'] = age
             specphot['ZZSUN'] = zzsun
             specphot['LOGMSTAR'] = logmstar

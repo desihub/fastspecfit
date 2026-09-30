@@ -80,9 +80,9 @@ def _mat_tocolumns(mat):
     w2 = w // 2
     result = np.empty((w, npix), dtype=mat.dtype)
     for r in range(w):
-        shift = r - w2
+        shift = w2 - r
         for j in range(npix):
-            result[r, j] = mat[r, (j - shift) % npix]
+            result[r, j] = mat[w - 1 - r, (j - shift) % npix]
     return result
 
 
@@ -131,6 +131,21 @@ def deconvolve_resolution_matrix(mat0,
         gau_mat = _make_gaussian_matrix(width, sigma0_angstrom, pix_size_angstrom)
         mat_rows1 = scipy.linalg.solve(gau_mat, mat_rows)
 
+    # Renormalize the w2 edge columns of W_rows so their column sums match
+    # the interior median. Edge pixels of the DESI extraction have truncated
+    # kernels; without this step W under-weights flux at camera boundaries.
+    mult = float(np.median(mat_rows1.sum(axis=0)))
+    if mult == 0.:
+        mult = 1.
+    for i in range(w2):
+        N1 = mat_rows1[w2 - i:, i].sum()
+        if N1 != 0.:
+            mat_rows1[:, i] *= mult / N1
+        j = npix - 1 - i
+        N2 = mat_rows1[:w2 + 1 + i, j].sum()
+        if N2 != 0.:
+            mat_rows1[:, j] *= mult / N2
+
     return _mat_tocolumns(mat_rows1)
 
 
@@ -154,20 +169,24 @@ class Resolution(object):
     """
     def __init__(self, data0):
         data = deconvolve_resolution_matrix(data0)
-        ndiag, dim  = data.shape
+        ndiag, dim  = data0.shape
         self.shape  = (dim, dim)
         self.ndiag  = ndiag
-        self.data   = data
-        self.rows   = None # compute on first use
+        self.data0  = data0  # raw resolution matrix R
+        self.data   = data   # deconvolved W = M^{-1} R, for emission-line fitting
+        self.rows   = None   # compute on first use
 
 
     def rowdata(self):
-        """Return the sparse row representation of the resolution matrix.
+        """Return the sparse row representation of the deconvolved matrix W.
+
+        Used by the emission-line Jacobian (``mulWMJ``). Always derived from
+        ``self.data`` (W = M^{-1} R), not the raw matrix.
 
         Returns
         -------
         rows : :class:`numpy.ndarray`, shape (dim, ndiag)
-            Nonzero entries for each row of the resolution matrix.
+            Nonzero entries for each row of W.
 
         """
         if self.rows is None:
@@ -176,7 +195,11 @@ class Resolution(object):
 
 
     def dot(self, v, out=None):
-        """Multiply the resolution matrix by vector ``v``.
+        """Multiply the raw resolution matrix R by vector ``v``.
+
+        Use for continuum models, which are always broader than a single pixel
+        and do not require the Gaussian pre-convolution assumed by the
+        deconvolved matrix. See :meth:`dot_deconv` for emission-line use.
 
         Parameters
         ----------
@@ -189,7 +212,34 @@ class Resolution(object):
         Returns
         -------
         out : :class:`numpy.ndarray`, shape (dim,)
-            Result of the matrix-vector product.
+            Result of the matrix-vector product R @ v.
+
+        """
+        if out is None:
+            out = np.empty(self.shape[0], dtype=v.dtype)
+
+        return self._matvec(self.data0, v, out)
+
+
+    def dot_deconv(self, v, out=None):
+        """Multiply the deconvolved matrix W = M^{-1} R by vector ``v``.
+
+        Use for emission-line models pre-convolved with the fiducial Gaussian
+        G (sigma = :data:`SIGMA0_ANGSTROM`). Do not use for continuum models;
+        see :meth:`dot`.
+
+        Parameters
+        ----------
+        v : :class:`numpy.ndarray`, shape (dim,)
+            Input vector.
+        out : :class:`numpy.ndarray` or None, optional
+            Pre-allocated output array of length ``dim``; allocated if
+            ``None``.
+
+        Returns
+        -------
+        out : :class:`numpy.ndarray`, shape (dim,)
+            Result of the matrix-vector product W @ v.
 
         """
         if out is None:
@@ -199,7 +249,10 @@ class Resolution(object):
 
 
     def matmat(self, V, out=None):
-        """Apply the resolution matrix to all rows of ``V`` (ntemplates × dim).
+        """Apply the raw resolution matrix R to all rows of ``V`` (ntemplates × dim).
+
+        Use for continuum template batches. See :meth:`matmat_deconv` for
+        emission-line use.
 
         Parameters
         ----------
@@ -210,6 +263,32 @@ class Resolution(object):
         Returns
         -------
         out : :class:`numpy.ndarray`, shape (ntemplates, dim)
+            Result of R @ V.T (applied row-wise).
+
+        """
+        if out is None:
+            out = np.empty_like(V)
+
+        return self._matmat(self.data0, V, out)
+
+
+    def matmat_deconv(self, V, out=None):
+        """Apply the deconvolved matrix W = M^{-1} R to all rows of ``V`` (ntemplates × dim).
+
+        Use for emission-line template batches pre-convolved with the fiducial
+        Gaussian G (sigma = :data:`SIGMA0_ANGSTROM`). See :meth:`matmat` for
+        continuum use.
+
+        Parameters
+        ----------
+        V : :class:`numpy.ndarray`, shape (ntemplates, dim)
+        out : :class:`numpy.ndarray` or None, optional
+            Pre-allocated output of the same shape; allocated if ``None``.
+
+        Returns
+        -------
+        out : :class:`numpy.ndarray`, shape (ntemplates, dim)
+            Result of W @ V.T (applied row-wise).
 
         """
         if out is None:

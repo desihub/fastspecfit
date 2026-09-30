@@ -13,7 +13,7 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data
-from fastspecfit.photometry import Photometry
+from fastspecfit.photometry import Photometry, release_to_photsys, desitarget_resolve_dec, releasedict
 from fastspecfit.util import FLUXNORM, ZWarningMask, fsftime, _uid
 from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
 
@@ -42,6 +42,7 @@ EXPFMCOLS = {
     'pernight':   ('TARGETID', 'TILEID', 'FIBER'),
     'cumulative': ('TARGETID', 'TILEID', 'FIBER'),
     'healpix':    ('TARGETID', 'TILEID'), # tileid will be an array
+    'uniqpix':    ('TARGETID', 'TILEID'), # tileid will be an array
     'custom':     ('TARGETID', 'TILEID'), # tileid will be an array
     }
 
@@ -54,6 +55,21 @@ TSNR2COLS = ('TSNR2_BGS', 'TSNR2_LRG', 'TSNR2_ELG', 'TSNR2_QSO', 'TSNR2_LYA')
 # quasarnet and MgII afterburner columns to read
 QNLINES = ['C_LYA', 'C_CIV', 'C_CIII', 'C_MgII', 'C_Hbeta', 'C_Halpha', ]
 MGIICOLS = ['TARGETID', 'IS_QSO_MGII']
+
+# FITS binary tables cap out at 999 columns (TFIELDS). Past that, per-line
+# columns for isstrong=False lines move from FASTSPEC into a MORELINES HDU
+# (see write_fastspecfit/read_fastspecfit). Must match the per-line fields
+# added in get_output_dtype's line loop.
+MAX_FASTSPEC_COLUMNS = 999
+LINE_COLUMN_SUFFIXES = ('_MODELAMP', '_AMP', '_AMP_IVAR', '_FLUX', '_FLUX_IVAR',
+                        '_BOXFLUX', '_BOXFLUX_IVAR', '_VSHIFT', '_VSHIFT_IVAR',
+                        '_SIGMA', '_SIGMA_IVAR', '_CONT', '_CONT_IVAR', '_EW',
+                        '_EW_IVAR', '_FLUX_LIMIT', '_CHI2', '_NPIX')
+
+# identifying columns copied into MORELINES so it can be read/verified
+# independently of FASTSPEC/METADATA row order
+MORELINES_IDCOLS = ('TARGETID', 'STACKID', 'SURVEY', 'PROGRAM', 'TILEID',
+                    'NIGHT', 'FIBER', 'EXPID')
 
 def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
                  init_sigma_uv=None, init_sigma_narrow=None,
@@ -243,7 +259,7 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
         specdata['camerapix'][:, 1] = c_ends
 
         # use the coadded spectrum to build a robust emission-line mask
-        LM = LineMasker(sc_data.emlines.table)
+        LM = LineMasker(sc_data.emlines.table, sc_data.constraints)
         pix = LM.build_linemask(
             specdata['coadd_wave'], specdata['coadd_flux'],
             specdata['coadd_ivar'], specdata['coadd_res'],
@@ -397,7 +413,7 @@ def one_stacked_spectrum(specdata, meta, synthphot=True, debug_plots=False):
     specdata['camerapix'][:, 0] = c_starts
     specdata['camerapix'][:, 1] = c_ends
 
-    LM = LineMasker(sc_data.emlines.table)
+    LM = LineMasker(sc_data.emlines.table, sc_data.constraints)
     pix = LM.build_linemask(
         specdata['coadd_wave'], specdata['coadd_flux'],
         specdata['coadd_ivar'], specdata['coadd_res'],
@@ -455,13 +471,10 @@ class DESISpectra(object):
     fphotodir : str or None, optional
         Top-level directory of the source photometry (Legacy Survey). Defaults
         to ``$FPHOTO_DIR``.
-    mapdir : str or None, optional
-        Directory containing the Milky Way dust maps. Defaults to
-        ``$DUST_DIR/maps``.
 
     """
 
-    def __init__(self, phot, cosmo, redux_dir=None, fphotodir=None, mapdir=None):
+    def __init__(self, phot, cosmo, redux_dir=None, fphotodir=None):
         if redux_dir is None:
             redux_env = os.environ.get('DESI_SPECTRO_REDUX')
             self.redux_dir = os.path.expandvars(redux_env) if redux_env else None
@@ -487,12 +500,6 @@ class DESISpectra(object):
                     pass
             self.fphotoext = fphotoext
             self.fphotodir = fphotodir
-
-        if mapdir is None:
-            dust_env = os.environ.get('DUST_DIR')
-            self.mapdir = os.path.join(os.path.expandvars(dust_env), 'maps') if dust_env else None
-        else:
-            self.mapdir = mapdir
 
         self.phot = phot
         self.cosmo = cosmo
@@ -535,7 +542,6 @@ class DESISpectra(object):
             return northern
 
         # ADM retrieve the photometric system from the RELEASE.
-        from desitarget.io import release_to_photsys, desitarget_resolve_dec
         if 'PHOTSYS' in targets.dtype.names:
             photsys = targets["PHOTSYS"]
         else:
@@ -583,7 +589,7 @@ class DESISpectra(object):
 
     def gather_metadata(self, redrockfiles, zmin=None, zmax=None, zwarnmax=None,
                         targetids=None, firsttarget=0, ntargets=None,
-                        input_redshifts=None, specprod_dir=None, use_quasarnet=True,
+                        input_redshifts=None, specprod=None, use_quasarnet=True,
                         redrockfile_prefix='redrock-', specfile_prefix='coadd-',
                         qnfile_prefix='qso_qn-', mgiifile_prefix='qso_mgii-'):
         """Select targets for fitting and gather spectroscopic metadata.
@@ -611,8 +617,15 @@ class DESISpectra(object):
         input_redshifts : float or array-like or None, optional
             Override redshifts for each entry in ``targetids``. If ``None``,
             use Redrock (or QuasarNet) redshifts.
-        specprod_dir : str or None, optional
-            Override the spectroscopic production directory.
+        specprod : str or None, optional
+            Override the on-disk spectroscopic production *directory name*
+            under ``redux_dir``, for cases where it differs from the
+            ``SPECPROD`` dependency recorded in the Redrock/coadd file
+            headers (e.g., a relocated or "mini" production tree). This is
+            independent of the instance attribute ``self.specprod``, which
+            is always read from the file headers and used to pick the
+            correct QuasarNet-afterburner column schema; this parameter only
+            affects where the ``tiles-{specprod}.csv`` file is looked up.
         use_quasarnet : bool, optional
             Use QuasarNet afterburner redshifts for QSOs when available.
             Defaults to ``True``.
@@ -637,7 +650,7 @@ class DESISpectra(object):
         """
         from astropy.table import vstack, hstack
         from desiutil.depend import getdep
-        from desitarget import geomask
+        from desitarget.geomask import match_to
 
         if zmin is None:
             zmin = 1e-3
@@ -702,14 +715,14 @@ class DESISpectra(object):
             # only compatible with Fuji & Guadalupe headers and later.
             hdr = fitsio.read_header(specfile, ext=0)
 
-            specprod = getdep(hdr, 'SPECPROD')
+            file_specprod = getdep(hdr, 'SPECPROD')
             if hasattr(self, 'specprod'):
-                if self.specprod != specprod:
-                    errmsg = f'specprod must be the same for all input redrock files! {specprod}!={self.specprod}'
+                if self.specprod != file_specprod:
+                    errmsg = f'specprod must be the same for all input redrock files! {file_specprod}!={self.specprod}'
                     log.critical(errmsg)
                     raise ValueError(errmsg)
 
-            self.specprod = specprod
+            self.specprod = file_specprod
 
             if 'SPGRP' in hdr:
                 self.coadd_type = hdr['SPGRP']
@@ -722,15 +735,20 @@ class DESISpectra(object):
                 survey = hdr['SURVEY']
                 program = hdr['PROGRAM']
                 healpix = np.int32(hdr['SPGRPVAL'])
+                # uniqpix = np.int32(healpix + 4 * nside**2), where
+                # nside = np.int32(hdr['HPXNSIDE']) if 'HPXNSIDE' in hdr else np.int32(64)
                 thrunight = None
                 log.info('specprod={}, coadd_type={}, survey={}, program={}, healpix={}'.format(
                     self.specprod, self.coadd_type, survey, program, healpix))
-
-                # I'm not sure we need these attributes but if we end up
-                # using them then be sure to document them as attributes of
-                # the class!
-                #self.hpxnside = hdr['HPXNSIDE']
-                #self.hpxnest = hdr['HPXNEST']
+            elif self.coadd_type == 'uniqpix':
+                survey = hdr['SURVEY']
+                program = hdr['PROGRAM']
+                uniqpix = np.int32(hdr['SPGRPVAL'])
+                # healpix = np.int32(uniqpix - 4 * nside**2), where
+                # nside = 2**int(np.log2(np.sqrt(uniqpix / 4))) (i.e., uniqpix is self-decoding)
+                thrunight = None
+                log.info('specprod={}, coadd_type={}, survey={}, program={}, uniqpix={}'.format(
+                    self.specprod, self.coadd_type, survey, program, uniqpix))
             elif self.coadd_type == 'custom':
                 survey = 'custom'
                 program = 'custom'
@@ -754,8 +772,12 @@ class DESISpectra(object):
                 # cache the tiles file so we can grab the survey and program name
                 # appropriate for this tile; silently skip if redux_dir is unavailable
                 if not hasattr(self, 'tileinfo') and self.redux_dir is not None:
-                    if specprod_dir is None:
-                        specprod_dir = os.path.join(self.redux_dir, self.specprod)
+                    # NB: the on-disk directory name (specprod, an optional
+                    # override) can differ from self.specprod, the "real"
+                    # production name recorded in the file headers (e.g., a
+                    # relocated or "mini" production tree); the CSV filename
+                    # always uses the latter.
+                    specprod_dir = os.path.join(self.redux_dir, specprod if specprod else self.specprod)
                     infofile = os.path.join(specprod_dir, f'tiles-{self.specprod}.csv')
                     if os.path.isfile(infofile):
                         self.tileinfo = Table.read(infofile)
@@ -774,7 +796,18 @@ class DESISpectra(object):
 
             # add targeting columns
             allfmcols = set(fitsio.FITS(specfile)['FIBERMAP'].get_colnames())
-            READFMCOLS = list(FMCOLS) + [col for col in TARGETINGCOLS if col in allfmcols]
+
+            # COADD_FIBERSTATUS is always present in standard productions
+            # (stamped by desi_coadd_spectra) but can be missing from
+            # non-standard, custom-built FIBERMAPs (coadd_type == 'custom');
+            # treat it as optional there, consistent with how it is already
+            # treated as optional when writing the output METADATA table.
+            _fmcols = list(FMCOLS)
+            if 'COADD_FIBERSTATUS' not in allfmcols:
+                log.warning(f'COADD_FIBERSTATUS not found in FIBERMAP of {specfile}; omitting from metadata.')
+                _fmcols.remove('COADD_FIBERSTATUS')
+
+            READFMCOLS = _fmcols + [col for col in TARGETINGCOLS if col in allfmcols]
 
             # If targetids is *not* given we have to choose "good" objects
             # before subselecting (e.g., we don't want sky spectra).
@@ -879,7 +912,7 @@ class DESISpectra(object):
 
             # make sure we're sorted
             if targetids is not None:
-                srt = geomask.match_to(meta['TARGETID'], targetids)
+                srt = match_to(meta['TARGETID'], targetids)
                 meta = meta[srt]
                 assert(np.all(meta['TARGETID'] == targetids))
 
@@ -900,19 +933,22 @@ class DESISpectra(object):
                 tileid_list.append(' '.join(np.unique(expmeta['TILEID'][I]).astype(str)))
                 #meta['TILEID_LIST'][M] = ' '.join(np.unique(expmeta['TILEID'][I]).astype(str))
                 # store just the zeroth tile for gather_targetphot, below
-                if self.coadd_type == 'healpix' or self.coadd_type == 'custom':
+                if self.coadd_type in ('healpix', 'uniqpix', 'custom'):
                     alltiles.append(expmeta['TILEID'][I][0])
                 else:
                     alltiles.append(tileid)
 
-            if self.coadd_type == 'healpix' or self.coadd_type == 'custom':
+            if self.coadd_type in ('healpix', 'uniqpix', 'custom'):
                 meta['TILEID_LIST'] = tileid_list
 
             # Gather additional info about this pixel.
-            if self.coadd_type == 'healpix' or self.coadd_type == 'custom':
+            if self.coadd_type in ('healpix', 'uniqpix', 'custom'):
                 meta['SURVEY'] = survey
                 meta['PROGRAM'] = program
-                meta['HEALPIX'] = healpix
+                if self.coadd_type == 'uniqpix':
+                    meta['UNIQPIX'] = uniqpix
+                else:
+                    meta['HEALPIX'] = healpix
             else:
                 if hasattr(self, 'tileinfo'):
                     meta['SURVEY'] = survey
@@ -926,7 +962,7 @@ class DESISpectra(object):
                 if 'FIBER' in expmeta.colnames:
                     meta['FIBER'] = np.zeros(len(meta), dtype=expmeta['FIBER'].dtype)
                     _, uindx = np.unique(expmeta['TARGETID'], return_index=True)
-                    I = geomask.match_to(expmeta[uindx]['TARGETID'], meta['TARGETID'])
+                    I = match_to(expmeta[uindx]['TARGETID'], meta['TARGETID'])
                     assert(np.all(expmeta[uindx][I]['TARGETID'] == meta['TARGETID']))
                     meta['FIBER'] = expmeta[uindx[I]]['FIBER']
 
@@ -954,18 +990,23 @@ class DESISpectra(object):
     def update_qso_redshifts(zb, meta, qnfile, mgiifile, fitindx, specprod):
         """Update QSO redshifts using the afterburners.
 
+        Updates Z, ZERR, and (for modern specprods) ZWARN from the QN afterburner
+        for QSO-targeted and WISE_VAR_QSO secondary targets, matching the logic of
+        qso_catalog_maker in LSS/py/LSS/qso_cat_utils.py.
         """
         from desitarget.targets import main_cmx_or_sv
 
         if specprod in ['fuji', 'guadalupe', 'himalayas', 'iron']:
             QNthresh = 0.95
             QNCOLS = ['TARGETID', 'Z_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
+            #QNCOLS = ['TARGETID', 'Z_NEW', 'ZERR_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
             new_zwarn = False
         else:
             # updated for Jura, Kibo, Loa, ...
             QNthresh = 0.99
             QNCOLS = ['TARGETID', 'Z_NEW', 'ZWARN_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
-            new_zwarn = False
+            #QNCOLS = ['TARGETID', 'Z_NEW', 'ZERR_NEW', 'ZWARN_NEW', 'IS_QSO_QN_NEW_RR', ] + QNLINES
+            new_zwarn = True
 
         surv_target, surv_mask, surv = main_cmx_or_sv(meta, scnd=True)
         if surv == 'cmx':
@@ -992,15 +1033,16 @@ class DESISpectra(object):
             iqso = IQSO * qn['IS_QSO_QN_NEW_RR'] * qn['IS_QSO_QN_099']
             if np.sum(iqso) > 0:
                 zb['Z'][iqso] = qn['Z_NEW'][iqso]
+                #zb['ZERR'][iqso] = qn['ZERR_NEW'][iqso]
                 if new_zwarn:
                     zb['ZWARN'][iqso] = qn['ZWARN_NEW'][iqso]
             if np.sum(IWISE_VAR_QSO) > 0:
                 mgii = Table(fitsio.read(mgiifile, 'MGII', rows=fitindx, columns=MGIICOLS))
                 assert(np.all(mgii['TARGETID'] == meta['TARGETID']))
-                iwise_var_qso = (((zb['SPECTYPE'] == 'QSO') | mgii['IS_QSO_MGII'] | qn['IS_QSO_QN_099']) & (IWISE_VAR_QSO & qn['IS_QSO_QN_NEW_RR']))
+                iwise_var_qso = (((zb['SPECTYPE'] == 'QSO') | mgii['IS_QSO_MGII'] | qn['IS_QSO_QN_099']) & (IWISE_VAR_QSO & qn['IS_QSO_QN_NEW_RR'] & qn['IS_QSO_QN_099']))
                 if np.sum(iwise_var_qso) > 0:
                     zb['Z'][iwise_var_qso] = qn['Z_NEW'][iwise_var_qso]
-                    #zb['Z_ERR'][iwise_var_qso] = qn['ZERR_NEW'][iwise_var_qso]
+                    #zb['ZERR'][iwise_var_qso] = qn['ZERR_NEW'][iwise_var_qso]
                     if new_zwarn:
                         zb['ZWARN'][iwise_var_qso] = qn['ZWARN_NEW'][iwise_var_qso]
                 del mgii
@@ -1037,16 +1079,13 @@ class DESISpectra(object):
 
         """
         from astropy.table import vstack
-        from desitarget import geomask
+        from desitarget.geomask import match_to
         from desispec.coaddition import coadd_cameras
         from desispec.io import read_spectra
-        from desiutil.dust import SFDMap
         from fastspecfit.resolution import Resolution
         from fastspecfit.util import mwdust_transmission
 
         t0 = time.time()
-
-        SFD = SFDMap(scaling=1.0, mapdir=self.mapdir)
 
         uniqueid_col = self.phot.uniqueid_col
 
@@ -1075,7 +1114,7 @@ class DESISpectra(object):
                 tuniv = np.full_like(redshift, 100.)
 
             # Populate 'meta' with dust and filter-related quantities.
-            ebv = SFD.ebv(meta['RA'], meta['DEC'])
+            ebv = sc_data.sfdmap.ebv(meta['RA'], meta['DEC'])
             meta['EBV'] = ebv
 
             if 'PHOTSYS' in meta.colnames:
@@ -1122,7 +1161,7 @@ class DESISpectra(object):
                 os.environ['DESI_LOGLEVEL'] = 'warning'
                 spec = read_spectra(specfile)#.select(targets=meta[uniqueid])
 
-                srt = geomask.match_to(spec.fibermap[uniqueid_col], meta['TARGETID'])
+                srt = match_to(spec.fibermap[uniqueid_col], meta['TARGETID'])
                 spec = spec[srt]
                 assert(np.all(spec.fibermap[uniqueid_col] == meta[uniqueid_col]))
 
@@ -1359,7 +1398,7 @@ class DESISpectra(object):
     def _gather_photometry(self, specprod=None, alltiles=None):
         """Gather Tractor photometry from disk and merge into the metadata tables."""
         from astropy.table import vstack
-        from desitarget import geomask
+        from desitarget.geomask import match_to
         from fastspecfit.photometry import gather_tractorphot
 
         input_meta = vstack(self.meta).copy()
@@ -1367,10 +1406,8 @@ class DESISpectra(object):
         uniqueid_col = self.phot.uniqueid_col
         PHOTCOLS = np.unique(np.hstack((self.phot.readcols, self.phot.fluxcols, self.phot.fluxivarcols)))
 
-        # DR9 or DR10
+        # Legacy Surveys
         if hasattr(self.phot, 'legacysurveydr'):
-            from desitarget.io import releasedict
-
             legacysurveydr = self.phot.legacysurveydr
 
             # targeting and Tractor columns to read from disk but need
@@ -1384,12 +1421,12 @@ class DESISpectra(object):
                     if col in _input_meta.colnames:
                         _input_meta.remove_column(col)
                 tractor = gather_tractorphot(_input_meta, columns=PHOTCOLS, legacysurveydir=self.fphotodir)
-            
-            # DR9-specific stuff
-            if legacysurveydr.lower() == 'dr9' or legacysurveydr.lower() == 'dr10':
+
+            # Legacy Survey-specific stuff
+            if legacysurveydr.lower() in ['dr9', 'dr10', 'dr11']:
                 metas = []
                 for meta in self.meta:
-                    srt = geomask.match_to(tractor[uniqueid_col], meta[uniqueid_col])
+                    srt = match_to(tractor[uniqueid_col], meta[uniqueid_col])
                     assert(np.all(meta[uniqueid_col] == tractor[uniqueid_col][srt]))
 
                     # The fibermaps in fuji and guadalupe (plus earlier productions) had a
@@ -1415,7 +1452,7 @@ class DESISpectra(object):
                                     log.warning('Updating column {} in metadata table: {}-->{}.'.format(
                                         col, meta[col][0], targets[col][0]))
                                     meta[col][diffcol] = targets[col][diffcol]
-                    srt = geomask.match_to(tractor[uniqueid_col], meta[uniqueid_col])
+                    srt = match_to(tractor[uniqueid_col], meta[uniqueid_col])
                     assert(np.all(meta[uniqueid_col] == tractor[uniqueid_col][srt]))
 
                     # Add the tractor catalog quantities (overwriting columns if necessary).
@@ -1454,7 +1491,14 @@ class DESISpectra(object):
 
             metas = []
             for meta in self.meta:
-                srt = geomask.match_to(phot_tbl[uniqueid_col], meta[uniqueid_col])
+                inmask = np.isin(meta[uniqueid_col], phot_tbl[uniqueid_col])
+                if not np.all(inmask):
+                    log.warning(f'Dropping {np.sum(~inmask):,d} objects with {uniqueid_col} '
+                                f'not found in external photometric catalog {self.fphotodir}')
+                    meta = meta[inmask]
+                if len(meta) == 0:
+                    continue
+                srt = match_to(phot_tbl[uniqueid_col], meta[uniqueid_col])
                 assert(np.all(meta[uniqueid_col] == phot_tbl[uniqueid_col][srt]))
                 if hasattr(self.phot, 'dropcols'):
                     meta.remove_columns(self.phot.dropcols)
@@ -1467,6 +1511,50 @@ class DESISpectra(object):
                 metas.append(meta)
 
         return metas
+
+
+def read_fastspec_table(F, rows=None, columns=None):
+    """Read the FASTSPEC extension, transparently merging in MORELINES (the
+    isstrong=False emission-line columns, split out at write time when
+    FASTSPEC would otherwise exceed the FITS 999-column limit) if present.
+
+    Parameters
+    ----------
+    F : :class:`fitsio.FITS`
+        Open fastspecfit output file.
+    rows : array-like or None, optional
+        Row indices to read. If ``None``, read all rows.
+    columns : list of str or None, optional
+        Column names to read (from either FASTSPEC or MORELINES). If
+        ``None``, read all columns from both.
+
+    Returns
+    -------
+    fastfit : :class:`astropy.table.Table`
+        FASTSPEC and MORELINES columns merged into a single table.
+
+    """
+    if 'MORELINES' in F:
+        fastspec_avail = F['FASTSPEC'].get_colnames()
+        morelines_avail = F['MORELINES'].get_colnames()
+        if columns is not None:
+            fastspec_columns = [col for col in columns if col in fastspec_avail]
+            morelines_columns = [col for col in columns if col in morelines_avail
+                                 and col not in fastspec_avail]
+        else:
+            fastspec_columns = None
+            morelines_columns = None
+
+        fastfit = Table(F['FASTSPEC'].read(rows=rows, columns=fastspec_columns))
+        morelines = Table(F['MORELINES'].read(rows=rows, columns=morelines_columns))
+        keep = [col for col in morelines.colnames if col not in MORELINES_IDCOLS]
+        if keep:
+            from astropy.table import hstack
+            fastfit = hstack([fastfit, morelines[keep]], join_type='exact')
+    else:
+        fastfit = Table(F['FASTSPEC'].read(rows=rows, columns=columns))
+
+    return fastfit
 
 
 def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_columns=None,
@@ -1525,7 +1613,7 @@ def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_col
         elif 'FASTSPEC' in F:
             fastphot = False
             fastqso = False
-            fastfit = Table(F['FASTSPEC'].read(rows=rows, columns=fastspec_columns))
+            fastfit = read_fastspec_table(F, rows=rows, columns=fastspec_columns)
             if read_models:
                 models = F['MODELS'].read()
                 if rows is not None:
@@ -1568,13 +1656,13 @@ def read_fastspecfit(fastfitfile, rows=None, metadata_columns=None, specphot_col
 
 def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
                       specprod=None, coadd_type=None, fphotofile=None,
-                      template_file=None, emlinesfile=None, fastphot=False,
-                      fastqso=False, inputz=False, inputseeds=None, nmonte=50,
-                      vdisp_nominal=VDISP_NOMINAL, vdisp_bounds=VDISP_BOUNDS,
-                      seed=1, uncertainty_floor=0.01, minsnr_balmer_broad=2.5,
-                      nside=None, no_smooth_continuum=False, ignore_photometry=False,
-                      broadlinefit=True, use_quasarnet=True, constrain_age=False,
-                      split_hdu=False, verbose=True):
+                      template_file=None, emlinesfile=None, constraintsfile=None,
+                      fastphot=False, fastqso=False,
+                      inputz=False, inputseeds=None, nmonte=50, vdisp_nominal=VDISP_NOMINAL,
+                      vdisp_bounds=VDISP_BOUNDS, seed=1, uncertainty_floor=0.01,
+                      minsnr_balmer_broad=2.5, nside=None, no_smooth_continuum=False,
+                      ignore_photometry=False, broadlinefit=True, use_quasarnet=True,
+                      constrain_age=False, split_hdu=False, verbose=True):
     """Write fastspecfit results to a multi-extension FITS file."""
     import gzip, shutil
     from astropy.io import fits
@@ -1631,11 +1719,45 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         setdep(primhdr, 'FTEMPLATES_FILE', os.path.basename(template_file))
     if emlinesfile:
         setdep(primhdr, 'EMLINES_FILE', str(emlinesfile))
+    if constraintsfile:
+        setdep(primhdr, 'CONSTRAINTS_FILE', str(constraintsfile))
 
     meta.meta['EXTNAME'] = 'METADATA'
     specphot.meta['EXTNAME'] = 'SPECPHOT'
+
+    morelines = None
     if fastfit is not None:
         fastfit.meta['EXTNAME'] = 'FASTQSO' if fastqso else 'FASTSPEC'
+
+        if len(fastfit.colnames) > MAX_FASTSPEC_COLUMNS:
+            from fastspecfit.linetable import LineTable
+            linetable = LineTable(emlines_file=emlinesfile).table
+
+            weaklines = set(name.upper() for name, isstrong in
+                            zip(linetable['name'], linetable['isstrong']) if not isstrong)
+
+            morelines_cols = [f'{line}{suffix}' for line in weaklines
+                              for suffix in LINE_COLUMN_SUFFIXES
+                              if f'{line}{suffix}' in fastfit.colnames]
+
+            if morelines_cols:
+                idcols = [col for col in MORELINES_IDCOLS if col in meta.colnames]
+                morelines = Table()
+                for col in idcols:
+                    morelines[col] = meta[col]
+                for col in morelines_cols:
+                    morelines[col] = fastfit[col]
+                morelines.meta['EXTNAME'] = 'MORELINES'
+
+                # select (not remove_columns), so the caller's fastfit Table
+                # is not mutated in place
+                keepcols = [col for col in fastfit.colnames if col not in morelines_cols]
+                fastfit = fastfit[keepcols]
+                fastfit.meta['EXTNAME'] = 'FASTSPEC'
+
+                log.info(f'FASTSPEC would have {len(fastfit.colnames)+len(morelines_cols):,d} columns '
+                        f'(>{MAX_FASTSPEC_COLUMNS}); moved {len(morelines_cols):,d} columns for '
+                        f'{len(weaklines):,d} weak lines to a MORELINES HDU.')
 
     hdu_primary = fits.PrimaryHDU(None, primhdr)
 
@@ -1645,7 +1767,9 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         hdu_specphot = fits.convenience.table_to_hdu(specphot)
         if fastfit is not None:
             hdu_fastfit = fits.convenience.table_to_hdu(fastfit)
-    
+        if morelines is not None:
+            hdu_morelines = fits.convenience.table_to_hdu(morelines)
+
         if modelspectra is not None:
             hdu_data = fits.ImageHDU(name='MODELS')
             # [nobj, 3, nwave]
@@ -1692,6 +1816,9 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
             if fastfit is not None:
                 hdu_fastfit = fits.convenience.table_to_hdu(fastfit[I])
                 hdus.append(hdu_fastfit)
+            if morelines is not None:
+                hdu_morelines = fits.convenience.table_to_hdu(morelines[I])
+                hdus.append(hdu_morelines)
             if outfile.endswith('.gz'):
                 outfile_pixel = outfile.replace('.fits.gz', f'-nside{nside}-hp{upixel:02}.fits.gz')
             else:
@@ -1704,6 +1831,9 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         if fastfit is not None:
             hdu_list.append(hdu_fastfit)
             suffix_list.append('fastspec')
+        if morelines is not None:
+            hdu_list.append(hdu_morelines)
+            suffix_list.append('morelines')
         if modelspectra is not None:
             hdu_list.append(hdu_data)
             suffix_list.append('models')
@@ -1725,6 +1855,8 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
         hdus.append(hdu_specphot)
         if fastfit is not None:
             hdus.append(hdu_fastfit)
+        if morelines is not None:
+            hdus.append(hdu_morelines)
         if modelspectra is not None:
             hdus.append(hdu_data)
         write(hdus, tmpfile, outfile)
@@ -1743,8 +1875,8 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
     metadata : :class:`astropy.table.Table`, :class:`astropy.table.Row`, or :class:`numpy.void`
         Metadata for one or more objects.
     coadd_type : str
-        Coadd type: ``'healpix'``, ``'cumulative'``, ``'pernight'``,
-        ``'perexp'``, ``'custom'``, or ``'stacked'``.
+        Coadd type: ``'healpix'``, ``'uniqpix'``, ``'cumulative'``,
+        ``'pernight'``, ``'perexp'``, ``'custom'``, or ``'stacked'``.
     outprefix : str or None, optional
         Filename prefix. Defaults to ``'fastspec'`` or ``'fastphot'``.
     outdir : str or None, optional
@@ -1775,6 +1907,10 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
             pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
                 outprefix, _metadata['SURVEY'], _metadata['PROGRAM'],
                 _metadata['HEALPIX'], _metadata['TARGETID']))
+        elif coadd_type == 'uniqpix':
+            pngfile = os.path.join(outdir, '{}-{}-{}-{}-{}.png'.format(
+                outprefix, _metadata['SURVEY'], _metadata['PROGRAM'],
+                _metadata['UNIQPIX'], _metadata['TARGETID']))
         elif coadd_type == 'cumulative':
             pngfile = os.path.join(outdir, '{}-{}-{}-{}.png'.format(
                 outprefix, _metadata['TILEID'], coadd_type, _metadata['TARGETID']))
@@ -1807,7 +1943,7 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
 
 
 def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
-                      outdir='.', overwrite=False):
+                      coadd_type='healpix', outdir='.', overwrite=False):
     """Extract and fit a single DESI spectrum from the full production.
 
     Utility function for generating paper figures or unit tests: reads a
@@ -1821,11 +1957,16 @@ def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
     program : str
         Program name (e.g., ``'dark'``, ``'bright'``).
     healpix : int
-        HEALPix pixel number.
+        Pixel number. Pass the healpix value for ``coadd_type='healpix'``
+        productions, or the uniqpix value for ``coadd_type='uniqpix'``
+        productions.
     targetid : int
         DESI TARGETID.
     specprod : str, optional
         Spectroscopic production name. Defaults to ``'fuji'``.
+    coadd_type : str, optional
+        Spectral coadd type: ``'healpix'`` (default, uses ``healpix/``
+        subdirectory) or ``'uniqpix'`` (uses ``spectra/`` subdirectory).
     outdir : str, optional
         Output directory. Defaults to the current directory.
     overwrite : bool, optional
@@ -1838,7 +1979,8 @@ def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
 
     os.environ['SPECPROD'] = specprod # needed to get write_spectra have the correct dependency
 
-    specdir = os.path.join(os.environ.get('DESI_SPECTRO_REDUX'), specprod, 'healpix',
+    subdir = 'spectra' if coadd_type == 'uniqpix' else 'healpix'
+    specdir = os.path.join(os.environ.get('DESI_SPECTRO_REDUX'), specprod, subdir,
                            survey, program, str(healpix//100), str(healpix))
     coaddfile = os.path.join(specdir, f'coadd-{survey}-{program}-{healpix}.fits')
     redrockfile = os.path.join(specdir, f'redrock-{survey}-{program}-{healpix}.fits')
@@ -1887,13 +2029,14 @@ def one_desi_spectrum(survey, program, healpix, targetid, specprod='fuji',
 
 def select(metadata, specphot, fastfit=None, coadd_type='healpix',
            healpixels=None, tiles=None, nights=None, return_index=False):
-    """Optionally trim to a particular healpix or tile and/or night."""
+    """Optionally trim to a particular healpix/uniqpix or tile and/or night."""
     nobj = len(metadata)
-    if coadd_type == 'healpix':
+    if coadd_type in ('healpix', 'uniqpix'):
+        pixcol = 'UNIQPIX' if coadd_type == 'uniqpix' else 'HEALPIX'
         if healpixels is not None:
             strpixels = ','.join(healpixels)
-            keep = np.isin(metadata['HEALPIX'].astype(str), healpixels)
-            log.info(f'Keeping {np.sum(keep):,d}/{nobj:,d} objects from healpixels(s) {strpixels}')
+            keep = np.isin(metadata[pixcol].astype(str), healpixels)
+            log.info(f'Keeping {np.sum(keep):,d}/{nobj:,d} objects from pixel(s) {strpixels}')
         else:
             keep = np.ones(nobj, bool)
     else:
@@ -2090,6 +2233,8 @@ def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
             #add_field('DOF_BROAD', dtype='i8')
             add_field('DELTA_LINECHI2', dtype='f4') # delta-reduced chi2 with and without broad line-emission
             add_field('DELTA_LINENDOF', dtype=np.int32)
+            add_field('DELTA_KINECHI2', dtype='f4') # delta-reduced chi2 with and without final-pass optimization
+            add_field('DELTA_KINENDOF', dtype=np.int32)
 
             # special columns for the fitted doublets
             add_field('MGII_DOUBLET_RATIO', dtype='f4')
@@ -2210,7 +2355,8 @@ def create_output_meta(input_meta, phot, fastphot=False, fitstack=False):
             colunit[f'FIBERFLUX_{band}'] = phot.photounits
             colunit[f'FIBERTOTFLUX_{band}'] = phot.photounits
 
-    skipcols = fluxcols + ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME', 'BRICKID', 'BRICK_OBJID', 'RELEASE']
+    skipcols = fluxcols + ['OBJTYPE', 'TARGET_RA', 'TARGET_DEC', 'BRICKNAME',
+                           'BRICKID', 'BRICK_OBJID', 'RELEASE']
 
     if fitstack:
         redrockcols = ('Z')
@@ -2228,7 +2374,7 @@ def create_output_meta(input_meta, phot, fastphot=False, fitstack=False):
             if metacol in metacols:
                 meta[metacol] = input_meta[metacol]
     else:
-        for metacol in ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER',
+        for metacol in ('TARGETID', 'SURVEY', 'PROGRAM', 'UNIQPIX', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER',
                         'EXPID', 'TILEID_LIST', 'RA', 'DEC', 'COADD_FIBERSTATUS'):
             if metacol in metacols:
                 meta[metacol] = input_meta[metacol]
@@ -2297,7 +2443,8 @@ def create_output_table(records, meta, units, fitstack=False):
     if fitstack:
         initcols = ('STACKID', 'SURVEY', 'PROGRAM')
     else:
-        initcols = ('TARGETID', 'SURVEY', 'PROGRAM', 'HEALPIX', 'TILEID', 'NIGHT', 'FIBER', 'EXPID')
+        initcols = ('TARGETID', 'SURVEY', 'PROGRAM', 'UNIQPIX', 'HEALPIX',
+                    'TILEID', 'NIGHT', 'FIBER', 'EXPID')
     initcols = [col for col in initcols if col in metacols]
 
     cdata = [meta[col] for col in initcols]
@@ -2310,4 +2457,3 @@ def create_output_table(records, meta, units, fitstack=False):
     output_table = hstack((output_table, Table(np.array(records), units=units)))
 
     return output_table
-

@@ -6,6 +6,8 @@ fastspecfit.test.test_photometry
 import os
 import pytest
 import numpy as np
+import fitsio
+from astropy.table import Table
 
 
 @pytest.fixture
@@ -140,4 +142,142 @@ def test_dn4000(phot, data, expected):
         flam_ivar=data['zivar'][I] / (1. + data['redshift'])**2, redshift=None, rest=True)
     assert(dn4000_3 == 0.)
     assert(dn4000_ivar_3 == 0.)
+
+
+# ---------------------------------------------------------------------------
+# gather_tractorphot
+# ---------------------------------------------------------------------------
+
+# Two synthetic Tractor sources sharing one brick, used across the tests
+# below. OBJ_A and OBJ_B have different RELEASE values so that a mismatch
+# between the two is unambiguous.
+BRICK = '1501p020'
+OBJ_A = dict(OBJID=100, BRICKID=555, RELEASE=9010, RA=150.00, DEC=2.00,
+            BRICK_PRIMARY=True, FLUX_R=10.0)
+OBJ_B = dict(OBJID=200, BRICKID=555, RELEASE=9011, RA=150.01, DEC=2.01,
+            BRICK_PRIMARY=True, FLUX_R=20.0)
+
+
+def _write_fake_tractor_brick(tractorfile, rows):
+    """Write a minimal but structurally-valid Tractor brick FITS file."""
+    from fastspecfit.photometry import tractorphot_datamodel
+
+    datamodel = tractorphot_datamodel(datarelease='dr9')
+    tractor = Table(np.hstack(np.repeat(datamodel, len(rows))))
+    for irow, row in enumerate(rows):
+        tractor['BRICKNAME'][irow] = BRICK
+        for key, val in row.items():
+            tractor[key][irow] = val
+
+    os.makedirs(os.path.dirname(tractorfile), exist_ok=True)
+    fitsio.write(tractorfile, tractor.as_array(), clobber=True)
+
+
+@pytest.fixture
+def legacysurveydir(tmp_path):
+    # Naming the directory 'dr9' lets gather_tractorphot infer the data
+    # release without a warning.
+    legacysurveydir = tmp_path / 'dr9'
+    tractorfile = legacysurveydir / 'south' / 'tractor' / BRICK[:3] / f'tractor-{BRICK}.fits'
+    _write_fake_tractor_brick(str(tractorfile), [OBJ_A, OBJ_B])
+    return str(legacysurveydir)
+
+
+def test_gather_tractorphot_direct_match(legacysurveydir):
+    from desitarget.targets import encode_targetid
+    from fastspecfit.photometry import gather_tractorphot
+
+    # TARGETID is consistent with the (correct) BRICKID/BRICK_OBJID/RELEASE
+    # metadata, so no RELEASE mismatch and no repair pass.
+    targetid = encode_targetid(objid=OBJ_A['OBJID'], brickid=OBJ_A['BRICKID'], release=OBJ_A['RELEASE'])
+    cat = Table({
+        'TARGETID': [targetid], 'TARGET_RA': [OBJ_A['RA']], 'TARGET_DEC': [OBJ_A['DEC']],
+        'BRICKNAME': [BRICK], 'BRICKID': [OBJ_A['BRICKID']], 'BRICK_OBJID': [OBJ_A['OBJID']],
+        'RELEASE': [OBJ_A['RELEASE']], 'PHOTSYS': ['S'],
+    })
+    out = gather_tractorphot(cat, legacysurveydir=legacysurveydir)
+    assert out['OBJID'][0] == OBJ_A['OBJID']
+    assert out['FLUX_R'][0] == OBJ_A['FLUX_R']
+    assert out['LS_ID'][0] != 0
+
+
+def test_gather_tractorphot_positional_match(legacysurveydir):
+    from desitarget.targets import encode_targetid
+    from fastspecfit.photometry import gather_tractorphot
+
+    # No BRICKID/BRICK_OBJID supplied, so matching falls back to RA/Dec;
+    # TARGETID encodes the true (matching) RELEASE so no repair is triggered.
+    targetid = encode_targetid(objid=OBJ_B['OBJID'], brickid=OBJ_B['BRICKID'], release=OBJ_B['RELEASE'])
+    cat = Table({
+        'TARGETID': [targetid], 'TARGET_RA': [OBJ_B['RA']], 'TARGET_DEC': [OBJ_B['DEC']],
+    })
+    out = gather_tractorphot(cat, legacysurveydir=legacysurveydir)
+    assert out['OBJID'][0] == OBJ_B['OBJID']
+    assert out['FLUX_R'][0] == OBJ_B['FLUX_R']
+
+
+def test_gather_tractorphot_repair_path(legacysurveydir):
+    """Regression test: a RELEASE mismatch must trigger a positional
+    re-match whose result is merged back into the output (out[bug] = bugout).
+    """
+    from desitarget.targets import encode_targetid
+    from fastspecfit.photometry import gather_tractorphot
+
+    # TARGETID encodes the true match (OBJ_B), but the catalog's BRICKID/
+    # BRICK_OBJID/RELEASE columns are stale and point at OBJ_A instead. The
+    # direct-match pass will therefore land on the wrong source (OBJ_A), the
+    # RELEASE check will catch the discrepancy, and the repair pass should
+    # recover OBJ_B via positional matching on the (correct) RA/Dec.
+    targetid = encode_targetid(objid=OBJ_B['OBJID'], brickid=OBJ_B['BRICKID'], release=OBJ_B['RELEASE'])
+    cat = Table({
+        'TARGETID': [targetid], 'TARGET_RA': [OBJ_B['RA']], 'TARGET_DEC': [OBJ_B['DEC']],
+        'BRICKNAME': [BRICK], 'BRICKID': [OBJ_A['BRICKID']], 'BRICK_OBJID': [OBJ_A['OBJID']],
+        'RELEASE': [OBJ_A['RELEASE']], 'PHOTSYS': ['S'],
+    })
+    out = gather_tractorphot(cat, legacysurveydir=legacysurveydir)
+    assert out['OBJID'][0] == OBJ_B['OBJID']
+    assert out['RELEASE'][0] == OBJ_B['RELEASE']
+    assert out['FLUX_R'][0] == OBJ_B['FLUX_R']
+
+
+def test_gather_tractorphot_columns_subset(legacysurveydir):
+    from desitarget.targets import encode_targetid
+    from fastspecfit.photometry import gather_tractorphot
+
+    targetid = encode_targetid(objid=OBJ_A['OBJID'], brickid=OBJ_A['BRICKID'], release=OBJ_A['RELEASE'])
+    cat = Table({
+        'TARGETID': [targetid], 'TARGET_RA': [OBJ_A['RA']], 'TARGET_DEC': [OBJ_A['DEC']],
+        'BRICKNAME': [BRICK], 'BRICKID': [OBJ_A['BRICKID']], 'BRICK_OBJID': [OBJ_A['OBJID']],
+        'RELEASE': [OBJ_A['RELEASE']], 'PHOTSYS': ['S'],
+    })
+    out = gather_tractorphot(cat, legacysurveydir=legacysurveydir, columns=['TARGETID', 'FLUX_R'])
+    assert out.colnames == ['TARGETID', 'FLUX_R']
+
+
+def test_gather_tractorphot_missing_column():
+    from fastspecfit.photometry import gather_tractorphot
+
+    cat = Table({'TARGETID': [1]})  # missing TARGET_RA, TARGET_DEC
+    with pytest.raises(ValueError):
+        gather_tractorphot(cat)
+
+
+def test_gather_tractorphot_bad_legacysurveydir(tmp_path):
+    from fastspecfit.photometry import gather_tractorphot
+
+    cat = Table({'TARGETID': [1], 'TARGET_RA': [150.0], 'TARGET_DEC': [2.0]})
+    with pytest.raises(IOError):
+        gather_tractorphot(cat, legacysurveydir=str(tmp_path / 'nonexistent'))
+
+
+def test_gather_tractorphot_bad_photsys(legacysurveydir):
+    from fastspecfit.photometry import gather_tractorphot
+
+    cat = Table({
+        'TARGETID': [1], 'TARGET_RA': [OBJ_A['RA']], 'TARGET_DEC': [OBJ_A['DEC']],
+        'BRICKNAME': [BRICK], 'BRICKID': [OBJ_A['BRICKID']], 'BRICK_OBJID': [OBJ_A['OBJID']],
+        'RELEASE': [OBJ_A['RELEASE']], 'PHOTSYS': ['X'],
+    })
+    with pytest.raises(ValueError):
+        gather_tractorphot(cat, legacysurveydir=legacysurveydir)
 

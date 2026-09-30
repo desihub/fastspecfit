@@ -2,8 +2,109 @@
 Change Log
 ==========
 
-3.4.1 (not released yet)
+3.6.2 (not released yet)
 ------------------------
+
+* New ``Loa`` and ``Iron`` VACs [`PR #281`_].
+
+.. _`PR #281`: https://github.com/desihub/fastspecfit/pull/281
+
+3.6.1 (2026-08-07)
+------------------
+
+* Minor bug fix in ``photometry.gather_tractorphot`` [`PR #280`_].
+* Switched to ``2.2.0`` templates with ``R=3000`` in lieu of the
+  ``3.0.x`` templates (with ``R=10000``) used in ``3.6.0`` [`PR
+  #279`_].
+* New LCDM cosmology class and CLI; re-organized ``argparse`` help
+  messages [`PR #278`_].
+* More flexible ``build-templates`` script and improved header
+  metadata [`PR #277`_].
+
+.. _`PR #280`: https://github.com/desihub/fastspecfit/pull/280
+.. _`PR #279`: https://github.com/desihub/fastspecfit/pull/279
+.. _`PR #278`: https://github.com/desihub/fastspecfit/pull/278
+.. _`PR #277`: https://github.com/desihub/fastspecfit/pull/277
+
+3.6.0 (2026-07-25)
+------------------
+
+* Faster continuum fitting and I/O by caching the SFD dust map [`PR
+  #275`_].
+* Support analysis of mini-specprod datasets [`PR #274`_].
+* Dynamically split ``FASTSPEC`` HDU into an additional ``MORELINES``
+  HDU [`PR #273`_].
+* Switch to new default templates (version 3.0.0) built from a
+  higher-resolution (``R=10000``) C3K library [`PR #271`_].
+* Pass ``constraintsfile`` argument to ``fastqa`` [`PR #270`_].
+* New unit test and documentation of external photometric catalog
+  "mode" [`PR #269`_].
+
+.. _`PR #275`: https://github.com/desihub/fastspecfit/pull/275
+.. _`PR #274`: https://github.com/desihub/fastspecfit/pull/274
+.. _`PR #273`: https://github.com/desihub/fastspecfit/pull/273
+.. _`PR #271`: https://github.com/desihub/fastspecfit/pull/271
+.. _`PR #270`: https://github.com/desihub/fastspecfit/pull/270
+.. _`PR #269`: https://github.com/desihub/fastspecfit/pull/269
+
+3.5.0 (2026-06-16)
+------------------
+
+* Fix ``VDISP_IVAR`` bug; lower ``VDISP_BOUNDS`` floor to 50 km/s;
+  increase chi2 scan to 6 grid points; use a vdisp-mstar scaling
+  relation to estimate ``VDISP``; new unit tests [`PR #267`_].
+* Correct ``VDISP`` to intrinsic by adding the C3K template resolution
+  (~42.4 km/s) in quadrature and tighten ``can_compute_vdisp`` red-end
+  threshold to 4900 Å (z ≲ 1.0). Guard ``TAUV_IVAR`` and
+  ``DN4000_MODEL_IVAR`` against float32 overflow [`PR #265`_].
+* Fix ``WISE_VAR_QSO`` redshift update to require the QuasarNet
+  confidence threshold (matching
+  ``LSS.qso_cat_utils.qso_catalog_maker``); also update ``ZERR`` and,
+  for DR2 and later productions, ``ZWARN`` [`PR #264`_].
+* Add ``dt`` (age bin width) to template ``METADATA`` and compute the
+  continuum-based ``SFR`` averaged over the most recent 100 Myr; bump
+  templates to ``2.1.0`` [`PR #262`_].
+* Support new hierarchical healpixels (``uniqpix``) used for the first
+  time in the ``Matterhorn`` (DR3) spectroscopic production [`PR
+  #261`_].
+
+.. _`PR #267`: https://github.com/desihub/fastspecfit/pull/267
+.. _`PR #265`: https://github.com/desihub/fastspecfit/pull/265
+.. _`PR #264`: https://github.com/desihub/fastspecfit/pull/264
+.. _`PR #262`: https://github.com/desihub/fastspecfit/pull/262
+.. _`PR #261`: https://github.com/desihub/fastspecfit/pull/261
+
+3.4.3 (2026-06-06)
+------------------
+
+* VAC documentation overhaul: reorganize by data release; add Iron/fastphot
+  and Loa/DR2 VAC pages; replace inaccurate QSO-redshift code block with
+  prose [`PR #260`_].
+* Propagate ``--constraintsfile`` through ``mpi-fastspecfit``. Exclude
+  amplitude-constrained doublet pairs from kinematic relaxation in the
+  final optimization pass and update the default narrow-only
+  final-pass configuration to ``free_sigma: false`` [`PR #259`_].
+
+.. _`PR #260`: https://github.com/desihub/fastspecfit/pull/260
+.. _`PR #259`: https://github.com/desihub/fastspecfit/pull/259
+
+3.4.2 (2026-06-03)
+------------------
+
+* Introduce YAML-based emission-line constraint system via
+  ``data/emline-constraints.yaml`` to define kinematic groups, doublet
+  bounds, amplitude constraints, and fitting-strategy parameters;
+  enable the final per-line optimization pass by default for
+  narrow-only solutions; two new columns: ``DELTA_KINECHI2`` and
+  ``DELTA_KINENDOF`` [`PR #257`_].
+* Use original resolution matrix for continuum-fitting; major bug fix
+  in resolution matrix deconvolution [`PR #256`_].
+
+.. _`PR #257`: https://github.com/desihub/fastspecfit/pull/257
+.. _`PR #256`: https://github.com/desihub/fastspecfit/pull/256
+
+3.4.1 (2026-05-26)
+------------------
 
 * Production logging and robustness fixes: replace ``desiutil`` logger with a
   custom ``getFastspecLogger()`` and ``_DynamicStdoutHandler`` that follows

@@ -14,6 +14,7 @@ from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data, _initialize_sc_data
 from fastspecfit.util import BoxedScalar, MPPool, NMONTE_DEFAULT, fsftime
 from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
+from fastspecfit.cosmo import COSMOLOGY_MODELS, build_cosmology
 
 def make_init_sc_args(args, fastphot=False, fitstack=False):
     """Build the sc_data.initialize() kwargs from a parsed args Namespace.
@@ -36,6 +37,7 @@ def make_init_sc_args(args, fastphot=False, fitstack=False):
     """
     return {
         'emlines_file':      getattr(args, 'emlinesfile', None),
+        'constraints_file':  getattr(args, 'constraintsfile', None),
         'fphotofile':        getattr(args, 'fphotofile', None),
         'fastphot':          fastphot,
         'fitstack':          fitstack,
@@ -46,6 +48,8 @@ def make_init_sc_args(args, fastphot=False, fitstack=False):
         'log_verbose':       getattr(args, 'verbose', False),
         'vdisp_nominal':     getattr(args, 'vdisp_nominal', VDISP_NOMINAL),
         'vdisp_bounds':      getattr(args, 'vdisp_bounds', VDISP_BOUNDS),
+        'mapdir':            getattr(args, 'mapdir', None),
+        'cosmology':         build_cosmology(getattr(args, 'cosmology', None), args),
     }
 
 
@@ -71,41 +75,63 @@ def parse(options=None, rank=0):
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('redrockfiles', nargs='+', help='Full path to input redrock file(s).')
-    parser.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename (required).')
-    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads per MPI rank.')
-    parser.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
-    parser.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.')
-    parser.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
-    parser.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
-    parser.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
-    parser.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
-    parser.add_argument('--nmonte', type=int, default=NMONTE_DEFAULT, help='Number of Monte Carlo realizations.')
-    parser.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
-    parser.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, help='Nominal (default) velocity dispersion in km/s.')
-    parser.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
-    parser.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
+    io_group = parser.add_argument_group('I/O and parallelism')
+    io_group.add_argument('redrockfiles', nargs='+', help='Full path to input redrock file(s).')
+    io_group.add_argument('-o', '--outfile', type=str, required=True, help='Full path to output filename (required).')
+    io_group.add_argument('--mp', type=int, default=1, help='Number of multiprocessing threads per MPI rank.')
+
+    target_group = parser.add_argument_group('Target selection')
+    target_group.add_argument('-n', '--ntargets', type=int, help='Number of targets to process in each file.')
+    target_group.add_argument('--firsttarget', type=int, default=0, help='Index of first object to to process in each file, zero-indexed.')
+    target_group.add_argument('--targetids', type=str, default=None, help='Comma-separated list of TARGETIDs to process.')
+    target_group.add_argument('--input-redshifts', type=str, default=None, help='Comma-separated list of input redshifts corresponding to the (required) --targetids input.')
+    target_group.add_argument('--zmin', type=float, default=None, help='Override the default minimum redshift required for modeling.')
+
+    monte_group = parser.add_argument_group('Monte Carlo')
+    monte_group.add_argument('--seed', type=int, default=1, help='Random seed for Monte Carlo reproducibility; ignored if --input-seeds is passed.')
+    monte_group.add_argument('--input-seeds', type=str, default=None, help='Comma-separated list of input random-number seeds corresponding to the (required) --targetids input.')
+    monte_group.add_argument('--nmonte', type=int, default=NMONTE_DEFAULT, help='Number of Monte Carlo realizations.')
+
+    data_group = parser.add_argument_group('Data locations')
+    data_group.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
+    data_group.add_argument('--specprod', type=str, default=None, help="""Optional override of the on-disk spectroscopic
+        production directory name under --redux_dir, when it differs from the SPECPROD dependency recorded in the
+        Redrock/coadd file headers (e.g., a relocated or "mini" production tree).""")
+    data_group.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
+    data_group.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
+    data_group.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
+    data_group.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
+    data_group.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
+    data_group.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
+
+    model_group = parser.add_argument_group('Physical model')
+    model_group.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
+    model_group.add_argument('--templateversion', type=str, default=Templates.DEFAULT_TEMPLATEVERSION, help='Template version number.')
+    model_group.add_argument('--imf', type=str, default=Templates.DEFAULT_IMF, help='Initial mass function.')
+    model_group.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
+    model_group.add_argument('--constraintsfile', type=str, default=None, help='Emission-line kinematic constraint YAML file.')
+    model_group.add_argument('--cosmology', type=str, default=None, choices=COSMOLOGY_MODELS,
+                        help='Use an alternate cosmology model instead of the tabulated DESI fiducial cosmology.')
+    model_group.add_argument('--omega-m', type=float, default=0.3,
+                        help='Matter density parameter; only used with --cosmology flatLCDM (h is fixed at 1).')
+
+    fit_group = parser.add_argument_group('Fitting options')
+    fit_group.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
+    fit_group.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, metavar=('MIN', 'MAX'),
+                        help='Minimum and maximum velocity dispersion in km/s, given as two space-separated values, e.g. --vdisp-bounds 50 500.')
+    fit_group.add_argument('--vdisp-nbin', type=int, default=6, help='Number of grid points for the velocity dispersion chi2 scan.')
+    fit_group.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not model broad Balmer and helium line-emission.')
-    parser.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
-    parser.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')
-    parser.add_argument('--constrain-age', action='store_true', help='Constrain the age of the SED.')
-    parser.add_argument('--no-smooth-continuum', action='store_true', help='Do not fit the smooth continuum.')
-    parser.add_argument('--imf', type=str, default=Templates.DEFAULT_IMF, help='Initial mass function.')
-    parser.add_argument('--templateversion', type=str, default=Templates.DEFAULT_TEMPLATEVERSION, help='Template version number.')
-    parser.add_argument('--templates', type=str, default=None, help='Optional full path and filename to the templates.')
-    parser.add_argument('--redrockfile-prefix', type=str, default='redrock-', help='Prefix of the input Redrock file name(s).')
-    parser.add_argument('--specfile-prefix', type=str, default='coadd-', help='Prefix of the spectral file(s).')
-    parser.add_argument('--qnfile-prefix', type=str, default='qso_qn-', help='Prefix of the QuasarNet afterburner file(s).')
-    parser.add_argument('--mapdir', type=str, default=None, help='Optional directory name for the dust maps.')
-    parser.add_argument('--fphotodir', type=str, default=None, help='Top-level location of the source photometry.')
-    parser.add_argument('--fphotofile', type=str, default=None, help='Photometric information file.')
-    parser.add_argument('--emlinesfile', type=str, default=None, help='Emission line parameter file.')
-    parser.add_argument('--redux_dir', type=str, default=None, help='Optional full path $DESI_SPECTRO_REDUX.')
-    parser.add_argument('--specproddir', type=str, default=None, help='Optional directory name for the spectroscopic production.')
-    parser.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum.')
-    parser.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
-    parser.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
-    parser.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
+    fit_group.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
+    fit_group.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')
+    fit_group.add_argument('--constrain-age', action='store_true', help='Constrain the age of the SED.')
+    fit_group.add_argument('--no-smooth-continuum', action='store_true', help='Do not fit the smooth continuum.')
+    fit_group.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum.')
+    fit_group.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
+
+    debug_group = parser.add_argument_group('Debugging')
+    debug_group.add_argument('--debug-plots', action='store_true', help='Generate a variety of debugging plots (written to $PWD).')
+    debug_group.add_argument('--verbose', action='store_true', help='Be verbose (for debugging purposes).')
 
     if options is None:
         options = sys.argv[1:]
@@ -119,7 +145,7 @@ def parse(options=None, rank=0):
 def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=True,
                  fastphot=False, fitstack=False, fastqso=False, constrain_age=False,
                  no_smooth_continuum=False, debug_plots=False, uncertainty_floor=0.01,
-                 minsnr_balmer_broad=2.5, nmonte=NMONTE_DEFAULT, seed=1):
+                 minsnr_balmer_broad=2.5, nmonte=NMONTE_DEFAULT, seed=1, vdisp_nbin=6):
     """Fit the continuum and emission lines for a single DESI object.
 
     Parameters
@@ -161,6 +187,9 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
         Number of Monte Carlo realizations for uncertainty estimation.
     seed : int, optional
         Random seed for Monte Carlo reproducibility. Defaults to 1.
+    vdisp_nbin : int, optional
+        Number of grid points for the velocity dispersion chi2 scan.
+        Defaults to 6.
 
     Returns
     -------
@@ -221,15 +250,16 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
         continuum_specfit(data, fastfit, specphot, templates, igm, phot, constrain_age=constrain_age,
                           no_smooth_continuum=no_smooth_continuum, fastphot=fastphot,
                           fitstack=fitstack, fastqso=fastqso, debug_plots=debug_plots,
-                          nmonte=nmonte, seed=seed)
+                          nmonte=nmonte, seed=seed, vdisp_nbin=vdisp_nbin)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
         emmodel = None
     else:
         emmodel = emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
-                                 phot, emline_table, broadlinefit=broadlinefit,
-                                 fastqso=fastqso, minsnr_balmer_broad=minsnr_balmer_broad,
+                                 phot, emline_table, sc_data.constraints,
+                                 broadlinefit=broadlinefit, fastqso=fastqso,
+                                 minsnr_balmer_broad=minsnr_balmer_broad,
                                  debug_plots=debug_plots, specflux_monte=specflux_monte,
                                  continuummodel_monte=continuummodel_monte)
 
@@ -300,6 +330,11 @@ def fastspec(fastphot=False, fitstack=False, fastqso=False, args=None, comm=None
     if verbose:
         args.verbose = True
 
+    # --debug-plots implies --verbose: diagnostic plots are only useful
+    # alongside debug-level log output.
+    if getattr(args, 'debug_plots', False):
+        args.verbose = True
+
     targetids = None
     input_redshifts = None
     input_seeds = None
@@ -338,13 +373,12 @@ def fastspec(fastphot=False, fitstack=False, fastqso=False, args=None, comm=None
         log.info(f'Cached stellar templates {sc_data.templates.file}')
         log.info(f'Cached emission-line table {sc_data.emlines.file}')
         log.info(f'Cached photometric filters and parameters {sc_data.photometry.fphotofile}')
-        log.info(f'Cached cosmology table {sc_data.cosmology.file}')
+        log.info(f'Cached cosmology {sc_data.cosmology!r}')
         log.info(f'Cached {sc_data.igm.reference} IGM attenuation parameters.')
 
         # Read the data.
         Spec = DESISpectra(phot=sc_data.photometry, cosmo=sc_data.cosmology,
-                           fphotodir=args.fphotodir, mapdir=args.mapdir,
-                           redux_dir=args.redux_dir)
+                           fphotodir=args.fphotodir, redux_dir=args.redux_dir)
 
         if fitstack:
             data, meta = Spec.read_stacked(args.redrockfiles, firsttarget=args.firsttarget,
@@ -356,7 +390,7 @@ def fastspec(fastphot=False, fitstack=False, fastqso=False, args=None, comm=None
                                  ntargets=args.ntargets, zmin=args.zmin,
                                  redrockfile_prefix=args.redrockfile_prefix,
                                  specfile_prefix=args.specfile_prefix, qnfile_prefix=args.qnfile_prefix,
-                                 use_quasarnet=args.use_quasarnet, specprod_dir=args.specproddir)
+                                 use_quasarnet=args.use_quasarnet, specprod=args.specprod)
             if len(Spec.specfiles) == 0:
                 return 0
 
@@ -414,6 +448,7 @@ def fastspec(fastphot=False, fitstack=False, fastqso=False, args=None, comm=None
             'minsnr_balmer_broad': args.minsnr_balmer_broad,
             'nmonte':              args.nmonte,
             'seed':                seeds[iobj],
+            'vdisp_nbin':          args.vdisp_nbin,
         } for iobj in range(nobj)]
 
 
@@ -482,7 +517,9 @@ def fastspec(fastphot=False, fitstack=False, fastqso=False, args=None, comm=None
             outfile=args.outfile, specprod=Spec.specprod, coadd_type=Spec.coadd_type,
             fphotofile=sc_data.photometry.fphotofile,
             template_file=sc_data.templates.file,
-            emlinesfile=sc_data.emlines.file, fastphot=fastphot, fastqso=fastqso,
+            emlinesfile=sc_data.emlines.file,
+            constraintsfile=sc_data.constraints.file, fastphot=fastphot,
+            fastqso=fastqso,
             inputz=input_redshifts is not None,
             nmonte=args.nmonte, vdisp_nominal=args.vdisp_nominal,
             vdisp_bounds=args.vdisp_bounds,

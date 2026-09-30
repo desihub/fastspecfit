@@ -111,7 +111,9 @@ Node / worker arithmetic (Perlmutter CPU, 128 physical cores per node)
   cpus-per-task        = mp * 2  (hyperthreading)
   Effective workers    = 128 * nodes  (all cores busy)
 
-Empirical throughput (loa, sv3, --mp=16):
-  dark targets:   ~8 s/obj/core  (~10 obj/min/core)
-  bright targets: ~11 s/obj/core (~5 obj/min/core)
-  2:1 dark:bright mix: ~8 obj/min/core (~680 node-hours for 38M objects)
+Empirical throughput (loa v3.6.1 production run, --mp=16; see
+loa-3.6.1-benchmarks.txt for the full breakdown):
+  dark targets:   ~4 s/obj/core  (~15 obj/min/core)
+  bright targets: ~8 s/obj/core  (~7.5 obj/min/core)
+  Blended (all programs): ~6 s/obj/core (~10 obj/min/core); ~855
+  node-hours measured for the full 38.2M-object loa run.
