@@ -2,8 +2,10 @@
 """Validate all FITS files in a FastSpecFit VAC directory, or write checksums.
 
 Validation: runs fitsverify and checks for NaN/inf values in all non-MODELS
-BinTable extensions.  Work is distributed across MPI ranks weighted by number
-of targets per file.
+BinTable extensions.  Work is split evenly by file count across MPI ranks
+(MODELS -- the one extension whose cost scales badly with row count -- is
+skipped, so per-file validation cost is close to flat; weighting by target
+count isn't worth the cost of opening every file up front to find out).
 
 Checksums: computes SHA-256 digests for every file in each directory under
 catalogs/ and healpix/, writing one checksum file per directory.  Directories
@@ -25,11 +27,19 @@ Examples:
   # in production
   salloc -N 1 -C cpu -A desi -t 01:00:00 --qos interactive
   source ~/code/impy/bin/fastspecfit-env-nersc
-  srun --ntasks=64 validate-fast-vac --vacdir=$PSCRATCH/fastspecfit/loa-3.4.2/loa --mp 8
+  srun --ntasks=64 validate-fast-vac --vacdir=$PSCRATCH/fastspecfit/loa-v2.0/loa \\
+      --plan-threads 16
+
+  --ntasks parallelizes the actual per-file validation (fitsverify + NaN
+  checks) and is the one that hits filesystem I/O limits on a single node
+  (32-64 is typically the ceiling; going higher rarely helps and can hurt).
+  --plan-threads only speeds up the one-time, rank-0-only directory-listing
+  step that runs before work is distributed; it's a thread pool sized for
+  filesystem metadata I/O (glob/listdir), not CPU-bound compute, so it can
+  reasonably run higher than --ntasks without hitting the same I/O ceiling.
 
 """
 import hashlib
-import multiprocessing
 import os
 import re
 import shutil
@@ -51,8 +61,14 @@ log = getFastspecLogger()
 def _distribute(items, weights, comm, rank, size):
     """Rank-0 partitions *items* by *weights* and sends each rank its slice.
 
+    Pass ``weights=None`` for a simple even split by count, with no
+    per-item cost to compute upfront (see module docstring).
+
     Returns the slice assigned to the calling rank.
     """
+    if weights is None:
+        weights = np.ones(len(items)) if items is not None else None
+
     if comm and size > 1:
         if rank == 0:
             from desispec.parallel import weighted_partition
@@ -70,23 +86,69 @@ def _distribute(items, weights, comm, rank, size):
 # Validation
 # ---------------------------------------------------------------------------
 
-def _get_ntargets_vac(filepath):
-    """Return the row count of the first BinTable extension; fall back to 1."""
-    try:
-        return fitsio.FITS(filepath)[1].get_nrows()
-    except Exception:
-        return 1
+def detect_vac_prefix(vacdir):
+    """Return the single [(prefix, gzip)] pairing actually used by this VAC.
+
+    A fastspec VAC and a fastphot VAC live in entirely separate directories
+    and never coexist under the same vacdir, and each stage always uses a
+    fixed gzip setting (fastspec output is gzipped, fastphot is not), so
+    there are only two valid pairings to begin with -- not the four
+    (prefix, gzip) combinations a naive search would try. Checks
+    catalogs/ first (one cheap glob), then falls back to a shallow probe
+    of the healpix/spectra tree (depth-first, so it should hit a real
+    file within the first few directories). If neither finds anything
+    (e.g., an unusual or still-empty VAC), returns both valid pairings so
+    the caller falls back to searching for either.
+    """
+    catdir = os.path.join(vacdir, 'catalogs')
+    if os.path.isdir(catdir):
+        if glob(os.path.join(catdir, 'fastspec-*')):
+            return [('fastspec', True)]
+        if glob(os.path.join(catdir, 'fastphot-*')):
+            return [('fastphot', False)]
+
+    for subdir in ('healpix', 'spectra'):
+        base = os.path.join(vacdir, subdir)
+        if not os.path.isdir(base):
+            continue
+        for root, _, files in os.walk(base):
+            for name in files:
+                if name.startswith('fastspec-'):
+                    return [('fastspec', True)]
+                if name.startswith('fastphot-'):
+                    return [('fastphot', False)]
+
+    log.warning(f'Could not auto-detect fastspec vs. fastphot under {vacdir}; '
+                'searching for both.')
+    return [('fastspec', True), ('fastphot', False)]
 
 
-def discover_vac_files(vacdir, surveys=None, programs=None):
+def discover_vac_files(vacdir, surveys=None, programs=None, prefix='auto', nthreads=1):
     """Discover all VAC FITS files to validate.
 
     Uses ``findfiles`` from ``fastspecfit.mpi`` for healpix/spectra trees
     (supports survey/program filtering) and a simple glob for catalogs/.
     Surveys and programs are auto-detected from the directory tree when not
     provided.
+
+    Parameters
+    ----------
+    prefix : {'auto', 'fastspec', 'fastphot'}
+        Which stage's output to search for. ``'auto'`` (default) detects it
+        via :func:`detect_vac_prefix` rather than searching for both stages
+        (a fastspec VAC and a fastphot VAC never share a vacdir).
+    nthreads : int
+        Threads used to resolve per-healpix-directory glob patterns
+        concurrently; see ``fastspecfit.mpi.findfiles``.
     """
     from fastspecfit.mpi import findfiles
+
+    if prefix == 'auto':
+        pairs = detect_vac_prefix(vacdir)
+    elif prefix == 'fastspec':
+        pairs = [('fastspec', True)]
+    else:
+        pairs = [('fastphot', False)]
 
     all_files = []
 
@@ -111,12 +173,12 @@ def discover_vac_files(vacdir, surveys=None, programs=None):
             local_programs = sorted(progs)
 
         log.info(f'Searching {subdir} tree: surveys={local_surveys}, programs={local_programs}')
-        for prefix in ('fastspec', 'fastphot'):
-            for gzip in (True, False):
-                found = findfiles(pixel_base, prefix=prefix, coadd_type=coadd_type,
-                                  survey=local_surveys, program=local_programs, gzip=gzip)
-                if len(found) > 0:
-                    all_files.extend(found)
+        for one_prefix, one_gzip in pairs:
+            found = findfiles(pixel_base, prefix=one_prefix, coadd_type=coadd_type,
+                              survey=local_surveys, program=local_programs,
+                              gzip=one_gzip, nthreads=nthreads)
+            if len(found) > 0:
+                all_files.extend(found)
 
     catdir = os.path.join(vacdir, 'catalogs')
     if os.path.isdir(catdir):
@@ -233,30 +295,31 @@ def run_validation(args, comm, rank, size):
     if rank == 0:
         all_files = discover_vac_files(args.vacdir,
                                        surveys=args.survey,
-                                       programs=args.program)
+                                       programs=args.program,
+                                       prefix=args.prefix,
+                                       nthreads=args.plan_threads)
         if len(all_files) == 0:
             log.error(f'No FITS files found under {args.vacdir}')
             if comm:
                 comm.Abort(1)
             return 1
-        log.info(f'Found {len(all_files):,d} FITS file(s). Counting targets (mp={args.mp})...')
-        if args.mp > 1:
-            with multiprocessing.Pool(args.mp) as P:
-                ntargets = np.array(P.map(_get_ntargets_vac, all_files))
-        else:
-            ntargets = np.array([_get_ntargets_vac(f) for f in all_files])
-        log.info(f'Total targets: {np.sum(ntargets):,d}')
+        log.info(f'Found {len(all_files):,d} FITS file(s).')
     else:
-        all_files = ntargets = None
+        all_files = None
 
-    my_files = _distribute(all_files, ntargets, comm, rank, size)
+    my_files = _distribute(all_files, None, comm, rank, size)
     log.info(f'Rank {rank}: validating {len(my_files):,d} file(s).')
 
     n_checked = n_issues = 0
     checked_dirs = set()
+    nfiles = len(my_files)
+    # ~20 progress lines per rank regardless of how many files it got, so a
+    # single file's worth of log output doesn't drown in 800+ per-file lines
+    # (which is what --ntasks=64 on ~50k files would otherwise produce) while
+    # a --ntasks=1 debug run still gets periodic checkpoints, not silence.
+    checkpoint = max(1, nfiles // 20)
     for filepath in my_files:
         filepath = Path(filepath)
-        log.info(f'Rank {rank} [{n_checked + 1}/{len(my_files)}]: {filepath.name}')
 
         # Check the parent directory for extraneous files (once per directory).
         if filepath.parent not in checked_dirs:
@@ -273,6 +336,10 @@ def run_validation(args, comm, rank, size):
             n_issues += 1
             for msg in problems:
                 log.warning(msg)
+
+        if n_checked % checkpoint == 0 or n_checked == nfiles:
+            log.info(f'Rank {rank}: {n_checked:,d}/{nfiles:,d} file(s) checked '
+                     f'({n_issues:,d} with issues so far).')
 
     counts = comm.gather((n_checked, n_issues), root=0) if comm else [(n_checked, n_issues)]
     if rank == 0:
@@ -297,14 +364,15 @@ def sha256_file(filepath):
     return h.hexdigest()
 
 
-def _checksum_filename(dirpath, vacdir, dr, specprod, version):
+def _checksum_filename(dirpath, vacdir, dr, specprod, version, prefix='fastspec'):
     """Return the checksum filename for *dirpath* (placed inside that dir)."""
     rel = os.path.relpath(dirpath, vacdir)
     rel_underscored = rel.replace(os.sep, '_')
-    return f'{dr}_vac_{dr}_fastspecfit_{specprod}_{version}_{rel_underscored}.sha256sum'
+    name = 'fastphot' if prefix == 'fastphot' else 'fastspecfit'
+    return f'{dr}_vac_{dr}_{name}_{specprod}_{version}_{rel_underscored}.sha256sum'
 
 
-def discover_checksum_dirs(vacdir, dr, specprod, version):
+def discover_checksum_dirs(vacdir, dr, specprod, version, prefix='fastspec'):
     """Return arrays of (dirpath, total_bytes) for directories that need checksums.
 
     Scans catalogs/, healpix/, and spectra/ under vacdir.  Directories whose
@@ -321,7 +389,7 @@ def discover_checksum_dirs(vacdir, dr, specprod, version):
 
     pending, weights = [], []
     for d in sorted(dirs):
-        csum_name = _checksum_filename(d, vacdir, dr, specprod, version)
+        csum_name = _checksum_filename(d, vacdir, dr, specprod, version, prefix)
         if os.path.exists(os.path.join(d, csum_name)):
             log.info(f'Skipping {d} (checksum exists)')
             continue
@@ -336,10 +404,10 @@ def discover_checksum_dirs(vacdir, dr, specprod, version):
     return np.array(pending), np.array(weights)
 
 
-def write_checksums_for_dir(dirpath, vacdir, dr, specprod, version):
+def write_checksums_for_dir(dirpath, vacdir, dr, specprod, version, prefix='fastspec'):
     """Compute and write the checksum file for all files in dirpath."""
     dirpath = Path(dirpath)
-    csum_name = _checksum_filename(str(dirpath), vacdir, dr, specprod, version)
+    csum_name = _checksum_filename(str(dirpath), vacdir, dr, specprod, version, prefix)
     csum_path = dirpath / csum_name
 
     files = sorted(f for f in dirpath.iterdir() if f.is_file() and f.name != csum_name)
@@ -362,9 +430,13 @@ def write_checksums_for_dir(dirpath, vacdir, dr, specprod, version):
 
 
 def run_checksums(args, comm, rank, size):
+    prefix = args.prefix
+    if prefix == 'auto':
+        prefix = detect_vac_prefix(args.vacdir)[0][0]
+
     if rank == 0:
         pending, weights = discover_checksum_dirs(
-            args.vacdir, args.dr, args.specprod, args.version)
+            args.vacdir, args.dr, args.specprod, args.version, prefix)
         if len(pending) == 0:
             log.info('All checksum files already exist; nothing to do.')
             if comm:
@@ -378,7 +450,7 @@ def run_checksums(args, comm, rank, size):
 
     n_written = 0
     for dirpath in my_dirs:
-        write_checksums_for_dir(dirpath, args.vacdir, args.dr, args.specprod, args.version)
+        write_checksums_for_dir(dirpath, args.vacdir, args.dr, args.specprod, args.version, prefix)
         n_written += 1
 
     counts = comm.gather(n_written, root=0) if comm else [n_written]
@@ -394,12 +466,18 @@ def _parse_args():
     p = argparse.ArgumentParser()
     p.add_argument('--vacdir', type=str, required=True,
                    help='top-level VAC directory')
-    p.add_argument('--mp', type=int, default=1,
-                   help='number of multiprocessing workers on rank 0 for target counting (default 1)')
     p.add_argument('--survey', nargs='+', default=None,
                    help='survey(s) to validate (default: all detected)')
     p.add_argument('--program', nargs='+', default=None,
                    help='program(s) to validate (default: all detected)')
+    p.add_argument('--prefix', choices=['auto', 'fastspec', 'fastphot'], default='auto',
+                   help='which stage output to search for (default: auto-detect; a fastspec VAC '
+                        'and a fastphot VAC never share a vacdir, so this normally does not need '
+                        'to be set explicitly)')
+    p.add_argument('--plan-threads', type=int, default=16,
+                   help='number of threads used to list healpix directories concurrently during '
+                        'file discovery (rank 0 only); filesystem I/O concurrency, not compute '
+                        'parallelism, and independent of --mp (default 16)')
     p.add_argument('--write-checksums', action='store_true',
                    help='write per-directory SHA-256 checksum files instead of validating')
     p.add_argument('--dr', type=str, default=None,

@@ -25,11 +25,12 @@ Data Content & Access
 
 Data from the ``Fuji`` VAC can be accessed at any of the following links:
 
-============================ ===================================================================
+============================ ================================================================================
 Data url                     https://data.desi.lbl.gov/public/edr/vac/edr/fastspecfit/fuji/v3.2
 Web-app (for collaborators)  https://fastspecfit.desi.lbl.gov
 `NERSC`_ (for collaborators) ``/global/cfs/cdirs/desi/public/edr/vac/edr/fastspecfit/fuji/v3.2``
-============================ ===================================================================
+Documentation                `v2.5.0 data model <https://fastspecfit.readthedocs.io/en/2.5.0/fastspec.html>`_
+============================ ================================================================================
 
 For more information regarding the content and organization of the VAC, please
 click on the following links:

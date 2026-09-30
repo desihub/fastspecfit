@@ -1576,7 +1576,8 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
         If ``True``, fit a parabola to refine the chi2 minimum.
         Defaults to ``False``.
     debug_plots : bool, optional
-        If ``True``, write a QA plot to the current directory.
+        If ``True``, write a QA plot and an ECSV table (VDISP, TAUV, CHI2
+        columns, float32) of the full chi2 grid to the current directory.
 
     Returns
     -------
@@ -1591,17 +1592,29 @@ def vdisp_by_chi2scan(CTools, templates, uniqueid, specflux, specwave,
 
     ngrid = len(CTools.vdisp_grid)
     chi2grid = np.zeros(ngrid)
+    tauvgrid = np.zeros(ngrid)
     for iv, vdisp1 in enumerate(CTools.vdisp_grid):
         # convolve the templates at the derived vdisp and fit
         input_templateflux_nolines = templates.convolve_vdisp(
             templates.flux_nolines[agekeep, :], vdisp1)
-        tauv, _, coeff, resid1 = CTools.fit_stellar_continuum(
+        tauv1, _, coeff, resid1 = CTools.fit_stellar_continuum(
             input_templateflux_nolines, fit_vdisp=False, conv_pre=None,
             #tauv_bounds=(0., 2.),
             specflux=specflux, specistd=specistd*fitmask,
             dust_emission=False, synthspec=True,
             ftol=1e-3, xtol=1e-5)
         chi2grid[iv] = resid1.dot(resid1)
+        tauvgrid[iv] = tauv1
+
+    if debug_plots:
+        from astropy.table import Table
+        gridfile = f'qa-vdisp-chi2scan-{uniqueid}.ecsv'
+        gridtable = Table()
+        gridtable['VDISP'] = CTools.vdisp_grid.astype(np.float32)
+        gridtable['TAUV'] = tauvgrid.astype(np.float32)
+        gridtable['CHI2'] = chi2grid.astype(np.float32)
+        gridtable.write(gridfile, overwrite=True)
+        log.info(f'Wrote {gridfile}')
 
     # Require the peak-to-peak delta-chi2 to be at least deltachi2min and the
     # minimum to not be on either endpoint.
@@ -2078,7 +2091,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
 def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                       nmonte=NMONTE_DEFAULT, seed=1, constrain_age=False,
                       no_smooth_continuum=False, fitstack=False,
-                      fastphot=False, debug_plots=False):
+                      fastphot=False, debug_plots=False, vdisp_nbin=6):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -2086,6 +2099,9 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
     data : :class:`dict`
         Dictionary of input spectroscopy (plus ancillary data) populated by
         :func:`fastspecfit.io.DESISpectra.read`.
+    vdisp_nbin : int, optional
+        Number of grid points for the velocity dispersion chi2 scan.
+        Defaults to 6.
 
     Returns
     -------
@@ -2132,6 +2148,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
     CTools = ContinuumTools(data, templates, phot, igm, fastphot=fastphot,
                             vdisp_guess=templates.vdisp_nominal_kernel,
                             vdisp_bounds=templates.vdisp_bounds,
+                            vdisp_nbin=vdisp_nbin,
                             fluxnorm=FLUXNORM, constrain_age=constrain_age)
 
     # Instantiate the random-number generator.

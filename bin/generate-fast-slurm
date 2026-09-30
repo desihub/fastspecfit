@@ -88,11 +88,16 @@ _OUTDIR = (os.environ.get('OUTDIR_DATA')
 # Maximum wall-clock hours allowed for the chosen QOS (used when --time is not given).
 _MAX_HOURS = {'regular': 12, 'debug': 0.5, 'premium': 24}
 
-# Empirical throughput from loa benchmarks (sv3, --mp=16):
-#   dark:   ~8 s/obj/core  (~10 obj/min/core)
-#   bright: ~11 s/obj/core (~5 obj/min/core)
-# Value below is weighted for a 2:1 dark:bright mix.
-_OBJ_PER_MIN_PER_CORE = 8.0
+# Empirical throughput from the loa v3.6.1 production run (--mp=16), blended
+# across all programs/surveys:
+#   fastspec: ~6 s/obj/core (~10 obj/min/core)   — see loa-3.6.1-benchmarks.txt
+#   fastphot: ~0.56 s/obj/core (~107 obj/min/core) — see
+#             loa-3.6.1-projections-fastphot.txt (rescaled from iron/DR1;
+#             no direct fastphot v3.6.1 benchmark exists yet)
+# makeqa has no throughput benchmark; falls back to the fastspec rate as a
+# conservative default (QA reads fitted output rather than re-fitting, so
+# actual makeqa jobs should finish well inside this estimate).
+_OBJ_PER_MIN_PER_CORE = {'fastspec': 10.0, 'fastphot': 107.0, 'makeqa': 10.0}
 
 # ---------------------------------------------------------------------------
 
@@ -151,7 +156,7 @@ args+=" --mp=$mp"
 args+=" --outdir-data={outdir_data}"
 args+=" {pixel_flag}=$PIXELS"
 {stage_flag}
-srun_args="--nodes=$N --ntasks=$ntasks --cpus-per-task=$cpus_per_task --cpu-bind=$cpu_bind"
+srun_args="--nodes=$N --ntasks=$ntasks --cpus-per-task=$cpus_per_task --cpu-bind=$cpu_bind{distribution_flag}"
 
 cmd="time srun $srun_args $mpiscript $args"
 echo "$cmd"
@@ -167,7 +172,7 @@ fi
 
 
 def query_remaining(specprod, coadd_type, survey, program, fastphot, healpix,
-                    outdir_data, mp=1):
+                    outdir_data, mp=1, plan_threads=16):
     """Return (redrockfiles, healpix_ids, ntargets) for files not yet processed."""
     from fastspecfit.mpi import plan
 
@@ -186,6 +191,7 @@ def query_remaining(specprod, coadd_type, survey, program, fastphot, healpix,
         mp=mp,
         fastphot=fastphot,
         overwrite=False,
+        nthreads=plan_threads,
     )
 
     if len(redrockfiles) == 0:
@@ -218,10 +224,10 @@ def balanced_partition(ntargets, njobs):
     return groups, totals
 
 
-def estimate_walltime(ntargets_total, nodes, mp, qos, padding=1.5):
+def estimate_walltime(ntargets_total, nodes, mp, qos, stage, padding=1.5):
     """Rough wall time estimate based on empirical throughput."""
     n_cores = nodes * 128
-    throughput = n_cores * _OBJ_PER_MIN_PER_CORE
+    throughput = n_cores * _OBJ_PER_MIN_PER_CORE[stage]
     minutes = ntargets_total / throughput * padding
     hours = max(1, int(np.ceil(minutes / 60)))
     hours = min(hours, _MAX_HOURS.get(qos, 12))
@@ -252,6 +258,7 @@ def generate_slurm(args, groups, group_totals, healpix_ids, ntargets):
 
     env_script = os.path.abspath(args.env_script)
     outdir_data = os.path.expandvars(args.outdir_data)
+    distribution_flag = f' --distribution={args.distribution}' if args.distribution else ''
 
     slurm_files = []
     job_index = 0
@@ -264,7 +271,7 @@ def generate_slurm(args, groups, group_totals, healpix_ids, ntargets):
         pixels_csv = ','.join(str(p) for p in sorted(group_pixels))
         pixel_flag = '--uniqpix' if args.coadd_type == 'uniqpix' else '--healpix'
 
-        walltime = args.time or estimate_walltime(int(total), args.nodes, args.mp, args.qos)
+        walltime = args.time or estimate_walltime(int(total), args.nodes, args.mp, args.qos, args.stage)
         job_name = f'{prefix}-{args.specprod}-job{job_index:0{idx_width}d}'
 
         slurm_file = os.path.join(args.outdir_scripts, f'{job_name}.slurm')
@@ -294,6 +301,7 @@ def generate_slurm(args, groups, group_totals, healpix_ids, ntargets):
             pixel_flag=pixel_flag,
             stage_flag=stage_flag,
             stage_flag_warmup=stage_flag_warmup,
+            distribution_flag=distribution_flag,
         )
 
         with open(slurm_file, 'w') as fh:
@@ -325,8 +333,18 @@ def main():
     parser.add_argument('--njobs', type=int, default=1, help='Number of Slurm jobs to generate.')
     parser.add_argument('--nodes', type=int, default=32, help='Perlmutter CPU nodes per job.')
     parser.add_argument('--mp', type=int, default=16, help='Multiprocessing workers per MPI rank.')
+    parser.add_argument('--distribution', default=None,
+                        help='Optional Slurm --distribution value for the srun line (e.g. "cyclic"), '
+                             'to control rank-to-node placement. Under the default block distribution, '
+                             'weighted_partition\'s greedy packing can put the largest files on the same '
+                             'node; cyclic spreads consecutive ranks across nodes instead. Useful for '
+                             'scopes with a few oversized files (e.g. survey=special). Omitted by default.')
     parser.add_argument('--time', default=None,
                         help='Wall time per job as HH:MM:SS; auto-estimated when omitted.')
+    parser.add_argument('--plan-threads', type=int, default=16, help='Number of threads used to list healpix '
+                        'directories concurrently while querying remaining work. This is filesystem I/O '
+                        'concurrency (safe to run on a login node), not compute parallelism, and is '
+                        'independent of --mp.')
 
     # Slurm metadata
     parser.add_argument('--account', default=_ACCOUNT)
@@ -356,7 +374,8 @@ def main():
     _, healpix_ids, ntargets = query_remaining(
         specprod=args.specprod, coadd_type=args.coadd_type,
         survey=args.survey, program=args.program, healpix=args.healpix,
-        fastphot=fastphot, outdir_data=outdir_data)
+        fastphot=fastphot, outdir_data=outdir_data,
+        plan_threads=args.plan_threads)
 
     if args.healpix is not None:
         requested = set(int(h) for h in args.healpix.split(','))
@@ -388,7 +407,7 @@ def main():
     print(f'\nPartition across {njobs} job(s)  '
           f'[imbalance: {max(totals)/max(min(totals), 1):.2f}x]:')
     for i, (g, t) in enumerate(nonempty, 1):
-        est = args.time or estimate_walltime(int(t), args.nodes, args.mp, args.qos)
+        est = args.time or estimate_walltime(int(t), args.nodes, args.mp, args.qos, args.stage)
         print(f'  Job {i:0{idx_width}d}: {len(g):5,d} pixels  {int(t):9,d} targets  est. walltime {est}')
 
     if args.plan:
