@@ -1,0 +1,582 @@
+#!/usr/bin/env python
+
+"""Pre-synthesize broadband photometry for a Bayesian SSP template grid
+(as built by ``bin/build-bayesian-templates``) on a fixed redshift grid,
+including IGM attenuation and cosmological dimming.
+
+For each redshift on the grid, every template is redshifted, attenuated
+by the Inoue et al. (2014) IGM model, dimmed by the appropriate
+luminosity distance, and passed through the broadband filter curves
+defined by a FastSpecFit photometry configuration file (e.g., the
+bundled ``legacysurvey-dr9.yaml``). The output maggies are normalized
+per solar mass formed (i.e., no arbitrary flux amplitude is applied) so
+that, at fit time, the stellar-mass normalization of each grid point can
+be solved for analytically given an object's observed photometry.
+
+Usage
+-----
+::
+
+  time python bin/build-bayesian-photometry --gridnumber 001 \\
+      --templatedir $FTEMPLATES_DIR/bayesian --adaptive \\
+      --outfile $FTEMPLATES_DIR/bayesian/bayesian-photometry-chabrier-001.fits
+
+  time python bin/build-bayesian-photometry \\
+      --templatesfile /path/to/bayesian-templates-chabrier-001.fits --adaptive \\
+      --outfile /path/to/bayesian-photometry-chabrier-001.fits
+
+Output Files
+------------
+Written to the full path given by ``--outfile``.
+
+``REDSHIFT`` (float32 [nz])
+    Redshift grid.
+
+``MAGGIES`` or ``MAGGIES_<photsys>`` (float32 [nmodel x nz x nband]), one
+per photometric-system key in the photometry configuration file (e.g.
+``MAGGIES_N``, ``MAGGIES_S``; just ``MAGGIES`` when the configuration
+does not distinguish photometric systems, e.g. no ``PHOTSYS``)
+    Synthesized AB maggies per solar mass formed.
+
+``FILTERS`` (table, nband rows)
+    Band name and the actual filter name used for each photometric
+    system.
+
+``RESTMAGGIES`` (float32 [nmodel x nz x nabs])
+    Synthesized rest-frame (band-shifted) AB maggies per solar mass
+    formed, in the photometry configuration's ``absmag_bands`` order.
+    Photsys-independent (a single array, not one per photometric system).
+    Used by ``fastspecfit.fastbayes`` to estimate ``ABSMAG*_SYNTH_ERR_*``/
+    ``KCORR*_ERR_*`` without any per-object filter convolution at fit time.
+
+``RESTFILTERS`` (table, nabs rows)
+    Band name, band-shift, and the actual (shifted) filter name for each
+    rest-frame output band.
+
+``METADATA`` (table, nmodel rows)
+    Copied unchanged from the input template file, for convenience.
+
+``AXES`` (table, one row per grid axis)
+    Copied unchanged from the input template file (see
+    ``bin/build-bayesian-templates``), for convenience.
+
+"""
+import os, sys, time
+import numpy as np
+import fitsio
+from astropy.io import fits
+from astropy.table import Table
+
+from fastspecfit.photometry import Photometry
+from fastspecfit.cosmo import TabulatedDESI
+from fastspecfit.igm import Inoue14
+from fastspecfit.util import MPPool
+
+
+def _photsys_suffix(key):
+    """Return an EXTNAME/column-name suffix for a photsys key.
+
+    Some photometry configurations (e.g. non-Legacy-Survey surveys with
+    a single filter set) have no PHOTSYS concept at all, represented by
+    a single empty-string key; in that case, no suffix is used.
+
+    """
+    return '' if key == '' else f'_{key}'
+
+
+def _get_ab_maggies_pre_batch(filters, wave):
+    """Precompute per-filter trapezoidal weights for fast batched synthesis.
+
+    Mirrors the ``phot_pre`` / ``phot_batch_weights`` construction in
+    ``ContinuumTools.__init__`` (see ``continuum.py``), which enables
+    synthesizing photometry for many spectra sharing a common wavelength
+    grid via a single matrix-vector product per filter.
+
+    Parameters
+    ----------
+    filters : :class:`speclite.filters.FilterSequence`
+        Filter sequence whose response functions lie strictly within
+        ``wave``.
+    wave : :class:`numpy.ndarray`
+        Observed-frame wavelength array in Angstroms.
+
+    Returns
+    -------
+    maggies_pre : :class:`tuple`
+        Per-filter ``(lo, hi, resp, idenom)`` tuples from
+        :meth:`Photometry.get_ab_maggies_pre`.
+    rtw : :class:`tuple`
+        Per-filter response-weighted trapezoidal integration vectors.
+
+    """
+    maggies_pre = Photometry.get_ab_maggies_pre(filters, wave)
+
+    rtw = []
+    for lo, hi, resp, _ in maggies_pre:
+        dwave = np.diff(wave[lo:hi])
+        r_tw = np.zeros(hi - lo)
+        r_tw[:-1] += 0.5 * resp[:-1] * dwave
+        r_tw[1:] += 0.5 * resp[1:] * dwave
+        rtw.append(r_tw)
+
+    return maggies_pre, tuple(rtw)
+
+
+# Per-worker (MPPool) state, populated once at startup by _init_worker rather
+# than being pickled through the pool's task-dispatch path -- mirroring
+# fastspecfit.fastbayes._initialize_fastbayes_workers/bg_data.
+_wave = _flux = _phot = _cosmo = _igm = _restmaggies_pre = _rest_rtw = None
+
+
+def _init_worker(tempfile, fphotofile):
+    """MPPool initializer: load the (large, read-only) templates and
+    photometry configuration once per worker process, from disk, instead of
+    pickling them through the pool's IPC channel for every task.
+
+    """
+    global _wave, _flux, _phot, _cosmo, _igm, _restmaggies_pre, _rest_rtw
+    T = fitsio.FITS(tempfile)
+    _wave = T['WAVE'].read()
+    _flux = T['FLUX'].read()
+    _phot = Photometry(fphotofile=fphotofile)
+    _cosmo = TabulatedDESI()
+    _igm = Inoue14()
+    # Rest-frame filter precompute is loop-invariant (phot.filters_out never
+    # redshifts), so it's done once here rather than per redshift.
+    _restmaggies_pre, _rest_rtw = _get_ab_maggies_pre_batch(_phot.filters_out, _wave)
+
+
+def _synthesize_one_z(iz, z):
+    """Synthesize one redshift's row of MAGGIES/RESTMAGGIES, using the
+    worker-global state populated by :func:`_init_worker`. Factored out of
+    :func:`synthesize_photometry_grid`'s loop body so it can be dispatched
+    across an :class:`~fastspecfit.util.MPPool`.
+
+    Returns
+    -------
+    iz : :class:`int`
+    maggies_row : :class:`dict`
+        Mapping of photsys key to an array of shape (nmodel, nband),
+        float32.
+    restmaggies_row : :class:`numpy.ndarray`
+        Array of shape (nmodel, nabs), float32.
+
+    """
+    wave_obs = _wave * (1. + z)
+    igm_trans = _igm.full_IGM(z, wave_obs)
+    dlum = _cosmo.luminosity_distance(z) # [Mpc]
+    distfactor = (10. / (1e6 * dlum))**2 / (1. + z)
+    zfactor = igm_trans * distfactor # [nwave]
+
+    maggies_row = {}
+    for key in _phot.filters.keys():
+        maggies_pre, rtw = _get_ab_maggies_pre_batch(_phot.filters[key], wave_obs)
+        row = np.zeros((_flux.shape[0], len(_phot.bands)), dtype=np.float32)
+        for iband, ((lo, hi, _, idenom), r_tw) in enumerate(zip(maggies_pre, rtw)):
+            r_tw_z = r_tw * zfactor[lo:hi] # fold in the redshift/IGM/distance factor
+            row[:, iband] = (_flux[:, lo:hi] @ r_tw_z) * idenom
+        maggies_row[key] = row
+
+    # Rest-frame synthesis: same igm_trans/dlum, but no 1/(1+z) term (see
+    # synthesize_photometry_grid's docstring).
+    rest_zfactor = igm_trans * (10. / (1e6 * dlum))**2 # [nwave]
+    restmaggies_row = np.zeros((_flux.shape[0], len(_restmaggies_pre)), dtype=np.float32)
+    for iband, ((lo, hi, _, idenom), r_tw) in enumerate(zip(_restmaggies_pre, _rest_rtw)):
+        r_tw_z = r_tw * rest_zfactor[lo:hi]
+        restmaggies_row[:, iband] = (_flux[:, lo:hi] @ r_tw_z) * idenom
+
+    return iz, maggies_row, restmaggies_row
+
+
+def synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm, mp_pool=None):
+    """Synthesize broadband photometry for every template on the redshift grid.
+
+    Also synthesizes the rest-frame (band-shifted) absolute-magnitude
+    photometry needed by ``fastspecfit.fastbayes`` to estimate
+    ``ABSMAG*_SYNTH_ERR_*``/``KCORR*_ERR_*`` without any per-object filter
+    convolution at fit time. This is cheap to add here: ``phot.filters_out``
+    never redshifts (each band is pre-shifted once, at grid-build time, by
+    its own fixed ``band_shift``; see ``Photometry.__init__``), so its
+    filter-response precompute is done once, outside the redshift loop
+    below, unlike the observed-frame filters which must be redone every
+    ``z`` since ``wave_obs`` shifts. The only per-``z`` ingredient it needs
+    (``igm_trans``, ``dlum``) is already computed for the observed-frame
+    synthesis; the only difference is dropping the ``distfactor``'s
+    ``1/(1+z)`` term, which exactly cancels the explicit ``*(1+z)`` in
+    :meth:`fastspecfit.photometry.Photometry.synth_absmag`'s rest-frame
+    flux argument (see that method).
+
+    Parameters
+    ----------
+    wave : :class:`numpy.ndarray`
+        Common rest-frame wavelength array (Angstroms) shared by every
+        template.
+    flux : :class:`numpy.ndarray`
+        Template spectra of shape (nmodel, nwave) in erg/s/cm2/A at
+        10 pc per solar mass formed.
+    zgrid : :class:`numpy.ndarray`
+        Redshift grid.
+    phot : :class:`fastspecfit.photometry.Photometry`
+        Photometry configuration (filters, bands).
+    cosmo : :class:`fastspecfit.cosmo.TabulatedDESI`
+        Cosmology used for the luminosity distance.
+    igm : :class:`fastspecfit.igm.Inoue14`
+        IGM attenuation model.
+    mp_pool : :class:`fastspecfit.util.MPPool` or None, optional
+        When given, the (fully independent) per-redshift work is dispatched
+        across this pool via :func:`_synthesize_one_z` instead of the
+        sequential loop below; the pool must have been constructed with
+        :func:`_init_worker` as its initializer. Default is ``None``
+        (sequential).
+
+    Returns
+    -------
+    maggies : :class:`dict`
+        Mapping of photometric-system key (e.g. ``'N'``, ``'S'``) to an
+        array of shape (nmodel, nz, nband) of synthesized AB maggies per
+        solar mass formed.
+    restmaggies : :class:`numpy.ndarray`
+        Array of shape (nmodel, nz, nabs) of synthesized rest-frame
+        (band-shifted) AB maggies per solar mass formed, in
+        ``phot.absmag_bands`` order. Photsys-independent (a single array,
+        not one per photometric system), since ``phot.filters_out`` does
+        not depend on photsys.
+
+    """
+    nsed = flux.shape[0]
+    nz = len(zgrid)
+    photsys_keys = list(phot.filters.keys())
+    nband = len(phot.bands)
+    nabs = len(phot.absmag_bands)
+
+    maggies = {key: np.zeros((nsed, nz, nband), dtype=np.float32) for key in photsys_keys}
+    restmaggies = np.zeros((nsed, nz, nabs), dtype=np.float32)
+
+    print(f'Synthesizing photometry for {nsed} templates x {nz} redshifts x '
+          f'{len(photsys_keys)} photometric system(s) (plus {nabs} rest-frame bands)...')
+    t0 = time.time()
+    logevery = int(np.clip(nz // 20, 1, 50))
+
+    if mp_pool is None:
+        # Rest-frame filter precompute is loop-invariant (phot.filters_out
+        # never redshifts), unlike the observed-frame filters below.
+        restmaggies_pre, rest_rtw = _get_ab_maggies_pre_batch(phot.filters_out, wave)
+
+        for iz, z in enumerate(zgrid):
+            wave_obs = wave * (1. + z)
+            igm_trans = igm.full_IGM(z, wave_obs)
+            dlum = cosmo.luminosity_distance(z) # [Mpc]
+            distfactor = (10. / (1e6 * dlum))**2 / (1. + z)
+            zfactor = igm_trans * distfactor # [nwave]
+
+            for key in photsys_keys:
+                maggies_pre, rtw = _get_ab_maggies_pre_batch(phot.filters[key], wave_obs)
+                for iband, ((lo, hi, _, idenom), r_tw) in enumerate(zip(maggies_pre, rtw)):
+                    r_tw_z = r_tw * zfactor[lo:hi] # fold in the redshift/IGM/distance factor
+                    maggies[key][:, iz, iband] = (flux[:, lo:hi] @ r_tw_z) * idenom
+
+            # Rest-frame synthesis: same igm_trans/dlum, but no 1/(1+z) term
+            # (it cancels against synth_absmag's explicit *(1+z), and the
+            # filter response is evaluated against the rest-frame wave, not
+            # wave_obs).
+            rest_zfactor = igm_trans * (10. / (1e6 * dlum))**2 # [nwave]
+            for iband, ((lo, hi, _, idenom), r_tw) in enumerate(zip(restmaggies_pre, rest_rtw)):
+                r_tw_z = r_tw * rest_zfactor[lo:hi]
+                restmaggies[:, iz, iband] = (flux[:, lo:hi] @ r_tw_z) * idenom
+
+            ndone = iz + 1
+            if ndone % logevery == 0 or ndone == nz:
+                rate = ndone / (time.time() - t0)
+                remaining = (nz - ndone) / rate / 60. # [min]
+                print('  {}/{} redshifts ({:.1f}%) done in {:.1f} min; ~{:.1f} min remaining'.format(
+                    ndone, nz, 100. * ndone / nz, (time.time() - t0) / 60., remaining))
+    else:
+        # Each redshift is fully independent, so dispatch across mp_pool's
+        # workers (each already holding its own copy of wave/flux/phot,
+        # loaded once by _init_worker) in logevery-sized chunks, both to
+        # bound per-call task-list size and to preserve the sequential
+        # path's periodic progress logging.
+        for chunk_start in range(0, nz, logevery):
+            chunk_stop = min(chunk_start + logevery, nz)
+            argdicts = [{'iz': iz, 'z': zgrid[iz]} for iz in range(chunk_start, chunk_stop)]
+            for iz, maggies_row, restmaggies_row in mp_pool.starmap(_synthesize_one_z, argdicts):
+                for key in photsys_keys:
+                    maggies[key][:, iz, :] = maggies_row[key]
+                restmaggies[:, iz, :] = restmaggies_row
+
+            ndone = chunk_stop
+            rate = ndone / (time.time() - t0)
+            remaining = (nz - ndone) / rate / 60. # [min]
+            print('  {}/{} redshifts ({:.1f}%) done in {:.1f} min; ~{:.1f} min remaining'.format(
+                ndone, nz, 100. * ndone / nz, (time.time() - t0) / 60., remaining))
+
+    print('Finished {} redshifts in {:.3f} min'.format(nz, (time.time() - t0) / 60.))
+
+    return maggies, restmaggies
+
+
+def main(gridnumber, outfile, imf='chabrier', templatedir=None, fphotofile=None,
+         templatesfile=None, zmin=0.001, zmax=1.7, nz=100, logspace=False,
+         adaptive=False, nbase_weight=40., npts_local=3., lines=None, edge_bands=None,
+         mp=1, cmdline=None):
+    """Synthesize the photometry grid and write the output FITS file.
+
+    Parameters
+    ----------
+    gridnumber : :class:`str` or None
+        Grid identifier matching the one used with
+        ``bin/build-bayesian-templates``. Only used to locate the
+        templates file when ``templatesfile`` is not given; otherwise
+        read back from the templates file's own header.
+    outfile : :class:`str`
+        Full path of the output FITS file. Independent of
+        ``templatedir``.
+    imf : :class:`str`, optional
+        Initial mass function, matching the templates file. Default is
+        ``'chabrier'``. Only used to locate the templates file when
+        ``templatesfile`` is not given; otherwise read back from the
+        templates file's own header.
+    templatedir : :class:`str`
+        Root template directory; the templates are read from
+        ``<templatedir>/bayesian-templates-{imf}-{gridnumber}.fits``
+        when ``templatesfile`` is not given.
+    fphotofile : :class:`str` or None, optional
+        Path to the photometry configuration YAML file. Defaults to the
+        bundled DR9 configuration.
+    templatesfile : :class:`str` or None, optional
+        Full path to the raw Bayesian templates FITS file, overriding
+        ``gridnumber``/``templatedir`` reconstruction. Useful when the
+        templates live somewhere non-standard (e.g. switching between
+        NERSC and a laptop). ``GRIDNUM``/``IMF`` are read back from its
+        header rather than trusting ``gridnumber``/``imf``.
+    zmin, zmax, nz, logspace, adaptive, nbase_weight, npts_local, lines, edge_bands
+        See :meth:`fastspecfit.photometry.Photometry.build_redshift_grid` and
+        :meth:`~fastspecfit.photometry.Photometry.build_adaptive_redshift_grid`
+        (``edge_bands`` here is passed through as that method's ``bands``
+        argument, renamed to avoid confusion with the templates/photometry
+        bands used elsewhere in this script).
+    mp : :class:`int`, optional
+        Number of multiprocessing worker processes to synthesize the
+        (fully independent) per-redshift photometry across. Default is 1
+        (sequential, in-process -- identical to the pre-parallelization
+        code path).
+    cmdline : :class:`str` or None, optional
+        Exact command-line invocation, recorded verbatim as the ``CMDLINE``
+        header keyword (in addition to the individual dependency/parameter
+        cards already written) for easier provenance at a glance. Left out
+        of the header entirely when ``None`` (e.g. calling :func:`main`
+        directly, not via the command line).
+
+    """
+    from desiutil.depend import add_dependencies, possible_dependencies, setdep, getdep
+
+    if templatesfile is not None:
+        tempfile = templatesfile
+    else:
+        tempfile = os.path.join(templatedir, f'bayesian-templates-{imf}-{gridnumber}.fits')
+    if not os.path.isfile(tempfile):
+        errmsg = f'Templates file {tempfile} not found.'
+        raise IOError(errmsg)
+
+    print(f'Reading {tempfile}')
+    T = fitsio.FITS(tempfile)
+    wave = T['WAVE'].read()
+    flux = T['FLUX'].read()
+    meta = T['METADATA'].read()
+    axes = T['AXES'].read()
+    fluxhdr = T['FLUX'].read_header()
+
+    if templatesfile is not None:
+        gridnumber = fluxhdr.get('GRIDNUM', gridnumber)
+        imf = fluxhdr.get('IMF', imf)
+
+    phot = Photometry(fphotofile=fphotofile)
+    cosmo = TabulatedDESI()
+    igm = Inoue14()
+
+    zgrid = phot.build_redshift_grid(zmin, zmax, nz, logspace=logspace, adaptive=adaptive,
+                                     nbase_weight=nbase_weight, npts_local=npts_local,
+                                     lines=lines, bands=edge_bands)
+
+    mp_pool = None
+    if mp > 1:
+        mp_pool = MPPool(mp, initializer=_init_worker,
+                         init_argdict={'tempfile': tempfile, 'fphotofile': fphotofile})
+
+    maggies, restmaggies = synthesize_photometry_grid(wave, flux, zgrid, phot, cosmo, igm,
+                                                       mp_pool=mp_pool)
+
+    if mp_pool is not None:
+        mp_pool.close()
+
+    outdir = os.path.dirname(outfile)
+    if outdir and not os.path.isdir(outdir):
+        os.makedirs(outdir, exist_ok=True)
+
+    photsys_keys = list(phot.filters.keys())
+
+    hduprim = fits.PrimaryHDU()
+    hduprim.header['GRIDNUM'] = gridnumber
+    hduprim.header['IMF'] = imf
+    add_dependencies(hduprim.header, module_names=possible_dependencies+['fastspecfit'],
+                     envvar_names=('FTEMPLATES_DIR',))
+    # Recorded purely as diagnostic/provenance (mirroring write_fastspecfit
+    # and fastbayes.write_fastbayes): the raw templates file is always
+    # located at fit time via GRIDNUM/IMF/--templatedir or an explicit
+    # --templatesfile override, never read back from this keyword.
+    setdep(hduprim.header, 'TEMPFILE', os.path.abspath(tempfile))
+    setdep(hduprim.header, 'FPHOTO_FILE', str(phot.fphotofile))
+    setdep(hduprim.header, 'FSPSHASH', getdep(fluxhdr, 'FSPSHASH'))
+    hduprim.header['PHOTSYS'] = (','.join(photsys_keys) if any(photsys_keys) else 'NONE',
+                                 'available photsys key(s)')
+    hduprim.header['ZMIN'] = zmin
+    hduprim.header['ZMAX'] = zmax
+    hduprim.header['NZ'] = len(zgrid)
+    hduprim.header['LOGSPACE'] = logspace
+    hduprim.header['ADAPTIVE'] = (adaptive, 'emission-line-aware redshift grid')
+    if adaptive:
+        hduprim.header['NBASEWT'] = nbase_weight
+        hduprim.header['NPTSLOC'] = npts_local
+    if cmdline is not None:
+        # No comment: CMDLINE's value is an arbitrary-length full invocation
+        # string, and pairing it with a comment can silently truncate the
+        # comment once combined they exceed an 80-char FITS card (regardless
+        # of which FITS writer is used) -- the keyword name is self-
+        # explanatory on its own. Written last so it doesn't visually
+        # interrupt the compact bookkeeping cards above it.
+        hduprim.header['CMDLINE'] = cmdline
+
+    hduz = fits.ImageHDU(zgrid.astype(np.float32))
+    hduz.header['EXTNAME'] = 'REDSHIFT'
+
+    hdus = [hduprim, hduz]
+
+    for key in maggies:
+        hdumaggies = fits.ImageHDU(maggies[key])
+        hdumaggies.header['EXTNAME'] = f'MAGGIES{_photsys_suffix(key)}'
+        hdumaggies.header['BUNIT'] = 'maggies per solar mass formed'
+        hdus.append(hdumaggies)
+
+    filters_table = Table()
+    filters_table['band'] = phot.bands
+    for key in phot.filters:
+        filters_table[f'filter{_photsys_suffix(key)}'] = [f.name for f in phot.filters[key]]
+    hdufilt = fits.convenience.table_to_hdu(filters_table)
+    hdufilt.header['EXTNAME'] = 'FILTERS'
+    hdus.append(hdufilt)
+
+    # Rest-frame (band-shifted) photometry -- photsys-independent, since
+    # phot.filters_out doesn't depend on photsys -- used by
+    # fastspecfit.fastbayes to estimate ABSMAG*_SYNTH_ERR_*/KCORR*_ERR_*
+    # without any per-object filter convolution at fit time.
+    hdurestmaggies = fits.ImageHDU(restmaggies)
+    hdurestmaggies.header['EXTNAME'] = 'RESTMAGGIES'
+    hdurestmaggies.header['BUNIT'] = 'maggies per solar mass formed'
+    hdus.append(hdurestmaggies)
+
+    restfilters_table = Table()
+    restfilters_table['band'] = phot.absmag_bands
+    restfilters_table['band_shift'] = phot.band_shift
+    restfilters_table['filter'] = [f.name for f in phot.filters_out]
+    hdurestfilt = fits.convenience.table_to_hdu(restfilters_table)
+    hdurestfilt.header['EXTNAME'] = 'RESTFILTERS'
+    hdus.append(hdurestfilt)
+
+    hdumeta = fits.convenience.table_to_hdu(Table(meta))
+    hdumeta.header['EXTNAME'] = 'METADATA'
+    hdus.append(hdumeta)
+
+    hduaxes = fits.convenience.table_to_hdu(Table(axes))
+    hduaxes.header['EXTNAME'] = 'AXES'
+    hdus.append(hduaxes)
+
+    hx = fits.HDUList(hdus)
+
+    print(f'Writing {outfile}')
+    hx.writeto(outfile, overwrite=True)
+
+
+if __name__ == '__main__':
+
+    import argparse
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--templatedir', default=None,
+                        help='Input template directory (default $FTEMPLATES_DIR/bayesian); '
+                        'ignored if --templatesfile is given.')
+    parser.add_argument('--templatesfile', type=str, default=None,
+                        help='Full path to the raw Bayesian templates FITS file (output of '
+                        'bin/build-bayesian-templates), overriding --gridnumber/--templatedir '
+                        'reconstruction. GRIDNUM/IMF are read back from its header.')
+    parser.add_argument('--outfile', required=True,
+                        help='Full path to the output FITS file, e.g., '
+                        './bayesian-photometry-chabrier-001.fits (include the grid number yourself if desired)')
+    parser.add_argument('--gridnumber', default=None,
+                        help='Grid number/identifier (e.g., 001); required unless --templatesfile is given.')
+    parser.add_argument('--imf', type=str, default='chabrier', choices=['chabrier', 'salpeter', 'kroupa'],
+                        help='Initial mass function (must match the templates file); ignored '
+                        '(read from the header instead) if --templatesfile is given.')
+    parser.add_argument('--fphotofile', default=None, help='Photometry configuration YAML file')
+
+    parser.add_argument('--zmin', type=float, default=1e-3, help='Minimum redshift')
+    parser.add_argument('--zmax', type=float, default=1.7, help='Maximum redshift')
+    parser.add_argument('--nz', type=int, default=200, help='Number of redshift grid points')
+    parser.add_argument('--logspace', action='store_true', help='Space the (non-adaptive) redshift '
+                        'grid uniformly in log10(1+z) instead of linearly in z; ignored with --adaptive')
+    parser.add_argument('--adaptive', action='store_true', help='Build an emission-line-aware '
+                        'redshift grid concentrated at redshifts where prominent emission lines '
+                        'cross a bandpass edge, instead of a uniform grid; see '
+                        'fastspecfit.photometry.Photometry.build_adaptive_redshift_grid.')
+    parser.add_argument('--nbase-weight', type=float, default=40., help='(--adaptive only) relative '
+                        'weight of the flat baseline term, as an equivalent point count spread '
+                        'uniformly over [zmin, zmax]')
+    parser.add_argument('--npts-local', type=float, default=3., help='(--adaptive only) relative '
+                        'weight (equivalent point count) contributed by each individual '
+                        'emission-line/bandpass-edge crossing')
+    parser.add_argument('--lines', type=str, default=None, help='(--adaptive only) comma-separated '
+                        'name:wavelength pairs (rest-frame vacuum Angstrom) overriding the default '
+                        'line list (Lyman-alpha, [OII], H-beta, [OIII] 5007, H-alpha), e.g. '
+                        '"halpha:6564.61,oiii_5007:5006.84"')
+    parser.add_argument('--edge-bands', type=str, default=None, help='(--adaptive only) comma-separated '
+                        'band names (must match the photometry configuration, e.g. "g,r,z") whose '
+                        'edges are searched for line crossings; defaults to all bands')
+
+    parser.add_argument('--mp', type=int, default=1, help='Number of multiprocessing workers '
+                        'to synthesize the (fully independent) per-redshift photometry across.')
+
+    parser.add_argument('--test', action='store_true', help='Generate a tiny test grid.')
+    args = parser.parse_args()
+
+    templatesfile = os.path.expandvars(args.templatesfile) if args.templatesfile else None
+
+    if templatesfile is None:
+        if args.gridnumber is None:
+            raise IOError('Either --templatesfile or --gridnumber must be given.')
+        templatedir = args.templatedir
+        if templatedir is None:
+            templatedir = os.path.join(os.environ['FTEMPLATES_DIR'], 'bayesian')
+        templatedir = os.path.expandvars(templatedir)
+    else:
+        templatedir = None
+
+    outfile = os.path.expandvars(args.outfile)
+
+    zmin, zmax, nz = args.zmin, args.zmax, args.nz
+    if args.test:
+        zmin, zmax, nz = 0.01, 0.2, 5
+
+    lines = None
+    if args.lines is not None:
+        lines = {}
+        for pair in args.lines.split(','):
+            name, wave = pair.split(':')
+            lines[name] = float(wave)
+
+    edge_bands = args.edge_bands.split(',') if args.edge_bands is not None else None
+
+    cmdline = ' '.join([os.path.basename(sys.argv[0])] + sys.argv[1:])
+
+    main(args.gridnumber, outfile, imf=args.imf, templatedir=templatedir, fphotofile=args.fphotofile,
+        templatesfile=templatesfile, zmin=zmin, zmax=zmax, nz=nz, logspace=args.logspace,
+        adaptive=args.adaptive, nbase_weight=args.nbase_weight, npts_local=args.npts_local,
+        lines=lines, edge_bands=edge_bands, mp=args.mp, cmdline=cmdline)

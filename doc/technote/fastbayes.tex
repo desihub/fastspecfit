@@ -1,0 +1,408 @@
+\documentclass[12pt]{article}
+
+\usepackage{amsmath,amssymb}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{microtype}
+% singlelinecheck=false: article.cls's default \@makecaption (and the
+% caption package's own default) typesets the caption as one unbroken
+% horizontal box to check whether it fits on one line, which overflows
+% TeX's max dimension for a caption as long as Table~\ref{tab:grid}'s;
+% disabling that check makes captions always break normally into a
+% paragraph instead.
+\usepackage[singlelinecheck=false]{caption}
+
+% ── notation shortcuts ─────────────────────────────────────────────────────────
+\newcommand{\chisq}{\chi^2}
+\newcommand{\amp}{\mathcal{A}}
+\newcommand{\iamp}{\mathcal{I}}
+
+\title{FastSpecFit Bayesian Photometric SED Fitting}
+\author{John Moustakas%
+  \thanks{Grid design and fitting-algorithm derivations assisted by
+    Claude Code (Claude Sonnet 5, Anthropic).}}
+\date{\today}
+
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+\label{sec:intro}
+
+This note documents \texttt{fastbayes}, \textsc{FastSpecFit}'s grid-based
+Bayesian mode for fitting broadband photometry alone (no spectroscopy). It
+is intended for samples where only photometry is available, and as a fast,
+fully marginalized alternative to the gradient-based continuum fit in
+\texttt{fastphot}.
+
+\texttt{fastbayes} evaluates every object against a large, pre-synthesized
+grid of fully specified stellar population models --- a Dense Basis (Iyer
+\& Gawiser 2017) mass-quantile star formation history, nebular emission,
+dust attenuation, and dust re-emission, all computed by FSPS --- and builds
+up the full discrete posterior over the grid by likelihood weighting.
+
+The grid is built once, by \texttt{bin/build-bayesian-templates} (raw
+model spectra) and \texttt{bin/build-bayesian-photometry} (synthesized
+broadband photometry on a redshift grid, with IGM attenuation and
+cosmological dimming applied). \texttt{fastbayes} itself never runs FSPS;
+at fit time it reads only the one refined template spectrum needed for a
+given object (Section~\ref{sec:refine}).
+
+\section{Grid Design}
+\label{sec:grid}
+
+Each grid point is a complete Dense Basis (Iyer \& Gawiser 2017)
+mass-quantile star formation history. Three grid axes define it:
+\texttt{age}, the total time elapsed since the onset of star formation
+($\equiv$ FSPS's \texttt{tage}), and two stick-broken tertile fractions
+\texttt{t33frac}/\texttt{t67frac}, which place two interior mass-quantile
+boundaries,
+\begin{equation}
+  t_{33} = f_{33}\,\mathrm{age}, \qquad
+  t_{67} = t_{33} + f_{67}\,(\mathrm{age} - t_{33}),
+  \label{eq:tertiles}
+\end{equation}
+with $f_{33}\equiv$\texttt{t33frac} and $f_{67}\equiv$\texttt{t67frac} each
+ranging over $(0,1)$. Every grid combination satisfies
+$0 < t_{33} < t_{67} < \mathrm{age}$.
+
+The three segments $[0,t_{33}]$, $[t_{33},t_{67}]$, and
+$[t_{67},\mathrm{age}]$ each carry one third of the total stellar mass
+formed. FSPS receives this as a tabular SFH (\texttt{sfh=3}): a three-step
+SFR($t$) function on FSPS's native forward-time-since-onset convention,
+with $\mathrm{age}$ passed directly as \texttt{tage}. All three segments
+of every template are simultaneously active, together spanning the full
+star formation history from onset to the observation epoch.
+
+The spectra are computed with a Charlot \& Fall (2000)-style power-law
+dust attenuation curve: \texttt{dust\_type=0}, a fixed
+\texttt{dust\_index=$-0.7$} (the same slope as
+\texttt{fastspec}/\texttt{fastphot}'s own attenuation curve,
+\texttt{fastspecfit.templates.Templates.klambda}), \texttt{dust1} at its
+FSPS default of 0.0 (no separate birth-cloud attenuation component), and
+\texttt{dust2} $\equiv\tau_V$ as the sole free diffuse optical depth.
+Reradiated dust emission uses the Draine \& Li (2007) templates
+(\texttt{add\_dust\_emission=True}). FSPS also supports AGN torus emission
+via the Nenkova et al. (2008) templates (its own \texttt{fagn}/
+\texttt{agn\_tau} parameters), but the bundled default grid fixes
+\texttt{fagn=0} (Section~\ref{sec:grid}), so this component contributes
+nothing to the nominal grid. Nebular line and continuum emission are
+included directly in the spectrum.
+
+The grid's free axes --- which parameters vary, how many grid points each
+gets, and how those points are spaced --- are defined by a YAML parameter
+file, \texttt{fastspecfit/data/bayesian-grid.yaml} by default,
+overridable via \texttt{bin/build-bayesian-templates}'s
+\texttt{--paramsfile} flag. Different grid designs, a different axis
+list, spacing, or point count, require only a new YAML file. The bundled
+default grid, described throughout the rest of this note, is a full
+factorial design over the eight axes in Table~\ref{tab:grid}: every
+combination of the eight axis values exists, so the flattened grid's
+$N$-dimensional structure, and the flat index of any neighboring grid
+point, is recoverable directly from the per-axis values via index
+arithmetic.
+
+The axis list --- names, order, and whether each is refined in
+$\log_{10}$ space --- is written to the templates FITS file's
+\texttt{AXES} extension at grid-build time, and read back per-grid-file
+by \texttt{fastspecfit.fastbayes.BayesianGrid}. The fitting and
+sub-grid-refinement machinery of Sections~\ref{sec:fit}--\ref{sec:refine}
+operates generically on whatever axis combination a given grid file
+defines.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}llrl@{}}
+\toprule
+Axis & Symbol & $N$ & Range (spacing) \\
+\midrule
+Age & age [Gyr] & 8 & 0.03 to 13.7 (log) \\
+Tertile fraction 1 & $f_{33}$ (\texttt{t33frac}) & 10 & 0.05 to 0.95 (linear) \\
+Tertile fraction 2 & $f_{67}$ (\texttt{t67frac}) & 10 & 0.05 to 0.95 (linear) \\
+Metallicity & $\log_{10}(Z/Z_\odot)$ & 5 & $-0.8$ to $0.2$ (linear) \\
+Dust optical depth & $\tau_V$ (\texttt{dust2}) & 10 & 0.0, then 9 Exponential(1.5) quantiles \\
+Dust-emission $U_{\rm min}$ & $U_{\rm min}$ & 1 & fixed at 1.0 \\
+Dust-emission $\gamma$ & $\gamma$ & 1 & fixed at 0.01 \\
+Dust-emission $q_{\rm PAH}$ & $\log_{10}(q_{\rm PAH})$ & 3 & 0.1 to 7.0 (log) \\
+\bottomrule
+\end{tabular}
+\caption{The eight axes of the bundled default Bayesian grid
+  (\texttt{fastspecfit/data/bayesian-grid.yaml}), in full-factorial
+  nested-loop order. Total grid size
+  $8\times10\times10\times5\times10\times1\times1\times3 = 120{,}000$
+  models. Axes built log-uniform (age, metallicity, $U_{\rm min}$,
+  $q_{\rm PAH}$) are refined and reported in $\log_{10}$ space, giving
+  symmetric formal uncertainties (Section~\ref{sec:refine}); the
+  remaining axes ($f_{33}$, $f_{67}$, $\tau_V$, $\gamma$) are refined and
+  reported in linear space. $\tau_V$'s grid includes an exact-zero point,
+  which $\log_{10}$ cannot represent; $f_{33}$/$f_{67}$ are dimensionless
+  fractions on $(0,1)$, for which linear-space uncertainties are the
+  natural choice. An AGN luminosity-fraction axis ($f_{\rm AGN}$,
+  \texttt{fagn}) was dropped from this default grid (Section~\ref{sec:grid})
+  and its point budget reinvested doubling the tertile-fraction
+  resolution ($f_{33}$/$f_{67}$: 5$\to$10 each) --- the total model count
+  is unchanged at 120{,}000.}
+\label{tab:grid}
+\end{table}
+
+\texttt{fastbayes}'s per-object fit is a single vectorized pass over the
+grid, independent of grid size. Grid size is bounded by
+\texttt{bin/build-bayesian-templates}'s build time and the output file
+size, both of which scale with the number of models; its \texttt{--mp}
+flag parallelizes the build across worker processes.
+
+$\tau_V$'s grid points are placed at the quantiles of an
+Exponential($\theta=1.5$) distribution using equal-probability-mass bin
+centers ($p_i = (i-0.5)/9$), plus one exact-zero point (dust-free). Point
+\emph{density} follows this continuous prior shape --- peaked at zero and
+falling off toward high $\tau_V$, with an effective reach of $\sim4.3$ at
+the 9th quantile --- matching the physical prevalence of low-dust
+galaxies, per Leja et al. (2017). $U_{\rm min}$ and $\gamma$ are fixed at
+representative ISM values (essentially unconstrained without far-IR
+photometry, per Leja et al. 2017 App.~C); $q_{\rm PAH}$, constrained by
+mid-IR photometry alone, remains a free axis. $f_{\rm AGN}$ was dropped
+from the default grid (\texttt{fagn=0}, AGN torus emission off) after
+testing showed broadband photometry alone gives it little constraining
+power, much as for $U_{\rm min}$/$\gamma$; a dedicated AGN-focused grid
+(non-zero $f_{\rm AGN}$, refit against a subset of the sample) is planned
+as follow-up work rather than as part of the default grid.
+
+\section{Fitting Methodology}
+\label{sec:fit}
+
+For an object at redshift $z$, the grid's precomputed maggies
+$m_b(t, z)$ --- per unit stellar mass formed, in band $b$, for template $t$
+--- are linearly interpolated in $z$ to the object's redshift, and converted
+to flux density $F_b(t)$ using the effective wavelength of band $b$. The
+model is linear in stellar mass, so the $\chisq$-minimizing, non-negative
+mass amplitude $\amp(t)$ for every template is available in closed form:
+\begin{equation}
+  \boxed{
+  \amp(t) \;=\; \max\!\left(0,\;
+  \frac{\sum_b \iamp_b\, f_b\, F_b(t)}{\sum_b \iamp_b\, F_b(t)^2}
+  \right),
+  }
+  \label{eq:amplitude}
+\end{equation}
+where $f_b$ is the observed flux density and $\iamp_b$ its inverse variance
+in band $b$. The corresponding $\chisq$ for every template,
+\begin{equation}
+  \chisq(t) \;=\; \sum_b \iamp_b\,\bigl[f_b - \amp(t)\,F_b(t)\bigr]^2,
+  \label{eq:chi2}
+\end{equation}
+is evaluated for the entire grid at once, a single vectorized pass over all
+120{,}000 templates, giving the discrete maximum-likelihood template
+$t_{\rm best} = \arg\min_t \chisq(t)$ and, via Gaussian likelihood weighting,
+\begin{equation}
+  w(t) \;\propto\; \exp\!\left[-\tfrac{1}{2}\bigl(\chisq(t) - \chisq_{\rm min}\bigr)\right],
+  \qquad \sum_t w(t) = 1,
+  \label{eq:weight}
+\end{equation}
+the full discrete posterior over every grid parameter, and over the
+derived quantities $\log_{10} M_\star$, $\mathrm{SFR}$, $\mathrm{SSFR}$,
+$t_{50}$, and $\langle\mathrm{Age}\rangle_M$ described below. Point
+estimates --- mean, mode, and the 25th/50th/75th percentiles --- are
+reported for every parameter directly from this weighted posterior.
+
+\paragraph{Formal uncertainties.} A formal uncertainty $\sigma_x$ is also
+reported for every parameter $x$: every grid axis (nine for the bundled
+default grid of Table~\ref{tab:grid}), $\log_{10} M_\star$,
+$\mathrm{SFR}$, $\mathrm{SSFR}$, $t_{50}$, $\langle\mathrm{Age}\rangle_M$,
+and the rest-frame luminosities and $D_n(4000)$ index of
+Section~\ref{sec:derived}. It is the square root of the weighted second
+moment of that parameter's marginalized discrete posterior,
+\begin{equation}
+  \sigma_x \;=\; \sqrt{\sum_t w(t)\,\bigl[x(t) - \bar{x}\bigr]^2},
+  \qquad \bar{x} \;=\; \sum_t w(t)\, x(t).
+  \label{eq:sigma}
+\end{equation}
+This is a genuinely marginal quantity: it reflects real posterior
+structure --- multiple modes, skewness, parameter degeneracies (e.g.,
+age--dust--metallicity) --- that is not visible in the local
+$\Delta\chisq=1$ curvature of Section~\ref{sec:refine}, which is confined
+to a single grid corner.
+
+The per-template value $x(t)$ entering Equation~\ref{eq:sigma} depends on
+how the parameter scales with the mass amplitude $\amp(t)$.
+
+For every grid axis, the model $D_n(4000)$ index, and the three
+star-formation-history summary statistics $\mathrm{SSFR}$, $t_{50}$, and
+$\langle\mathrm{Age}\rangle_M$ (Section~\ref{sec:sfhstats}), $\amp(t)$
+does not enter: $x(t)$ is simply the tabulated per-template value.
+
+For $\log_{10} M_\star$ and the rest-frame luminosities of
+Section~\ref{sec:derived}, $x(t) = \log_{10}[\amp(t)] +
+\log_{10}[y_{\rm permass}(t)]$, where $y_{\rm permass}(t)$ is each
+template's tabulated per-unit-mass value, precomputed at grid-build time:
+the surviving stellar-mass fraction (FSPS's \texttt{stellar\_mass}, with
+mass loss/return applied) for $\log_{10} M_\star$, or the per-unit-mass
+monochromatic luminosity for the rest-frame luminosities.
+
+For $\mathrm{SFR}$, $x(t) = \amp(t)\, \mathrm{sfr}_{\rm permass}(t)$.
+$\mathrm{SFR}$ is reported and weighted in linear space, so that
+$\mathrm{SFR}=0$ is represented exactly.
+
+$\mathrm{SSFR} \equiv \mathrm{SFR}/M_\star = \mathrm{sfr}_{\rm
+permass}(t)/m_{\rm permass}(t)$: the mass amplitude cancels between
+numerator and denominator, so $\mathrm{SSFR}$ is amplitude-independent,
+and its per-template value and posterior are computed directly from this
+ratio.
+
+Absolute magnitudes and K-corrections (Section~\ref{sec:derived}) draw
+their reported uncertainty from the observed photometry, rather than from
+this marginalized SED-fit posterior.
+
+\paragraph{Star-formation-history summary statistics.}
+\label{sec:sfhstats}
+Each template's three-segment Dense Basis SFH (Section~\ref{sec:grid},
+Equation~\ref{eq:tertiles}) admits several summary statistics, simple
+closed-form functions of $t_{33}$, $t_{67}$, and age. These are computed
+once per template at grid-build time and refined/weighted exactly like an
+intensive grid quantity:
+\begin{itemize}
+\item \textbf{SFR}: the SFR averaged over the trailing 100~Myr,
+  precomputed per template by \texttt{bin/build-bayesian-templates}. Each
+  of the three tertile segments has a constant SFR; the trailing window's
+  overlap with each segment, weighted by that segment's SFR and divided
+  by the window itself, gives the average (the same windowed-overlap
+  formula used for the main tabular-SFH templates in
+  \texttt{fastspecfit.continuum}'s \texttt{\_get\_sps\_properties}).
+\item \textbf{SSFR} $\equiv \mathrm{SFR}/M_\star$, as described above.
+\item \textbf{$t_{50}$}, the half-mass assembly time. SFR is constant
+  within the middle tertile segment, so cumulative mass grows linearly
+  there, and the 50\%-mass point is exactly that segment's midpoint,
+  \begin{equation}
+    t_{50} \;=\; (t_{33} + t_{67})/2.
+    \label{eq:t50}
+  \end{equation}
+\item \textbf{$\langle\mathrm{Age}\rangle_M$}, the mass-weighted age
+  (lookback-time convention: how long ago, on average, the stars now
+  observed formed). It is the average of the three equal-mass ($1/3$
+  each) segments' midpoint lookback times,
+  \begin{equation}
+    \langle\mathrm{Age}\rangle_M \;=\; \mathrm{age} - \tfrac{1}{3}
+    \left[\tfrac{t_{33}}{2} + \tfrac{t_{33}+t_{67}}{2} +
+    \tfrac{t_{67}+\mathrm{age}}{2}\right]
+    \;=\; \frac{5\,\mathrm{age} - 2t_{33} - 2t_{67}}{6}.
+    \label{eq:mstarage}
+  \end{equation}
+\end{itemize}
+
+\section{Sub-Grid Refinement}
+\label{sec:refine}
+
+Because the grid has finite resolution, the discrete maximum-likelihood
+point $t_{\rm best}$ is refined to sub-grid precision before its
+parameters, model spectrum, and $\chisq$ are reported.
+
+The refinement exploits the grid's full-factorial structure. For axis $a$
+with best-fit index $i_0$ (not at a grid edge), the three already-computed
+$\chisq$ values at indices $i_0-1, i_0, i_0+1$, holding every other axis
+fixed at its $t_{\rm best}$ index, define an exact quadratic interpolant:
+three points determine a unique parabola, so no least-squares fit is
+needed (see the closed-form coefficients in
+\texttt{fastbayes.\_parabola\_vertex3}). Recasting that parabola as
+\begin{equation}
+  \chisq(x) \;=\; \chisq_0 + \left(\frac{x - x_0}{\delta x}\right)^2
+  \label{eq:parabola}
+\end{equation}
+gives the refined coordinate $x_0$ along axis $a$, and a $\Delta\chisq=1$
+curvature width $\delta x$ ($\delta x = 1/\sqrt{a}$ for $\chisq = a x^2 +
+bx + c$).
+
+This width serves only as a validity check: a concave-down or degenerate
+parabola ($a \le 0$) invalidates the refinement. The formal uncertainty
+reported for axis $a$ is the marginalized-posterior second moment
+$\sigma_x$ of Equation~\ref{eq:sigma}, which reflects posterior structure
+beyond the single grid corner where this local curvature is evaluated.
+The refinement is skipped, falling back to the discrete grid value,
+whenever $i_0$ is at a grid edge, the fit is degenerate or concave-down,
+or the vertex $x_0$ falls outside the three-point bracket.
+
+\paragraph{N-linear interpolation.} The same per-axis fractional offset
+$f_a \in [0,1)$ toward the nearer neighbor (zero when unrefined) feeds an
+N-linear interpolation over the $2^{n_{\rm axes}}$ grid corners
+bracketing the refined point ($n_{\rm axes}=9$ and 512 corners for the
+bundled default grid of Table~\ref{tab:grid}; the code reads
+$n_{\rm axes}$ from the grid file's own axis list). Corner $\kappa$,
+defined by one bit per axis, carries weight
+\begin{equation}
+  w_\kappa \;=\; \prod_{a=1}^{n_{\rm axes}} \bigl[\kappa_a\, f_a + (1-\kappa_a)(1-f_a)\bigr],
+  \qquad \kappa_a \in \{0, 1\},
+  \label{eq:corner_weight}
+\end{equation}
+computed for all $2^{n_{\rm axes}}$ corners at once via array broadcasting
+over the bit pattern.
+
+Corners with $w_\kappa \le 0$ (any axis exactly on a grid point) are
+dropped and the remaining weights renormalized. The two fixed ($N=1$)
+axes, $U_{\rm min}$ and $\gamma$, are always at a grid edge, so they never
+contribute a nonzero-offset neighbor: every corner on their nonzero-bit
+side is dropped by this same rule.
+
+The refined model photometry, mass amplitude, and $\chisq$
+(equations~\ref{eq:amplitude}--\ref{eq:chi2}) are recomputed from the
+$w_\kappa$-weighted combination of the corner templates' photometry, so
+the reported \texttt{CHI2} corresponds to the same refined model as the
+reported parameters. This refined model photometry, scaled by the refined
+mass amplitude, is written to the \texttt{METADATA} output as
+\texttt{FLUX\_SYNTH\_PHOTMODEL\_*}: the grid-interpolated synthetic
+photometry consistent with $\chisq$.
+
+The corner templates' raw rest-frame spectra are combined the same way
+(weighted by $w_\kappa$ and scaled by the refined mass amplitude) to build
+the one refined rest-frame spectrum used for the derived quantities in
+Section~\ref{sec:derived}. This spectrum is not stored in the output
+file; it is rebuilt on demand (e.g. for QA) from the stored observed
+photometry, redshift, and photometric system.
+
+\section{Derived Quantities}
+\label{sec:derived}
+
+IGM attenuation and cosmological dimming for the \emph{grid} photometry
+are already baked into the photometry grid by
+\texttt{bin/build-bayesian-photometry}. \texttt{fastbayes} uses the IGM
+model and cosmology directly only to redshift the one refined rest-frame
+spectrum per object, for:
+\begin{itemize}
+\item \textbf{K-corrections and absolute magnitudes}
+  (\texttt{KCORR*}/\texttt{ABSMAG*}), from the same routine used by
+  \texttt{fastspec}/\texttt{fastphot}. It also returns the purely
+  synthetic, non-K-corrected model magnitude (\texttt{ABSMAG*\_SYNTH})
+  and propagates the observed photometry's own inverse variance into
+  \texttt{ABSMAG*\_IVAR}. This uncertainty is drawn from the observed
+  photometry, not from the SED-fit posterior of Section~\ref{sec:fit};
+\item \textbf{Rest-frame luminosities} at a fixed set of reference
+  wavelengths (1450, 1500, 1700, 2800, 3000, 5100~\AA, plus 3.4, 12, and
+  22~$\mu$m --- roughly WISE $W1$/$W3$/$W4$ --- as monochromatic
+  IR/SFR indicators for samples with adequate IR photometric coverage), by
+  linear interpolation of the refined rest-frame spectrum;
+\item \textbf{The model $D_n(4000)$ index}, from the refined rest-frame
+  spectrum directly.
+\end{itemize}
+
+The rest-frame luminosities and $D_n(4000)$ index depend only on a
+template's intrinsic rest-frame spectral shape, not on redshift or
+observed photometry. \texttt{bin/build-bayesian-templates} precomputes
+each template's $D_n(4000)$ index and per-unit-mass monochromatic
+luminosities once, at grid-build time, and stores them as additional
+\texttt{METADATA} columns (mirroring \texttt{sfr}/\texttt{mstar}).
+
+Their formal uncertainties (Equation~\ref{eq:sigma}) are computed directly
+from the full, already-cached posterior weights $w(t)$: two vectorized
+array operations, with no per-object model rebuild. (The point estimates
+above still require the one refined rest-frame spectrum.) This mode has
+no Monte Carlo uncertainty propagation analogous to \textsc{FastSpecFit}'s
+\texttt{nmonte} machinery; every uncertainty reported here comes from the
+marginalized discrete posterior or the observed photometry, as described
+above.
+
+\section*{Acknowledgments}
+
+The grid-based fitting approach and sub-grid refinement scheme described
+here were developed for \textsc{FastSpecFit}'s Bayesian photometric mode.
+
+\end{document}
