@@ -143,7 +143,7 @@ def parse(options=None, rank=0):
 
 
 def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=True,
-                 fastphot=False, fitstack=False, constrain_age=False,
+                 fastphot=False, fitstack=False, fastqso=False, constrain_age=False,
                  no_smooth_continuum=False, debug_plots=False, uncertainty_floor=0.01,
                  minsnr_balmer_broad=2.5, nmonte=NMONTE_DEFAULT, seed=1, vdisp_nbin=6):
     """Fit the continuum and emission lines for a single DESI object.
@@ -166,6 +166,9 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
         Fit broadband photometry only (no spectra). Defaults to ``False``.
     fitstack : bool, optional
         Treat input as stacked spectra. Defaults to ``False``.
+    fastqso : bool, optional
+        Fit QSO continua (power-law + Fe template) instead of stellar SPS
+        templates. Defaults to ``False``.
     constrain_age : bool, optional
         Constrain the stellar population age during fitting. Defaults to
         ``False``.
@@ -246,8 +249,8 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
     continuummodel, smooth_continuum, continuummodel_monte, specflux_monte = \
         continuum_specfit(data, fastfit, specphot, templates, igm, phot, constrain_age=constrain_age,
                           no_smooth_continuum=no_smooth_continuum, fastphot=fastphot,
-                          fitstack=fitstack, debug_plots=debug_plots, nmonte=nmonte,
-                          seed=seed, vdisp_nbin=vdisp_nbin)
+                          fitstack=fitstack, fastqso=fastqso, debug_plots=debug_plots,
+                          nmonte=nmonte, seed=seed, vdisp_nbin=vdisp_nbin)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
@@ -255,7 +258,7 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
     else:
         emmodel = emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                                  phot, emline_table, sc_data.constraints,
-                                 broadlinefit=broadlinefit,
+                                 broadlinefit=broadlinefit, fastqso=fastqso,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
                                  debug_plots=debug_plots, specflux_monte=specflux_monte,
                                  continuummodel_monte=continuummodel_monte)
@@ -266,7 +269,7 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
     return meta, specphot.value, fastfit.value, emmodel
 
 
-def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False, mp_pool=None):
+def fastspec(fastphot=False, fitstack=False, fastqso=False, args=None, comm=None, verbose=False, mp_pool=None):
     """Main fastspec engine: read, fit, and write results for one or more DESI spectra.
 
     Parameters
@@ -275,6 +278,9 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
         Fit broadband photometry only (no spectra). Defaults to ``False``.
     fitstack : bool, optional
         Treat input as stacked spectra. Defaults to ``False``.
+    fastqso : bool, optional
+        Fit QSO continua (power-law + Fe template) instead of stellar SPS
+        templates. Defaults to ``False``.
     args : :class:`argparse.Namespace` or list of str or None, optional
         Pre-parsed arguments or raw argument list. If ``None``, reads from
         ``sys.argv``.
@@ -401,13 +407,13 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             Spec.specprod, phot=sc_data.photometry,
             linetable=sc_data.emlines.table, ncoeff=ncoeff,
             cameras=cameras, fastphot=fastphot,
-            fitstack=fitstack)
+            fitstack=fitstack, fastqso=fastqso)
 
         specphot_dtype, specphot_units = get_output_dtype(
             Spec.specprod, phot=sc_data.photometry,
             linetable=sc_data.emlines.table, ncoeff=ncoeff,
             cameras=cameras, fastphot=fastphot,
-            fitstack=fitstack, specphot=True)
+            fitstack=fitstack, specphot=True, fastqso=fastqso)
 
         # If using Monte Carlo, generate the random seed(s).
         if args.nmonte > 0:
@@ -434,6 +440,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             'broadlinefit':        args.broadlinefit,
             'fastphot':            fastphot,
             'fitstack':            fitstack,
+            'fastqso':             fastqso,
             'constrain_age':       args.constrain_age,
             'no_smooth_continuum': args.no_smooth_continuum,
             'debug_plots':         args.debug_plots,
@@ -512,6 +519,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             template_file=sc_data.templates.file,
             emlinesfile=sc_data.emlines.file,
             constraintsfile=sc_data.constraints.file, fastphot=fastphot,
+            fastqso=fastqso,
             inputz=input_redshifts is not None,
             nmonte=args.nmonte, vdisp_nominal=args.vdisp_nominal,
             vdisp_bounds=args.vdisp_bounds,
@@ -550,6 +558,36 @@ def fastphot(args=None, comm=None, verbose=False, mp_pool=None):
 
     """
     return fastspec(fastphot=True, args=args, comm=comm, verbose=verbose, mp_pool=mp_pool)
+
+
+def fastqso(args=None, comm=None, verbose=False, mp_pool=None):
+    """Main fastqso entry point: fit QSO spectra and photometry for DESI objects.
+
+    Fits a power-law continuum plus Fe emission template instead of stellar
+    SPS templates. The output FITS file has a ``FASTQSO`` extension in place
+    of ``FASTSPEC``.
+
+    Parameters
+    ----------
+    args : :class:`argparse.Namespace` or list of str or None, optional
+        Pre-parsed arguments or raw argument list. If ``None``, reads from
+        ``sys.argv``.
+    comm : :class:`mpi4py.MPI.Comm` or None, optional
+        MPI intracommunicator for parallel execution, or ``None`` for
+        single-process mode.
+    verbose : bool, optional
+        Enable verbose (debug-level) logging. Defaults to ``False``.
+    mp_pool : :class:`fastspecfit.util.MPPool` or None, optional
+        Pre-created worker pool to reuse; a new pool is created and closed
+        when ``None``.
+
+    Returns
+    -------
+    int
+        Exit code (0 on success).
+
+    """
+    return fastspec(fastqso=True, args=args, comm=comm, verbose=verbose, mp_pool=mp_pool)
 
 
 def stackfit(args=None, comm=None, verbose=False):
