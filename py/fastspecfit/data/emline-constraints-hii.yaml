@@ -49,19 +49,19 @@ amplitude_constraints:
   # Factors encode the theoretical flux ratio corrected to velocity-space
   # amplitudes (flux_ratio * lambda_constrained / lambda_reference).
   # See comments in emlines.py for references.
-  fixed:
-    - line: nii_6548
-      ref:  nii_6584
-      factor: 0.32975    # 1/3.0326  ([NII] flux ratio 3.049, lambda-corrected)
-      param_name: NII_DOUBLET_RATIO
-    - line: oiii_4959
-      ref:  oiii_5007
-      factor: 0.33735    # 1/2.9643  ([OIII] flux ratio 2.993, lambda-corrected)
-      param_name: OIII_DOUBLET_RATIO
-    - line: oii_7330
-      ref:  oii_7320
-      factor: 0.81633    # 1/1.225
-      param_name: OIIRED_DOUBLET_RATIO
+  fixed: []
+    #- line: nii_6548
+    #  ref:  nii_6584
+    #  factor: 0.32975    # 1/3.0326  ([NII] flux ratio 3.049, lambda-corrected)
+    #  param_name: NII_DOUBLET_RATIO
+    #- line: oiii_4959
+    #  ref:  oiii_5007
+    #  factor: 0.33735    # 1/2.9643  ([OIII] flux ratio 2.993, lambda-corrected)
+    #  param_name: OIII_DOUBLET_RATIO
+    #- line: oii_7330
+    #  ref:  oii_7320
+    #  factor: 0.81633    # 1/1.225
+    #  param_name: OIIRED_DOUBLET_RATIO
 
   # Doublet ratios: amplitude ratio is a free fitted parameter.
   # The ratio is defined as line / ref, bounded as below.
@@ -82,7 +82,21 @@ amplitude_constraints:
       param_name: mgii_doublet_ratio
       bounds:     {min: 0.0, max: 10.0}
       initial:    1.0
-
+    - line:       nii_6548
+      ref:        nii_6584
+      param_name: NII_DOUBLET_RATIO
+      bounds:     {min: 0.2, max: 0.4}
+      initial:    0.32975
+    - line:       oiii_4959
+      ref:        oiii_5007
+      param_name: OIII_DOUBLET_RATIO
+      bounds:     {min: 0.2, max: 0.4}
+      initial:    0.33735
+    - line:       oii_7330
+      ref:        oii_7320
+      param_name: OIIRED_DOUBLET_RATIO
+      bounds:     {min: 0.5,  max: 1.2}
+      initial:    0.81633
 
 # =============================================================================
 # SECTION 3: Global placements  (apply to every profile)
@@ -103,8 +117,7 @@ global:
   # Lines with fully independent kinematics in every profile.
   # These are UV and optical AGN/QSO-type lines (all isbroad=True,
   # isbalmer=False in emlines.ecsv).
-  free_lines:
-    - heii_4686
+  free_lines: []
 
   # Small kinematic pairs that are tied to each other but free from
   # all profile-level groups. Bounds use the global UV/QSO defaults above.
@@ -178,9 +191,11 @@ profiles:
           - feii_4288
           - feii_4360
           - oiii_4363
+          - feiii_4658
           - ariv_4711
           - ariv_4740
           - oiii_4959     # amplitude also constrained via amplitude_constraints.fixed
+          - feiii_4986
           - nii_5755
           - oi_6300
           - siii_6312
@@ -224,6 +239,7 @@ profiles:
           - hei_4026
           - hei_4388
           - hei_4471
+          - heii_4686     # tied to the narrow HeI/Balmer kinematics for now
           - hei_4713
           - hei_4922
           - hei_5016
@@ -283,8 +299,10 @@ profiles:
           - feii_4288
           - feii_4360
           - oiii_4363
+          - feiii_4658
           - ariv_4711
           - ariv_4740
+          - feiii_4986
           - nii_5755
           - oi_6300
           - siii_6312
@@ -317,6 +335,7 @@ profiles:
           - hei_4026
           - hei_4388
           - hei_4471
+          - heii_4686     # tied to the narrow HeI/Balmer kinematics for now
           - hei_4713
           - hei_4922
           - hei_5016
