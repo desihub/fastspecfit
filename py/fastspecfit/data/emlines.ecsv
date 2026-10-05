@@ -73,5 +73,5 @@ name restwave patch isbalmer ishelium isbroad isstrong nicename plotgroup
      ariii_7135   7137.77      v   False  False False  False [ArIII]-$\lambda$7135+[OII]-$\lambda\lambda$7320,30          ariii_7135_oii_7320_30
        oii_7320   7321.94      v   False  False False  False [ArIII]-$\lambda$7135+[OII]-$\lambda\lambda$7320,30          ariii_7135_oii_7320_30
        oii_7330   7332.21      v   False  False False  False [ArIII]-$\lambda$7135+[OII]-$\lambda\lambda$7320,30          ariii_7135_oii_7320_30
-      siii_9069   9071.1       w   False  False False  False [SIII]-$\lambda$9069                                         siii_9069
-      siii_9532   9533.2       w   False  False False  False [SIII]-$\lambda$9532                                         siii_9532
+      siii_9069   9071.4       w   False  False False  False [SIII]-$\lambda$9069                                         siii_9069
+      siii_9532   9533.6       w   False  False False  False [SIII]-$\lambda$9532                                         siii_9532
