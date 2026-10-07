@@ -149,6 +149,32 @@ class EmlineConstraints:
             self._check_consistency(line_table)
 
 
+    def ratio_columns(self, line_table):
+        """Return the output-catalog column names of the amplitude ratios.
+
+        Includes both the fixed and the free (fitted) ratios whose two lines
+        are present in ``line_table``, sorted by the rest wavelength of the
+        constrained line.
+
+        Parameters
+        ----------
+        line_table : :class:`astropy.table.Table`
+            Emission-line table.
+
+        Returns
+        -------
+        columns : list of str
+            Upper-case column names, e.g. ``OII_DOUBLET_RATIO``.
+
+        """
+        restwave = dict(zip(line_table['name'], line_table['restwave']))
+        entries = [entry for entry in self.amplitude_fixed + self.doublet_ratios
+                   if entry.get('param_name') and
+                   entry['line'] in restwave and entry['ref'] in restwave]
+        entries.sort(key=lambda entry: restwave[entry['line']])
+        return [entry['param_name'].upper() for entry in entries]
+
+
     def line_bounds(self, line_name):
         """Return ``(sigma_min, sigma_max, vshift_max, sigma_init, vshift_init)`` in km/s.
 
@@ -349,7 +375,7 @@ class EMFitTools(object):
             pname = fc.get('param_name')
             if pname and fc['line'] in self.line_map:
                 amp_idx = param_idx[self.line_map[fc['line']], ParamType.AMPLITUDE]
-                self.amp_fixed_col[int(amp_idx)] = pname
+                self.amp_fixed_col[int(amp_idx)] = pname.upper()
 
         # needed by emlinemodel_bestfit()
         self.param_table['modelname'] = \
@@ -1093,7 +1119,7 @@ class EMFitTools(object):
 
             # Special-case: populate the results table with the 'free' doublet
             # ratio parameters.
-            if 'DOUBLET_RATIO' in param_modelnames[line_amp]:
+            if self.line_table['doublet_src'][iline] != -1:
                 fastfit[param_modelnames[line_amp]] = values[line_amp]
                 if results_monte is not None:
                     doublet_ivar = var2ivar(values_var[line_amp])

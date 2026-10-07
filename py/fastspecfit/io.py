@@ -2050,7 +2050,8 @@ def select(metadata, specphot, fastfit=None, coadd_type='healpix',
 
 
 def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
-                     specphot=False, fastphot=False, fitstack=False):
+                     specphot=False, fastphot=False, fitstack=False,
+                     constraints=None):
     """Build the NumPy dtype for one fastspecfit output data record.
 
     Parameters
@@ -2073,6 +2074,9 @@ def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
     fitstack : bool, optional
         If ``True``, omit per-object spectroscopic fields. Defaults to
         ``False``.
+    constraints : :class:`fastspecfit.emlines.EmlineConstraints` or None, optional
+        Emission-line constraints, used to define the amplitude-ratio
+        columns. Defaults to ``sc_data.constraints``.
 
     Returns
     -------
@@ -2197,19 +2201,12 @@ def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
             add_field('DELTA_KINECHI2', dtype='f4') # delta-reduced chi2 with and without final-pass optimization
             add_field('DELTA_KINENDOF', dtype=np.int32)
 
-            # special columns for the fitted doublets
-            add_field('MGII_DOUBLET_RATIO', dtype='f4')
-            add_field('MGII_DOUBLET_RATIO_IVAR', dtype='f4')
-            add_field('OII_DOUBLET_RATIO', dtype='f4')
-            add_field('OII_DOUBLET_RATIO_IVAR', dtype='f4')
-            add_field('OIII_DOUBLET_RATIO', dtype='f4')
-            add_field('OIII_DOUBLET_RATIO_IVAR', dtype='f4')
-            add_field('NII_DOUBLET_RATIO', dtype='f4')
-            add_field('NII_DOUBLET_RATIO_IVAR', dtype='f4')
-            add_field('SII_DOUBLET_RATIO', dtype='f4')
-            add_field('SII_DOUBLET_RATIO_IVAR', dtype='f4')
-            add_field('OIIRED_DOUBLET_RATIO', dtype='f4')
-            add_field('OIIRED_DOUBLET_RATIO_IVAR', dtype='f4')
+            # special columns for the fixed and fitted amplitude ratios
+            if constraints is None:
+                constraints = sc_data.constraints
+            for col in constraints.ratio_columns(linetable):
+                add_field(col, dtype='f4')
+                add_field(f'{col}_IVAR', dtype='f4')
 
             for line in linetable['name']:
                 line = line.upper()
