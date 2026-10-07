@@ -217,7 +217,7 @@ profiles:
           sigma:  150.0
           vshift: 0.0
         members:
-          - h6
+          - h8
           - hepsilon
           - hdelta
           - hgamma
@@ -235,7 +235,7 @@ profiles:
       - hgamma_broad
       - hdelta_broad
       - hepsilon_broad
-      - h6_broad
+      - h8_broad
 
     # Fitting strategy for this profile: what to relax is specified per group above.
     final_pass:
@@ -284,7 +284,7 @@ profiles:
           - oii_7330
           - siii_9069
           - siii_9532
-          - h6
+          - h8
           - hepsilon
           - hdelta
           - hgamma
@@ -321,7 +321,7 @@ profiles:
           - hgamma_broad
           - hdelta_broad
           - hepsilon_broad
-          - h6_broad
+          - h8_broad
         # Keep broad Balmer lines fully tied: faint higher-order members need
         # the constraint provided by the bright halpha_broad anchor.
         final_pass: {free_vshift: false, free_sigma: false, delta_vshift_max: 500.0, delta_sigma_max: 1000.0}

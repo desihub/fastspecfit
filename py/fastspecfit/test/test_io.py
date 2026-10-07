@@ -232,3 +232,37 @@ class TestGetQaFilename:
         result = self._call(t, 'healpix')
         assert isinstance(result, list)
         assert len(result) == 2
+
+
+# ── read_fastspec_table() ─────────────────────────────────────────────────────
+
+class TestLegacyColumns:
+    """Older catalogs mislabeled H8 as H6; the columns are renamed on read."""
+
+    @pytest.fixture
+    def legacy_file(self, tmp_path):
+        import fitsio
+        data = np.zeros(3, dtype=[('HBETA_FLUX', 'f4'), ('H6_FLUX', 'f4'),
+                                  ('H6_BROAD_FLUX', 'f4')])
+        data['H6_FLUX'] = 1.
+        data['H6_BROAD_FLUX'] = 2.
+        filename = str(tmp_path / 'fastspec-legacy.fits')
+        fitsio.write(filename, data, extname='FASTSPEC')
+        return filename
+
+    def test_renamed_on_read(self, legacy_file):
+        import fitsio
+        from fastspecfit.io import read_fastspec_table
+        with fitsio.FITS(legacy_file) as F:
+            fastfit = read_fastspec_table(F)
+        assert fastfit.colnames == ['HBETA_FLUX', 'H8_FLUX', 'H8_BROAD_FLUX']
+        assert np.all(fastfit['H8_FLUX'] == 1.)
+        assert np.all(fastfit['H8_BROAD_FLUX'] == 2.)
+
+    @pytest.mark.parametrize('prefix', ['H6', 'H8'])
+    def test_requested_columns(self, legacy_file, prefix):
+        import fitsio
+        from fastspecfit.io import read_fastspec_table
+        with fitsio.FITS(legacy_file) as F:
+            fastfit = read_fastspec_table(F, columns=[f'{prefix}_BROAD_FLUX'])
+        assert fastfit.colnames == ['H8_BROAD_FLUX']

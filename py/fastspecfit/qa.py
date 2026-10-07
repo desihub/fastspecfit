@@ -176,10 +176,10 @@ def format_niceline(line):
             return r'[OII] $\lambda3729$'
         case 'neiii_3869':
             return r'[NeIII] $\lambda3869$'
-        case 'h6':
-            return r'H$6$'
-        case 'h6_broad':
-            return r'H$6_{b}$'
+        case 'h8':
+            return r'H$8$'
+        case 'h8_broad':
+            return r'H$8_{b}$'
         case 'hepsilon':
             return r'H$\epsilon$'
         case 'hepsilon_broad':

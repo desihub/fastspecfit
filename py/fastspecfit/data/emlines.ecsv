@@ -44,9 +44,9 @@ name restwave patch isbalmer ishelium isbroad isstrong nicename plotgroup
        nev_3426   3426.85      h   False  False False  False [NeV]-$\lambda$3426                                          nev_3426
        oii_3726   3727.10      i   False  False False  True  [OII]-$\lambda\lambda$3726,29                                oii_3726_29
        oii_3729   3729.86      i   False  False False  True  [OII]-$\lambda\lambda$3726,29                                oii_3726_29
-     neiii_3869   3869.86      j   False  False False  False [NeIII]-$\lambda$3869+H6                                     neiii_3869_h6
-             h6   3890.166     j   True   False False  False [NeIII]-$\lambda$3869+H6                                     neiii_3869_h6
-       h6_broad   3890.166     j   True   False True   False [NeIII]-$\lambda$3869+H6                                     neiii_3869_h6
+     neiii_3869   3869.86      j   False  False False  False [NeIII]-$\lambda$3869+H8                                     neiii_3869_h8
+             h8   3890.166     j   True   False False  False [NeIII]-$\lambda$3869+H8                                     neiii_3869_h8
+       h8_broad   3890.166     j   True   False True   False [NeIII]-$\lambda$3869+H8                                     neiii_3869_h8
        hepsilon   3971.198     k   True   False False  False H$\epsilon$-$\lambda$3970                                    hepsilon
  hepsilon_broad   3971.198     k   True   False True   False H$\epsilon$-$\lambda$3970                                    hepsilon
          hdelta   4102.892     l   True   False False  False H$\delta$-$\lambda$4101                                      hdelta

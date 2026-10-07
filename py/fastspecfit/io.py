@@ -71,6 +71,11 @@ LINE_COLUMN_SUFFIXES = ('_MODELAMP', '_AMP', '_AMP_IVAR', '_FLUX', '_FLUX_IVAR',
 MORELINES_IDCOLS = ('TARGETID', 'STACKID', 'SURVEY', 'PROGRAM', 'TILEID',
                     'NIGHT', 'FIBER', 'EXPID')
 
+# Older catalogs mislabeled the H8 (3890 A) Balmer line as H6. On read, the
+# legacy column-name prefix (which also covers H6_BROAD_) is silently mapped
+# onto the current one (see read_fastspec_table).
+LEGACY_LINE_PREFIXES = {'H6_': 'H8_'}
+
 def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
                  init_sigma_uv=None, init_sigma_narrow=None,
                  init_sigma_balmer=None, init_vshift_uv=None,
@@ -1517,6 +1522,7 @@ def read_fastspec_table(F, rows=None, columns=None):
     """Read the FASTSPEC extension, transparently merging in MORELINES (the
     isstrong=False emission-line columns, split out at write time when
     FASTSPEC would otherwise exceed the FITS 999-column limit) if present.
+    Legacy column names (see ``LEGACY_LINE_PREFIXES``) are silently renamed.
 
     Parameters
     ----------
@@ -1534,9 +1540,18 @@ def read_fastspec_table(F, rows=None, columns=None):
         FASTSPEC and MORELINES columns merged into a single table.
 
     """
+    fastspec_avail = F['FASTSPEC'].get_colnames()
+    morelines_avail = F['MORELINES'].get_colnames() if 'MORELINES' in F else []
+
+    # translate any requested columns onto the legacy names used in older files
+    if columns is not None:
+        avail = set(fastspec_avail) | set(morelines_avail)
+        legacy = {new + col[len(old):]: col for col in avail
+                  for old, new in LEGACY_LINE_PREFIXES.items() if col.startswith(old)}
+        columns = [legacy[col] if col not in avail and col in legacy else col
+                   for col in columns]
+
     if 'MORELINES' in F:
-        fastspec_avail = F['FASTSPEC'].get_colnames()
-        morelines_avail = F['MORELINES'].get_colnames()
         if columns is not None:
             fastspec_columns = [col for col in columns if col in fastspec_avail]
             morelines_columns = [col for col in columns if col in morelines_avail
@@ -1553,6 +1568,13 @@ def read_fastspec_table(F, rows=None, columns=None):
             fastfit = hstack([fastfit, morelines[keep]], join_type='exact')
     else:
         fastfit = Table(F['FASTSPEC'].read(rows=rows, columns=columns))
+
+    # rename legacy columns
+    for col in fastfit.colnames:
+        for old, new in LEGACY_LINE_PREFIXES.items():
+            newcol = new + col[len(old):]
+            if col.startswith(old) and newcol not in fastfit.colnames:
+                fastfit.rename_column(col, newcol)
 
     return fastfit
 

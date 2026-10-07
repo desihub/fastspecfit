@@ -497,11 +497,13 @@ Data: FITS image [int32, 7781x3,338]
 .. [6] `LINENAME` represents the following modeled emission lines: LYALPHA,
        NV_1240, OI_1304, SILIV_1396, CIV_1549, HEII_1640, ALIII_1857, SILIII_1892,
        CIII_1908, MGII_2796, MGII_2803, NEV_3346, NEV_3426, OII_3726, OII_3729,
-       NEIII_3869, H6, H6_BROAD, HEPSILON, HEPSILON_BROAD, HDELTA, HDELTA_BROAD,
+       NEIII_3869, H8, H8_BROAD, HEPSILON, HEPSILON_BROAD, HDELTA, HDELTA_BROAD,
        HGAMMA, HGAMMA_BROAD, OIII_4363, HEI_4471, HEII_4686, HBETA, HBETA_BROAD,
        OIII_4959, OIII_5007, NII_5755, HEI_5876, OI_6300, SIII_6312, NII_6548,
        HALPHA, HALPHA_BROAD, NII_6584, SII_6716, SII_6731, ARIII_7135, OII_7320,
-       OII_7330, SIII_9069, and SIII_9532.
+       OII_7330, SIII_9069, and SIII_9532. Note that in catalogs generated with
+       ``FastSpecFit`` versions earlier than ``3.6.2``, H8 and H8_BROAD are
+       mislabeled as H6 and H6_BROAD, respectively.
 
 .. [7] `LINENAME2` represents the following emission lines: CIV_1549, MGII_2800
        (using the mean wavelength of the doublet), HBETA, and OIII_5007.

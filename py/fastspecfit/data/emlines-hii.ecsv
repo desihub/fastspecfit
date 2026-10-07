@@ -47,12 +47,12 @@ name restwave patch isbalmer ishelium isbroad isstrong nicename plotgroup
       nev_3426 3426.85   h False False False False [NeV]-$\lambda$3426                                        nev_3426
       oii_3726 3727.1    i False False False True  [OII]-$\lambda\lambda$3726,29                              oii_3726_29
       oii_3729 3729.86   i False False False True  [OII]-$\lambda\lambda$3726,29                              oii_3726_29
-           h12 3751.216  j True  False False False [NeIII]-$\lambda$3869+H8-12                                neiii_3869_h6
-           h11 3771.701  j True  False False False [NeIII]-$\lambda$3869+H8-12                                neiii_3869_h6
-           h10 3798.978  j True  False False False [NeIII]-$\lambda$3869+H8-12                                neiii_3869_h6
-            h9 3836.478  j True  False False False [NeIII]-$\lambda$3869+H8-12                                neiii_3869_h6
-    neiii_3869 3869.86   j False False False False [NeIII]-$\lambda$3869+H8-12                                neiii_3869_h6
-            h8 3890.166  j True  False False False [NeIII]-$\lambda$3869+H8-12                                neiii_3869_h6
+           h12 3751.216  j True  False False False [NeIII]-$\lambda$3869+H8-12                                neiii_3869_h8
+           h11 3771.701  j True  False False False [NeIII]-$\lambda$3869+H8-12                                neiii_3869_h8
+           h10 3798.978  j True  False False False [NeIII]-$\lambda$3869+H8-12                                neiii_3869_h8
+            h9 3836.478  j True  False False False [NeIII]-$\lambda$3869+H8-12                                neiii_3869_h8
+    neiii_3869 3869.86   j False False False False [NeIII]-$\lambda$3869+H8-12                                neiii_3869_h8
+            h8 3890.166  j True  False False False [NeIII]-$\lambda$3869+H8-12                                neiii_3869_h8
     neiii_3968 3968.593  k False False False False H$\epsilon$+[NeIII]-$\lambda$3968+HeI-$\lambda$4026        hepsilon
       hepsilon 3971.198  k True  False False False H$\epsilon$+[NeIII]-$\lambda$3968+HeI-$\lambda$4026        hepsilon
 hepsilon_broad 3971.198  k True  False True  False H$\epsilon$+[NeIII]-$\lambda$3968+HeI-$\lambda$4026        hepsilon
