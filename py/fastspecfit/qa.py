@@ -712,7 +712,7 @@ def _build_spectral_models(CTools, EMFit, data, fastspec, specphot, templates,
     }
 
 
-def _fetch_cutout(metadata, outdir, pngfile, layer, pixscale):
+def _fetch_cutout(metadata, outdir, pngfile, layer, pixscale, width_arcsec=30.):
     """Download and load a Legacy Survey viewer cutout image.
 
     Parameters
@@ -727,6 +727,8 @@ def _fetch_cutout(metadata, outdir, pngfile, layer, pixscale):
         Legacy Survey viewer layer (e.g. ``'ls-dr9'``).
     pixscale : :class:`float`
         Pixel scale in arcsec per pixel.
+    width_arcsec : :class:`float`, optional
+        Cutout width in arcsec. Default is 30.
 
     Returns
     -------
@@ -744,7 +746,7 @@ def _fetch_cutout(metadata, outdir, pngfile, layer, pixscale):
     from astropy.wcs import WCS
     import matplotlib.image as mpimg
 
-    width = int(30 / pixscale)
+    width = int(width_arcsec / pixscale)
     height = int(width / 1.3)
 
     hdr = fits.Header()
@@ -776,7 +778,8 @@ def _fetch_cutout(metadata, outdir, pngfile, layer, pixscale):
         time.sleep(random.uniform(0, 2))
 
         url = ('https://www.legacysurvey.org/viewer/jpeg-cutout?ra=' +
-               f'{metadata["RA"]}&dec={metadata["DEC"]}&width={width}&height={height}&layer={layer}')
+               f'{metadata["RA"]}&dec={metadata["DEC"]}&width={width}&height={height}'
+               f'&pixscale={pixscale}&layer={layer}')
         log.info(url)
 
         timeout = 15
@@ -874,7 +877,8 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
                init_sigma_uv=None, init_sigma_narrow=None, init_sigma_balmer=None,
                init_vshift_uv=None, init_vshift_narrow=None,
                init_vshift_balmer=None, fastphot=False, fitstack=False,
-               inputz=False, no_smooth_continuum=False, outdir=None, outprefix=None):
+               inputz=False, no_smooth_continuum=False, outdir=None, outprefix=None,
+               cutout_width=30., cutout_layer=None, cutout_pixscale=None):
     """Generate a QA figure for a single object.
 
     Prepares the spectrum data and then calls :func:`qa_fastspec` to produce
@@ -916,6 +920,14 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
         Output directory for the PNG figure.
     outprefix : :class:`str` or None, optional
         Optional filename prefix.
+    cutout_width : :class:`float`, optional
+        Width of the image cutout in arcsec. Default is 30.
+    cutout_layer : :class:`str` or None, optional
+        Legacy Survey viewer layer; ``None`` uses the layer from the
+        photometric information file.
+    cutout_pixscale : :class:`float` or None, optional
+        Cutout pixel scale in arcsec per pixel; ``None`` uses the pixel scale
+        from the photometric information file.
 
     """
     from fastspecfit.io import one_spectrum, one_stacked_spectrum
@@ -938,14 +950,17 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
                 no_smooth_continuum=no_smooth_continuum,
                 emline_snrmin=emline_snrmin, nsmoothspec=nsmoothspec,
                 fastphot=fastphot, fitstack=fitstack,
-                outprefix=outprefix, outdir=outdir, inputz=inputz)
+                outprefix=outprefix, outdir=outdir, inputz=inputz,
+                cutout_width=cutout_width, cutout_layer=cutout_layer,
+                cutout_pixscale=cutout_pixscale)
 
 
 def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
                 coadd_type='healpix', spec_wavelims=(3550, 9900),
                 phot_wavelims=(0.1, 35), fastphot=False, fitstack=False,
                 outprefix=None, no_smooth_continuum=False, emline_snrmin=0.0,
-                nsmoothspec=1, outdir=None, inputz=None):
+                nsmoothspec=1, outdir=None, inputz=None, cutout_width=30.,
+                cutout_layer=None, cutout_pixscale=None):
     """Generate and write a QA figure for one fitted object.
 
     Produces a multi-panel PNG showing the observed spectrum, best-fit
@@ -990,6 +1005,14 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
         Output directory; defaults to the current directory.
     inputz : :class:`bool` or None, optional
         If ``True``, use the input redshift rather than the fitted one.
+    cutout_width : :class:`float`, optional
+        Width of the image cutout in arcsec. Default is 30.
+    cutout_layer : :class:`str` or None, optional
+        Legacy Survey viewer layer; ``None`` uses the layer from the
+        photometric information file.
+    cutout_pixscale : :class:`float` or None, optional
+        Cutout pixel scale in arcsec per pixel; ``None`` uses the pixel scale
+        from the photometric information file.
 
     """
     from scipy.ndimage import median_filter
@@ -1050,14 +1073,18 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
     pngfile = get_qa_filename(metadata, coadd_type, outprefix=outprefix,
                               outdir=outdir, fastphot=fastphot)
 
-    if hasattr(phot, 'viewer_layer'):
+    if cutout_layer is not None:
+        layer = cutout_layer
+    elif hasattr(phot, 'viewer_layer'):
         layer = phot.viewer_layer
     elif hasattr(phot, 'legacysurveydr'):
         layer = f'ls-{phot.legacysurveydr}'
     else:
         layer = 'ls-dr9'
 
-    if hasattr(phot, 'viewer_pixscale'):
+    if cutout_pixscale is not None:
+        pixscale = cutout_pixscale
+    elif hasattr(phot, 'viewer_pixscale'):
         pixscale = phot.viewer_pixscale
     else:
         pixscale = 0.262 # [arcsec/pixel]
@@ -1087,7 +1114,7 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
 
     if not fitstack:
         img, wcs, width, height = _fetch_cutout(
-            metadata, outdir, pngfile, layer, pixscale)
+            metadata, outdir, pngfile, layer, pixscale, width_arcsec=cutout_width)
     else:
         wcs = None
 
@@ -1809,6 +1836,11 @@ def parse(options=None):
     plot_group.add_argument('--maxspecwave', type=float, default=9900., help='Maximum spectral wavelength (Angstrom).')
     plot_group.add_argument('--minphotwave', type=float, default=0.1, help='Minimum photometric wavelength (micron).')
     plot_group.add_argument('--maxphotwave', type=float, default=35., help='Maximum photometric wavelength (micron).')
+    plot_group.add_argument('--cutout-width', type=float, default=30., help='Width of the image cutout (arcsec).')
+    plot_group.add_argument('--cutout-layer', type=str, default=None, help="""Legacy Survey viewer layer for the image cutout
+        (default: taken from the photometric information file).""")
+    plot_group.add_argument('--cutout-pixscale', type=float, default=None, help="""Pixel scale of the image cutout (arcsec/pixel;
+        default: taken from the photometric information file).""")
 
     parallel_group = parser.add_argument_group('Parallelism')
     parallel_group.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
@@ -2030,6 +2062,9 @@ def fastqa(args=None, comm=None):
                 'no_smooth_continuum': no_smooth_continuum,
                 'outdir':              args.outdir,
                 'outprefix':           args.outprefix,
+                'cutout_width':        args.cutout_width,
+                'cutout_layer':        args.cutout_layer,
+                'cutout_pixscale':     args.cutout_pixscale,
             }
             if not fastphot:
                 qaargs1.update({'fastfit': fastfit[indx[igal]]})
