@@ -263,22 +263,39 @@ class TestSmoothContinuum:
         camerapix = np.array([[0, n]])
         return wave, flux, ivar, linemask, camerapix
 
-    def test_window_and_step_change_result(self, flat_spectrum):
-        """Non-default smooth_window/smooth_step give a different continuum."""
+    def test_knot_spacing_changes_result(self, flat_spectrum):
+        """Non-default smooth_knot_spacing gives a different continuum."""
         from fastspecfit.continuum import ContinuumTools
         wave, flux, ivar, linemask, camerapix = flat_spectrum
         default = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix)
         result = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix,
-                                                 smooth_window=50, smooth_step=25)
+                                                 smooth_knot_spacing=1000.)
         assert result.shape == default.shape
         assert not np.allclose(result, default)
 
-    def test_window_wider_than_camera_raises(self, flat_spectrum):
+    def test_nonpositive_knot_spacing_raises(self, flat_spectrum):
         from fastspecfit.continuum import ContinuumTools
         wave, flux, ivar, linemask, camerapix = flat_spectrum
-        with pytest.raises(ValueError, match='smooth_window'):
+        with pytest.raises(ValueError, match='smooth_knot_spacing'):
             ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix,
-                                            smooth_window=len(wave)+1)
+                                            smooth_knot_spacing=0.)
+
+    def test_independent_of_noise_level(self, flat_spectrum):
+        """Rescaling the uncertainties does not change the continuum."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, camerapix = flat_spectrum
+        result = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix)
+        result2 = ContinuumTools.smooth_continuum(wave, flux, 100. * ivar, linemask, camerapix)
+        assert np.allclose(result, result2)
+
+    def test_masked_bump_is_bridged(self, flat_spectrum):
+        """A masked emission feature is not absorbed into the continuum."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, camerapix = flat_spectrum
+        bump = 3. * np.exp(-0.5 * ((wave - 6000.) / 40.)**2)
+        mask = np.abs(wave - 6000.) < 150.
+        result = ContinuumTools.smooth_continuum(wave, flux + bump, ivar, mask, camerapix)
+        assert np.max(np.abs(result[mask] - 5.)) < 0.5
 
     def test_output_shape(self, flat_spectrum):
         from fastspecfit.continuum import ContinuumTools
@@ -419,9 +436,9 @@ class TestFixedTauvObjective:
         assert np.array_equal(seen['coeff'], [1., 2.])
 
 
-@pytest.mark.parametrize('opts', ['--smooth-window 10', '--smooth-step 0'])
+@pytest.mark.parametrize('opts', ['--smooth-knot-spacing 0', '--smooth-knot-spacing -100'])
 def test_smooth_options_invalid_raise(opts):
-    """Too-narrow --smooth-window or non-positive --smooth-step raise ValueError."""
+    """Non-positive --smooth-knot-spacing raises ValueError."""
     from fastspecfit.fastspecfit import parse
-    with pytest.raises(ValueError, match='smooth_window'):
+    with pytest.raises(ValueError, match='smooth_knot_spacing'):
         parse(options=f'redrock.fits -o out.fits {opts}'.split())

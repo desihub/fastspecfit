@@ -140,16 +140,16 @@ def test_stackfit_notauv(stackfit_notauv_output):
 @pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
 def test_fastspec_smooth_options(fastspec_smooth_output, fastspec_output,
                                  filenames, templates, outdir):
-    """--smooth-window/--smooth-step change the smooth continuum, are
+    """--smooth-knot-spacing changes the smooth continuum, is
     recorded in the primary header, and are honored by fastqa."""
     import fitsio
     from pathlib import Path
     from fastspecfit.qa import fastqa, parse as qa_parse
 
     hdr = fitsio.read_header(fastspec_smooth_output)
-    assert hdr['SMWINDOW'] == 50 and hdr['SMSTEP'] == 25
+    assert hdr['SMKNOTS'] == 500
     hdr = fitsio.read_header(fastspec_output)
-    assert hdr['SMWINDOW'] == 75 and hdr['SMSTEP'] == 125
+    assert hdr['SMKNOTS'] == 200
 
     models = fitsio.read(fastspec_smooth_output, ext='MODELS')
     models_default = fitsio.read(fastspec_output, ext='MODELS')

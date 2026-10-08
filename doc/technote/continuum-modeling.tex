@@ -441,15 +441,20 @@ The algorithm operates per camera:
 \begin{enumerate}
   \item Mask pixels within emission-line regions, camera edges (9 pixels
     each side), and pixels with zero inverse variance.
-  \item Slide a window of width 75 pixels with step 125 pixels.  In each
-    window, apply a $2\sigma$ iterative clip and compute the robust median
-    and inter-quartile sigma of the unmasked flux values; discard windows
-    with fewer than 15 good pixels.
-  \item Fit a weighted quadratic spline (\texttt{UnivariateSpline}, $k=2$)
-    to the window medians, using the per-window inverse robust sigma as
-    weights.  The spline uses constant extrapolation (\texttt{ext=3}) beyond
-    the wavelength range of the input windows.
+  \item Place uniformly spaced knots across the unmasked wavelength range
+    of the camera, with a spacing of approximately 200~\AA.  Knots are
+    dropped until at least 15 unmasked pixels lie between adjacent knots,
+    so that a masked region is bridged by a single polynomial piece.
+  \item Fit an inverse-variance weighted cubic B-spline with these knots to
+    the unmasked pixels (\texttt{make\_lsq\_spline}, $k=3$), iteratively
+    rejecting pixels which deviate by more than $3\sigma$, where $\sigma$ is
+    the robust (inter-quartile) scatter of the normalized residuals.  The
+    model is held constant beyond the first and last unmasked pixel.
 \end{enumerate}
+
+Because the knots are fixed by the wavelength grid and the mask, the
+flexibility of the smooth continuum is set by the knot spacing alone and
+does not depend on the signal-to-noise ratio of the spectrum.
 
 The resulting smooth continuum is added to the SED model before emission-line
 fitting, so that the line fitter operates on residuals with the smooth

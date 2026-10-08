@@ -15,7 +15,7 @@ from astropy.table import Table, vstack
 
 from fastspecfit.io import get_qa_filename
 from fastspecfit.logger import log
-from fastspecfit.util import SMOOTH_WINDOW, SMOOTH_STEP, fsftime
+from fastspecfit.util import SMOOTH_KNOT_SPACING, fsftime
 
 
 def _get_ntargets_one(args):
@@ -537,8 +537,7 @@ def _domerge(outfiles, outprefix=None, specprod=None, coadd_type=None,
     deps['NMONTE'] = 50
     deps['SEED'] = 1
     deps['NOSCORR'] = False
-    deps['SMWINDOW'] = SMOOTH_WINDOW
-    deps['SMSTEP'] = SMOOTH_STEP
+    deps['SMKNOTS'] = SMOOTH_KNOT_SPACING
     deps['NOPHOTO'] = False
     deps['BRDLFIT'] = True
     deps['UFLOOR'] = 0.01
@@ -575,8 +574,8 @@ def _domerge(outfiles, outprefix=None, specprod=None, coadd_type=None,
                       vdisp_bounds=bounds['VDISPBND'], tauv_bounds=bounds['TAUVBND'],
                       ignore_photometry=deps['NOPHOTO'], broadlinefit=deps['BRDLFIT'],
                       constrain_age=deps['CONSAGE'], use_quasarnet=deps['USEQNET'],
-                      no_smooth_continuum=deps['NOSCORR'], smooth_window=deps['SMWINDOW'],
-                      smooth_step=deps['SMSTEP'], split_hdu=split_hdu,
+                      no_smooth_continuum=deps['NOSCORR'], smooth_knot_spacing=deps['SMKNOTS'],
+                      split_hdu=split_hdu,
                       nside=nside_main)
 
 
@@ -799,10 +798,8 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
             cmdargs += ' --ignore-photometry'
         if args.no_smooth_continuum:
             cmdargs += ' --no-smooth-continuum'
-        if args.smooth_window:
-            cmdargs += f' --smooth-window={args.smooth_window}'
-        if args.smooth_step:
-            cmdargs += f' --smooth-step={args.smooth_step}'
+        if args.smooth_knot_spacing is not None:
+            cmdargs += f' --smooth-knot-spacing={args.smooth_knot_spacing}'
         if args.templates:
             cmdargs += f' --templates={args.templates}'
         if args.templateversion:

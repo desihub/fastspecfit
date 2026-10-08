@@ -12,7 +12,7 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data, _initialize_sc_data
-from fastspecfit.util import BoxedScalar, MPPool, NMONTE_DEFAULT, SMOOTH_WINDOW, SMOOTH_STEP, fsftime
+from fastspecfit.util import BoxedScalar, MPPool, NMONTE_DEFAULT, SMOOTH_KNOT_SPACING, fsftime
 from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS, TAUV_BOUNDS
 from fastspecfit.cosmo import COSMOLOGY_MODELS, build_cosmology
 
@@ -129,8 +129,7 @@ def parse(options=None, rank=0):
     fit_group.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')
     fit_group.add_argument('--constrain-age', action='store_true', help='Constrain the age of the SED.')
     fit_group.add_argument('--no-smooth-continuum', action='store_true', help='Do not fit the smooth continuum.')
-    fit_group.add_argument('--smooth-window', type=int, default=SMOOTH_WINDOW, help='Width of the smooth-continuum sliding window in pixels.')
-    fit_group.add_argument('--smooth-step', type=int, default=SMOOTH_STEP, help='Step size of the smooth-continuum sliding window in pixels.')
+    fit_group.add_argument('--smooth-knot-spacing', type=float, default=SMOOTH_KNOT_SPACING, help='Approximate knot spacing of the smooth-continuum spline in Angstroms.')
     fit_group.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum.')
     fit_group.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
 
@@ -152,9 +151,8 @@ def parse(options=None, rank=0):
         log.critical(errmsg)
         raise ValueError(errmsg)
 
-    # windows with fewer than 15 pixels are discarded by smooth_continuum
-    if args.smooth_window < 15 or args.smooth_step < 1:
-        errmsg = f'smooth_window must be >= 15 and smooth_step >= 1; got {args.smooth_window}, {args.smooth_step}'
+    if args.smooth_knot_spacing <= 0.:
+        errmsg = f'smooth_knot_spacing must be positive; got {args.smooth_knot_spacing}'
         log.critical(errmsg)
         raise ValueError(errmsg)
 
@@ -165,8 +163,7 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
                  fastphot=False, fitstack=False, constrain_age=False,
                  no_smooth_continuum=False, debug_plots=False, uncertainty_floor=0.01,
                  minsnr_balmer_broad=2.5, nmonte=NMONTE_DEFAULT, seed=1, vdisp_nbin=6,
-                 tauv_bounds=TAUV_BOUNDS, smooth_window=SMOOTH_WINDOW,
-                 smooth_step=SMOOTH_STEP):
+                 tauv_bounds=TAUV_BOUNDS, smooth_knot_spacing=SMOOTH_KNOT_SPACING):
     """Fit the continuum and emission lines for a single DESI object.
 
     Parameters
@@ -211,12 +208,9 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
     tauv_bounds : tuple, optional
         Lower and upper bounds on tau(V); equal bounds fix tau(V). Defaults
         to :data:`~fastspecfit.templates.TAUV_BOUNDS`.
-    smooth_window : int, optional
-        Width of the smooth-continuum sliding window in pixels. Defaults to
-        :data:`~fastspecfit.util.SMOOTH_WINDOW`.
-    smooth_step : int, optional
-        Step size of the smooth-continuum sliding window in pixels. Defaults
-        to :data:`~fastspecfit.util.SMOOTH_STEP`.
+    smooth_knot_spacing : float, optional
+        Approximate knot spacing of the smooth-continuum spline in Angstroms.
+        Defaults to :data:`~fastspecfit.util.SMOOTH_KNOT_SPACING`.
 
     Returns
     -------
@@ -279,7 +273,7 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
                           no_smooth_continuum=no_smooth_continuum, fastphot=fastphot,
                           fitstack=fitstack, debug_plots=debug_plots, nmonte=nmonte,
                           seed=seed, vdisp_nbin=vdisp_nbin, tauv_bounds=tauv_bounds,
-                          smooth_window=smooth_window, smooth_step=smooth_step)
+                          smooth_knot_spacing=smooth_knot_spacing)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
@@ -476,8 +470,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             'seed':                seeds[iobj],
             'vdisp_nbin':          args.vdisp_nbin,
             'tauv_bounds':         tuple(args.tauv_bounds),
-            'smooth_window':       args.smooth_window,
-            'smooth_step':         args.smooth_step,
+            'smooth_knot_spacing':       args.smooth_knot_spacing,
         } for iobj in range(nobj)]
 
 
@@ -558,7 +551,7 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
             use_quasarnet=args.use_quasarnet,
             no_smooth_continuum=args.no_smooth_continuum,
-            smooth_window=args.smooth_window, smooth_step=args.smooth_step)
+            smooth_knot_spacing=args.smooth_knot_spacing)
 
         return 0
 

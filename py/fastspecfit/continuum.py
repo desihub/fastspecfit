@@ -13,7 +13,7 @@ from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates, VDISP_NOMINAL, VDISP_BOUNDS, TAUV_BOUNDS
 from fastspecfit.util import (
     C_LIGHT, TINY, F32MAX, FLUXNORM, MASSNORM, NMONTE_DEFAULT,
-    SMOOTH_WINDOW, SMOOTH_STEP,
+    SMOOTH_KNOT_SPACING,
     quantile, median, var2ivar, trapz_rebin, trapz_rebin_pre,
     _trapz_rebin_batch, fsftime, _uid)
 
@@ -188,11 +188,16 @@ class ContinuumTools(object):
 
     @staticmethod
     def smooth_continuum(wave, flux, ivar, linemask, camerapix,
-                         uniqueid=0, smooth_window=SMOOTH_WINDOW,
-                         smooth_step=SMOOTH_STEP,
-                         clip_sigma=2., nminpix=15, nmaskpix=9,
+                         uniqueid=0, smooth_knot_spacing=SMOOTH_KNOT_SPACING,
+                         clip_sigma=3., maxiter=5, nminpix=15, nmaskpix=9,
                          debug_plots=False):
         """Build a smooth, nonparametric continuum spectrum.
+
+        Fit an inverse-variance weighted cubic B-spline with (approximately)
+        uniformly spaced knots to the unmasked pixels of each camera,
+        iteratively rejecting outliers. The flexibility of the model is set
+        by ``smooth_knot_spacing`` alone; it does not depend on the
+        signal-to-noise ratio of the spectrum.
 
         Parameters
         ----------
@@ -209,14 +214,16 @@ class ContinuumTools(object):
             Per-camera start/end pixel index pairs.
         uniqueid : int or str, optional
             Object identifier used in debug plot filenames.
-        smooth_window : int, optional
-            Width of the sliding window in pixels. Defaults to 75.
-        smooth_step : int, optional
-            Step size of the sliding window in pixels. Defaults to 125.
+        smooth_knot_spacing : float, optional
+            Approximate spacing of the spline knots in Angstroms. Defaults to
+            :data:`~fastspecfit.util.SMOOTH_KNOT_SPACING`.
         clip_sigma : float, optional
-            Sigma threshold for iterative clipping. Defaults to 2.
+            Sigma threshold for iterative outlier rejection. Defaults to 3.
+        maxiter : int, optional
+            Maximum number of fitting iterations. Defaults to 5.
         nminpix : int, optional
-            Minimum number of unmasked pixels required per window. Defaults to 15.
+            Minimum number of unmasked pixels required between adjacent
+            knots (and per camera). Defaults to 15.
         nmaskpix : int, optional
             Number of pixels to mask at each camera edge. Defaults to 9.
         debug_plots : bool, optional
@@ -229,10 +236,7 @@ class ContinuumTools(object):
             to produce a pure emission-line spectrum.
 
         """
-        from numpy.lib.stride_tricks import sliding_window_view
-        from scipy.ndimage import median_filter
-        from scipy.interpolate import UnivariateSpline
-        from fastspecfit.util import sigmaclip
+        from scipy.interpolate import make_lsq_spline
 
         npix = len(wave)
         if len(linemask) != npix:
@@ -240,88 +244,91 @@ class ContinuumTools(object):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
+        if smooth_knot_spacing <= 0.:
+            errmsg = f'smooth_knot_spacing must be positive; got {smooth_knot_spacing} [{uniqueid}].'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+
+        degree = 3 # cubic
+
 
         def _smooth_percamera(camwave, camflux, camivar, camlinemask):
 
-            if smooth_window > len(camwave):
-                errmsg = f'smooth_window={smooth_window} exceeds the number of pixels in the camera ({len(camwave)}) [{uniqueid}].'
-                log.critical(errmsg)
-                raise ValueError(errmsg)
+            smoothflux = np.zeros_like(camflux)
+            knotwave, knotflux = np.array([]), np.array([])
 
             # Mask nmaskpix (presumably noisy) pixels from the edge
             # of each per-camera spectrum.
             cammask = (camlinemask | (camivar <= 0.))
             cammask[:nmaskpix] = True
             cammask[-nmaskpix:] = True
-
-            # Build the smooth (line-free) continuum by computing statistics in a
-            # sliding window, accounting for masked pixels and trying to be smart
-            # about broad lines. See:
-            #   https://stackoverflow.com/questions/41851044/python-median-filter-for-1d-numpy-array
-            #   https://numpy.org/devdocs/reference/generated/numpy.lib.stride_tricks.sliding_window_view.html
-            wave_win = sliding_window_view(camwave, window_shape=smooth_window)
-            flux_win = sliding_window_view(camflux, window_shape=smooth_window)
-            ivar_win = sliding_window_view(camivar, window_shape=smooth_window)
-            nomask_win = sliding_window_view(np.logical_not(cammask), window_shape=smooth_window)
-
-            swave, sflux, sisig = [], [], []
-            for wwave, wflux, wivar, wnomask in zip(
-                    wave_win[::smooth_step], flux_win[::smooth_step],
-                    ivar_win[::smooth_step], nomask_win[::smooth_step]):
-
-                # If there are fewer than nminpix good pixels after all
-                # masking, discard the window.
-                umflux = wflux[wnomask]
-                if len(umflux) < nminpix:
-                    continue
-
-                cflux, _ = sigmaclip(umflux, low=clip_sigma, high=clip_sigma)
-                if len(cflux) < nminpix:
-                    continue
-
-                mn, clo, chi = quantile(cflux, (0.5, 0.25, 0.75)) # robust stats
-                sig = (chi - clo) / 1.349 # robust sigma
-
-                # One more check for crummy spectral regions.
-                if mn == 0. or sig <= 0.:
-                    continue
-
-                umwave = wwave[wnomask]
-                swave.append(np.mean(umwave))
-                sflux.append(mn)
-                sisig.append(1. / sig) # inverse sigma
-
-            swave = np.array(swave)
-            sflux = np.array(sflux)
-            sisig = np.array(sisig)
+            good = np.logical_not(cammask)
 
             # corner case for very wacky spectra
-            if len(sflux) == 0:
-                smoothflux = np.zeros_like(camflux)
-            else:
-                ## remove duplicate wavelength values, which should never
-                ## happen...
-                #_, uindx = np.unique(swave, return_index=True)
-                #swave = swave[uindx]
-                #sflux = sflux[uindx]
-                #sisig = sisig[uindx]
+            if np.sum(good) < nminpix:
+                return knotwave, knotflux, smoothflux
 
-                # We supply estimates local inverse stddev in each window
-                # (i.e., how noisy the data is there) so that variation is
-                # down-weighted in noisier regions. Note: ext=3 means constant
-                # extrapolation.
-                if len(swave) > 3:
-                    spl_flux = UnivariateSpline(swave, sflux, w=sisig, ext=3, k=2)
-                    smoothflux = spl_flux(camwave)
-                else:
-                    smoothflux = np.zeros_like(camflux)
+            # The knots depend on the mask but not on the flux, so they are
+            # the same for every Monte Carlo realization.
+            minwave, maxwave = camwave[good][[0, -1]]
+            nknot = max(int(np.round((maxwave - minwave) / smooth_knot_spacing)), 1)
+            allknots = np.linspace(minwave, maxwave, nknot + 1)[1:-1]
 
-                # evaluate on the original wavelength vector
+            def _prune_knots(fitwave):
+                # Drop knots until there are at least nminpix pixels between
+                # adjacent knots; the spline then bridges any masked region
+                # (e.g., a broad emission line) with a single polynomial piece.
+                counts = np.histogram(fitwave, bins=np.hstack((minwave, allknots, maxwave)))[0]
+                keep, npix = [], 0
+                for iknot in range(len(allknots)):
+                    npix += counts[iknot]
+                    if npix >= nminpix:
+                        keep.append(iknot)
+                        npix = 0
+                if (npix + counts[-1]) < nminpix and len(keep) > 0:
+                    keep.pop()
+                return allknots[keep]
+
+            camistd = np.sqrt(camivar)
+            fitmask = good.copy()
+            spl = None
+            for _ in range(maxiter):
+                knots = _prune_knots(camwave[fitmask])
+                allt = np.hstack((np.repeat(minwave, degree + 1), knots,
+                                  np.repeat(maxwave, degree + 1)))
+                try:
+                    spl = make_lsq_spline(camwave[fitmask], camflux[fitmask], allt,
+                                          k=degree, w=camistd[fitmask])
+                except (ValueError, np.linalg.LinAlgError):
+                    log.warning(f'Smooth-continuum spline fit failed [{uniqueid}].')
+                    return knotwave, knotflux, smoothflux
+
+                # Reject outliers using a robust estimate of the scatter,
+                # which can exceed unity when the residuals are dominated by
+                # template mismatch rather than noise.
+                chi = np.zeros_like(camflux)
+                chi[good] = (camflux[good] - spl(camwave[good])) * camistd[good]
+                clo, chi_hi = quantile(chi[good], (0.25, 0.75))
+                sig = (chi_hi - clo) / 1.349 # robust sigma
+                if sig <= 0.:
+                    break
+
+                newfitmask = good & (np.abs(chi) < clip_sigma * sig)
+                if np.sum(newfitmask) < nminpix or np.all(newfitmask == fitmask):
+                    break
+                fitmask = newfitmask
+
+            # Evaluate on the original wavelength vector, with constant
+            # extrapolation.
+            smoothflux = spl(np.clip(camwave, minwave, maxwave))
 
             # very important!
             smoothflux[(camflux == 0.) & (camivar == 0.)] = 0.
 
-            return swave, sflux, smoothflux
+            knotwave = np.hstack((minwave, knots, maxwave))
+            knotflux = spl(knotwave)
+
+            return knotwave, knotflux, smoothflux
 
         smooth_wave, smooth_flux, smoothcontinuum = [], [], []
         for ss, ee in camerapix:
@@ -370,7 +377,7 @@ class ContinuumTools(object):
                            color='blue', label=label)
             ax[0].scatter(smooth_wave / 1e4, smooth_flux, edgecolor='k', color='orange',
                           marker='s', alpha=0.8, s=20, zorder=3,
-                          label='Smooth Data')
+                          label='Knots')
             for icam, (ss, ee) in enumerate(camerapix):
                 if icam == 0:
                     label = 'Smooth Model'
@@ -1748,8 +1755,7 @@ def _continuum_nominal_vdisp(CTools, templates, specflux, specwave,
 
 def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEFAULT,
                        rng=None, uniqueid=0, no_smooth_continuum=False,
-                       debug_plots=False, smooth_window=SMOOTH_WINDOW,
-                       smooth_step=SMOOTH_STEP):
+                       debug_plots=False, smooth_knot_spacing=SMOOTH_KNOT_SPACING):
     """Jointly fit the stellar continuum to spectroscopy and broadband photometry.
 
     Parameters
@@ -1773,12 +1779,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
         Defaults to ``False``.
     debug_plots : bool, optional
         If ``True``, write QA plots to the current directory.
-    smooth_window : int, optional
-        Width of the smooth-continuum sliding window in pixels. Defaults to
-        :data:`~fastspecfit.util.SMOOTH_WINDOW`.
-    smooth_step : int, optional
-        Step size of the smooth-continuum sliding window in pixels. Defaults
-        to :data:`~fastspecfit.util.SMOOTH_STEP`.
+    smooth_knot_spacing : float, optional
+        Approximate knot spacing of the smooth-continuum spline in Angstroms.
+        Defaults to :data:`~fastspecfit.util.SMOOTH_KNOT_SPACING`.
 
     Returns
     -------
@@ -2122,8 +2125,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
             return CTools.smooth_continuum(
                 specwave, residuals, specivar / median_apercorr**2,
                 slinemask, uniqueid=data['uniqueid'],
-                camerapix=data['camerapix'], smooth_window=smooth_window,
-                smooth_step=smooth_step, debug_plots=debug_plots)
+                camerapix=data['camerapix'], smooth_knot_spacing=smooth_knot_spacing,
+                debug_plots=debug_plots)
 
         smoothcontinuum = do_smooth(specflux, desimodel_nolines, debug_plots=debug_plots)
 
@@ -2159,8 +2162,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                       nmonte=NMONTE_DEFAULT, seed=1, constrain_age=False,
                       no_smooth_continuum=False, fitstack=False,
                       fastphot=False, debug_plots=False, vdisp_nbin=6,
-                      tauv_bounds=TAUV_BOUNDS, smooth_window=SMOOTH_WINDOW,
-                      smooth_step=SMOOTH_STEP):
+                      tauv_bounds=TAUV_BOUNDS, smooth_knot_spacing=SMOOTH_KNOT_SPACING):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -2174,12 +2176,9 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
     tauv_bounds : tuple, optional
         Lower and upper bounds on tau(V); equal bounds fix tau(V). Defaults
         to :data:`~fastspecfit.templates.TAUV_BOUNDS`.
-    smooth_window : int, optional
-        Width of the smooth-continuum sliding window in pixels. Defaults to
-        :data:`~fastspecfit.util.SMOOTH_WINDOW`.
-    smooth_step : int, optional
-        Step size of the smooth-continuum sliding window in pixels. Defaults
-        to :data:`~fastspecfit.util.SMOOTH_STEP`.
+    smooth_knot_spacing : float, optional
+        Approximate knot spacing of the smooth-continuum spline in Angstroms.
+        Defaults to :data:`~fastspecfit.util.SMOOTH_KNOT_SPACING`.
 
     Returns
     -------
@@ -2251,7 +2250,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
              continuum_fastspec(redshift, objflam, objflamivar, CTools,
                                 nmonte=nmonte, rng=rng, uniqueid=data['uniqueid'],
                                 debug_plots=debug_plots, no_smooth_continuum=no_smooth_continuum,
-                                smooth_window=smooth_window, smooth_step=smooth_step)
+                                smooth_knot_spacing=smooth_knot_spacing)
 
         data['apercorr'] = median_apercorr # needed for the line-fitting
 

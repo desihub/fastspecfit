@@ -226,7 +226,7 @@ def main():
     import argparse
     from fastspecfit.mpi import plan
     from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS, TAUV_BOUNDS
-    from fastspecfit.util import SMOOTH_WINDOW, SMOOTH_STEP
+    from fastspecfit.util import SMOOTH_KNOT_SPACING
     from fastspecfit.cosmo import COSMOLOGY_MODELS
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -278,8 +278,7 @@ def main():
     fit_group.add_argument('--ignore-quasarnet', default=False, action='store_true', help='Do not use QuasarNet to improve QSO redshifts.')
     fit_group.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
     fit_group.add_argument('--no-smooth-continuum', default=False, action='store_true', help='Do not fit the smooth continuum.')
-    fit_group.add_argument('--smooth-window', type=int, default=SMOOTH_WINDOW, help='Width of the smooth-continuum sliding window in pixels.')
-    fit_group.add_argument('--smooth-step', type=int, default=SMOOTH_STEP, help='Step size of the smooth-continuum sliding window in pixels.')
+    fit_group.add_argument('--smooth-knot-spacing', type=float, default=SMOOTH_KNOT_SPACING, help='Approximate knot spacing of the smooth-continuum spline in Angstroms.')
 
     parallel_group = parser.add_argument_group('Parallelism')
     parallel_group.add_argument('--mp', type=int, default=1, help='Number of multiprocessing processes per MPI rank or node.')
