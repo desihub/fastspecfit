@@ -297,6 +297,14 @@ class TestSmoothContinuum:
         result = ContinuumTools.smooth_continuum(wave, flux + bump, ivar, mask, camerapix)
         assert np.max(np.abs(result[mask] - 5.)) < 0.5
 
+    def test_legacy_algorithm(self, flat_spectrum):
+        """The legacy (QA-only) sliding-window algorithm still runs."""
+        from fastspecfit.qa import _smooth_continuum_legacy
+        wave, flux, ivar, linemask, camerapix = flat_spectrum
+        result = _smooth_continuum_legacy(wave, flux, ivar, linemask, camerapix)
+        assert result.shape == wave.shape
+        assert abs(np.median(result) - 5.0) < 1.0
+
     def test_output_shape(self, flat_spectrum):
         from fastspecfit.continuum import ContinuumTools
         wave, flux, ivar, linemask, camerapix = flat_spectrum

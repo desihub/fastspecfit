@@ -631,9 +631,112 @@ def _build_sed_model(CTools, templates, specphot, metadata, phot,
     return sedwave[indx], sedmodel[indx], sedphot, phot_tbl
 
 
+def _smooth_continuum_legacy(wave, flux, ivar, linemask, camerapix,
+                              smooth_window=75, smooth_step=125,
+                              clip_sigma=2., nminpix=15, nmaskpix=9):
+    """Build the smooth continuum using the legacy sliding-window algorithm.
+
+    This is the algorithm used by ``fastspec`` before the fixed-knot spline
+    of :meth:`fastspecfit.continuum.ContinuumTools.smooth_continuum`. It is
+    only retained so that QA can be generated from older catalogs (i.e.,
+    catalogs without the ``SMKNOTS`` primary-header keyword).
+
+    Parameters
+    ----------
+    wave : :class:`numpy.ndarray`
+        Observed-frame wavelength array in Angstroms.
+    flux : :class:`numpy.ndarray`
+        Spectrum corresponding to ``wave``.
+    ivar : :class:`numpy.ndarray`
+        Inverse variance spectrum corresponding to ``flux``.
+    linemask : :class:`numpy.ndarray` of bool
+        Boolean mask where ``True`` marks pixels possibly affected by
+        emission lines.
+    camerapix : array-like
+        Per-camera start/end pixel index pairs.
+    smooth_window : :class:`int`, optional
+        Width of the sliding window in pixels. Defaults to 75.
+    smooth_step : :class:`int`, optional
+        Step size of the sliding window in pixels. Defaults to 125.
+    clip_sigma : :class:`float`, optional
+        Sigma threshold for iterative clipping. Defaults to 2.
+    nminpix : :class:`int`, optional
+        Minimum number of unmasked pixels required per window. Defaults to 15.
+    nmaskpix : :class:`int`, optional
+        Number of pixels to mask at each camera edge. Defaults to 9.
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Smooth continuum spectrum.
+
+    """
+    from numpy.lib.stride_tricks import sliding_window_view
+    from scipy.interpolate import UnivariateSpline
+    from fastspecfit.util import sigmaclip, quantile
+
+    def _smooth_percamera(camwave, camflux, camivar, camlinemask):
+
+        if smooth_window > len(camwave):
+            return np.zeros_like(camflux)
+
+        # Mask nmaskpix (presumably noisy) pixels from the edge
+        # of each per-camera spectrum.
+        cammask = (camlinemask | (camivar <= 0.))
+        cammask[:nmaskpix] = True
+        cammask[-nmaskpix:] = True
+
+        wave_win = sliding_window_view(camwave, window_shape=smooth_window)
+        flux_win = sliding_window_view(camflux, window_shape=smooth_window)
+        nomask_win = sliding_window_view(np.logical_not(cammask), window_shape=smooth_window)
+
+        swave, sflux, sisig = [], [], []
+        for wwave, wflux, wnomask in zip(
+                wave_win[::smooth_step], flux_win[::smooth_step],
+                nomask_win[::smooth_step]):
+
+            # If there are fewer than nminpix good pixels after all
+            # masking, discard the window.
+            umflux = wflux[wnomask]
+            if len(umflux) < nminpix:
+                continue
+
+            cflux, _ = sigmaclip(umflux, low=clip_sigma, high=clip_sigma)
+            if len(cflux) < nminpix:
+                continue
+
+            mn, clo, chi = quantile(cflux, (0.5, 0.25, 0.75)) # robust stats
+            sig = (chi - clo) / 1.349 # robust sigma
+
+            # One more check for crummy spectral regions.
+            if mn == 0. or sig <= 0.:
+                continue
+
+            swave.append(np.mean(wwave[wnomask]))
+            sflux.append(mn)
+            sisig.append(1. / sig) # inverse sigma
+
+        # Note: ext=3 means constant extrapolation.
+        if len(swave) > 3:
+            spl_flux = UnivariateSpline(swave, sflux, w=sisig, ext=3, k=2)
+            smoothflux = spl_flux(camwave)
+        else:
+            smoothflux = np.zeros_like(camflux)
+
+        # very important!
+        smoothflux[(camflux == 0.) & (camivar == 0.)] = 0.
+
+        return smoothflux
+
+    smoothcontinuum = [_smooth_percamera(wave[ss:ee], flux[ss:ee], ivar[ss:ee], linemask[ss:ee])
+                       for ss, ee in camerapix]
+
+    return np.hstack(smoothcontinuum)
+
+
 def _build_spectral_models(CTools, EMFit, data, fastspec, specphot, templates,
                            fitstack, no_smooth_continuum, emline_snrmin, redshift,
-                           smooth_knot_spacing=SMOOTH_KNOT_SPACING):
+                           smooth_knot_spacing=SMOOTH_KNOT_SPACING, smooth_legacy=None):
     """Reconstruct per-camera continuum and emission-line spectral models.
 
     Parameters
@@ -660,6 +763,11 @@ def _build_spectral_models(CTools, EMFit, data, fastspec, specphot, templates,
         Object redshift.
     smooth_knot_spacing : :class:`float`, optional
         Approximate knot spacing of the smooth-continuum spline in Angstroms.
+    smooth_legacy : :class:`tuple` or None, optional
+        If not ``None``, the ``(window, step)`` in pixels of the legacy
+        sliding-window smooth-continuum algorithm, which is used in lieu of
+        the fixed-knot spline (for catalogs without the ``SMKNOTS``
+        primary-header keyword). Default is ``None``.
 
     Returns
     -------
@@ -690,6 +798,12 @@ def _build_spectral_models(CTools, EMFit, data, fastspec, specphot, templates,
 
     if np.all(specphot['COEFF'] == 0.) or no_smooth_continuum:
         fullsmoothcontinuum = np.zeros_like(fullwave)
+    elif smooth_legacy is not None:
+        smooth_window, smooth_step = smooth_legacy
+        fullsmoothcontinuum = _smooth_continuum_legacy(
+            fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']),
+            np.hstack(data['linemask']), camerapix=data['camerapix'],
+            smooth_window=smooth_window, smooth_step=smooth_step)
     else:
         fullsmoothcontinuum = CTools.smooth_continuum(
             fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']),
@@ -882,7 +996,7 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
                init_vshift_uv=None, init_vshift_narrow=None,
                init_vshift_balmer=None, fastphot=False, fitstack=False,
                inputz=False, no_smooth_continuum=False, smooth_knot_spacing=SMOOTH_KNOT_SPACING,
-               outdir=None, outprefix=None,
+               smooth_legacy=None, outdir=None, outprefix=None,
                cutout_width=30., cutout_layer=None, cutout_pixscale=None):
     """Generate a QA figure for a single object.
 
@@ -923,6 +1037,11 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
         If ``True``, do not smooth the continuum model. Default is ``False``.
     smooth_knot_spacing : :class:`float`, optional
         Approximate knot spacing of the smooth-continuum spline in Angstroms.
+    smooth_legacy : :class:`tuple` or None, optional
+        If not ``None``, the ``(window, step)`` in pixels of the legacy
+        sliding-window smooth-continuum algorithm, which is used in lieu of
+        the fixed-knot spline (for catalogs without the ``SMKNOTS``
+        primary-header keyword). Default is ``None``.
     outdir : :class:`str` or None, optional
         Output directory for the PNG figure.
     outprefix : :class:`str` or None, optional
@@ -956,6 +1075,7 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
                 phot_wavelims=(minphotwave, maxphotwave),
                 no_smooth_continuum=no_smooth_continuum,
                 smooth_knot_spacing=smooth_knot_spacing,
+                smooth_legacy=smooth_legacy,
                 emline_snrmin=emline_snrmin, nsmoothspec=nsmoothspec,
                 fastphot=fastphot, fitstack=fitstack,
                 outprefix=outprefix, outdir=outdir, inputz=inputz,
@@ -967,7 +1087,7 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
                 coadd_type='healpix', spec_wavelims=(3550, 9900),
                 phot_wavelims=(0.1, 35), fastphot=False, fitstack=False,
                 outprefix=None, no_smooth_continuum=False, smooth_knot_spacing=SMOOTH_KNOT_SPACING,
-                emline_snrmin=0.0,
+                smooth_legacy=None, emline_snrmin=0.0,
                 nsmoothspec=1, outdir=None, inputz=None, cutout_width=30.,
                 cutout_layer=None, cutout_pixscale=None):
     """Generate and write a QA figure for one fitted object.
@@ -1007,6 +1127,11 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
         If ``True``, do not smooth the continuum model. Default is ``False``.
     smooth_knot_spacing : :class:`float`, optional
         Approximate knot spacing of the smooth-continuum spline in Angstroms.
+    smooth_legacy : :class:`tuple` or None, optional
+        If not ``None``, the ``(window, step)`` in pixels of the legacy
+        sliding-window smooth-continuum algorithm, which is used in lieu of
+        the fixed-knot spline (for catalogs without the ``SMKNOTS``
+        primary-header keyword). Default is ``None``.
     emline_snrmin : :class:`float`, optional
         Minimum emission-line S/N ratio for display. Default is 0.
     nsmoothspec : :class:`int`, optional
@@ -1120,7 +1245,8 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
         specmodels = _build_spectral_models(
             CTools, EMFit, data, fastspec, specphot, templates, fitstack,
             no_smooth_continuum, emline_snrmin, redshift,
-            smooth_knot_spacing=smooth_knot_spacing)
+            smooth_knot_spacing=smooth_knot_spacing,
+            smooth_legacy=smooth_legacy)
         fullwave = specmodels['fullwave']
         apercorr = specmodels['apercorr']
 
@@ -1966,7 +2092,17 @@ def fastqa(args=None, comm=None):
     inputz = False
     no_smooth_continuum = False
     ignore_photometry = False
-    smooth_knot_spacing = hdr['SMKNOTS'] if 'SMKNOTS' in hdr else SMOOTH_KNOT_SPACING
+    # Catalogs without SMKNOTS predate the fixed-knot smooth continuum; use
+    # the legacy sliding-window algorithm (and its parameters) for those.
+    if 'SMKNOTS' in hdr:
+        smooth_knot_spacing = hdr['SMKNOTS']
+        smooth_legacy = None
+    else:
+        smooth_knot_spacing = SMOOTH_KNOT_SPACING
+        smooth_legacy = (hdr['SMWINDOW'] if 'SMWINDOW' in hdr else 75,
+                         hdr['SMSTEP'] if 'SMSTEP' in hdr else 125)
+        if 'NOSCORR' in hdr and not hdr['NOSCORR']:
+            log.info(f'Using the legacy smooth-continuum algorithm (window, step)={smooth_legacy}.')
 
     if 'INPUTZ' in hdr and hdr['INPUTZ']:
         inputz = True
@@ -2073,7 +2209,8 @@ def fastqa(args=None, comm=None):
                 'fitstack':            fitstack,
                 'inputz':              inputz,
                 'no_smooth_continuum': no_smooth_continuum,
-                'smooth_knot_spacing':       smooth_knot_spacing,
+                'smooth_knot_spacing': smooth_knot_spacing,
+                'smooth_legacy':       smooth_legacy,
                 'outdir':              args.outdir,
                 'outprefix':           args.outprefix,
                 'cutout_width':        args.cutout_width,
