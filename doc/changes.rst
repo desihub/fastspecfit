@@ -5,7 +5,8 @@ Change Log
 3.6.2 (not released yet)
 ------------------------
 
-* New ``Loa`` and ``Iron`` VACs [`PR #281`_].
+* Add ``--tauv-bounds``, ``--smooth-window`` and ``--smooth-step`` as
+  new command-line arguments [`PR #292`_].
 * Miscellaneous emission-line updates [`PR #289`_]:
 
   * Rename the mislabeled ``H6`` and ``H6_BROAD`` lines (and output columns)
@@ -20,16 +21,11 @@ Change Log
   * New ``fastqa`` options ``--cutout-width``, ``--cutout-layer``, and
     ``--cutout-pixscale``.
 
-* Add ``--tauv-bounds`` optional input; equal bounds fix tau(V) (e.g.,
-  ``--tauv-bounds 0 0`` for a dust-free fit) [`PR #XXX`_].
-* Add ``--smooth-window`` and ``--smooth-step`` optional inputs to control
-  the smooth-continuum sliding window [`PR #XXX`_].
-* Propagate all the primary-header fitting keywords to the merged catalogs
-  [`PR #XXX`_].
+* New ``Loa`` and ``Iron`` VACs [`PR #281`_].
 
-.. _`PR #281`: https://github.com/desihub/fastspecfit/pull/281
+.. _`PR #292`: https://github.com/desihub/fastspecfit/pull/292
 .. _`PR #289`: https://github.com/desihub/fastspecfit/pull/289
-.. _`PR #XXX`: https://github.com/desihub/fastspecfit/pull/XXX
+.. _`PR #281`: https://github.com/desihub/fastspecfit/pull/281
 
 3.6.1 (2026-08-07)
 ------------------
