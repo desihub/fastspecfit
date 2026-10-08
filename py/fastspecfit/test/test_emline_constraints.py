@@ -293,6 +293,16 @@ class TestAmplitudeConstraints:
             assert lo <= ini <= hi, \
                 f"{dr['param_name']}: initial {ini} outside [{lo}, {hi}]"
 
+    def test_ratio_columns(self, ec, line_table):
+        # Derived from the constraint file, in rest-wavelength order.
+        assert ec.ratio_columns(line_table) == [
+            'MGII_DOUBLET_RATIO', 'OII_DOUBLET_RATIO', 'OIII_DOUBLET_RATIO',
+            'NII_DOUBLET_RATIO', 'SII_DOUBLET_RATIO', 'OIIRED_DOUBLET_RATIO']
+
+    def test_ratio_columns_skip_missing_lines(self, ec, line_table):
+        subset = line_table[line_table['name'] != 'mgii_2796']
+        assert 'MGII_DOUBLET_RATIO' not in ec.ratio_columns(subset)
+
     def test_amplitude_fixed_all_present(self, ec):
         lines = {fc['line'] for fc in ec.amplitude_fixed}
         assert 'nii_6548'  in lines

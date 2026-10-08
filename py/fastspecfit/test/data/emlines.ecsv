@@ -36,9 +36,9 @@ name restwave amp isbalmer ishelium isbroad nicename plotgroup
        nev_3426   3426.8637    0.1   False  False False  [NeV]-$\lambda$3426                                          nev_3426
        oii_3726   3727.0919    1.0   False  False False  [OII]-$\lambda\lambda$3726,29                                oii_3726_29
        oii_3729   3729.8750    1.0   False  False False  [OII]-$\lambda\lambda$3726,29                                oii_3726_29
-     neiii_3869   3869.8611    1.0   False  False False  [NeIII]-$\lambda$3869+H6                                     neiii_3869_h6
-             h6   3890.1576    0.1   True   False False  [NeIII]-$\lambda$3869+H6                                     neiii_3869_h6
-       h6_broad   3890.1576    0.1   True   False True   [NeIII]-$\lambda$3869+H6                                     neiii_3869_h6
+     neiii_3869   3869.8611    1.0   False  False False  [NeIII]-$\lambda$3869+H8                                     neiii_3869_h8
+             h8   3890.1576    0.1   True   False False  [NeIII]-$\lambda$3869+H8                                     neiii_3869_h8
+       h8_broad   3890.1576    0.1   True   False True   [NeIII]-$\lambda$3869+H8                                     neiii_3869_h8
        hepsilon   3971.195     0.1   True   False False  H$\epsilon$-$\lambda$3970                                    hepsilon
  hepsilon_broad   3971.195     0.1   True   False True   H$\epsilon$-$\lambda$3970                                    hepsilon
          hdelta   4102.892     0.1   True   False False  H$\delta$-$\lambda$4101                                      hdelta

@@ -164,7 +164,10 @@ v3.1 (latest release)
   * All known bugs fixed.
 * Known issues:
   
-  * None at this time.
+  * **Warning**: The H8 Balmer line (3890 Angstrom) is mislabeled as ``H6`` in
+    this and previous versions of this VAC; for example, ``H6_FLUX`` and
+    ``H6_BROAD_FLUX`` should be ``H8_FLUX`` and ``H8_BROAD_FLUX``. The
+    measurements themselves are unaffected (column names fixed in ``3.6.2``).
 
 v3.0
 ~~~~
