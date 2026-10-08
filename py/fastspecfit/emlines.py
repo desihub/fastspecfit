@@ -1736,6 +1736,13 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
         if smooth_continuum_monte is None:
             smooth_continuum_monte = smooth_continuum[np.newaxis, :]
         emlineflux_monte = specflux_monte - continuummodel_monte - smooth_continuum_monte
+
+        # Interpolate over bad pixels, as we do for the nominal spectrum.
+        if np.any(emlinebad):
+            for emlineflux_monte1 in emlineflux_monte:
+                emlineflux_monte1[emlinebad] = np.interp(
+                    emlinewave[emlinebad], emlinewave[emlinegood],
+                    emlineflux_monte1[emlinegood])
     else:
         nmonte = 0
 
