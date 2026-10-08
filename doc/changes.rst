@@ -6,10 +6,25 @@ Change Log
 ------------------------
 
 * New ``Loa`` and ``Iron`` VACs [`PR #281`_].
+* Miscellaneous emission-line updates [`PR #289`_]:
+
+  * Rename the mislabeled ``H6`` and ``H6_BROAD`` lines (and output columns)
+    to ``H8`` and ``H8_BROAD``; older catalogs are transparently updated on
+    read.
+  * Derive the doublet-ratio output columns from the line-list and
+    constraints files rather than hard-coding them.
+  * Update the [SIII] 9069,9532 rest wavelengths.
+  * In the HII line-list, add [FeIII] 4658,4986, update the He I 5016
+    wavelength, and fit (rather than fix) the [NII], [OIII], and [OII]
+    7320,7330 doublet ratios.
+  * New ``fastqa`` options ``--cutout-width``, ``--cutout-layer``, and
+    ``--cutout-pixscale``.
+
 * Add ``--tauv-bounds`` optional input; equal bounds fix tau(V) (e.g.,
   ``--tauv-bounds 0 0`` for a dust-free fit) [`PR #XXX`_].
 
 .. _`PR #281`: https://github.com/desihub/fastspecfit/pull/281
+.. _`PR #289`: https://github.com/desihub/fastspecfit/pull/289
 .. _`PR #XXX`: https://github.com/desihub/fastspecfit/pull/XXX
 
 3.6.1 (2026-08-07)
