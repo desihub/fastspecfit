@@ -138,6 +138,35 @@ def test_stackfit_notauv(stackfit_notauv_output):
 
 
 @pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
+def test_fastspec_smooth_options(fastspec_smooth_output, fastspec_output,
+                                 filenames, templates, outdir):
+    """--smooth-window/--smooth-step change the smooth continuum, are
+    recorded in the primary header, and are honored by fastqa."""
+    import fitsio
+    from pathlib import Path
+    from fastspecfit.qa import fastqa, parse as qa_parse
+
+    hdr = fitsio.read_header(fastspec_smooth_output)
+    assert hdr['SMWINDOW'] == 50 and hdr['SMSTEP'] == 25
+    hdr = fitsio.read_header(fastspec_output)
+    assert hdr['SMWINDOW'] == 75 and hdr['SMSTEP'] == 125
+
+    models = fitsio.read(fastspec_smooth_output, ext='MODELS')
+    models_default = fitsio.read(fastspec_output, ext='MODELS')
+    assert models.shape == models_default.shape
+    assert not np.allclose(models[:, 1, :], models_default[:, 1, :]) # smooth continuum
+    assert np.allclose(models[:, 0, :], models_default[:, 0, :])     # continuum
+
+    qa_outdir = str(outdir / 'qa_fastspec_smooth')
+    cmd = (f'fastqa {fastspec_smooth_output} '
+           f'--redrockfiles {filenames["redrockfile"]} '
+           f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
+           f'--templates {templates} --outdir {qa_outdir} --overwrite')
+    fastqa(args=qa_parse(options=cmd.split()[1:]))
+    assert len(list(Path(qa_outdir).glob('*.png'))) > 0
+
+
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
 def test_sfr_values(fastspec_output, fastphot_output):
     """SFR in SPECPHOT must be finite and non-negative for all objects."""
     import fitsio

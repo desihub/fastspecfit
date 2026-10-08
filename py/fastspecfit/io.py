@@ -14,7 +14,7 @@ from astropy.table import Table
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data
 from fastspecfit.photometry import Photometry, release_to_photsys, desitarget_resolve_dec, releasedict
-from fastspecfit.util import FLUXNORM, ZWarningMask, fsftime, _uid
+from fastspecfit.util import FLUXNORM, SMOOTH_WINDOW, SMOOTH_STEP, ZWarningMask, fsftime, _uid
 from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS, TAUV_BOUNDS
 
 
@@ -1670,6 +1670,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
                       vdisp_bounds=VDISP_BOUNDS, tauv_bounds=TAUV_BOUNDS, seed=1,
                       uncertainty_floor=0.01,
                       minsnr_balmer_broad=2.5, nside=None, no_smooth_continuum=False,
+                      smooth_window=SMOOTH_WINDOW, smooth_step=SMOOTH_STEP,
                       ignore_photometry=False, broadlinefit=True, use_quasarnet=True,
                       constrain_age=False, split_hdu=False, verbose=True):
     """Write fastspecfit results to a multi-extension FITS file."""
@@ -1710,6 +1711,8 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
     primhdr.append(('SEED', (seed, 'random seed for Monte Carlo reproducibility')))
     if not fastphot:
         primhdr.append(('NOSCORR', (no_smooth_continuum is True, 'no smooth continuum correction')))
+        primhdr.append(('SMWINDOW', (smooth_window, 'smooth continuum window (pixels)')))
+        primhdr.append(('SMSTEP', (smooth_step, 'smooth continuum step (pixels)')))
         primhdr.append(('NOPHOTO', (ignore_photometry is True, 'no fitting to photometry')))
         primhdr.append(('BRDLFIT', (broadlinefit is True, 'carry out broad-line fitting')))
         primhdr.append(('UFLOOR', (uncertainty_floor, 'fractional uncertainty floor')))

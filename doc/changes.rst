@@ -22,6 +22,10 @@ Change Log
 
 * Add ``--tauv-bounds`` optional input; equal bounds fix tau(V) (e.g.,
   ``--tauv-bounds 0 0`` for a dust-free fit) [`PR #XXX`_].
+* Add ``--smooth-window`` and ``--smooth-step`` optional inputs to control
+  the smooth-continuum sliding window [`PR #XXX`_].
+* Propagate all the primary-header fitting keywords to the merged catalogs
+  [`PR #XXX`_].
 
 .. _`PR #281`: https://github.com/desihub/fastspecfit/pull/281
 .. _`PR #289`: https://github.com/desihub/fastspecfit/pull/289

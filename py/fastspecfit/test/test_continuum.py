@@ -263,6 +263,23 @@ class TestSmoothContinuum:
         camerapix = np.array([[0, n]])
         return wave, flux, ivar, linemask, camerapix
 
+    def test_window_and_step_change_result(self, flat_spectrum):
+        """Non-default smooth_window/smooth_step give a different continuum."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, camerapix = flat_spectrum
+        default = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix)
+        result = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix,
+                                                 smooth_window=50, smooth_step=25)
+        assert result.shape == default.shape
+        assert not np.allclose(result, default)
+
+    def test_window_wider_than_camera_raises(self, flat_spectrum):
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, camerapix = flat_spectrum
+        with pytest.raises(ValueError, match='smooth_window'):
+            ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix,
+                                            smooth_window=len(wave)+1)
+
     def test_output_shape(self, flat_spectrum):
         from fastspecfit.continuum import ContinuumTools
         wave, flux, ivar, linemask, camerapix = flat_spectrum
@@ -400,3 +417,11 @@ class TestFixedTauvObjective:
         seen = self._call([1., 2.], fit_vdisp=False, tauv_fixed=0.5)
         assert seen['tauv'] == 0.5 and seen['vdisp'] is None
         assert np.array_equal(seen['coeff'], [1., 2.])
+
+
+@pytest.mark.parametrize('opts', ['--smooth-window 10', '--smooth-step 0'])
+def test_smooth_options_invalid_raise(opts):
+    """Too-narrow --smooth-window or non-positive --smooth-step raise ValueError."""
+    from fastspecfit.fastspecfit import parse
+    with pytest.raises(ValueError, match='smooth_window'):
+        parse(options=f'redrock.fits -o out.fits {opts}'.split())

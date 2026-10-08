@@ -166,6 +166,20 @@ def fastspec_fixedtauv_output(filenames, templates, outdir):
 
 
 @pytest.fixture(scope='session')
+def fastspec_smooth_output(filenames, templates, outdir):
+    """fastspec with a non-default smooth-continuum sliding window."""
+    from fastspecfit.fastspecfit import fastspec, parse
+    outfile = os.path.join(outdir, 'fastspec-smooth.fits')
+    cmd = (f'fastspec {filenames["redrockfile"]} -o {outfile} '
+           f'--redux_dir {filenames["redux_dir"]} '
+           f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
+           f'--specprod {filenames["specprod"]} --templates {templates} '
+           f'--smooth-window 50 --smooth-step 25')
+    fastspec(args=parse(options=cmd.split()[1:]))
+    yield outfile
+
+
+@pytest.fixture(scope='session')
 def fastphot_notauv_output(filenames, templates, outdir):
     """fastphot with --tauv-bounds 0 0: dust-free fit."""
     from fastspecfit.fastspecfit import fastphot, parse

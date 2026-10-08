@@ -13,6 +13,7 @@ from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates, VDISP_NOMINAL, VDISP_BOUNDS, TAUV_BOUNDS
 from fastspecfit.util import (
     C_LIGHT, TINY, F32MAX, FLUXNORM, MASSNORM, NMONTE_DEFAULT,
+    SMOOTH_WINDOW, SMOOTH_STEP,
     quantile, median, var2ivar, trapz_rebin, trapz_rebin_pre,
     _trapz_rebin_batch, fsftime, _uid)
 
@@ -187,7 +188,8 @@ class ContinuumTools(object):
 
     @staticmethod
     def smooth_continuum(wave, flux, ivar, linemask, camerapix,
-                         uniqueid=0, smooth_window=75, smooth_step=125,
+                         uniqueid=0, smooth_window=SMOOTH_WINDOW,
+                         smooth_step=SMOOTH_STEP,
                          clip_sigma=2., nminpix=15, nmaskpix=9,
                          debug_plots=False):
         """Build a smooth, nonparametric continuum spectrum.
@@ -240,6 +242,11 @@ class ContinuumTools(object):
 
 
         def _smooth_percamera(camwave, camflux, camivar, camlinemask):
+
+            if smooth_window > len(camwave):
+                errmsg = f'smooth_window={smooth_window} exceeds the number of pixels in the camera ({len(camwave)}) [{uniqueid}].'
+                log.critical(errmsg)
+                raise ValueError(errmsg)
 
             # Mask nmaskpix (presumably noisy) pixels from the edge
             # of each per-camera spectrum.
@@ -1741,7 +1748,8 @@ def _continuum_nominal_vdisp(CTools, templates, specflux, specwave,
 
 def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEFAULT,
                        rng=None, uniqueid=0, no_smooth_continuum=False,
-                       debug_plots=False):
+                       debug_plots=False, smooth_window=SMOOTH_WINDOW,
+                       smooth_step=SMOOTH_STEP):
     """Jointly fit the stellar continuum to spectroscopy and broadband photometry.
 
     Parameters
@@ -1765,6 +1773,12 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
         Defaults to ``False``.
     debug_plots : bool, optional
         If ``True``, write QA plots to the current directory.
+    smooth_window : int, optional
+        Width of the smooth-continuum sliding window in pixels. Defaults to
+        :data:`~fastspecfit.util.SMOOTH_WINDOW`.
+    smooth_step : int, optional
+        Step size of the smooth-continuum sliding window in pixels. Defaults
+        to :data:`~fastspecfit.util.SMOOTH_STEP`.
 
     Returns
     -------
@@ -2105,7 +2119,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
         smoothcontinuum = CTools.smooth_continuum(
             specwave, residuals, specivar / median_apercorr**2,
             slinemask, uniqueid=data['uniqueid'],
-            camerapix=data['camerapix'], debug_plots=debug_plots)
+            camerapix=data['camerapix'], smooth_window=smooth_window,
+            smooth_step=smooth_step, debug_plots=debug_plots)
 
         for icam, (ss, ee) in enumerate(data['camerapix']):
             I = ((specflux[ss:ee] != 0.) & (specivar[ss:ee] != 0.) & (smoothcontinuum[ss:ee] != 0.))
@@ -2125,7 +2140,8 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                       nmonte=NMONTE_DEFAULT, seed=1, constrain_age=False,
                       no_smooth_continuum=False, fitstack=False,
                       fastphot=False, debug_plots=False, vdisp_nbin=6,
-                      tauv_bounds=TAUV_BOUNDS):
+                      tauv_bounds=TAUV_BOUNDS, smooth_window=SMOOTH_WINDOW,
+                      smooth_step=SMOOTH_STEP):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -2139,6 +2155,12 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
     tauv_bounds : tuple, optional
         Lower and upper bounds on tau(V); equal bounds fix tau(V). Defaults
         to :data:`~fastspecfit.templates.TAUV_BOUNDS`.
+    smooth_window : int, optional
+        Width of the smooth-continuum sliding window in pixels. Defaults to
+        :data:`~fastspecfit.util.SMOOTH_WINDOW`.
+    smooth_step : int, optional
+        Step size of the smooth-continuum sliding window in pixels. Defaults
+        to :data:`~fastspecfit.util.SMOOTH_STEP`.
 
     Returns
     -------
@@ -2209,7 +2231,8 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
          sedmodel_nolines_monte, continuummodel_monte) = \
              continuum_fastspec(redshift, objflam, objflamivar, CTools,
                                 nmonte=nmonte, rng=rng, uniqueid=data['uniqueid'],
-                                debug_plots=debug_plots, no_smooth_continuum=no_smooth_continuum)
+                                debug_plots=debug_plots, no_smooth_continuum=no_smooth_continuum,
+                                smooth_window=smooth_window, smooth_step=smooth_step)
 
         data['apercorr'] = median_apercorr # needed for the line-fitting
 
