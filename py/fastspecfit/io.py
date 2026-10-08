@@ -15,7 +15,7 @@ from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data
 from fastspecfit.photometry import Photometry, release_to_photsys, desitarget_resolve_dec, releasedict
 from fastspecfit.util import FLUXNORM, ZWarningMask, fsftime, _uid
-from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
+from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS, TAUV_BOUNDS
 
 
 # list of all possible targeting bit columns
@@ -1645,7 +1645,8 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
                       template_file=None, emlinesfile=None, constraintsfile=None,
                       fastphot=False,
                       inputz=False, inputseeds=None, nmonte=50, vdisp_nominal=VDISP_NOMINAL,
-                      vdisp_bounds=VDISP_BOUNDS, seed=1, uncertainty_floor=0.01,
+                      vdisp_bounds=VDISP_BOUNDS, tauv_bounds=TAUV_BOUNDS, seed=1,
+                      uncertainty_floor=0.01,
                       minsnr_balmer_broad=2.5, nside=None, no_smooth_continuum=False,
                       ignore_photometry=False, broadlinefit=True, use_quasarnet=True,
                       constrain_age=False, split_hdu=False, verbose=True):
@@ -1683,6 +1684,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
     primhdr.append(('NMONTE', (nmonte, 'number of Monte Carlo realizations')))
     primhdr.append(('VDISPNOM', (vdisp_nominal, 'nominal velocity dispersion (km/s)')))
     primhdr.append(('VDISPBND', (",".join(np.array(vdisp_bounds).astype(str)), 'velocity dispersion bounds (km/s)')))
+    primhdr.append(('TAUVBND', (",".join(np.array(tauv_bounds).astype(str)), 'tau(V) bounds')))
     primhdr.append(('SEED', (seed, 'random seed for Monte Carlo reproducibility')))
     if not fastphot:
         primhdr.append(('NOSCORR', (no_smooth_continuum is True, 'no smooth continuum correction')))

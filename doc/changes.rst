@@ -6,8 +6,11 @@ Change Log
 ------------------------
 
 * New ``Loa`` and ``Iron`` VACs [`PR #281`_].
+* Add ``--tauv-bounds`` optional input; equal bounds fix tau(V) (e.g.,
+  ``--tauv-bounds 0 0`` for a dust-free fit) [`PR #XXX`_].
 
 .. _`PR #281`: https://github.com/desihub/fastspecfit/pull/281
+.. _`PR #XXX`: https://github.com/desihub/fastspecfit/pull/XXX
 
 3.6.1 (2026-08-07)
 ------------------

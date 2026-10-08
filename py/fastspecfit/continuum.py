@@ -10,7 +10,7 @@ from numba import jit
 
 from fastspecfit.logger import log
 from fastspecfit.photometry import Photometry
-from fastspecfit.templates import Templates, VDISP_NOMINAL, VDISP_BOUNDS
+from fastspecfit.templates import Templates, VDISP_NOMINAL, VDISP_BOUNDS, TAUV_BOUNDS
 from fastspecfit.util import (
     C_LIGHT, TINY, F32MAX, FLUXNORM, MASSNORM, NMONTE_DEFAULT,
     quantile, median, var2ivar, trapz_rebin, trapz_rebin_pre,
@@ -36,7 +36,8 @@ class ContinuumTools(object):
         Initial guess for the velocity dispersion kernel in km/s.
         Defaults to :data:`~fastspecfit.templates.VDISP_NOMINAL`.
     tauv_bounds : tuple, optional
-        Lower and upper bounds on tau(V). Defaults to (0., 2.).
+        Lower and upper bounds on tau(V); equal bounds fix tau(V). Defaults
+        to :data:`~fastspecfit.templates.TAUV_BOUNDS`.
     vdisp_bounds : tuple, optional
         Lower and upper bounds on the velocity dispersion kernel in km/s.
         Defaults to :data:`~fastspecfit.templates.VDISP_BOUNDS`.
@@ -76,7 +77,7 @@ class ContinuumTools(object):
 
     """
     def __init__(self, data, templates, phot, igm, tauv_guess=0.1,
-                 vdisp_guess=VDISP_NOMINAL, tauv_bounds=(0., 2.),
+                 vdisp_guess=VDISP_NOMINAL, tauv_bounds=TAUV_BOUNDS,
                  vdisp_bounds=VDISP_BOUNDS, vdisp_nbin=6,
                  fluxnorm=FLUXNORM, massnorm=MASSNORM, fastphot=False,
                  constrain_age=False):
@@ -91,6 +92,8 @@ class ContinuumTools(object):
         self.tauv_guess = tauv_guess
         self.vdisp_guess = vdisp_guess
         self.tauv_bounds = tauv_bounds
+        # Equal tauv_bounds signals a fixed (not fitted) tau(V).
+        self.fixed_tauv = (tauv_bounds[0] == tauv_bounds[1])
         self.vdisp_bounds = vdisp_bounds
         self.vdisp_grid = np.linspace(vdisp_bounds[0], vdisp_bounds[1], vdisp_nbin)
 
@@ -898,19 +901,26 @@ class ContinuumTools(object):
 
     def _stellar_objective(self, params, templateflux, dust_emission,
                            fit_vdisp, conv_pre, objflam, objflamistd,
-                           specflux, specistd, synthphot, synthspec):
+                           specflux, specistd, synthphot, synthspec,
+                           tauv_fixed=None):
         """Objective function for fitting a stellar continuum.
 
         """
         assert (synthphot or synthspec), "request for empty residuals!"
 
-        if fit_vdisp:
-            tauv, vdisp = params[:2]
-            templatecoeff = params[2:]
-        else:
+        # tauv is not part of the parameter vector when it is fixed
+        if tauv_fixed is None:
             tauv = params[0]
-            vdisp = None
+            params = params[1:]
+        else:
+            tauv = tauv_fixed
+
+        if fit_vdisp:
+            vdisp = params[0]
             templatecoeff = params[1:]
+        else:
+            vdisp = None
+            templatecoeff = params
 
         fullmodel = self.build_stellar_continuum(
             templateflux, templatecoeff, tauv=tauv,
@@ -1049,13 +1059,18 @@ class ContinuumTools(object):
                 return np.inf
             return np.sum((Psi @ coeff - b) ** 2)
 
-        import warnings
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', category=RuntimeWarning,
-                                    module='scipy.optimize')
-            result = minimize_scalar(objective, bounds=tauv_bounds, method='bounded',
-                                     options={'xatol': 1e-4})
-        tauv = result.x
+        if tauv_bounds[0] == tauv_bounds[1]:
+            # Fixed tauv: the problem is linear in the coefficients, so the
+            # single solve below is the full solution.
+            tauv = tauv_bounds[0]
+        else:
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=RuntimeWarning,
+                                        module='scipy.optimize')
+                result = minimize_scalar(objective, bounds=tauv_bounds, method='bounded',
+                                         options={'xatol': 1e-4})
+            tauv = result.x
 
         # One explicit final solve at the optimum so that coeff, phi, and
         # the residuals are mutually consistent regardless of Brent's
@@ -1102,7 +1117,7 @@ class ContinuumTools(object):
             velocity dispersion; only used if `fit_vdisp=True`.
         tauv_bounds : :class:`tuple`
             Two-element list of minimum and maximum allowable values of the
-            V-band optical depth, tau(V).
+            V-band optical depth, tau(V); equal values fix tau(V).
         dust_emission : :class:`bool`
             Model impact of infrared dust emission spectrum. Energy-balance is used
             to compute the normalization of this spectrum.
@@ -1161,6 +1176,7 @@ class ContinuumTools(object):
             tauv_bounds = self.tauv_bounds
         if vdisp_bounds is None:
             vdisp_bounds = self.vdisp_bounds
+        tauv_guess = float(np.clip(tauv_guess, *tauv_bounds))
 
         if not fit_vdisp and (synthphot or synthspec):
             return self._fit_stellar_continuum_varpro(
@@ -1195,11 +1211,19 @@ class ContinuumTools(object):
         coeff_bounds = (0., 1e6)
 
         if fit_vdisp:
-            initial_guesses = np.array((tauv_guess, vdisp_guess))
+            initial_guesses = [tauv_guess, vdisp_guess]
             bounds = [tauv_bounds, vdisp_bounds]
         else:
-            initial_guesses = np.array((tauv_guess,))
+            initial_guesses = [tauv_guess]
             bounds = [tauv_bounds]
+
+        # Equal tauv_bounds signals a fixed tauv; drop it from the parameter
+        # vector (least_squares requires lb < ub).
+        fixed_tauv = (tauv_bounds[0] == tauv_bounds[1])
+        if fixed_tauv:
+            farg['tauv_fixed'] = tauv_bounds[0]
+            initial_guesses = initial_guesses[1:]
+            bounds = bounds[1:]
 
         initial_guesses = np.concatenate((initial_guesses, coeff_guess))
         bounds = bounds + [coeff_bounds] * ntemplates
@@ -1214,19 +1238,25 @@ class ContinuumTools(object):
         bestparams = fit_info.x
         resid      = fit_info.fun
 
-        if fit_vdisp:
-            tauv, vdisp = bestparams[:2]
-            templatecoeff = bestparams[2:]
+        if fixed_tauv:
+            tauv = tauv_bounds[0]
         else:
             tauv = bestparams[0]
+            bestparams = bestparams[1:]
+
+        if fit_vdisp:
+            vdisp = bestparams[0]
             templatecoeff = bestparams[1:]
+        else:
+            templatecoeff = bestparams
             vdisp = self.templates.vdisp_nominal_kernel
 
         return tauv, vdisp, templatecoeff, resid
 
 
     def stellar_continuum_chi2(self, resid, ncoeff, vdisp_fitted,
-                               split=0, ndof_spec=0, ndof_phot=0):
+                               split=0, ndof_spec=0, ndof_phot=0,
+                               tauv_fitted=True):
         """Compute the reduced spectroscopic and/or photometric chi2.
 
         Parameters
@@ -1244,6 +1274,8 @@ class ContinuumTools(object):
             Number of spectroscopic degrees of freedom. Defaults to 0.
         ndof_phot : int, optional
             Number of photometric degrees of freedom. Defaults to 0.
+        tauv_fitted : bool, optional
+            ``True`` if tau(V) was a free parameter. Defaults to ``True``.
 
         Returns
         -------
@@ -1255,8 +1287,7 @@ class ContinuumTools(object):
             Reduced chi2 for the combined fit.
 
         """
-        # tauv is always a free parameter
-        nfree = ncoeff + 1 + int(vdisp_fitted)
+        nfree = ncoeff + int(tauv_fitted) + int(vdisp_fitted)
 
         def _get_rchi2(chi2, ndof, nfree):
             """Guard against ndof=nfree."""
@@ -1503,7 +1534,7 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
         else:
             _, rchi2_phot, _ = CTools.stellar_continuum_chi2(
                 resid, ncoeff=len(coeff), vdisp_fitted=False,
-                ndof_phot=ndof_phot)
+                ndof_phot=ndof_phot, tauv_fitted=not CTools.fixed_tauv)
 
         log.info(fsftime('fit_fastphot', time.time()-t0,
                          context=f'nage={nage}, rchi2_phot={rchi2_phot:.1f}, ndof={ndof_phot:.0f}'))
@@ -1522,7 +1553,8 @@ def continuum_fastphot(redshift, objflam, objflamivar, CTools, uniqueid=0,
              dn4000_model_monte, _) = tuple(zip(*res))
 
             with np.errstate(invalid='ignore'):
-                tauv_ivar = var2ivar(np.nanvar(tauv_monte))
+                # a fixed tauv has no variance (and nanvar can be non-zero from roundoff)
+                tauv_ivar = 0. if CTools.fixed_tauv else var2ivar(np.nanvar(tauv_monte))
                 dn4000_model_ivar = var2ivar(np.nanvar(dn4000_model_monte))
 
             msg = []
@@ -2023,7 +2055,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
     else:
         _, rchi2_phot, rchi2_cont = CTools.stellar_continuum_chi2(
         resid, ncoeff=nage, vdisp_fitted=False, split=len(specflux),
-        ndof_spec=ndof_cont, ndof_phot=ndof_phot)
+        ndof_spec=ndof_cont, ndof_phot=ndof_phot,
+        tauv_fitted=not CTools.fixed_tauv)
 
     log.debug(fsftime('fit_fastspec', time.time()-t0,
                       context=f'nage={nage}, rchi2_cont={rchi2_cont:.1f}, ndof_cont={ndof_cont:.0f}, '
@@ -2038,7 +2071,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
         continuummodel_monte = np.vstack(desimodel_nolines_monte)
 
         with np.errstate(invalid='ignore'):
-            tauv_ivar = var2ivar(np.nanvar(tauv_monte))
+            tauv_ivar = 0. if CTools.fixed_tauv else var2ivar(np.nanvar(tauv_monte))
             dn4000_model_ivar = var2ivar(np.nanvar(dn4000_model_monte))
     else:
         coeff_monte = None
@@ -2091,7 +2124,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
 def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                       nmonte=NMONTE_DEFAULT, seed=1, constrain_age=False,
                       no_smooth_continuum=False, fitstack=False,
-                      fastphot=False, debug_plots=False, vdisp_nbin=6):
+                      fastphot=False, debug_plots=False, vdisp_nbin=6,
+                      tauv_bounds=TAUV_BOUNDS):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -2102,6 +2136,9 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
     vdisp_nbin : int, optional
         Number of grid points for the velocity dispersion chi2 scan.
         Defaults to 6.
+    tauv_bounds : tuple, optional
+        Lower and upper bounds on tau(V); equal bounds fix tau(V). Defaults
+        to :data:`~fastspecfit.templates.TAUV_BOUNDS`.
 
     Returns
     -------
@@ -2148,7 +2185,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
     CTools = ContinuumTools(data, templates, phot, igm, fastphot=fastphot,
                             vdisp_guess=templates.vdisp_nominal_kernel,
                             vdisp_bounds=templates.vdisp_bounds,
-                            vdisp_nbin=vdisp_nbin,
+                            vdisp_nbin=vdisp_nbin, tauv_bounds=tauv_bounds,
                             fluxnorm=FLUXNORM, constrain_age=constrain_age)
 
     # Instantiate the random-number generator.
@@ -2318,7 +2355,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
         if 0. < tauv_ivar < F32MAX:
             specphot['TAUV'] = tauv
             specphot['TAUV_IVAR'] = tauv_ivar
-        elif coeff_monte is None:
+        elif coeff_monte is None or CTools.fixed_tauv:
             specphot['TAUV'] = tauv
         specphot['AGE'] = age
         specphot['ZZSUN'] = zzsun

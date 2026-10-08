@@ -228,6 +228,16 @@ class TestStellarContinuumChi2:
                                      split=10, ndof_spec=10, ndof_phot=10)
         assert rchi2_yes > rchi2_no
 
+    def test_tauv_fixed_decreases_nfree(self):
+        """Fixing tau(V) removes one free parameter, lowering rchi2."""
+        resid = np.ones(20)
+        _, _, rchi2_free  = self._call(resid, ncoeff=3, vdisp_fitted=False,
+                                       split=10, ndof_spec=10, ndof_phot=10)
+        _, _, rchi2_fixed = self._call(resid, ncoeff=3, vdisp_fitted=False,
+                                       split=10, ndof_spec=10, ndof_phot=10,
+                                       tauv_fitted=False)
+        assert rchi2_fixed < rchi2_free
+
     def test_split_correctly_separates_spec_and_phot(self):
         """Residuals before split go to spec chi2; residuals after go to phot."""
         resid = np.concatenate([np.zeros(10), np.ones(5)])
@@ -332,3 +342,61 @@ def test_vdisp_nbin_default_is_6():
     from fastspecfit.continuum import ContinuumTools
     sig = inspect.signature(ContinuumTools.__init__)
     assert sig.parameters['vdisp_nbin'].default == 6
+
+
+# ── tau(V) bounds ─────────────────────────────────────────────────────────────
+
+def test_tauv_bounds_default():
+    """The default tau(V) bounds are (0, 2)."""
+    import inspect
+    from fastspecfit.continuum import ContinuumTools
+    from fastspecfit.templates import TAUV_BOUNDS
+    sig = inspect.signature(ContinuumTools.__init__)
+    assert sig.parameters['tauv_bounds'].default == TAUV_BOUNDS == (0., 2.)
+
+
+@pytest.mark.parametrize('bounds', ['2 0', '-1 1'])
+def test_tauv_bounds_invalid_raises(bounds):
+    """Reversed or negative --tauv-bounds raise ValueError."""
+    from fastspecfit.fastspecfit import parse
+    with pytest.raises(ValueError, match='tauv_bounds'):
+        parse(options=f'redrock.fits -o out.fits --tauv-bounds {bounds}'.split())
+
+
+class TestFixedTauvObjective:
+    """With tau(V) fixed it is dropped from the least_squares parameter vector."""
+
+    def _call(self, params, fit_vdisp, **kwargs):
+        from types import SimpleNamespace
+        from fastspecfit.continuum import ContinuumTools
+        seen = {}
+
+        def build_stellar_continuum(templateflux, templatecoeff, tauv=0., vdisp=None,
+                                    conv_pre=None, dust_emission=True):
+            seen.update(tauv=tauv, vdisp=vdisp, coeff=np.array(templatecoeff))
+            return np.zeros(3)
+
+        mock = SimpleNamespace(
+            build_stellar_continuum=build_stellar_continuum,
+            continuum_to_photometry=lambda model: np.zeros(2))
+        ContinuumTools._stellar_objective(
+            mock, np.array(params), templateflux=None, dust_emission=False,
+            fit_vdisp=fit_vdisp, conv_pre=None, objflam=np.zeros(2),
+            objflamistd=np.ones(2), specflux=None, specistd=None,
+            synthphot=True, synthspec=False, **kwargs)
+        return seen
+
+    def test_free_tauv(self):
+        seen = self._call([0.3, 120., 1., 2.], fit_vdisp=True)
+        assert seen['tauv'] == 0.3 and seen['vdisp'] == 120.
+        assert np.array_equal(seen['coeff'], [1., 2.])
+
+    def test_fixed_tauv_with_vdisp(self):
+        seen = self._call([120., 1., 2.], fit_vdisp=True, tauv_fixed=0.)
+        assert seen['tauv'] == 0. and seen['vdisp'] == 120.
+        assert np.array_equal(seen['coeff'], [1., 2.])
+
+    def test_fixed_tauv_no_vdisp(self):
+        seen = self._call([1., 2.], fit_vdisp=False, tauv_fixed=0.5)
+        assert seen['tauv'] == 0.5 and seen['vdisp'] is None
+        assert np.array_equal(seen['coeff'], [1., 2.])

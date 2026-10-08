@@ -151,10 +151,51 @@ def fastspec_fixedvdisp_output(filenames, templates, outdir):
 
 
 @pytest.fixture(scope='session')
+def fastspec_fixedtauv_output(filenames, templates, outdir):
+    """fastspec with equal (non-zero) --tauv-bounds: tau(V) is fixed, not
+    fitted."""
+    from fastspecfit.fastspecfit import fastspec, parse
+    outfile = os.path.join(outdir, 'fastspec-fixedtauv.fits')
+    cmd = (f'fastspec {filenames["redrockfile"]} -o {outfile} '
+           f'--redux_dir {filenames["redux_dir"]} '
+           f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
+           f'--specprod {filenames["specprod"]} --templates {templates} '
+           f'--tauv-bounds 0.3 0.3')
+    fastspec(args=parse(options=cmd.split()[1:]))
+    yield outfile
+
+
+@pytest.fixture(scope='session')
+def fastphot_notauv_output(filenames, templates, outdir):
+    """fastphot with --tauv-bounds 0 0: dust-free fit."""
+    from fastspecfit.fastspecfit import fastphot, parse
+    outfile = os.path.join(outdir, 'fastphot-notauv.fits')
+    cmd = (f'fastphot {filenames["redrockfile"]} -o {outfile} '
+           f'--mapdir {filenames["mapdir"]} --fphotodir {filenames["fphotodir"]} '
+           f'--redux_dir {filenames["redux_dir"]} '
+           f'--specprod {filenames["specprod"]} --templates {templates} '
+           f'--tauv-bounds 0 0')
+    fastphot(args=parse(options=cmd.split()[1:]))
+    yield outfile
+
+
+@pytest.fixture(scope='session')
 def stackfit_output(filenames, templates):
     from fastspecfit.fastspecfit import stackfit, parse
     outfile = filenames['stackfit_outfile']
     cmd = f'stackfit {filenames["stackfile"]} -o {outfile} --templates {templates}'
+    stackfit(args=parse(options=cmd.split()[1:]))
+    yield outfile
+
+
+@pytest.fixture(scope='session')
+def stackfit_notauv_output(filenames, templates, outdir):
+    """stackfit with --tauv-bounds 0 0; the LRG stack has a well-measured
+    velocity dispersion, so this exercises the fixed-tau(V) vdisp fit."""
+    from fastspecfit.fastspecfit import stackfit, parse
+    outfile = os.path.join(outdir, 'stackfit-notauv.fits')
+    cmd = (f'stackfit {filenames["stackfile"]} -o {outfile} --templates {templates} '
+           f'--tauv-bounds 0 0')
     stackfit(args=parse(options=cmd.split()[1:]))
     yield outfile
 

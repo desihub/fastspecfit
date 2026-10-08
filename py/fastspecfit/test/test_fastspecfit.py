@@ -102,6 +102,42 @@ def test_fastspec_fixedvdisp(fastspec_fixedvdisp_output):
 
 
 @pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
+def test_fastspec_fixedtauv(fastspec_fixedtauv_output):
+    """--tauv-bounds 0.3 0.3 fixes tau(V): TAUV == 0.3, TAUV_IVAR == 0, and
+    the bounds are recorded in the primary header."""
+    import fitsio
+    data = fitsio.read(fastspec_fixedtauv_output, ext='SPECPHOT')
+    assert np.allclose(data['TAUV'], 0.3)
+    assert np.all(data['TAUV_IVAR'] == 0.)
+    assert np.all(data['LOGMSTAR'] > 0.)
+    hdr = fitsio.read_header(fastspec_fixedtauv_output)
+    assert hdr['TAUVBND'].strip() == '0.3,0.3'
+
+
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
+def test_fastphot_notauv(fastphot_notauv_output, fastphot_output):
+    """--tauv-bounds 0 0 gives a dust-free fit; the default bounds are
+    recorded otherwise."""
+    import fitsio
+    data = fitsio.read(fastphot_notauv_output, ext='SPECPHOT')
+    assert np.all(data['TAUV'] == 0.)
+    assert np.all(data['TAUV_IVAR'] == 0.)
+    assert np.all(data['LOGMSTAR'] > 0.)
+    assert fitsio.read_header(fastphot_notauv_output)['TAUVBND'].strip() == '0.0,0.0'
+    assert fitsio.read_header(fastphot_output)['TAUVBND'].strip() == '0.0,2.0'
+
+
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
+def test_stackfit_notauv(stackfit_notauv_output):
+    """With tau(V) fixed to zero the velocity dispersion is still fitted."""
+    import fitsio
+    data = fitsio.read(stackfit_notauv_output, ext='SPECPHOT')
+    assert np.all(data['TAUV'] == 0.)
+    assert np.all(data['TAUV_IVAR'] == 0.)
+    assert np.all(data['VDISP_IVAR'] > 0.)
+
+
+@pytest.mark.filterwarnings("ignore::astropy.units.UnitsWarning")
 def test_sfr_values(fastspec_output, fastphot_output):
     """SFR in SPECPHOT must be finite and non-negative for all objects."""
     import fitsio

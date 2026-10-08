@@ -16,6 +16,7 @@ from fastspecfit.logger import log
 
 VDISP_NOMINAL = 150. # [km/s]
 VDISP_BOUNDS = (50., 500.) # [km/s]
+TAUV_BOUNDS = (0., 2.) # V-band optical depth; equal bounds fix tau(V)
 VDISP_SIGMA_RELATION = (2.30, 0.25) # (a, b): log σ = a + b*(log M* − 11) [km/s]
 
 class Templates(object):

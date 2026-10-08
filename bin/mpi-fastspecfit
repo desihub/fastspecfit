@@ -225,7 +225,7 @@ def main():
     """MPI entry point for fastspec, fastphot, and fastqa."""
     import argparse
     from fastspecfit.mpi import plan
-    from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
+    from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS, TAUV_BOUNDS
     from fastspecfit.cosmo import COSMOLOGY_MODELS
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -271,6 +271,9 @@ def main():
     fit_group.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
     fit_group.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, metavar=('MIN', 'MAX'),
                         help='Minimum and maximum velocity dispersion in km/s, given as two space-separated values, e.g. --vdisp-bounds 50 500.')
+    fit_group.add_argument('--tauv-bounds', type=float, default=TAUV_BOUNDS, nargs=2, metavar=('MIN', 'MAX'),
+                        help='Minimum and maximum V-band optical depth, given as two space-separated values, e.g. --tauv-bounds 0 2; '
+                        'equal values fix tau(V), e.g. --tauv-bounds 0 0.')
     fit_group.add_argument('--ignore-quasarnet', default=False, action='store_true', help='Do not use QuasarNet to improve QSO redshifts.')
     fit_group.add_argument('--ignore-photometry', default=False, action='store_true', help='Ignore the broadband photometry during model fitting.')
     fit_group.add_argument('--no-smooth-continuum', default=False, action='store_true', help='Do not fit the smooth continuum.')
