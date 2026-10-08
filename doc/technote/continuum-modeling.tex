@@ -477,6 +477,13 @@ rest-frame luminosities, and observed-frame continuum fluxes.  The spectral
 Monte Carlo realizations are drawn once (using a fixed random seed) and
 reused for both the continuum and emission-line fits.
 
+The smooth continuum (Section~\ref{sec:smooth}) is also recomputed for every
+realization, from the residuals between that realization and its own
+best-fit line-free SED model, with the emission-line mask held fixed.  Each
+realization of the emission-line spectrum is therefore built by subtracting
+its own SED model and smooth continuum, so the uncertainties in both
+propagate into the emission-line measurements.
+
 
 \section{Physical Output Quantities}
 \label{sec:outputs}

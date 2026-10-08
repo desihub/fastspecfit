@@ -273,7 +273,8 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
     fastfit = BoxedScalar(fastfit_dtype)
     specphot = BoxedScalar(specphot_dtype)
 
-    continuummodel, smooth_continuum, continuummodel_monte, specflux_monte = \
+    (continuummodel, smooth_continuum, continuummodel_monte,
+     smooth_continuum_monte, specflux_monte) = \
         continuum_specfit(data, fastfit, specphot, templates, igm, phot, constrain_age=constrain_age,
                           no_smooth_continuum=no_smooth_continuum, fastphot=fastphot,
                           fitstack=fitstack, debug_plots=debug_plots, nmonte=nmonte,
@@ -289,7 +290,8 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
                                  broadlinefit=broadlinefit,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
                                  debug_plots=debug_plots, specflux_monte=specflux_monte,
-                                 continuummodel_monte=continuummodel_monte)
+                                 continuummodel_monte=continuummodel_monte,
+                                 smooth_continuum_monte=smooth_continuum_monte)
 
     log.info(fsftime('fastspec_one', time.time()-t0,
                      context=f'{phot.uniqueid_col.lower()}={data["uniqueid"]}'))

@@ -6,7 +6,8 @@ Change Log
 ------------------------
 
 * Add ``--tauv-bounds``, ``--smooth-window`` and ``--smooth-step`` as
-  new command-line arguments [`PR #292`_].
+  new command-line arguments and MC the smooth-continuum
+  correction[`PR #292`_].
 * Miscellaneous emission-line updates [`PR #289`_]:
 
   * Rename the mislabeled ``H6`` and ``H6_BROAD`` lines (and output columns)

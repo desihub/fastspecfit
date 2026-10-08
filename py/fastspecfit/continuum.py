@@ -2109,18 +2109,36 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
 
     if np.all(coeff == 0.) or no_smooth_continuum:
         smoothcontinuum = np.zeros_like(specwave)
+        smoothcontinuum_monte = None
     else:
-        # Need to be careful we don't pass a large negative residual
-        # where there are gaps in the data.
-        residuals = specflux * median_apercorr - desimodel_nolines
-        I = ((specflux == 0.) & (specivar == 0.))
-        residuals[I] = 0.
+        gaps = ((specflux == 0.) & (specivar == 0.))
 
-        smoothcontinuum = CTools.smooth_continuum(
-            specwave, residuals, specivar / median_apercorr**2,
-            slinemask, uniqueid=data['uniqueid'],
-            camerapix=data['camerapix'], smooth_window=smooth_window,
-            smooth_step=smooth_step, debug_plots=debug_plots)
+        def do_smooth(specflux, desimodel_nolines, debug_plots=False):
+            # Need to be careful we don't pass a large negative residual
+            # where there are gaps in the data.
+            residuals = specflux * median_apercorr - desimodel_nolines
+            residuals[gaps] = 0.
+
+            return CTools.smooth_continuum(
+                specwave, residuals, specivar / median_apercorr**2,
+                slinemask, uniqueid=data['uniqueid'],
+                camerapix=data['camerapix'], smooth_window=smooth_window,
+                smooth_step=smooth_step, debug_plots=debug_plots)
+
+        smoothcontinuum = do_smooth(specflux, desimodel_nolines, debug_plots=debug_plots)
+
+        # Recompute the smooth continuum for each realization so that its
+        # uncertainty is propagated into the emission-line fitting.
+        if specflux_monte is not None:
+            smoothcontinuum_monte = np.zeros_like(specflux_monte)
+            for imonte in range(nmonte):
+                # mirror the nominal fit: no smooth continuum without a
+                # stellar continuum
+                if np.any(coeff_monte[imonte] != 0.):
+                    smoothcontinuum_monte[imonte, :] = do_smooth(
+                        specflux_monte[imonte], continuummodel_monte[imonte])
+        else:
+            smoothcontinuum_monte = None
 
         for icam, (ss, ee) in enumerate(data['camerapix']):
             I = ((specflux[ss:ee] != 0.) & (specivar[ss:ee] != 0.) & (smoothcontinuum[ss:ee] != 0.))
@@ -2133,7 +2151,8 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
             tauv, tauv_monte, tauv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar,
             dn4000_model, dn4000_model_ivar, sedmodel, sedmodel_nolines,
             desimodel_nolines, smoothcontinuum, smoothstats, specflux_monte,
-            sedmodel_monte, sedmodel_nolines_monte, continuummodel_monte)
+            sedmodel_monte, sedmodel_nolines_monte, continuummodel_monte,
+            smoothcontinuum_monte)
 
 
 def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
@@ -2228,7 +2247,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
          tauv, tauv_monte, tauv_ivar, vdisp, vdisp_ivar, dn4000, dn4000_ivar,
          dn4000_model, dn4000_model_ivar, sedmodel, sedmodel_nolines, continuummodel,
          smoothcontinuum, smoothstats, specflux_monte, sedmodel_monte,
-         sedmodel_nolines_monte, continuummodel_monte) = \
+         sedmodel_nolines_monte, continuummodel_monte, smoothcontinuum_monte) = \
              continuum_fastspec(redshift, objflam, objflamivar, CTools,
                                 nmonte=nmonte, rng=rng, uniqueid=data['uniqueid'],
                                 debug_plots=debug_plots, no_smooth_continuum=no_smooth_continuum,
@@ -2448,12 +2467,15 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
     log.debug(fsftime('continuum_specfit', time.time()-tall))
 
     if fastphot:
-        return sedmodel, None, None, None
+        return sedmodel, None, None, None, None
     else:
         # divide out the aperture correction
         continuummodel /= median_apercorr
         smoothcontinuum /= median_apercorr
         if continuummodel_monte is not None:
             continuummodel_monte /= median_apercorr
+        if smoothcontinuum_monte is not None:
+            smoothcontinuum_monte /= median_apercorr
 
-        return continuummodel, smoothcontinuum, continuummodel_monte, specflux_monte
+        return (continuummodel, smoothcontinuum, continuummodel_monte,
+                smoothcontinuum_monte, specflux_monte)
