@@ -19,7 +19,7 @@ DESITARGET_VERSION=${DESITARGET_VERSION:-"5.3.0"}
 SPECLITE_VERSION=${SPECLITE_VERSION:-"v1.0.0"}
 
 echo "Loading DESI software stack"
-source /dvs_ro/common/software/desi/desi_environment.sh 26.3
+source /dvs_ro/common/software/desi/desi_environment.sh 26.9
 module swap desiutil/${DESIUTIL_VERSION}
 module swap desispec/${DESISPEC_VERSION}
 module swap desitarget/${DESITARGET_VERSION}
