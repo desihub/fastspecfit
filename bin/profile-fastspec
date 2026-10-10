@@ -81,8 +81,8 @@ def parse_args(argv=None):
                    help='Path to template FITS file.  Overrides FTEMPLATES_CACHE_DIR lookup.')
     p.add_argument('--nwarm', type=int, default=2,
                    help='Number of warm fitting passes after the cold pass (default: 2).')
-    p.add_argument('--nmonte', type=int, default=10,
-                   help='Monte Carlo realizations per object (default: 10).')
+    p.add_argument('--nmonte', type=int, default=50,
+                   help='Monte Carlo realizations per object (default: 50).')
     p.add_argument('--cprofile', action='store_true',
                    help='Run cProfile on the warm fitting loop and write <mode>.prof.')
     p.add_argument('--no-cprofile-io', dest='cprofile_io', default=True, action='store_false',

@@ -507,19 +507,41 @@ def _domerge(outfiles, outprefix=None, specprod=None, coadd_type=None,
     t0 = time.time()
     meta, specphot, fastfit = [], [], []
 
+    nfiles = len(outfiles)
+    nlog = max(nfiles // 10, 100) # report every 10% (but no more often than every 100 files)
+    log.info(f'Reading {nfiles:,d} files with {mp} worker(s).')
+
+    def _read_all(results):
+        # gather the (ordered) results, reporting our progress
+        out = []
+        for ifile, result in enumerate(results, start=1):
+            out.append(result)
+            if ifile % nlog == 0 and ifile < nfiles:
+                dt = time.time() - t0
+                log.info(f'Read {ifile:,d}/{nfiles:,d} files ({100.*ifile/nfiles:.0f}%) in '
+                         f'{dt/60.:.1f} min; about {dt*(nfiles-ifile)/ifile/60.:.1f} min left.')
+        return out
+
     mpargs = [[outfile, fastphot] for outfile in outfiles]
     if mp > 1:
+        # same chunksize as Pool.map
+        chunksize = max(nfiles // (4 * mp), 1)
         with multiprocessing.Pool(mp) as P:
-            out = P.map(_read_to_merge_one, mpargs)
+            out = _read_all(P.imap(_read_to_merge_one, mpargs, chunksize=chunksize))
     else:
-        out = [read_to_merge_one(*mparg) for mparg in mpargs]
+        out = _read_all(read_to_merge_one(*mparg) for mparg in mpargs)
     out = list(zip(*out))
+
+    t1 = time.time()
+    log.info(f'Read {nfiles:,d} files in {(t1-t0)/60.:.1f} min; stacking the tables.')
 
     meta = vstack(out[0])
     specphot = vstack(out[1])
     if not fastphot:
         fastfit = vstack(out[2])
     del out
+
+    log.info(f'Stacked {len(meta):,d} objects in {(time.time()-t1)/60.:.1f} min.')
 
     _ctx = f'nobj={len(meta):,d}, nfiles={len(outfiles)}'
     if outprefix:
