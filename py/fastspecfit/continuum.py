@@ -399,7 +399,8 @@ class ContinuumTools(object):
                            np.max((5. * noise, 1.5 * quantile(flux, 0.975))))
             ax[0].set_ylabel('Continuum-subtracted Flux\n' + \
                              r'$(10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$')
-            leg = ax[0].legend(fontsize=10, loc='upper left')
+            leg = ax[0].legend(fontsize=7, loc='upper left', ncol=3, columnspacing=1.,
+                               handletextpad=0.4, borderpad=0.3, labelspacing=0.3)
             for line in leg.get_lines():
                 line.set_linewidth(2)
 

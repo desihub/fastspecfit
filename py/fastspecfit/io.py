@@ -80,7 +80,8 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
                  init_sigma_uv=None, init_sigma_narrow=None,
                  init_sigma_balmer=None, init_vshift_uv=None,
                  init_vshift_narrow=None, init_vshift_balmer=None,
-                 fastphot=False, synthphot=True, debug_plots=False):
+                 refit_linemask=True, fastphot=False, synthphot=True,
+                 debug_plots=False):
     """Pre-process a single DESI spectrum for fitting.
 
     Applies MW dust corrections to photometry, processes per-camera spectra
@@ -110,6 +111,11 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
         Initial narrow-line velocity shift in km/s for emission-line masking.
     init_vshift_balmer : float or None, optional
         Initial broad Balmer velocity shift in km/s for emission-line masking.
+    refit_linemask : bool, optional
+        If ``False``, build the emission-line mask from the six ``init_*``
+        values (all required) without refitting the lines; see
+        :meth:`fastspecfit.linemasker.LineMasker.build_linemask`. Defaults to
+        ``True``.
     fastphot : bool, optional
         If ``True``, skip spectroscopic processing. Defaults to ``False``.
     synthphot : bool, optional
@@ -275,7 +281,7 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
             initvshift_broad=init_vshift_uv,
             initvshift_narrow=init_vshift_narrow,
             initvshift_balmer_broad=init_vshift_balmer,
-            debug_plots=debug_plots)
+            refit=refit_linemask, debug_plots=debug_plots)
 
         # Map the pixels belonging to individual emission lines onto the
         # original per-camera spectra. This works, but maybe there's a better

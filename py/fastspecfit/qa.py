@@ -994,8 +994,9 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
                maxphotwave=35., emline_snrmin=0.0, nsmoothspec=1,
                init_sigma_uv=None, init_sigma_narrow=None, init_sigma_balmer=None,
                init_vshift_uv=None, init_vshift_narrow=None,
-               init_vshift_balmer=None, fastphot=False, fitstack=False,
-               inputz=False, no_smooth_continuum=False, smooth_knot_spacing=SMOOTH_KNOT_SPACING,
+               init_vshift_balmer=None, uncertainty_floor=0.01, fastphot=False,
+               fitstack=False, inputz=False, no_smooth_continuum=False,
+               smooth_knot_spacing=SMOOTH_KNOT_SPACING,
                smooth_legacy=None, outdir=None, outprefix=None,
                cutout_width=30., cutout_layer=None, cutout_pixscale=None):
     """Generate a QA figure for a single object.
@@ -1027,6 +1028,15 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
         Minimum emission-line S/N for display. Default is 0.
     nsmoothspec : :class:`int`, optional
         Boxcar smoothing width for the displayed spectrum. Default is 1.
+    init_sigma_uv, init_sigma_narrow, init_sigma_balmer : :class:`float` or None, optional
+        Line-widths in km/s adopted by the emission-line mask of the original
+        fit. If given (together with the velocity shifts), the mask is rebuilt
+        from these values without refitting the lines.
+    init_vshift_uv, init_vshift_narrow, init_vshift_balmer : :class:`float` or None, optional
+        Corresponding velocity shifts in km/s.
+    uncertainty_floor : :class:`float`, optional
+        Minimum fractional uncertainty used in the original fit. Default is
+        0.01.
     fastphot : :class:`bool`, optional
         If ``True``, generate photometry-only QA. Default is ``False``.
     fitstack : :class:`bool`, optional
@@ -1061,7 +1071,14 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
     if fitstack:
         one_stacked_spectrum(data, metadata, synthphot=False)
     else:
+        # Rebuild the emission-line mask (and, therefore, the smooth
+        # continuum) of the original fit from its final line-widths and
+        # velocity shifts, if we have them; otherwise, refit.
+        refit_linemask = None in (init_sigma_uv, init_sigma_narrow, init_sigma_balmer,
+                                  init_vshift_uv, init_vshift_narrow, init_vshift_balmer)
         one_spectrum(data, metadata, fastphot=fastphot,
+                     uncertainty_floor=uncertainty_floor,
+                     refit_linemask=refit_linemask,
                      init_sigma_uv=init_sigma_uv,
                      init_sigma_narrow=init_sigma_narrow,
                      init_sigma_balmer=init_sigma_balmer,
@@ -2104,6 +2121,8 @@ def fastqa(args=None, comm=None):
         if 'NOSCORR' in hdr and not hdr['NOSCORR']:
             log.info(f'Using the legacy smooth-continuum algorithm (window, step)={smooth_legacy}.')
 
+    uncertainty_floor = hdr['UFLOOR'] if 'UFLOOR' in hdr else 0.01
+
     if 'INPUTZ' in hdr and hdr['INPUTZ']:
         inputz = True
     if 'NOSCORR' in hdr and hdr['NOSCORR']:
@@ -2208,6 +2227,7 @@ def fastqa(args=None, comm=None):
                 'fastphot':            fastphot,
                 'fitstack':            fitstack,
                 'inputz':              inputz,
+                'uncertainty_floor':   uncertainty_floor,
                 'no_smooth_continuum': no_smooth_continuum,
                 'smooth_knot_spacing': smooth_knot_spacing,
                 'smooth_legacy':       smooth_legacy,
