@@ -255,6 +255,7 @@ class ContinuumTools(object):
         def _smooth_percamera(camwave, camflux, camivar, camlinemask):
 
             smoothflux = np.zeros_like(camflux)
+            rejected = np.zeros(len(camflux), bool)
             knotwave, knotflux = np.array([]), np.array([])
 
             # Mask nmaskpix (presumably noisy) pixels from the edge
@@ -266,7 +267,7 @@ class ContinuumTools(object):
 
             # corner case for very wacky spectra
             if np.sum(good) < nminpix:
-                return knotwave, knotflux, smoothflux
+                return knotwave, knotflux, smoothflux, rejected
 
             # The knots depend on the mask but not on the flux, so they are
             # the same for every Monte Carlo realization.
@@ -293,6 +294,7 @@ class ContinuumTools(object):
             fitmask = good.copy()
             spl = None
             for _ in range(maxiter):
+                usedmask = fitmask # pixels of the most recent fit
                 knots = _prune_knots(camwave[fitmask])
                 allt = np.hstack((np.repeat(minwave, degree + 1), knots,
                                   np.repeat(maxwave, degree + 1)))
@@ -301,7 +303,7 @@ class ContinuumTools(object):
                                           k=degree, w=camistd[fitmask])
                 except (ValueError, np.linalg.LinAlgError):
                     log.warning(f'Smooth-continuum spline fit failed [{uniqueid}].')
-                    return knotwave, knotflux, smoothflux
+                    return knotwave, knotflux, smoothflux, rejected
 
                 # Reject outliers using a robust estimate of the scatter,
                 # which can exceed unity when the residuals are dominated by
@@ -328,18 +330,23 @@ class ContinuumTools(object):
             knotwave = np.hstack((minwave, knots, maxwave))
             knotflux = spl(knotwave)
 
-            return knotwave, knotflux, smoothflux
+            # outliers rejected from the final fit (for the QA)
+            rejected = good & ~usedmask
 
-        smooth_wave, smooth_flux, smoothcontinuum = [], [], []
+            return knotwave, knotflux, smoothflux, rejected
+
+        smooth_wave, smooth_flux, smoothcontinuum, rejected = [], [], [], []
         for ss, ee in camerapix:
-            smooth_wave1, smooth_flux1, smoothcontinuum1 = _smooth_percamera(
+            smooth_wave1, smooth_flux1, smoothcontinuum1, rejected1 = _smooth_percamera(
                 wave[ss:ee], flux[ss:ee], ivar[ss:ee], linemask[ss:ee])
             smooth_wave.append(smooth_wave1)
             smooth_flux.append(smooth_flux1)
             smoothcontinuum.append(smoothcontinuum1)
+            rejected.append(rejected1)
         smooth_wave = np.hstack(smooth_wave)
         smooth_flux = np.hstack(smooth_flux)
         smoothcontinuum = np.hstack(smoothcontinuum)
+        rejected = np.hstack(rejected)
 
         # Optional QA.
         if debug_plots:
@@ -350,41 +357,43 @@ class ContinuumTools(object):
             pngfile = f'qa-smooth-continuum-{uniqueid}.png'
             sns.set(context='talk', style='ticks', font_scale=0.7)
 
-            srt = np.argsort(wave)
-
             resid = flux - smoothcontinuum
             noise = np.ptp(quantile(resid[~linemask], (0.25, 0.75))) / 1.349 # robust sigma
 
-            msk = ma.array(linemask)
-            msk.mask = linemask
-            clumps_masked = ma.clump_masked(msk)
-            clumps_unmasked = ma.clump_unmasked(msk)
+            labeled = set()
+            def _label(label):
+                # label each component once
+                if label in labeled:
+                    return None
+                labeled.add(label)
+                return label
 
             fig, ax = plt.subplots(2, 1, figsize=(7, 7), sharex=True)
-            for iclump, clump in enumerate(clumps_unmasked):
-                if iclump == 0:
-                    label = 'Unmasked Flux'
-                else:
-                    label = None
-                ax[0].plot(wave[srt][clump] / 1e4, flux[srt][clump], color='grey',
-                           alpha=0.5, lw=0.5, label=label)
-            for iclump, clump in enumerate(clumps_masked):
-                if iclump == 0:
-                    label = 'Masked Flux'
-                else:
-                    label = None
-                ax[0].plot(wave[srt][clump] / 1e4, flux[srt][clump], alpha=0.3, lw=0.5,
-                           color='blue', label=label)
+
+            # Plot camera-by-camera, since the wavelengths of adjacent
+            # cameras overlap.
+            for ss, ee in camerapix:
+                camwave = wave[ss:ee] / 1e4
+                msk = ma.array(linemask[ss:ee], mask=linemask[ss:ee])
+                for clumps, color, alpha, label in [
+                        (ma.clump_unmasked(msk), 'grey', 0.5, 'Unmasked Flux'),
+                        (ma.clump_masked(msk), 'blue', 0.3, 'Masked Flux')]:
+                    for clump in clumps:
+                        ax[0].plot(camwave[clump], flux[ss:ee][clump], color=color,
+                                   alpha=alpha, lw=0.5, label=_label(label))
+                        ax[1].plot(camwave[clump], resid[ss:ee][clump], color=color,
+                                   alpha=alpha, lw=0.5)
+            if np.any(rejected):
+                ax[0].scatter(wave[rejected] / 1e4, flux[rejected], color='k', marker='x',
+                              s=10, lw=0.5, zorder=2, label='Rejected Pixels')
+                ax[1].scatter(wave[rejected] / 1e4, resid[rejected], color='k', marker='x',
+                              s=10, lw=0.5, zorder=2)
             ax[0].scatter(smooth_wave / 1e4, smooth_flux, edgecolor='k', color='orange',
                           marker='s', alpha=0.8, s=20, zorder=3,
                           label='Knots')
-            for icam, (ss, ee) in enumerate(camerapix):
-                if icam == 0:
-                    label = 'Smooth Model'
-                else:
-                    label = None
+            for ss, ee in camerapix:
                 ax[0].plot(wave[ss:ee] / 1e4, smoothcontinuum[ss:ee], color='red',
-                           zorder=4, ls='-', lw=2, alpha=0.6, label=label)
+                           zorder=4, ls='-', lw=2, alpha=0.6, label=_label('Smooth Model'))
 
             ax[0].set_ylim(np.min((-5. * noise, quantile(flux, 0.05))),
                            np.max((5. * noise, 1.5 * quantile(flux, 0.975))))
@@ -394,13 +403,6 @@ class ContinuumTools(object):
             for line in leg.get_lines():
                 line.set_linewidth(2)
 
-            #ax[1].plot(wave[srt] / 1e4, resid[srt], alpha=0.75, lw=0.5)
-            for clump in clumps_unmasked:
-                ax[1].plot(wave[srt][clump] / 1e4, resid[srt][clump], color='grey',
-                           alpha=0.5, lw=0.5)
-            for clump in clumps_masked:
-                ax[1].plot(wave[srt][clump] / 1e4, resid[srt][clump], alpha=0.3,
-                           lw=0.5, color='blue')
             ax[1].axhline(y=0, color='k', ls='--', lw=2)
             ax[1].set_ylim(np.min((-5. * noise, quantile(resid, 0.05))),
                            np.max((5. * noise, 1.5 * quantile(resid, 0.975))))
