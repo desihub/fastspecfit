@@ -21,6 +21,8 @@ except:
 FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
 MASSNORM = 1e10 # mass normalization factor
 NMONTE_DEFAULT = 50
+SMOOTH_WINDOW = 75 # smooth-continuum sliding-window width [pixels]
+SMOOTH_STEP = 125  # smooth-continuum sliding-window step [pixels]
 
 TINY = np.nextafter(0, 1, dtype=np.float32)
 SQTINY = np.sqrt(TINY)

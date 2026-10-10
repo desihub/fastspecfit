@@ -15,7 +15,7 @@ from astropy.table import Table, vstack
 
 from fastspecfit.io import get_qa_filename
 from fastspecfit.logger import log
-from fastspecfit.util import fsftime
+from fastspecfit.util import SMOOTH_WINDOW, SMOOTH_STEP, fsftime
 
 
 def _get_ntargets_one(args):
@@ -502,6 +502,7 @@ def _domerge(outfiles, outprefix=None, specprod=None, coadd_type=None,
     from astropy.table import vstack
     from desiutil.depend import getdep, hasdep
     from fastspecfit.io import write_fastspecfit
+    from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS, TAUV_BOUNDS
 
     t0 = time.time()
     meta, specphot, fastfit = [], [], []
@@ -536,13 +537,22 @@ def _domerge(outfiles, outprefix=None, specprod=None, coadd_type=None,
     deps['NMONTE'] = 50
     deps['SEED'] = 1
     deps['NOSCORR'] = False
+    deps['SMWINDOW'] = SMOOTH_WINDOW
+    deps['SMSTEP'] = SMOOTH_STEP
     deps['NOPHOTO'] = False
     deps['BRDLFIT'] = True
     deps['UFLOOR'] = 0.01
     deps['SNRBBALM'] = 2.5
+    deps['VDISPNOM'] = VDISP_NOMINAL
     for key in deps.keys():
         if key in hdr:
             deps[key] = hdr[key]
+
+    # bounds are stored as comma-separated strings
+    bounds = {'VDISPBND': VDISP_BOUNDS, 'TAUVBND': TAUV_BOUNDS}
+    for key in bounds.keys():
+        if key in hdr:
+            bounds[key] = tuple(float(val) for val in hdr[key].split(','))
 
     deps2 = {}
     deps2['FPHOTO_FILE'] = None
@@ -557,10 +567,16 @@ def _domerge(outfiles, outprefix=None, specprod=None, coadd_type=None,
                       specprod=specprod, coadd_type=coadd_type, fastphot=fastphot,
                       fphotofile=deps2['FPHOTO_FILE'], template_file=deps2['FTEMPLATES_FILE'],
                       emlinesfile=deps2['EMLINES_FILE'], constraintsfile=deps2['CONSTRAINTS_FILE'],
-                      inputz=deps['INPUTZ'],
+                      inputz=deps['INPUTZ'], inputseeds=deps['INPUTS'],
+                      nmonte=deps['NMONTE'], seed=deps['SEED'],
+                      uncertainty_floor=deps['UFLOOR'],
+                      minsnr_balmer_broad=deps['SNRBBALM'],
+                      vdisp_nominal=deps['VDISPNOM'],
+                      vdisp_bounds=bounds['VDISPBND'], tauv_bounds=bounds['TAUVBND'],
                       ignore_photometry=deps['NOPHOTO'], broadlinefit=deps['BRDLFIT'],
                       constrain_age=deps['CONSAGE'], use_quasarnet=deps['USEQNET'],
-                      no_smooth_continuum=deps['NOSCORR'], split_hdu=split_hdu,
+                      no_smooth_continuum=deps['NOSCORR'], smooth_window=deps['SMWINDOW'],
+                      smooth_step=deps['SMSTEP'], split_hdu=split_hdu,
                       nside=nside_main)
 
 
@@ -783,6 +799,10 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
             cmdargs += ' --ignore-photometry'
         if args.no_smooth_continuum:
             cmdargs += ' --no-smooth-continuum'
+        if args.smooth_window:
+            cmdargs += f' --smooth-window={args.smooth_window}'
+        if args.smooth_step:
+            cmdargs += f' --smooth-step={args.smooth_step}'
         if args.templates:
             cmdargs += f' --templates={args.templates}'
         if args.templateversion:
@@ -804,6 +824,8 @@ def build_cmdargs(args, redrockfile, outfile, sample=None, fastphot=False,
             cmdargs += f' --vdisp-nominal={args.vdisp_nominal}'
         if args.vdisp_bounds:
             cmdargs += f' --vdisp-bounds {float(args.vdisp_bounds[0])} {float(args.vdisp_bounds[1])}'
+        if args.tauv_bounds:
+            cmdargs += f' --tauv-bounds {float(args.tauv_bounds[0])} {float(args.tauv_bounds[1])}'
         if args.seed:
             cmdargs += f' --seed={args.seed}'
 

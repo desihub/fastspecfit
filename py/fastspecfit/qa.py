@@ -9,7 +9,7 @@ import numpy as np
 from fastspecfit.logger import log
 from fastspecfit.templates import Templates
 from fastspecfit.singlecopy import sc_data
-from fastspecfit.util import MPPool
+from fastspecfit.util import MPPool, SMOOTH_WINDOW, SMOOTH_STEP
 from fastspecfit.cosmo import COSMOLOGY_MODELS, build_cosmology
 
 # Sticky per-process flag: once the Legacy Survey viewer is found
@@ -632,7 +632,8 @@ def _build_sed_model(CTools, templates, specphot, metadata, phot,
 
 
 def _build_spectral_models(CTools, EMFit, data, fastspec, specphot, templates,
-                           fitstack, no_smooth_continuum, emline_snrmin, redshift):
+                           fitstack, no_smooth_continuum, emline_snrmin, redshift,
+                           smooth_window=SMOOTH_WINDOW, smooth_step=SMOOTH_STEP):
     """Reconstruct per-camera continuum and emission-line spectral models.
 
     Parameters
@@ -657,6 +658,10 @@ def _build_spectral_models(CTools, EMFit, data, fastspec, specphot, templates,
         Minimum line S/N for the emission-line model.
     redshift : :class:`float`
         Object redshift.
+    smooth_window : :class:`int`, optional
+        Width of the smooth-continuum sliding window in pixels.
+    smooth_step : :class:`int`, optional
+        Step size of the smooth-continuum sliding window in pixels.
 
     Returns
     -------
@@ -690,7 +695,8 @@ def _build_spectral_models(CTools, EMFit, data, fastspec, specphot, templates,
     else:
         fullsmoothcontinuum = CTools.smooth_continuum(
             fullwave, np.hstack(desiresiduals), np.hstack(data['ivar']),
-            np.hstack(data['linemask']), camerapix=data['camerapix'])
+            np.hstack(data['linemask']), camerapix=data['camerapix'],
+            smooth_window=smooth_window, smooth_step=smooth_step)
 
     desismoothcontinuum = [fullsmoothcontinuum[campix[0]:campix[1]]
                            for campix in data['camerapix']]
@@ -877,7 +883,8 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
                init_sigma_uv=None, init_sigma_narrow=None, init_sigma_balmer=None,
                init_vshift_uv=None, init_vshift_narrow=None,
                init_vshift_balmer=None, fastphot=False, fitstack=False,
-               inputz=False, no_smooth_continuum=False, outdir=None, outprefix=None,
+               inputz=False, no_smooth_continuum=False, smooth_window=SMOOTH_WINDOW,
+               smooth_step=SMOOTH_STEP, outdir=None, outprefix=None,
                cutout_width=30., cutout_layer=None, cutout_pixscale=None):
     """Generate a QA figure for a single object.
 
@@ -916,6 +923,10 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
         If ``True``, use the input redshift. Default is ``False``.
     no_smooth_continuum : :class:`bool`, optional
         If ``True``, do not smooth the continuum model. Default is ``False``.
+    smooth_window : :class:`int`, optional
+        Width of the smooth-continuum sliding window in pixels.
+    smooth_step : :class:`int`, optional
+        Step size of the smooth-continuum sliding window in pixels.
     outdir : :class:`str` or None, optional
         Output directory for the PNG figure.
     outprefix : :class:`str` or None, optional
@@ -948,6 +959,7 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
                 spec_wavelims=(minspecwave, maxspecwave),
                 phot_wavelims=(minphotwave, maxphotwave),
                 no_smooth_continuum=no_smooth_continuum,
+                smooth_window=smooth_window, smooth_step=smooth_step,
                 emline_snrmin=emline_snrmin, nsmoothspec=nsmoothspec,
                 fastphot=fastphot, fitstack=fitstack,
                 outprefix=outprefix, outdir=outdir, inputz=inputz,
@@ -958,7 +970,8 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
 def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
                 coadd_type='healpix', spec_wavelims=(3550, 9900),
                 phot_wavelims=(0.1, 35), fastphot=False, fitstack=False,
-                outprefix=None, no_smooth_continuum=False, emline_snrmin=0.0,
+                outprefix=None, no_smooth_continuum=False, smooth_window=SMOOTH_WINDOW,
+                smooth_step=SMOOTH_STEP, emline_snrmin=0.0,
                 nsmoothspec=1, outdir=None, inputz=None, cutout_width=30.,
                 cutout_layer=None, cutout_pixscale=None):
     """Generate and write a QA figure for one fitted object.
@@ -996,6 +1009,10 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
         Optional prefix for the output filename.
     no_smooth_continuum : :class:`bool`, optional
         If ``True``, do not smooth the continuum model. Default is ``False``.
+    smooth_window : :class:`int`, optional
+        Width of the smooth-continuum sliding window in pixels.
+    smooth_step : :class:`int`, optional
+        Step size of the smooth-continuum sliding window in pixels.
     emline_snrmin : :class:`float`, optional
         Minimum emission-line S/N ratio for display. Default is 0.
     nsmoothspec : :class:`int`, optional
@@ -1108,7 +1125,8 @@ def qa_fastspec(data, templates, metadata, specphot, fastspec=None,
     if not fastphot:
         specmodels = _build_spectral_models(
             CTools, EMFit, data, fastspec, specphot, templates, fitstack,
-            no_smooth_continuum, emline_snrmin, redshift)
+            no_smooth_continuum, emline_snrmin, redshift,
+            smooth_window=smooth_window, smooth_step=smooth_step)
         fullwave = specmodels['fullwave']
         apercorr = specmodels['apercorr']
 
@@ -1954,6 +1972,8 @@ def fastqa(args=None, comm=None):
     inputz = False
     no_smooth_continuum = False
     ignore_photometry = False
+    smooth_window = hdr['SMWINDOW'] if 'SMWINDOW' in hdr else SMOOTH_WINDOW
+    smooth_step = hdr['SMSTEP'] if 'SMSTEP' in hdr else SMOOTH_STEP
 
     if 'INPUTZ' in hdr and hdr['INPUTZ']:
         inputz = True
@@ -2060,6 +2080,8 @@ def fastqa(args=None, comm=None):
                 'fitstack':            fitstack,
                 'inputz':              inputz,
                 'no_smooth_continuum': no_smooth_continuum,
+                'smooth_window':       smooth_window,
+                'smooth_step':         smooth_step,
                 'outdir':              args.outdir,
                 'outprefix':           args.outprefix,
                 'cutout_width':        args.cutout_width,

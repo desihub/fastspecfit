@@ -5,7 +5,9 @@ Change Log
 3.6.2 (not released yet)
 ------------------------
 
-* New ``Loa`` and ``Iron`` VACs [`PR #281`_].
+* Add ``--tauv-bounds``, ``--smooth-window`` and ``--smooth-step`` as
+  new command-line arguments and MC the smooth-continuum
+  correction[`PR #292`_].
 * Miscellaneous emission-line updates [`PR #289`_]:
 
   * Rename the mislabeled ``H6`` and ``H6_BROAD`` lines (and output columns)
@@ -20,8 +22,11 @@ Change Log
   * New ``fastqa`` options ``--cutout-width``, ``--cutout-layer``, and
     ``--cutout-pixscale``.
 
-.. _`PR #281`: https://github.com/desihub/fastspecfit/pull/281
+* New ``Loa`` and ``Iron`` VACs [`PR #281`_].
+
+.. _`PR #292`: https://github.com/desihub/fastspecfit/pull/292
 .. _`PR #289`: https://github.com/desihub/fastspecfit/pull/289
+.. _`PR #281`: https://github.com/desihub/fastspecfit/pull/281
 
 3.6.1 (2026-08-07)
 ------------------

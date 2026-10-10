@@ -1639,7 +1639,8 @@ def linefit(EMFit, linemodel, initial_guesses, param_bounds,
 def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                    phot, emline_table, constraints, minsnr_balmer_broad=2.5,
                    minsigma_balmer_broad=250., continuummodel_monte=None,
-                   specflux_monte=None, synthphot=True, broadlinefit=True,
+                   smooth_continuum_monte=None, specflux_monte=None,
+                   synthphot=True, broadlinefit=True,
                    debug_plots=False):
     """Fit emission lines in a continuum-subtracted DESI spectrum.
 
@@ -1672,6 +1673,10 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
     continuummodel_monte : :class:`numpy.ndarray` or None, optional
         Monte Carlo realizations of the continuum model, shape
         ``(nmonte, nbins)``. Defaults to ``None``.
+    smooth_continuum_monte : :class:`numpy.ndarray` or None, optional
+        Monte Carlo realizations of the smooth continuum model, shape
+        ``(nmonte, nbins)``. If ``None``, ``smooth_continuum`` is used for
+        every realization. Defaults to ``None``.
     specflux_monte : :class:`numpy.ndarray` or None, optional
         Monte Carlo realizations of the observed flux, shape
         ``(nmonte, nbins)``. Defaults to ``None``.
@@ -1722,16 +1727,22 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
 
     weights = np.sqrt(emlineivar)
 
-    # Monte Carlo spectrum carried over from continuum-fitting. Assume that the
-    # smooth continuum model is the same...
+    # Monte Carlo spectrum, continuum, and smooth continuum carried over from
+    # continuum-fitting.
     if specflux_monte is not None:
         nmonte = len(specflux_monte)
-        if continuummodel_monte is not None:
-            emlineflux_monte = (specflux_monte - continuummodel_monte - \
-                                smooth_continuum[np.newaxis, :])
-        else:
-            emlineflux_monte = (specflux_monte - continuummodel[np.newaxis, :] - \
-                                smooth_continuum[np.newaxis, :])
+        if continuummodel_monte is None:
+            continuummodel_monte = continuummodel[np.newaxis, :]
+        if smooth_continuum_monte is None:
+            smooth_continuum_monte = smooth_continuum[np.newaxis, :]
+        emlineflux_monte = specflux_monte - continuummodel_monte - smooth_continuum_monte
+
+        # Interpolate over bad pixels, as we do for the nominal spectrum.
+        if np.any(emlinebad):
+            for emlineflux_monte1 in emlineflux_monte:
+                emlineflux_monte1[emlinebad] = np.interp(
+                    emlinewave[emlinebad], emlinewave[emlinegood],
+                    emlineflux_monte1[emlinegood])
     else:
         nmonte = 0
 

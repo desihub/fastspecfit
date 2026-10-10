@@ -12,8 +12,8 @@ from astropy.table import Table
 
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data, _initialize_sc_data
-from fastspecfit.util import BoxedScalar, MPPool, NMONTE_DEFAULT, fsftime
-from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS
+from fastspecfit.util import BoxedScalar, MPPool, NMONTE_DEFAULT, SMOOTH_WINDOW, SMOOTH_STEP, fsftime
+from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS, TAUV_BOUNDS
 from fastspecfit.cosmo import COSMOLOGY_MODELS, build_cosmology
 
 def make_init_sc_args(args, fastphot=False, fitstack=False):
@@ -119,6 +119,9 @@ def parse(options=None, rank=0):
     fit_group.add_argument('--vdisp-nominal', type=float, default=VDISP_NOMINAL, help='Nominal (default) velocity dispersion in km/s.')
     fit_group.add_argument('--vdisp-bounds', type=float, default=VDISP_BOUNDS, nargs=2, metavar=('MIN', 'MAX'),
                         help='Minimum and maximum velocity dispersion in km/s, given as two space-separated values, e.g. --vdisp-bounds 50 500.')
+    fit_group.add_argument('--tauv-bounds', type=float, default=TAUV_BOUNDS, nargs=2, metavar=('MIN', 'MAX'),
+                        help='Minimum and maximum V-band optical depth, given as two space-separated values, e.g. --tauv-bounds 0 2; '
+                        'equal values fix tau(V), e.g. --tauv-bounds 0 0.')
     fit_group.add_argument('--vdisp-nbin', type=int, default=6, help='Number of grid points for the velocity dispersion chi2 scan.')
     fit_group.add_argument('--no-broadlinefit', default=True, action='store_false', dest='broadlinefit',
                         help='Do not model broad Balmer and helium line-emission.')
@@ -126,6 +129,8 @@ def parse(options=None, rank=0):
     fit_group.add_argument('--ignore-quasarnet', dest='use_quasarnet', default=True, action='store_false', help='Do not use QuasarNet to improve QSO redshifts.')
     fit_group.add_argument('--constrain-age', action='store_true', help='Constrain the age of the SED.')
     fit_group.add_argument('--no-smooth-continuum', action='store_true', help='Do not fit the smooth continuum.')
+    fit_group.add_argument('--smooth-window', type=int, default=SMOOTH_WINDOW, help='Width of the smooth-continuum sliding window in pixels.')
+    fit_group.add_argument('--smooth-step', type=int, default=SMOOTH_STEP, help='Step size of the smooth-continuum sliding window in pixels.')
     fit_group.add_argument('--uncertainty-floor', type=float, default=0.01, help='Minimum fractional uncertainty to add in quadrature to the formal inverse variance spectrum.')
     fit_group.add_argument('--minsnr-balmer-broad', type=float, default=2.5, help='Minimum broad Balmer S/N to force broad+narrow-line model.')
 
@@ -139,13 +144,29 @@ def parse(options=None, rank=0):
     if rank == 0:
         log.info(f'fastspec {" ".join(options)}')
 
-    return parser.parse_args(options)
+    args = parser.parse_args(options)
+
+    tauv_lo, tauv_hi = args.tauv_bounds
+    if tauv_lo < 0. or tauv_lo > tauv_hi:
+        errmsg = f'tauv_bounds must be (lo, hi) with 0 <= lo <= hi; got {tuple(args.tauv_bounds)}'
+        log.critical(errmsg)
+        raise ValueError(errmsg)
+
+    # windows with fewer than 15 pixels are discarded by smooth_continuum
+    if args.smooth_window < 15 or args.smooth_step < 1:
+        errmsg = f'smooth_window must be >= 15 and smooth_step >= 1; got {args.smooth_window}, {args.smooth_step}'
+        log.critical(errmsg)
+        raise ValueError(errmsg)
+
+    return args
 
 
 def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=True,
                  fastphot=False, fitstack=False, constrain_age=False,
                  no_smooth_continuum=False, debug_plots=False, uncertainty_floor=0.01,
-                 minsnr_balmer_broad=2.5, nmonte=NMONTE_DEFAULT, seed=1, vdisp_nbin=6):
+                 minsnr_balmer_broad=2.5, nmonte=NMONTE_DEFAULT, seed=1, vdisp_nbin=6,
+                 tauv_bounds=TAUV_BOUNDS, smooth_window=SMOOTH_WINDOW,
+                 smooth_step=SMOOTH_STEP):
     """Fit the continuum and emission lines for a single DESI object.
 
     Parameters
@@ -187,6 +208,15 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
     vdisp_nbin : int, optional
         Number of grid points for the velocity dispersion chi2 scan.
         Defaults to 6.
+    tauv_bounds : tuple, optional
+        Lower and upper bounds on tau(V); equal bounds fix tau(V). Defaults
+        to :data:`~fastspecfit.templates.TAUV_BOUNDS`.
+    smooth_window : int, optional
+        Width of the smooth-continuum sliding window in pixels. Defaults to
+        :data:`~fastspecfit.util.SMOOTH_WINDOW`.
+    smooth_step : int, optional
+        Step size of the smooth-continuum sliding window in pixels. Defaults
+        to :data:`~fastspecfit.util.SMOOTH_STEP`.
 
     Returns
     -------
@@ -243,11 +273,13 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
     fastfit = BoxedScalar(fastfit_dtype)
     specphot = BoxedScalar(specphot_dtype)
 
-    continuummodel, smooth_continuum, continuummodel_monte, specflux_monte = \
+    (continuummodel, smooth_continuum, continuummodel_monte,
+     smooth_continuum_monte, specflux_monte) = \
         continuum_specfit(data, fastfit, specphot, templates, igm, phot, constrain_age=constrain_age,
                           no_smooth_continuum=no_smooth_continuum, fastphot=fastphot,
                           fitstack=fitstack, debug_plots=debug_plots, nmonte=nmonte,
-                          seed=seed, vdisp_nbin=vdisp_nbin)
+                          seed=seed, vdisp_nbin=vdisp_nbin, tauv_bounds=tauv_bounds,
+                          smooth_window=smooth_window, smooth_step=smooth_step)
 
     # Optionally fit the emission-line spectrum.
     if fastphot:
@@ -258,7 +290,8 @@ def fastspec_one(iobj, data, meta, fastfit_dtype, specphot_dtype, broadlinefit=T
                                  broadlinefit=broadlinefit,
                                  minsnr_balmer_broad=minsnr_balmer_broad,
                                  debug_plots=debug_plots, specflux_monte=specflux_monte,
-                                 continuummodel_monte=continuummodel_monte)
+                                 continuummodel_monte=continuummodel_monte,
+                                 smooth_continuum_monte=smooth_continuum_monte)
 
     log.info(fsftime('fastspec_one', time.time()-t0,
                      context=f'{phot.uniqueid_col.lower()}={data["uniqueid"]}'))
@@ -442,6 +475,9 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             'nmonte':              args.nmonte,
             'seed':                seeds[iobj],
             'vdisp_nbin':          args.vdisp_nbin,
+            'tauv_bounds':         tuple(args.tauv_bounds),
+            'smooth_window':       args.smooth_window,
+            'smooth_step':         args.smooth_step,
         } for iobj in range(nobj)]
 
 
@@ -514,14 +550,15 @@ def fastspec(fastphot=False, fitstack=False, args=None, comm=None, verbose=False
             constraintsfile=sc_data.constraints.file, fastphot=fastphot,
             inputz=input_redshifts is not None,
             nmonte=args.nmonte, vdisp_nominal=args.vdisp_nominal,
-            vdisp_bounds=args.vdisp_bounds,
+            vdisp_bounds=args.vdisp_bounds, tauv_bounds=args.tauv_bounds,
             seed=args.seed, inputseeds=input_seeds is not None,
             uncertainty_floor=args.uncertainty_floor,
             minsnr_balmer_broad=args.minsnr_balmer_broad,
             ignore_photometry=args.ignore_photometry,
             broadlinefit=args.broadlinefit, constrain_age=args.constrain_age,
             use_quasarnet=args.use_quasarnet,
-            no_smooth_continuum=args.no_smooth_continuum)
+            no_smooth_continuum=args.no_smooth_continuum,
+            smooth_window=args.smooth_window, smooth_step=args.smooth_step)
 
         return 0
 

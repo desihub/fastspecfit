@@ -228,6 +228,16 @@ class TestStellarContinuumChi2:
                                      split=10, ndof_spec=10, ndof_phot=10)
         assert rchi2_yes > rchi2_no
 
+    def test_tauv_fixed_decreases_nfree(self):
+        """Fixing tau(V) removes one free parameter, lowering rchi2."""
+        resid = np.ones(20)
+        _, _, rchi2_free  = self._call(resid, ncoeff=3, vdisp_fitted=False,
+                                       split=10, ndof_spec=10, ndof_phot=10)
+        _, _, rchi2_fixed = self._call(resid, ncoeff=3, vdisp_fitted=False,
+                                       split=10, ndof_spec=10, ndof_phot=10,
+                                       tauv_fitted=False)
+        assert rchi2_fixed < rchi2_free
+
     def test_split_correctly_separates_spec_and_phot(self):
         """Residuals before split go to spec chi2; residuals after go to phot."""
         resid = np.concatenate([np.zeros(10), np.ones(5)])
@@ -252,6 +262,23 @@ class TestSmoothContinuum:
         linemask = np.zeros(n, bool)
         camerapix = np.array([[0, n]])
         return wave, flux, ivar, linemask, camerapix
+
+    def test_window_and_step_change_result(self, flat_spectrum):
+        """Non-default smooth_window/smooth_step give a different continuum."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, camerapix = flat_spectrum
+        default = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix)
+        result = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix,
+                                                 smooth_window=50, smooth_step=25)
+        assert result.shape == default.shape
+        assert not np.allclose(result, default)
+
+    def test_window_wider_than_camera_raises(self, flat_spectrum):
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, camerapix = flat_spectrum
+        with pytest.raises(ValueError, match='smooth_window'):
+            ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix,
+                                            smooth_window=len(wave)+1)
 
     def test_output_shape(self, flat_spectrum):
         from fastspecfit.continuum import ContinuumTools
@@ -332,3 +359,69 @@ def test_vdisp_nbin_default_is_6():
     from fastspecfit.continuum import ContinuumTools
     sig = inspect.signature(ContinuumTools.__init__)
     assert sig.parameters['vdisp_nbin'].default == 6
+
+
+# ── tau(V) bounds ─────────────────────────────────────────────────────────────
+
+def test_tauv_bounds_default():
+    """The default tau(V) bounds are (0, 2)."""
+    import inspect
+    from fastspecfit.continuum import ContinuumTools
+    from fastspecfit.templates import TAUV_BOUNDS
+    sig = inspect.signature(ContinuumTools.__init__)
+    assert sig.parameters['tauv_bounds'].default == TAUV_BOUNDS == (0., 2.)
+
+
+@pytest.mark.parametrize('bounds', ['2 0', '-1 1'])
+def test_tauv_bounds_invalid_raises(bounds):
+    """Reversed or negative --tauv-bounds raise ValueError."""
+    from fastspecfit.fastspecfit import parse
+    with pytest.raises(ValueError, match='tauv_bounds'):
+        parse(options=f'redrock.fits -o out.fits --tauv-bounds {bounds}'.split())
+
+
+class TestFixedTauvObjective:
+    """With tau(V) fixed it is dropped from the least_squares parameter vector."""
+
+    def _call(self, params, fit_vdisp, **kwargs):
+        from types import SimpleNamespace
+        from fastspecfit.continuum import ContinuumTools
+        seen = {}
+
+        def build_stellar_continuum(templateflux, templatecoeff, tauv=0., vdisp=None,
+                                    conv_pre=None, dust_emission=True):
+            seen.update(tauv=tauv, vdisp=vdisp, coeff=np.array(templatecoeff))
+            return np.zeros(3)
+
+        mock = SimpleNamespace(
+            build_stellar_continuum=build_stellar_continuum,
+            continuum_to_photometry=lambda model: np.zeros(2))
+        ContinuumTools._stellar_objective(
+            mock, np.array(params), templateflux=None, dust_emission=False,
+            fit_vdisp=fit_vdisp, conv_pre=None, objflam=np.zeros(2),
+            objflamistd=np.ones(2), specflux=None, specistd=None,
+            synthphot=True, synthspec=False, **kwargs)
+        return seen
+
+    def test_free_tauv(self):
+        seen = self._call([0.3, 120., 1., 2.], fit_vdisp=True)
+        assert seen['tauv'] == 0.3 and seen['vdisp'] == 120.
+        assert np.array_equal(seen['coeff'], [1., 2.])
+
+    def test_fixed_tauv_with_vdisp(self):
+        seen = self._call([120., 1., 2.], fit_vdisp=True, tauv_fixed=0.)
+        assert seen['tauv'] == 0. and seen['vdisp'] == 120.
+        assert np.array_equal(seen['coeff'], [1., 2.])
+
+    def test_fixed_tauv_no_vdisp(self):
+        seen = self._call([1., 2.], fit_vdisp=False, tauv_fixed=0.5)
+        assert seen['tauv'] == 0.5 and seen['vdisp'] is None
+        assert np.array_equal(seen['coeff'], [1., 2.])
+
+
+@pytest.mark.parametrize('opts', ['--smooth-window 10', '--smooth-step 0'])
+def test_smooth_options_invalid_raise(opts):
+    """Too-narrow --smooth-window or non-positive --smooth-step raise ValueError."""
+    from fastspecfit.fastspecfit import parse
+    with pytest.raises(ValueError, match='smooth_window'):
+        parse(options=f'redrock.fits -o out.fits {opts}'.split())
