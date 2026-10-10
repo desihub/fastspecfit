@@ -149,7 +149,7 @@ def test_fastspec_smooth_options(fastspec_smooth_output, fastspec_output,
     hdr = fitsio.read_header(fastspec_smooth_output)
     assert hdr['SMKNOTS'] == 500
     hdr = fitsio.read_header(fastspec_output)
-    assert hdr['SMKNOTS'] == 200
+    assert hdr['SMKNOTS'] == 800
 
     models = fitsio.read(fastspec_smooth_output, ext='MODELS')
     models_default = fitsio.read(fastspec_output, ext='MODELS')

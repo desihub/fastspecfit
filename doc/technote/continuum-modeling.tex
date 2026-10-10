@@ -442,7 +442,7 @@ The algorithm operates per camera:
   \item Mask pixels within emission-line regions, camera edges (9 pixels
     each side), and pixels with zero inverse variance.
   \item Place uniformly spaced knots across the unmasked wavelength range
-    of the camera, with a spacing of approximately 200~\AA.  Knots are
+    of the camera, with a spacing of approximately 800~\AA.  Knots are
     dropped until at least 15 unmasked pixels lie between adjacent knots,
     so that a masked region is bridged by a single polynomial piece.
   \item Fit an inverse-variance weighted cubic B-spline with these knots to

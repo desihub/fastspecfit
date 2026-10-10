@@ -21,7 +21,7 @@ except:
 FLUXNORM = 1e17 # flux normalization factor for all DESI spectra [erg/s/cm2/A]
 MASSNORM = 1e10 # mass normalization factor
 NMONTE_DEFAULT = 50
-SMOOTH_KNOT_SPACING = 200. # smooth-continuum spline knot spacing [Angstrom]
+SMOOTH_KNOT_SPACING = 800. # smooth-continuum spline knot spacing [Angstrom]
 
 TINY = np.nextafter(0, 1, dtype=np.float32)
 SQTINY = np.sqrt(TINY)
