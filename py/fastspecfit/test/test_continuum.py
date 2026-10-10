@@ -340,6 +340,57 @@ class TestSmoothContinuum:
                                                  linemask, camerapix)
         assert np.all(result == 0.)
 
+    def test_return_stats(self, flat_spectrum):
+        """The spline lowers chi2, and the number of coefficients is positive."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, camerapix = flat_spectrum
+        default = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix)
+        result, stats = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask,
+                                                        camerapix, return_stats=True)
+        assert np.all(result == default)
+        assert stats['dchi2'].shape == (1, ) and stats['ndof'].shape == (1, )
+        assert stats['ndof'][0] >= 4 # cubic
+        assert stats['dchi2'][0] > stats['ndof'][0]
+
+    def test_stats_of_masked_cameras_are_zero(self, flat_spectrum):
+        """A camera without data or without unmasked pixels has no smooth
+        continuum and all-zero (finite) statistics."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, _ = flat_spectrum
+        n = len(wave)
+        camerapix = np.array([[0, n // 2], [n // 2, n]])
+
+        # first camera: no data
+        flux1, ivar1 = flux.copy(), ivar.copy()
+        flux1[:n // 2] = 0.
+        ivar1[:n // 2] = 0.
+        result, stats = ContinuumTools.smooth_continuum(wave, flux1, ivar1, linemask,
+                                                        camerapix, return_stats=True)
+        assert np.all(result[:n // 2] == 0.)
+        assert stats['dchi2'][0] == 0. and stats['ndof'][0] == 0
+        assert stats['dchi2'][1] > 0. and stats['ndof'][1] > 0
+        assert np.all(np.isfinite(result))
+
+        # second camera: every pixel in the emission-line mask
+        mask = linemask.copy()
+        mask[n // 2:] = True
+        result, stats = ContinuumTools.smooth_continuum(wave, flux, ivar, mask,
+                                                        camerapix, return_stats=True)
+        assert np.all(result[n // 2:] == 0.)
+        assert stats['dchi2'][1] == 0. and stats['ndof'][1] == 0
+        assert stats['dchi2'][0] > 0. and stats['ndof'][0] > 0
+
+    def test_short_run_at_camera_end_is_ignored(self, flat_spectrum):
+        """A few discrepant pixels beyond a masked line at the end of a camera
+        do not pull the continuum."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, camerapix = flat_spectrum
+        mask = (wave > 7300.) & (wave < 7900.)
+        flux = flux.copy()
+        flux[wave >= 7900.] = -20.
+        result = ContinuumTools.smooth_continuum(wave, flux, ivar, mask, camerapix)
+        assert np.max(np.abs(result[wave > 7300.] - 5.)) < 0.5
+
 
 # ── VDISP_IVAR Jacobian ───────────────────────────────────────────────────────
 

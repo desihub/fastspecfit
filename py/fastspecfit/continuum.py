@@ -190,7 +190,7 @@ class ContinuumTools(object):
     def smooth_continuum(wave, flux, ivar, linemask, camerapix,
                          uniqueid=0, smooth_knot_spacing=SMOOTH_KNOT_SPACING,
                          clip_sigma=3., maxiter=5, nminpix=15, nmaskpix=9,
-                         debug_plots=False):
+                         debug_plots=False, return_stats=False):
         """Build a smooth, nonparametric continuum spectrum.
 
         Fit an inverse-variance weighted cubic B-spline with (approximately)
@@ -233,12 +233,21 @@ class ContinuumTools(object):
             Number of pixels to mask at each camera edge. Defaults to 9.
         debug_plots : bool, optional
             If ``True``, write a QA plot to the current directory.
+        return_stats : bool, optional
+            If ``True``, also return per-camera statistics of the fit.
+            Defaults to ``False``.
 
         Returns
         -------
-        :class:`numpy.ndarray`
+        smoothcontinuum : :class:`numpy.ndarray`
             Smooth continuum spectrum that can be subtracted from ``flux``
             to produce a pure emission-line spectrum.
+        stats : :class:`dict`
+            Only returned if ``return_stats=True``. One element per camera:
+            ``dchi2``, the chi2 of the pixels used in the final spline fit
+            without minus with the smooth continuum (non-negative), and
+            ``ndof``, the number of spline coefficients. Both are zero for a
+            camera without a smooth continuum (e.g., too few unmasked pixels).
 
         """
         from scipy.interpolate import make_lsq_spline
@@ -285,6 +294,7 @@ class ContinuumTools(object):
             smoothflux = np.zeros_like(camflux)
             rejected = np.zeros(len(camflux), bool)
             knotwave, knotflux = np.array([]), np.array([])
+            dchi2, ndof = 0., 0 # no smooth continuum
 
             # Mask nmaskpix (presumably noisy) pixels from the edge
             # of each per-camera spectrum.
@@ -295,7 +305,7 @@ class ContinuumTools(object):
 
             # corner case for very wacky spectra
             if np.sum(good) < nminpix:
-                return knotwave, knotflux, smoothflux, rejected
+                return knotwave, knotflux, smoothflux, rejected, dchi2, ndof
 
             # The knots depend on the mask but not on the flux, so they are
             # the same for every Monte Carlo realization.
@@ -331,7 +341,7 @@ class ContinuumTools(object):
                                           k=degree, w=camistd[fitmask])
                 except (ValueError, np.linalg.LinAlgError):
                     log.warning(f'Smooth-continuum spline fit failed [{uniqueid}].')
-                    return knotwave, knotflux, smoothflux, rejected
+                    return knotwave, knotflux, smoothflux, rejected, dchi2, ndof
 
                 # Reject outliers using a robust estimate of the scatter,
                 # which can exceed unity when the residuals are dominated by
@@ -351,6 +361,9 @@ class ContinuumTools(object):
             # Evaluate on the original wavelength vector, with constant
             # extrapolation.
             smoothflux = spl(np.clip(camwave, minwave, maxwave))
+            if not np.all(np.isfinite(smoothflux)):
+                log.warning(f'Smooth-continuum spline is not finite [{uniqueid}].')
+                return knotwave, knotflux, np.zeros_like(camflux), rejected, dchi2, ndof
 
             # very important!
             smoothflux[(camflux == 0.) & (camivar == 0.)] = 0.
@@ -361,12 +374,29 @@ class ContinuumTools(object):
             # outliers rejected from the final fit (for the QA)
             rejected = good & ~usedmask
 
-            return knotwave, knotflux, smoothflux, rejected
+            # Decrease in chi2 due to the smooth continuum over the pixels
+            # of the final fit, and the number of spline coefficients. The
+            # spline minimizes the chi2 of these pixels, so the decrease
+            # cannot be negative (other than from round-off).
+            chi_without = camflux[usedmask] * camistd[usedmask]
+            chi_with = (camflux[usedmask] - spl(camwave[usedmask])) * camistd[usedmask]
+            with np.errstate(over='ignore', invalid='ignore'):
+                dchi2 = np.sum(chi_without**2) - np.sum(chi_with**2)
+            # guard against round-off and against overflowing float32
+            if not (0. < dchi2 < F32MAX):
+                dchi2 = 0.
+            ndof = len(knots) + degree + 1
+
+            return knotwave, knotflux, smoothflux, rejected, dchi2, ndof
+
+        ncam = len(camerapix)
+        stats = {'dchi2': np.zeros(ncam), 'ndof': np.zeros(ncam, int)}
 
         smooth_wave, smooth_flux, smoothcontinuum, rejected = [], [], [], []
-        for ss, ee in camerapix:
-            smooth_wave1, smooth_flux1, smoothcontinuum1, rejected1 = _smooth_percamera(
-                wave[ss:ee], flux[ss:ee], ivar[ss:ee], linemask[ss:ee])
+        for icam, (ss, ee) in enumerate(camerapix):
+            (smooth_wave1, smooth_flux1, smoothcontinuum1, rejected1,
+             stats['dchi2'][icam], stats['ndof'][icam]) = _smooth_percamera(
+                 wave[ss:ee], flux[ss:ee], ivar[ss:ee], linemask[ss:ee])
             smooth_wave.append(smooth_wave1)
             smooth_flux.append(smooth_flux1)
             smoothcontinuum.append(smoothcontinuum1)
@@ -444,6 +474,9 @@ class ContinuumTools(object):
             fig.savefig(pngfile)#, bbox_inches='tight')
             plt.close()
             log.info(f'Wrote {pngfile}')
+
+        if return_stats:
+            return smoothcontinuum, stats
 
         return smoothcontinuum
 
@@ -2139,7 +2172,10 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
     # Get the smooth continuum.
     t0 = time.time()
 
-    smoothstats = np.zeros(len(data['camerapix']))
+    # Per-camera statistics of the smooth continuum; all zero for a camera
+    # without one.
+    ncam = len(data['camerapix'])
+    smoothstats = {'dchi2': np.zeros(ncam), 'ndof': np.zeros(ncam, int), 'rms': np.zeros(ncam)}
 
     if np.all(coeff == 0.) or no_smooth_continuum:
         smoothcontinuum = np.zeros_like(specwave)
@@ -2147,7 +2183,7 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
     else:
         gaps = ((specflux == 0.) & (specivar == 0.))
 
-        def do_smooth(specflux, desimodel_nolines, debug_plots=False):
+        def do_smooth(specflux, desimodel_nolines, debug_plots=False, return_stats=False):
             # Need to be careful we don't pass a large negative residual
             # where there are gaps in the data.
             residuals = specflux * median_apercorr - desimodel_nolines
@@ -2157,9 +2193,12 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
                 specwave, residuals, specivar / median_apercorr**2,
                 slinemask, uniqueid=data['uniqueid'],
                 camerapix=data['camerapix'], smooth_knot_spacing=smooth_knot_spacing,
-                debug_plots=debug_plots)
+                debug_plots=debug_plots, return_stats=return_stats)
 
-        smoothcontinuum = do_smooth(specflux, desimodel_nolines, debug_plots=debug_plots)
+        smoothcontinuum, stats = do_smooth(specflux, desimodel_nolines, debug_plots=debug_plots,
+                                           return_stats=True)
+        smoothstats['dchi2'][:] = stats['dchi2']
+        smoothstats['ndof'][:] = stats['ndof']
 
         # Recompute the smooth continuum for each realization so that its
         # uncertainty is propagated into the emission-line fitting.
@@ -2174,10 +2213,22 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
         else:
             smoothcontinuum_monte = None
 
+        # RMS of the smooth continuum relative to the median stellar
+        # continuum, over all the pixels with data (including the pixels in
+        # the emission-line mask). Only measured if this camera has a smooth
+        # continuum and a positive stellar continuum.
         for icam, (ss, ee) in enumerate(data['camerapix']):
-            I = ((specflux[ss:ee] != 0.) & (specivar[ss:ee] != 0.) & (smoothcontinuum[ss:ee] != 0.))
-            if np.count_nonzero(I) > 3: # require three good pixels to compute the mean
-                smoothstats[icam] = median(smoothcontinuum[ss:ee][I] / specflux[ss:ee][I])
+            if smoothstats['ndof'][icam] == 0:
+                continue
+            I = specivar_nolinemask[ss:ee] > 0.
+            if np.count_nonzero(I) > 3:
+                norm = median(desimodel_nolines[ss:ee][I])
+                if np.isfinite(norm) and norm > 0.:
+                    with np.errstate(over='ignore', invalid='ignore'):
+                        rms = np.sqrt(np.mean(smoothcontinuum[ss:ee][I]**2)) / norm
+                    # a tiny stellar continuum must not overflow float32 [%]
+                    if 100. * rms < F32MAX:
+                        smoothstats['rms'][icam] = rms
 
     log.debug(fsftime('smooth_continuum', time.time()-t0))
 
@@ -2289,10 +2340,15 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
         for icam, cam in enumerate(np.atleast_1d(data['cameras'])):
             fastfit[f'SNR_{cam.upper()}'] = data['snr'][icam]
 
-        msg = ['Smooth continuum correction:']
-        for cam, corr in zip(np.atleast_1d(data['cameras']), smoothstats):
-            fastfit[f'SMOOTHCORR_{cam.upper()}'] = corr * 100. # [%]
-            msg.append(f'{cam}={100.*corr:.3f}%')
+        # Cameras without data are not in data['cameras'], so their columns
+        # stay at zero.
+        msg = ['Smooth continuum (delta-chi2, ndof, rms):']
+        for icam, cam in enumerate(np.atleast_1d(data['cameras'])):
+            dchi2, ndof, rms = smoothstats['dchi2'][icam], smoothstats['ndof'][icam], smoothstats['rms'][icam]
+            fastfit[f'DELTA_SMOOTHCHI2_{cam.upper()}'] = dchi2
+            fastfit[f'DELTA_SMOOTHNDOF_{cam.upper()}'] = ndof
+            fastfit[f'SMOOTHRMS_{cam.upper()}'] = 100. * rms # [%]
+            msg.append(f'{cam}=({dchi2:.1f}, {ndof}, {100.*rms:.3f}%)')
         log.info(' '.join(msg))
 
     #result['Z'] = redshift

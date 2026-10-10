@@ -2206,8 +2206,14 @@ def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
         if not fastphot:
             for cam in cameras:
                 add_field(f'SNR_{cam.upper()}', dtype='f4') # median S/N in each camera
+            # smooth continuum: chi2 without minus with, number of spline
+            # coefficients, and rms relative to the stellar continuum [%]
             for cam in cameras:
-                add_field(f'SMOOTHCORR_{cam.upper()}', dtype='f4')
+                add_field(f'DELTA_SMOOTHCHI2_{cam.upper()}', dtype='f4')
+            for cam in cameras:
+                add_field(f'DELTA_SMOOTHNDOF_{cam.upper()}', dtype=np.int32)
+            for cam in cameras:
+                add_field(f'SMOOTHRMS_{cam.upper()}', dtype='f4')
 
             # aperture corrections
             add_field('APERCORR', dtype='f4') # median aperture correction

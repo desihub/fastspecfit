@@ -386,9 +386,15 @@ Name                        Type         Units                         Descripti
                       SNR_B      float32                               Median signal-to-noise ratio per pixel in the *b* camera.
                       SNR_R      float32                               Like SNR_B but in the *r* camera.
                       SNR_Z      float32                               Like SNR_B but in *z* camera.
-               SMOOTHCORR_B      float32                       percent Median value of the smooth continuum correction relative to the data in the *b* camera.
-               SMOOTHCORR_R      float32                       percent Like SMOOTHCORR_B but in the *r* camera.
-               SMOOTHCORR_Z      float32                       percent Like SMOOTHCORR_B but in the *z* camera.
+         DELTA_SMOOTHCHI2_B      float32                               Chi-squared difference between a continuum model without and with the smooth continuum in the *b* camera, measured over the pixels used to fit the smooth continuum.
+         DELTA_SMOOTHCHI2_R      float32                               Like DELTA_SMOOTHCHI2_B but in the *r* camera.
+         DELTA_SMOOTHCHI2_Z      float32                               Like DELTA_SMOOTHCHI2_B but in the *z* camera.
+         DELTA_SMOOTHNDOF_B        int32                               Number of free parameters (spline coefficients) of the smooth continuum in the *b* camera.
+         DELTA_SMOOTHNDOF_R        int32                               Like DELTA_SMOOTHNDOF_B but in the *r* camera.
+         DELTA_SMOOTHNDOF_Z        int32                               Like DELTA_SMOOTHNDOF_B but in the *z* camera.
+                SMOOTHRMS_B      float32                       percent Root-mean-square of the smooth continuum relative to the median stellar continuum model in the *b* camera.
+                SMOOTHRMS_R      float32                       percent Like SMOOTHRMS_B but in the *r* camera.
+                SMOOTHRMS_Z      float32                       percent Like SMOOTHRMS_B but in the *z* camera.
                    APERCORR      float32                               Median aperture correction factor.
                  APERCORR_G      float32                               Aperture correction factor measured in the *g*-band.
                  APERCORR_R      float32                               Like APERCORR_G but measured in the *r*-band.
