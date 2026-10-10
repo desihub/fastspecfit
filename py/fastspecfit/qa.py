@@ -994,8 +994,8 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
                maxphotwave=35., emline_snrmin=0.0, nsmoothspec=1,
                init_sigma_uv=None, init_sigma_narrow=None, init_sigma_balmer=None,
                init_vshift_uv=None, init_vshift_narrow=None,
-               init_vshift_balmer=None, uncertainty_floor=0.01, fastphot=False,
-               fitstack=False, inputz=False, no_smooth_continuum=False,
+               init_vshift_balmer=None, refit_linemask=True, uncertainty_floor=0.01,
+               fastphot=False, fitstack=False, inputz=False, no_smooth_continuum=False,
                smooth_knot_spacing=SMOOTH_KNOT_SPACING,
                smooth_legacy=None, outdir=None, outprefix=None,
                cutout_width=30., cutout_layer=None, cutout_pixscale=None):
@@ -1030,10 +1030,15 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
         Boxcar smoothing width for the displayed spectrum. Default is 1.
     init_sigma_uv, init_sigma_narrow, init_sigma_balmer : :class:`float` or None, optional
         Line-widths in km/s adopted by the emission-line mask of the original
-        fit. If given (together with the velocity shifts), the mask is rebuilt
-        from these values without refitting the lines.
+        fit; only used if ``refit_linemask=False``.
     init_vshift_uv, init_vshift_narrow, init_vshift_balmer : :class:`float` or None, optional
         Corresponding velocity shifts in km/s.
+    refit_linemask : :class:`bool`, optional
+        If ``True``, rebuild the emission-line mask exactly as in the original
+        fit, by refitting the lines from the default initial line-widths. If
+        ``False``, build the mask from the six ``init_*`` values without
+        refitting, which is faster but only approximately reproduces the
+        original mask. Default is ``True``.
     uncertainty_floor : :class:`float`, optional
         Minimum fractional uncertainty used in the original fit. Default is
         0.01.
@@ -1071,20 +1076,24 @@ def desiqa_one(data, metadata, specphot, coadd_type, fastfit=None,
     if fitstack:
         one_stacked_spectrum(data, metadata, synthphot=False)
     else:
-        # Rebuild the emission-line mask (and, therefore, the smooth
-        # continuum) of the original fit from its final line-widths and
-        # velocity shifts, if we have them; otherwise, refit.
-        refit_linemask = None in (init_sigma_uv, init_sigma_narrow, init_sigma_balmer,
-                                  init_vshift_uv, init_vshift_narrow, init_vshift_balmer)
-        one_spectrum(data, metadata, fastphot=fastphot,
-                     uncertainty_floor=uncertainty_floor,
-                     refit_linemask=refit_linemask,
-                     init_sigma_uv=init_sigma_uv,
-                     init_sigma_narrow=init_sigma_narrow,
-                     init_sigma_balmer=init_sigma_balmer,
-                     init_vshift_uv=init_vshift_uv,
-                     init_vshift_narrow=init_vshift_narrow,
-                     init_vshift_balmer=init_vshift_balmer)
+        # To reproduce the emission-line mask (and, therefore, the smooth
+        # continuum) of the original fit, refit the lines from the default
+        # initial line-widths, just like fastspec; do not start from the
+        # final line-widths of the original fit, which leads to a different
+        # mask.
+        if refit_linemask:
+            one_spectrum(data, metadata, fastphot=fastphot,
+                         uncertainty_floor=uncertainty_floor)
+        else:
+            one_spectrum(data, metadata, fastphot=fastphot,
+                         uncertainty_floor=uncertainty_floor,
+                         refit_linemask=False,
+                         init_sigma_uv=init_sigma_uv,
+                         init_sigma_narrow=init_sigma_narrow,
+                         init_sigma_balmer=init_sigma_balmer,
+                         init_vshift_uv=init_vshift_uv,
+                         init_vshift_narrow=init_vshift_narrow,
+                         init_vshift_balmer=init_vshift_balmer)
 
     qa_fastspec(data, sc_data.templates, metadata, specphot,
                 fastfit, coadd_type=coadd_type,
