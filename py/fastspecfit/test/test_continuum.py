@@ -391,6 +391,55 @@ class TestSmoothContinuum:
         result = ContinuumTools.smooth_continuum(wave, flux, ivar, mask, camerapix)
         assert np.max(np.abs(result[wave > 7300.] - 5.)) < 0.5
 
+    def test_flux_monte(self, flat_spectrum):
+        """The realizations are fit with the pixels and knots of the nominal
+        fit, and do not change the nominal result."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, _ = flat_spectrum
+        n = len(wave)
+        camerapix = np.array([[0, n // 2], [n // 2, n]])
+
+        # outliers which the nominal fit rejects
+        flux = flux.copy()
+        flux[100:103] = 50.
+        default = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix)
+
+        rng = np.random.default_rng(11)
+        flux_monte = flux + 0.3 * rng.standard_normal((5, n))
+        flux_monte[0, :] = flux
+        result, result_monte, stats = ContinuumTools.smooth_continuum(
+            wave, flux, ivar, linemask, camerapix, flux_monte=flux_monte, return_stats=True)
+        assert np.all(result == default)
+        assert result_monte.shape == flux_monte.shape
+        assert np.all(stats['ndof'] > 0)
+
+        # a realization which is identical to the data reproduces the nominal fit
+        assert np.allclose(result_monte[0, :], default, rtol=1e-10, atol=1e-10)
+        # the other realizations differ, but not by much
+        assert not np.allclose(result_monte[1, :], default)
+        assert np.max(np.abs(result_monte - default)) < 0.5
+        # the outliers are still rejected
+        assert np.max(np.abs(result_monte[:, 100:103] - 5.)) < 0.5
+
+        # all the realizations are fit at once, like one at a time
+        one = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix,
+                                              flux_monte=flux_monte[2:3, :])[1]
+        assert np.allclose(one[0, :], result_monte[2, :], rtol=1e-10, atol=1e-10)
+
+    def test_flux_monte_of_masked_camera_is_zero(self, flat_spectrum):
+        """A camera without a smooth continuum has none in the realizations."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, _ = flat_spectrum
+        n = len(wave)
+        camerapix = np.array([[0, n // 2], [n // 2, n]])
+        mask = linemask.copy()
+        mask[n // 2:] = True
+        flux_monte = np.tile(flux, (3, 1))
+        result, result_monte = ContinuumTools.smooth_continuum(
+            wave, flux, ivar, mask, camerapix, flux_monte=flux_monte)
+        assert np.all(result_monte[:, n // 2:] == 0.)
+        assert np.allclose(result_monte[:, :n // 2], result[:n // 2], rtol=1e-10, atol=1e-10)
+
 
 # ── VDISP_IVAR Jacobian ───────────────────────────────────────────────────────
 
