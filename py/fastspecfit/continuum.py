@@ -199,6 +199,11 @@ class ContinuumTools(object):
         by ``smooth_knot_spacing`` alone; it does not depend on the
         signal-to-noise ratio of the spectrum.
 
+        A run of unmasked pixels at either end of a camera is not used if it
+        is shorter than the masked region which separates it from the rest of
+        the spectrum; the model is held constant beyond the first and last
+        pixel which is used.
+
         Parameters
         ----------
         wave : :class:`numpy.ndarray`
@@ -252,6 +257,29 @@ class ContinuumTools(object):
         degree = 3 # cubic
 
 
+        def _trim_ends(good):
+            # Drop a run of unmasked pixels at either end of the camera if it
+            # is shorter than the masked region which separates it from the
+            # rest of the spectrum (e.g., a broad emission line near the end
+            # of the camera). Otherwise, those few (and usually noisy) pixels
+            # alone set the value of the spline at its clamped end, and the
+            # spline swings across the masked region to reach them.
+            good = good.copy()
+            for _ in range(2): # blue end, then red end
+                while True:
+                    I = np.flatnonzero(good)
+                    gaps = np.flatnonzero(np.diff(I) > 1)
+                    if len(gaps) == 0:
+                        break
+                    nrun = gaps[0] + 1                       # pixels in the end run
+                    ngap = I[gaps[0] + 1] - I[gaps[0]] - 1   # masked pixels beyond it
+                    if nrun >= ngap:
+                        break
+                    good[I[:nrun]] = False
+                good = good[::-1]
+            return good
+
+
         def _smooth_percamera(camwave, camflux, camivar, camlinemask):
 
             smoothflux = np.zeros_like(camflux)
@@ -263,7 +291,7 @@ class ContinuumTools(object):
             cammask = (camlinemask | (camivar <= 0.))
             cammask[:nmaskpix] = True
             cammask[-nmaskpix:] = True
-            good = np.logical_not(cammask)
+            good = _trim_ends(np.logical_not(cammask))
 
             # corner case for very wacky spectra
             if np.sum(good) < nminpix:
