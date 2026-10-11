@@ -2,7 +2,7 @@
 Change Log
 ==========
 
-3.6.2 (not released yet)
+3.7.0 (not released yet)
 ------------------------
 
 * Add ``--tauv-bounds``, ``--smooth-window`` and ``--smooth-step`` as
