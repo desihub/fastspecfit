@@ -13,9 +13,9 @@
 
 FASTSPECFIT_VERSION=${1:-"3.6.1"}
 
-DESIUTIL_VERSION=${DESIUTIL_VERSION:-"3.6.1"}
-DESISPEC_VERSION=${DESISPEC_VERSION:-"0.71.6"}
-DESITARGET_VERSION=${DESITARGET_VERSION:-"5.3.0"}
+DESIUTIL_VERSION=${DESIUTIL_VERSION:-"4.0.1"}
+DESISPEC_VERSION=${DESISPEC_VERSION:-"0.73.1"}
+DESITARGET_VERSION=${DESITARGET_VERSION:-"5.5.0"}
 SPECLITE_VERSION=${SPECLITE_VERSION:-"v1.0.0"}
 
 echo "Loading DESI software stack"
@@ -26,10 +26,10 @@ module swap desitarget/${DESITARGET_VERSION}
 module swap speclite/${SPECLITE_VERSION}
 
 echo "Loading FastSpecFit/${FASTSPECFIT_VERSION}"
-module load fastspecfit/${FASTSPECFIT_VERSION}
+#module load fastspecfit/${FASTSPECFIT_VERSION}
 # To use a development checkout instead:
-#export PYTHONPATH=/dvs_ro/common/software/desi/users/ioannis/fastspecfit/py:$PYTHONPATH
-#export PATH=/dvs_ro/common/software/desi/users/ioannis/fastspecfit/bin:$PATH
+export PYTHONPATH=/dvs_ro/common/software/desi/users/ioannis/fastspecfit/py:$PYTHONPATH
+export PATH=/dvs_ro/common/software/desi/users/ioannis/fastspecfit/bin:$PATH
 
 export DESI_SPECTRO_REDUX=/dvs_ro/cfs/cdirs/desi/spectro/redux
 export DUST_DIR=/dvs_ro/cfs/cdirs/cosmo/data/dust/v0_1
