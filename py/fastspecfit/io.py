@@ -1166,11 +1166,11 @@ class DESISpectra(object):
                         }
                     alldata.append(specdata)
             else:
-                # Don't use .select since meta and spec can be sorted
-                # differently if a non-sorted targetids was passed. Do the
-                # selection and sort ourselves.
+                # Only keep the requested targets in memory (the full coadd of
+                # one healpix can be several GB), and sort them ourselves,
+                # since read_spectra returns them in the order of the file.
                 os.environ['DESI_LOGLEVEL'] = 'warning'
-                spec = read_spectra(specfile)#.select(targets=meta[uniqueid])
+                spec = read_spectra(specfile, targetids=meta['TARGETID'].value)
 
                 srt = match_to(spec.fibermap[uniqueid_col], meta['TARGETID'])
                 spec = spec[srt]
