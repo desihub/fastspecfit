@@ -1590,7 +1590,7 @@ def test_broad_model(EMFit,
         log.info(f'  delta-chi2={delta_linechi2_balmer:.1f} > delta-ndof={delta_linendof_balmer:.0f}')
         log.info(f'  sigma_broad={Habroad:.1f} km/s, sigma_narrow={Hanarrow:.1f} km/s')
         if _broadsnr:
-            log.info(f'  {_broadsnr} > {minsnr_balmer_broad:.0f}')
+            log.info(f'  {_broadsnr} > {minsnr_balmer_broad:.1f}')
     else:
         adopt_broad = False
         if dchi2test == False:
@@ -1602,7 +1602,7 @@ def test_broad_model(EMFit,
             log.debug(f'Dropping broad-line model: Halpha_broad_sigma {Habroad:.1f} km/s < Halpha_narrow_sigma {Hanarrow:.1f} km/s '
                       f'(delta-chi2={delta_linechi2_balmer:.1f}, delta-ndof={delta_linendof_balmer:.0f}).')
         elif broadsnrtest == False:
-            log.debug(f'Dropping broad-line model: {_broadsnr} < {minsnr_balmer_broad:.0f}')
+            log.debug(f'Dropping broad-line model: {_broadsnr} < {minsnr_balmer_broad:.1f}')
 
     return adopt_broad, delta_linechi2_balmer, delta_linendof_balmer
 
