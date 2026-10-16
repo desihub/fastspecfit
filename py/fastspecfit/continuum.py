@@ -13,7 +13,7 @@ from fastspecfit.photometry import Photometry
 from fastspecfit.templates import Templates, VDISP_NOMINAL, VDISP_BOUNDS, TAUV_BOUNDS
 from fastspecfit.util import (
     C_LIGHT, TINY, F32MAX, FLUXNORM, MASSNORM, NMONTE_DEFAULT,
-    SMOOTH_WINDOW, SMOOTH_STEP,
+    SMOOTH_KNOT_SPACING,
     quantile, median, var2ivar, trapz_rebin, trapz_rebin_pre,
     _trapz_rebin_batch, fsftime, _uid)
 
@@ -188,11 +188,26 @@ class ContinuumTools(object):
 
     @staticmethod
     def smooth_continuum(wave, flux, ivar, linemask, camerapix,
-                         uniqueid=0, smooth_window=SMOOTH_WINDOW,
-                         smooth_step=SMOOTH_STEP,
-                         clip_sigma=2., nminpix=15, nmaskpix=9,
-                         debug_plots=False):
+                         uniqueid=0, smooth_knot_spacing=SMOOTH_KNOT_SPACING,
+                         clip_sigma=3., maxiter=5, nminpix=15, nmaskpix=9,
+                         flux_monte=None, debug_plots=False, return_stats=False):
         """Build a smooth, nonparametric continuum spectrum.
+
+        Fit an inverse-variance weighted cubic B-spline with (approximately)
+        uniformly spaced knots to the unmasked pixels of each camera,
+        iteratively rejecting outliers. The flexibility of the model is set
+        by ``smooth_knot_spacing`` alone; it does not depend on the
+        signal-to-noise ratio of the spectrum.
+
+        A run of unmasked pixels at either end of a camera is not used if it
+        is shorter than the masked region which separates it from the rest of
+        the spectrum; the model is held constant beyond the first and last
+        pixel which is used.
+
+        The Monte Carlo realizations of the spectrum (``flux_monte``), if any,
+        are fit using the pixels and knots of the final fit to ``flux``, i.e.,
+        without rejecting outliers again. The fit is then linear in the flux,
+        so all the realizations of a camera are fit at once.
 
         Parameters
         ----------
@@ -209,30 +224,43 @@ class ContinuumTools(object):
             Per-camera start/end pixel index pairs.
         uniqueid : int or str, optional
             Object identifier used in debug plot filenames.
-        smooth_window : int, optional
-            Width of the sliding window in pixels. Defaults to 75.
-        smooth_step : int, optional
-            Step size of the sliding window in pixels. Defaults to 125.
+        smooth_knot_spacing : float, optional
+            Approximate spacing of the spline knots in Angstroms. Defaults to
+            :data:`~fastspecfit.util.SMOOTH_KNOT_SPACING`.
         clip_sigma : float, optional
-            Sigma threshold for iterative clipping. Defaults to 2.
+            Sigma threshold for iterative outlier rejection. Defaults to 3.
+        maxiter : int, optional
+            Maximum number of fitting iterations. Defaults to 5.
         nminpix : int, optional
-            Minimum number of unmasked pixels required per window. Defaults to 15.
+            Minimum number of unmasked pixels required between adjacent
+            knots (and per camera). Defaults to 15.
         nmaskpix : int, optional
             Number of pixels to mask at each camera edge. Defaults to 9.
+        flux_monte : :class:`numpy.ndarray` or None, optional
+            Monte Carlo realizations of ``flux``, ``[nmonte, npix]``.
         debug_plots : bool, optional
             If ``True``, write a QA plot to the current directory.
+        return_stats : bool, optional
+            If ``True``, also return per-camera statistics of the fit.
+            Defaults to ``False``.
 
         Returns
         -------
-        :class:`numpy.ndarray`
+        smoothcontinuum : :class:`numpy.ndarray`
             Smooth continuum spectrum that can be subtracted from ``flux``
             to produce a pure emission-line spectrum.
+        smoothcontinuum_monte : :class:`numpy.ndarray`
+            Only returned if ``flux_monte`` is given. Smooth continuum of each
+            realization, ``[nmonte, npix]``.
+        stats : :class:`dict`
+            Only returned if ``return_stats=True``. One element per camera:
+            ``dchi2``, the chi2 of the pixels used in the final spline fit
+            without minus with the smooth continuum (non-negative), and
+            ``ndof``, the number of spline coefficients. Both are zero for a
+            camera without a smooth continuum (e.g., too few unmasked pixels).
 
         """
-        from numpy.lib.stride_tricks import sliding_window_view
-        from scipy.ndimage import median_filter
-        from scipy.interpolate import UnivariateSpline
-        from fastspecfit.util import sigmaclip
+        from scipy.interpolate import make_lsq_spline
 
         npix = len(wave)
         if len(linemask) != npix:
@@ -240,99 +268,176 @@ class ContinuumTools(object):
             log.critical(errmsg)
             raise ValueError(errmsg)
 
+        if smooth_knot_spacing <= 0.:
+            errmsg = f'smooth_knot_spacing must be positive; got {smooth_knot_spacing} [{uniqueid}].'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
 
-        def _smooth_percamera(camwave, camflux, camivar, camlinemask):
+        degree = 3 # cubic
 
-            if smooth_window > len(camwave):
-                errmsg = f'smooth_window={smooth_window} exceeds the number of pixels in the camera ({len(camwave)}) [{uniqueid}].'
-                log.critical(errmsg)
-                raise ValueError(errmsg)
+
+        def _trim_ends(good):
+            # Drop a run of unmasked pixels at either end of the camera if it
+            # is shorter than the masked region which separates it from the
+            # rest of the spectrum (e.g., a broad emission line near the end
+            # of the camera). Otherwise, those few (and usually noisy) pixels
+            # alone set the value of the spline at its clamped end, and the
+            # spline swings across the masked region to reach them.
+            good = good.copy()
+            for _ in range(2): # blue end, then red end
+                while True:
+                    I = np.flatnonzero(good)
+                    gaps = np.flatnonzero(np.diff(I) > 1)
+                    if len(gaps) == 0:
+                        break
+                    nrun = gaps[0] + 1                       # pixels in the end run
+                    ngap = I[gaps[0] + 1] - I[gaps[0]] - 1   # masked pixels beyond it
+                    if nrun >= ngap:
+                        break
+                    good[I[:nrun]] = False
+                good = good[::-1]
+            return good
+
+
+        def _smooth_percamera(camwave, camflux, camivar, camlinemask, camflux_monte=None):
+
+            smoothflux = np.zeros_like(camflux)
+            if camflux_monte is None:
+                smoothflux_monte = None
+            else:
+                smoothflux_monte = np.zeros_like(camflux_monte)
+            rejected = np.zeros(len(camflux), bool)
+            knotwave, knotflux = np.array([]), np.array([])
+            dchi2, ndof = 0., 0 # no smooth continuum
 
             # Mask nmaskpix (presumably noisy) pixels from the edge
             # of each per-camera spectrum.
             cammask = (camlinemask | (camivar <= 0.))
             cammask[:nmaskpix] = True
             cammask[-nmaskpix:] = True
-
-            # Build the smooth (line-free) continuum by computing statistics in a
-            # sliding window, accounting for masked pixels and trying to be smart
-            # about broad lines. See:
-            #   https://stackoverflow.com/questions/41851044/python-median-filter-for-1d-numpy-array
-            #   https://numpy.org/devdocs/reference/generated/numpy.lib.stride_tricks.sliding_window_view.html
-            wave_win = sliding_window_view(camwave, window_shape=smooth_window)
-            flux_win = sliding_window_view(camflux, window_shape=smooth_window)
-            ivar_win = sliding_window_view(camivar, window_shape=smooth_window)
-            nomask_win = sliding_window_view(np.logical_not(cammask), window_shape=smooth_window)
-
-            swave, sflux, sisig = [], [], []
-            for wwave, wflux, wivar, wnomask in zip(
-                    wave_win[::smooth_step], flux_win[::smooth_step],
-                    ivar_win[::smooth_step], nomask_win[::smooth_step]):
-
-                # If there are fewer than nminpix good pixels after all
-                # masking, discard the window.
-                umflux = wflux[wnomask]
-                if len(umflux) < nminpix:
-                    continue
-
-                cflux, _ = sigmaclip(umflux, low=clip_sigma, high=clip_sigma)
-                if len(cflux) < nminpix:
-                    continue
-
-                mn, clo, chi = quantile(cflux, (0.5, 0.25, 0.75)) # robust stats
-                sig = (chi - clo) / 1.349 # robust sigma
-
-                # One more check for crummy spectral regions.
-                if mn == 0. or sig <= 0.:
-                    continue
-
-                umwave = wwave[wnomask]
-                swave.append(np.mean(umwave))
-                sflux.append(mn)
-                sisig.append(1. / sig) # inverse sigma
-
-            swave = np.array(swave)
-            sflux = np.array(sflux)
-            sisig = np.array(sisig)
+            good = _trim_ends(np.logical_not(cammask))
 
             # corner case for very wacky spectra
-            if len(sflux) == 0:
-                smoothflux = np.zeros_like(camflux)
-            else:
-                ## remove duplicate wavelength values, which should never
-                ## happen...
-                #_, uindx = np.unique(swave, return_index=True)
-                #swave = swave[uindx]
-                #sflux = sflux[uindx]
-                #sisig = sisig[uindx]
+            if np.sum(good) < nminpix:
+                return knotwave, knotflux, smoothflux, smoothflux_monte, rejected, dchi2, ndof
 
-                # We supply estimates local inverse stddev in each window
-                # (i.e., how noisy the data is there) so that variation is
-                # down-weighted in noisier regions. Note: ext=3 means constant
-                # extrapolation.
-                if len(swave) > 3:
-                    spl_flux = UnivariateSpline(swave, sflux, w=sisig, ext=3, k=2)
-                    smoothflux = spl_flux(camwave)
-                else:
-                    smoothflux = np.zeros_like(camflux)
+            # The knots depend on the mask but not on the flux, so they are
+            # the same for every Monte Carlo realization.
+            minwave, maxwave = camwave[good][[0, -1]]
+            nknot = max(int(np.round((maxwave - minwave) / smooth_knot_spacing)), 1)
+            allknots = np.linspace(minwave, maxwave, nknot + 1)[1:-1]
 
-                # evaluate on the original wavelength vector
+            def _prune_knots(fitwave):
+                # Drop knots until there are at least nminpix pixels between
+                # adjacent knots; the spline then bridges any masked region
+                # (e.g., a broad emission line) with a single polynomial piece.
+                counts = np.histogram(fitwave, bins=np.hstack((minwave, allknots, maxwave)))[0]
+                keep, npix = [], 0
+                for iknot in range(len(allknots)):
+                    npix += counts[iknot]
+                    if npix >= nminpix:
+                        keep.append(iknot)
+                        npix = 0
+                if (npix + counts[-1]) < nminpix and len(keep) > 0:
+                    keep.pop()
+                return allknots[keep]
+
+            camistd = np.sqrt(camivar)
+            fitmask = good.copy()
+            spl = None
+            for _ in range(maxiter):
+                usedmask = fitmask # pixels of the most recent fit
+                knots = _prune_knots(camwave[fitmask])
+                allt = np.hstack((np.repeat(minwave, degree + 1), knots,
+                                  np.repeat(maxwave, degree + 1)))
+                try:
+                    spl = make_lsq_spline(camwave[fitmask], camflux[fitmask], allt,
+                                          k=degree, w=camistd[fitmask])
+                except (ValueError, np.linalg.LinAlgError):
+                    log.warning(f'Smooth-continuum spline fit failed [{uniqueid}].')
+                    return knotwave, knotflux, smoothflux, smoothflux_monte, rejected, dchi2, ndof
+
+                # Reject outliers using a robust estimate of the scatter,
+                # which can exceed unity when the residuals are dominated by
+                # template mismatch rather than noise.
+                chi = np.zeros_like(camflux)
+                chi[good] = (camflux[good] - spl(camwave[good])) * camistd[good]
+                clo, chi_hi = quantile(chi[good], (0.25, 0.75))
+                sig = (chi_hi - clo) / 1.349 # robust sigma
+                if sig <= 0.:
+                    break
+
+                newfitmask = good & (np.abs(chi) < clip_sigma * sig)
+                if np.sum(newfitmask) < nminpix or np.all(newfitmask == fitmask):
+                    break
+                fitmask = newfitmask
+
+            # Evaluate on the original wavelength vector, with constant
+            # extrapolation.
+            smoothflux = spl(np.clip(camwave, minwave, maxwave))
+            if not np.all(np.isfinite(smoothflux)):
+                log.warning(f'Smooth-continuum spline is not finite [{uniqueid}].')
+                return knotwave, knotflux, np.zeros_like(camflux), smoothflux_monte, rejected, dchi2, ndof
 
             # very important!
-            smoothflux[(camflux == 0.) & (camivar == 0.)] = 0.
+            camgaps = (camflux == 0.) & (camivar == 0.)
+            smoothflux[camgaps] = 0.
 
-            return swave, sflux, smoothflux
+            # Fit all the realizations at once, using the pixels and knots of
+            # the final fit (i.e., without rejecting outliers again).
+            if camflux_monte is not None:
+                try:
+                    spl_monte = make_lsq_spline(camwave[usedmask], camflux_monte[:, usedmask].T,
+                                                allt, k=degree, w=camistd[usedmask])
+                except (ValueError, np.linalg.LinAlgError):
+                    log.warning(f'Smooth-continuum spline fit of the realizations failed [{uniqueid}].')
+                else:
+                    smoothflux_monte = spl_monte(np.clip(camwave, minwave, maxwave)).T
+                    smoothflux_monte[:, camgaps] = 0.
+                    # no smooth continuum for a realization which is not finite
+                    smoothflux_monte[~np.all(np.isfinite(smoothflux_monte), axis=1), :] = 0.
 
-        smooth_wave, smooth_flux, smoothcontinuum = [], [], []
-        for ss, ee in camerapix:
-            smooth_wave1, smooth_flux1, smoothcontinuum1 = _smooth_percamera(
-                wave[ss:ee], flux[ss:ee], ivar[ss:ee], linemask[ss:ee])
+            knotwave = np.hstack((minwave, knots, maxwave))
+            knotflux = spl(knotwave)
+
+            # outliers rejected from the final fit (for the QA)
+            rejected = good & ~usedmask
+
+            # Decrease in chi2 due to the smooth continuum over the pixels
+            # of the final fit, and the number of spline coefficients. The
+            # spline minimizes the chi2 of these pixels, so the decrease
+            # cannot be negative (other than from round-off).
+            chi_without = camflux[usedmask] * camistd[usedmask]
+            chi_with = (camflux[usedmask] - spl(camwave[usedmask])) * camistd[usedmask]
+            with np.errstate(over='ignore', invalid='ignore'):
+                dchi2 = np.sum(chi_without**2) - np.sum(chi_with**2)
+            # guard against round-off and against overflowing float32
+            if not (0. < dchi2 < F32MAX):
+                dchi2 = 0.
+            ndof = len(knots) + degree + 1
+
+            return knotwave, knotflux, smoothflux, smoothflux_monte, rejected, dchi2, ndof
+
+        ncam = len(camerapix)
+        stats = {'dchi2': np.zeros(ncam), 'ndof': np.zeros(ncam, int)}
+
+        smooth_wave, smooth_flux, smoothcontinuum, smoothcontinuum_monte, rejected = [], [], [], [], []
+        for icam, (ss, ee) in enumerate(camerapix):
+            (smooth_wave1, smooth_flux1, smoothcontinuum1, smoothcontinuum_monte1, rejected1,
+             stats['dchi2'][icam], stats['ndof'][icam]) = _smooth_percamera(
+                 wave[ss:ee], flux[ss:ee], ivar[ss:ee], linemask[ss:ee],
+                 None if flux_monte is None else flux_monte[:, ss:ee])
             smooth_wave.append(smooth_wave1)
             smooth_flux.append(smooth_flux1)
             smoothcontinuum.append(smoothcontinuum1)
+            smoothcontinuum_monte.append(smoothcontinuum_monte1)
+            rejected.append(rejected1)
         smooth_wave = np.hstack(smooth_wave)
         smooth_flux = np.hstack(smooth_flux)
         smoothcontinuum = np.hstack(smoothcontinuum)
+        rejected = np.hstack(rejected)
+        if flux_monte is not None:
+            smoothcontinuum_monte = np.hstack(smoothcontinuum_monte)
 
         # Optional QA.
         if debug_plots:
@@ -343,57 +448,53 @@ class ContinuumTools(object):
             pngfile = f'qa-smooth-continuum-{uniqueid}.png'
             sns.set(context='talk', style='ticks', font_scale=0.7)
 
-            srt = np.argsort(wave)
-
             resid = flux - smoothcontinuum
             noise = np.ptp(quantile(resid[~linemask], (0.25, 0.75))) / 1.349 # robust sigma
 
-            msk = ma.array(linemask)
-            msk.mask = linemask
-            clumps_masked = ma.clump_masked(msk)
-            clumps_unmasked = ma.clump_unmasked(msk)
+            labeled = set()
+            def _label(label):
+                # label each component once
+                if label in labeled:
+                    return None
+                labeled.add(label)
+                return label
 
             fig, ax = plt.subplots(2, 1, figsize=(7, 7), sharex=True)
-            for iclump, clump in enumerate(clumps_unmasked):
-                if iclump == 0:
-                    label = 'Unmasked Flux'
-                else:
-                    label = None
-                ax[0].plot(wave[srt][clump] / 1e4, flux[srt][clump], color='grey',
-                           alpha=0.5, lw=0.5, label=label)
-            for iclump, clump in enumerate(clumps_masked):
-                if iclump == 0:
-                    label = 'Masked Flux'
-                else:
-                    label = None
-                ax[0].plot(wave[srt][clump] / 1e4, flux[srt][clump], alpha=0.3, lw=0.5,
-                           color='blue', label=label)
+
+            # Plot camera-by-camera, since the wavelengths of adjacent
+            # cameras overlap.
+            for ss, ee in camerapix:
+                camwave = wave[ss:ee] / 1e4
+                msk = ma.array(linemask[ss:ee], mask=linemask[ss:ee])
+                for clumps, color, alpha, label in [
+                        (ma.clump_unmasked(msk), 'grey', 0.5, 'Unmasked Flux'),
+                        (ma.clump_masked(msk), 'blue', 0.3, 'Masked Flux')]:
+                    for clump in clumps:
+                        ax[0].plot(camwave[clump], flux[ss:ee][clump], color=color,
+                                   alpha=alpha, lw=0.5, label=_label(label))
+                        ax[1].plot(camwave[clump], resid[ss:ee][clump], color=color,
+                                   alpha=alpha, lw=0.5)
+            if np.any(rejected):
+                ax[0].scatter(wave[rejected] / 1e4, flux[rejected], color='k', marker='x',
+                              s=10, lw=0.5, zorder=2, label='Rejected Pixels')
+                ax[1].scatter(wave[rejected] / 1e4, resid[rejected], color='k', marker='x',
+                              s=10, lw=0.5, zorder=2)
             ax[0].scatter(smooth_wave / 1e4, smooth_flux, edgecolor='k', color='orange',
                           marker='s', alpha=0.8, s=20, zorder=3,
-                          label='Smooth Data')
-            for icam, (ss, ee) in enumerate(camerapix):
-                if icam == 0:
-                    label = 'Smooth Model'
-                else:
-                    label = None
+                          label='Knots')
+            for ss, ee in camerapix:
                 ax[0].plot(wave[ss:ee] / 1e4, smoothcontinuum[ss:ee], color='red',
-                           zorder=4, ls='-', lw=2, alpha=0.6, label=label)
+                           zorder=4, ls='-', lw=2, alpha=0.6, label=_label('Smooth Model'))
 
             ax[0].set_ylim(np.min((-5. * noise, quantile(flux, 0.05))),
                            np.max((5. * noise, 1.5 * quantile(flux, 0.975))))
             ax[0].set_ylabel('Continuum-subtracted Flux\n' + \
                              r'$(10^{-17}~{\rm erg}~{\rm s}^{-1}~{\rm cm}^{-2}~\AA^{-1})$')
-            leg = ax[0].legend(fontsize=10, loc='upper left')
+            leg = ax[0].legend(fontsize=7, loc='upper left', ncol=3, columnspacing=1.,
+                               handletextpad=0.4, borderpad=0.3, labelspacing=0.3)
             for line in leg.get_lines():
                 line.set_linewidth(2)
 
-            #ax[1].plot(wave[srt] / 1e4, resid[srt], alpha=0.75, lw=0.5)
-            for clump in clumps_unmasked:
-                ax[1].plot(wave[srt][clump] / 1e4, resid[srt][clump], color='grey',
-                           alpha=0.5, lw=0.5)
-            for clump in clumps_masked:
-                ax[1].plot(wave[srt][clump] / 1e4, resid[srt][clump], alpha=0.3,
-                           lw=0.5, color='blue')
             ax[1].axhline(y=0, color='k', ls='--', lw=2)
             ax[1].set_ylim(np.min((-5. * noise, quantile(resid, 0.05))),
                            np.max((5. * noise, 1.5 * quantile(resid, 0.975))))
@@ -407,7 +508,13 @@ class ContinuumTools(object):
             plt.close()
             log.info(f'Wrote {pngfile}')
 
-        return smoothcontinuum
+        out = (smoothcontinuum, )
+        if flux_monte is not None:
+            out += (smoothcontinuum_monte, )
+        if return_stats:
+            out += (stats, )
+
+        return out[0] if len(out) == 1 else out
 
 
     @staticmethod
@@ -1748,8 +1855,7 @@ def _continuum_nominal_vdisp(CTools, templates, specflux, specwave,
 
 def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEFAULT,
                        rng=None, uniqueid=0, no_smooth_continuum=False,
-                       debug_plots=False, smooth_window=SMOOTH_WINDOW,
-                       smooth_step=SMOOTH_STEP):
+                       debug_plots=False, smooth_knot_spacing=SMOOTH_KNOT_SPACING):
     """Jointly fit the stellar continuum to spectroscopy and broadband photometry.
 
     Parameters
@@ -1773,12 +1879,9 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
         Defaults to ``False``.
     debug_plots : bool, optional
         If ``True``, write QA plots to the current directory.
-    smooth_window : int, optional
-        Width of the smooth-continuum sliding window in pixels. Defaults to
-        :data:`~fastspecfit.util.SMOOTH_WINDOW`.
-    smooth_step : int, optional
-        Step size of the smooth-continuum sliding window in pixels. Defaults
-        to :data:`~fastspecfit.util.SMOOTH_STEP`.
+    smooth_knot_spacing : float, optional
+        Approximate knot spacing of the smooth-continuum spline in Angstroms.
+        Defaults to :data:`~fastspecfit.util.SMOOTH_KNOT_SPACING`.
 
     Returns
     -------
@@ -2105,7 +2208,10 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
     # Get the smooth continuum.
     t0 = time.time()
 
-    smoothstats = np.zeros(len(data['camerapix']))
+    # Per-camera statistics of the smooth continuum; all zero for a camera
+    # without one.
+    ncam = len(data['camerapix'])
+    smoothstats = {'dchi2': np.zeros(ncam), 'ndof': np.zeros(ncam, int), 'rms': np.zeros(ncam)}
 
     if np.all(coeff == 0.) or no_smooth_continuum:
         smoothcontinuum = np.zeros_like(specwave)
@@ -2113,37 +2219,54 @@ def continuum_fastspec(redshift, objflam, objflamivar, CTools, nmonte=NMONTE_DEF
     else:
         gaps = ((specflux == 0.) & (specivar == 0.))
 
-        def do_smooth(specflux, desimodel_nolines, debug_plots=False):
-            # Need to be careful we don't pass a large negative residual
-            # where there are gaps in the data.
-            residuals = specflux * median_apercorr - desimodel_nolines
-            residuals[gaps] = 0.
+        # Need to be careful we don't pass a large negative residual where
+        # there are gaps in the data.
+        residuals = specflux * median_apercorr - desimodel_nolines
+        residuals[gaps] = 0.
 
-            return CTools.smooth_continuum(
-                specwave, residuals, specivar / median_apercorr**2,
-                slinemask, uniqueid=data['uniqueid'],
-                camerapix=data['camerapix'], smooth_window=smooth_window,
-                smooth_step=smooth_step, debug_plots=debug_plots)
-
-        smoothcontinuum = do_smooth(specflux, desimodel_nolines, debug_plots=debug_plots)
-
-        # Recompute the smooth continuum for each realization so that its
+        # Also fit the smooth continuum of each realization so that its
         # uncertainty is propagated into the emission-line fitting.
         if specflux_monte is not None:
-            smoothcontinuum_monte = np.zeros_like(specflux_monte)
-            for imonte in range(nmonte):
-                # mirror the nominal fit: no smooth continuum without a
-                # stellar continuum
-                if np.any(coeff_monte[imonte] != 0.):
-                    smoothcontinuum_monte[imonte, :] = do_smooth(
-                        specflux_monte[imonte], continuummodel_monte[imonte])
+            residuals_monte = specflux_monte * median_apercorr - continuummodel_monte
+            residuals_monte[:, gaps] = 0.
         else:
-            smoothcontinuum_monte = None
+            residuals_monte = None
 
+        out = CTools.smooth_continuum(
+            specwave, residuals, specivar / median_apercorr**2,
+            slinemask, uniqueid=data['uniqueid'],
+            camerapix=data['camerapix'], smooth_knot_spacing=smooth_knot_spacing,
+            flux_monte=residuals_monte, debug_plots=debug_plots, return_stats=True)
+
+        if residuals_monte is not None:
+            smoothcontinuum, smoothcontinuum_monte, stats = out
+            # mirror the nominal fit: no smooth continuum without a stellar
+            # continuum
+            for imonte in range(nmonte):
+                if not np.any(coeff_monte[imonte] != 0.):
+                    smoothcontinuum_monte[imonte, :] = 0.
+        else:
+            smoothcontinuum, stats = out
+            smoothcontinuum_monte = None
+        smoothstats['dchi2'][:] = stats['dchi2']
+        smoothstats['ndof'][:] = stats['ndof']
+
+        # RMS of the smooth continuum relative to the median stellar
+        # continuum, over all the pixels with data (including the pixels in
+        # the emission-line mask). Only measured if this camera has a smooth
+        # continuum and a positive stellar continuum.
         for icam, (ss, ee) in enumerate(data['camerapix']):
-            I = ((specflux[ss:ee] != 0.) & (specivar[ss:ee] != 0.) & (smoothcontinuum[ss:ee] != 0.))
-            if np.count_nonzero(I) > 3: # require three good pixels to compute the mean
-                smoothstats[icam] = median(smoothcontinuum[ss:ee][I] / specflux[ss:ee][I])
+            if smoothstats['ndof'][icam] == 0:
+                continue
+            I = specivar_nolinemask[ss:ee] > 0.
+            if np.count_nonzero(I) > 3:
+                norm = median(desimodel_nolines[ss:ee][I])
+                if np.isfinite(norm) and norm > 0.:
+                    with np.errstate(over='ignore', invalid='ignore'):
+                        rms = np.sqrt(np.mean(smoothcontinuum[ss:ee][I]**2)) / norm
+                    # a tiny stellar continuum must not overflow float32 [%]
+                    if 100. * rms < F32MAX:
+                        smoothstats['rms'][icam] = rms
 
     log.debug(fsftime('smooth_continuum', time.time()-t0))
 
@@ -2159,8 +2282,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
                       nmonte=NMONTE_DEFAULT, seed=1, constrain_age=False,
                       no_smooth_continuum=False, fitstack=False,
                       fastphot=False, debug_plots=False, vdisp_nbin=6,
-                      tauv_bounds=TAUV_BOUNDS, smooth_window=SMOOTH_WINDOW,
-                      smooth_step=SMOOTH_STEP):
+                      tauv_bounds=TAUV_BOUNDS, smooth_knot_spacing=SMOOTH_KNOT_SPACING):
     """Fit the non-negative stellar continuum of a single spectrum.
 
     Parameters
@@ -2174,12 +2296,9 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
     tauv_bounds : tuple, optional
         Lower and upper bounds on tau(V); equal bounds fix tau(V). Defaults
         to :data:`~fastspecfit.templates.TAUV_BOUNDS`.
-    smooth_window : int, optional
-        Width of the smooth-continuum sliding window in pixels. Defaults to
-        :data:`~fastspecfit.util.SMOOTH_WINDOW`.
-    smooth_step : int, optional
-        Step size of the smooth-continuum sliding window in pixels. Defaults
-        to :data:`~fastspecfit.util.SMOOTH_STEP`.
+    smooth_knot_spacing : float, optional
+        Approximate knot spacing of the smooth-continuum spline in Angstroms.
+        Defaults to :data:`~fastspecfit.util.SMOOTH_KNOT_SPACING`.
 
     Returns
     -------
@@ -2251,7 +2370,7 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
              continuum_fastspec(redshift, objflam, objflamivar, CTools,
                                 nmonte=nmonte, rng=rng, uniqueid=data['uniqueid'],
                                 debug_plots=debug_plots, no_smooth_continuum=no_smooth_continuum,
-                                smooth_window=smooth_window, smooth_step=smooth_step)
+                                smooth_knot_spacing=smooth_knot_spacing)
 
         data['apercorr'] = median_apercorr # needed for the line-fitting
 
@@ -2259,10 +2378,15 @@ def continuum_specfit(data, fastfit, specphot, templates, igm, phot,
         for icam, cam in enumerate(np.atleast_1d(data['cameras'])):
             fastfit[f'SNR_{cam.upper()}'] = data['snr'][icam]
 
-        msg = ['Smooth continuum correction:']
-        for cam, corr in zip(np.atleast_1d(data['cameras']), smoothstats):
-            fastfit[f'SMOOTHCORR_{cam.upper()}'] = corr * 100. # [%]
-            msg.append(f'{cam}={100.*corr:.3f}%')
+        # Cameras without data are not in data['cameras'], so their columns
+        # stay at zero.
+        msg = ['Smooth continuum (delta-chi2, ndof, rms):']
+        for icam, cam in enumerate(np.atleast_1d(data['cameras'])):
+            dchi2, ndof, rms = smoothstats['dchi2'][icam], smoothstats['ndof'][icam], smoothstats['rms'][icam]
+            fastfit[f'DELTA_SMOOTHCHI2_{cam.upper()}'] = dchi2
+            fastfit[f'DELTA_SMOOTHNDOF_{cam.upper()}'] = ndof
+            fastfit[f'SMOOTHRMS_{cam.upper()}'] = 100. * rms # [%]
+            msg.append(f'{cam}=({dchi2:.1f}, {ndof}, {100.*rms:.3f}%)')
         log.info(' '.join(msg))
 
     #result['Z'] = redshift

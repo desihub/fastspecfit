@@ -14,7 +14,7 @@ from astropy.table import Table
 from fastspecfit.logger import log
 from fastspecfit.singlecopy import sc_data
 from fastspecfit.photometry import Photometry, release_to_photsys, desitarget_resolve_dec, releasedict
-from fastspecfit.util import FLUXNORM, SMOOTH_WINDOW, SMOOTH_STEP, ZWarningMask, fsftime, _uid
+from fastspecfit.util import FLUXNORM, SMOOTH_KNOT_SPACING, ZWarningMask, fsftime, _uid
 from fastspecfit.templates import VDISP_NOMINAL, VDISP_BOUNDS, TAUV_BOUNDS
 
 
@@ -80,7 +80,8 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
                  init_sigma_uv=None, init_sigma_narrow=None,
                  init_sigma_balmer=None, init_vshift_uv=None,
                  init_vshift_narrow=None, init_vshift_balmer=None,
-                 fastphot=False, synthphot=True, debug_plots=False):
+                 refit_linemask=True, fastphot=False, synthphot=True,
+                 debug_plots=False):
     """Pre-process a single DESI spectrum for fitting.
 
     Applies MW dust corrections to photometry, processes per-camera spectra
@@ -110,6 +111,11 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
         Initial narrow-line velocity shift in km/s for emission-line masking.
     init_vshift_balmer : float or None, optional
         Initial broad Balmer velocity shift in km/s for emission-line masking.
+    refit_linemask : bool, optional
+        If ``False``, build the emission-line mask from the six ``init_*``
+        values (all required) without refitting the lines; see
+        :meth:`fastspecfit.linemasker.LineMasker.build_linemask`. Defaults to
+        ``True``.
     fastphot : bool, optional
         If ``True``, skip spectroscopic processing. Defaults to ``False``.
     synthphot : bool, optional
@@ -275,7 +281,7 @@ def one_spectrum(specdata, meta, uncertainty_floor=0.01, RV=3.1,
             initvshift_broad=init_vshift_uv,
             initvshift_narrow=init_vshift_narrow,
             initvshift_balmer_broad=init_vshift_balmer,
-            debug_plots=debug_plots)
+            refit=refit_linemask, debug_plots=debug_plots)
 
         # Map the pixels belonging to individual emission lines onto the
         # original per-camera spectra. This works, but maybe there's a better
@@ -1160,11 +1166,11 @@ class DESISpectra(object):
                         }
                     alldata.append(specdata)
             else:
-                # Don't use .select since meta and spec can be sorted
-                # differently if a non-sorted targetids was passed. Do the
-                # selection and sort ourselves.
+                # Only keep the requested targets in memory (the full coadd of
+                # one healpix can be several GB), and sort them ourselves,
+                # since read_spectra returns them in the order of the file.
                 os.environ['DESI_LOGLEVEL'] = 'warning'
-                spec = read_spectra(specfile)#.select(targets=meta[uniqueid])
+                spec = read_spectra(specfile, targetids=meta['TARGETID'].value)
 
                 srt = match_to(spec.fibermap[uniqueid_col], meta['TARGETID'])
                 spec = spec[srt]
@@ -1670,7 +1676,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
                       vdisp_bounds=VDISP_BOUNDS, tauv_bounds=TAUV_BOUNDS, seed=1,
                       uncertainty_floor=0.01,
                       minsnr_balmer_broad=2.5, nside=None, no_smooth_continuum=False,
-                      smooth_window=SMOOTH_WINDOW, smooth_step=SMOOTH_STEP,
+                      smooth_knot_spacing=SMOOTH_KNOT_SPACING,
                       ignore_photometry=False, broadlinefit=True, use_quasarnet=True,
                       constrain_age=False, split_hdu=False, verbose=True):
     """Write fastspecfit results to a multi-extension FITS file."""
@@ -1711,8 +1717,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
     primhdr.append(('SEED', (seed, 'random seed for Monte Carlo reproducibility')))
     if not fastphot:
         primhdr.append(('NOSCORR', (no_smooth_continuum is True, 'no smooth continuum correction')))
-        primhdr.append(('SMWINDOW', (smooth_window, 'smooth continuum window (pixels)')))
-        primhdr.append(('SMSTEP', (smooth_step, 'smooth continuum step (pixels)')))
+        primhdr.append(('SMKNOTS', (smooth_knot_spacing, 'smooth continuum knot spacing (Angstrom)')))
         primhdr.append(('NOPHOTO', (ignore_photometry is True, 'no fitting to photometry')))
         primhdr.append(('BRDLFIT', (broadlinefit is True, 'carry out broad-line fitting')))
         primhdr.append(('UFLOOR', (uncertainty_floor, 'fractional uncertainty floor')))
@@ -2201,8 +2206,14 @@ def get_output_dtype(specprod, phot, linetable, ncoeff, cameras=['B', 'R', 'Z'],
         if not fastphot:
             for cam in cameras:
                 add_field(f'SNR_{cam.upper()}', dtype='f4') # median S/N in each camera
+            # smooth continuum: chi2 without minus with, number of spline
+            # coefficients, and rms relative to the stellar continuum [%]
             for cam in cameras:
-                add_field(f'SMOOTHCORR_{cam.upper()}', dtype='f4')
+                add_field(f'DELTA_SMOOTHCHI2_{cam.upper()}', dtype='f4')
+            for cam in cameras:
+                add_field(f'DELTA_SMOOTHNDOF_{cam.upper()}', dtype=np.int32)
+            for cam in cameras:
+                add_field(f'SMOOTHRMS_{cam.upper()}', dtype='f4')
 
             # aperture corrections
             add_field('APERCORR', dtype='f4') # median aperture correction

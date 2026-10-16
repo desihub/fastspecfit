@@ -263,22 +263,47 @@ class TestSmoothContinuum:
         camerapix = np.array([[0, n]])
         return wave, flux, ivar, linemask, camerapix
 
-    def test_window_and_step_change_result(self, flat_spectrum):
-        """Non-default smooth_window/smooth_step give a different continuum."""
+    def test_knot_spacing_changes_result(self, flat_spectrum):
+        """Non-default smooth_knot_spacing gives a different continuum."""
         from fastspecfit.continuum import ContinuumTools
         wave, flux, ivar, linemask, camerapix = flat_spectrum
         default = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix)
         result = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix,
-                                                 smooth_window=50, smooth_step=25)
+                                                 smooth_knot_spacing=1000.)
         assert result.shape == default.shape
         assert not np.allclose(result, default)
 
-    def test_window_wider_than_camera_raises(self, flat_spectrum):
+    def test_nonpositive_knot_spacing_raises(self, flat_spectrum):
         from fastspecfit.continuum import ContinuumTools
         wave, flux, ivar, linemask, camerapix = flat_spectrum
-        with pytest.raises(ValueError, match='smooth_window'):
+        with pytest.raises(ValueError, match='smooth_knot_spacing'):
             ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix,
-                                            smooth_window=len(wave)+1)
+                                            smooth_knot_spacing=0.)
+
+    def test_independent_of_noise_level(self, flat_spectrum):
+        """Rescaling the uncertainties does not change the continuum."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, camerapix = flat_spectrum
+        result = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix)
+        result2 = ContinuumTools.smooth_continuum(wave, flux, 100. * ivar, linemask, camerapix)
+        assert np.allclose(result, result2)
+
+    def test_masked_bump_is_bridged(self, flat_spectrum):
+        """A masked emission feature is not absorbed into the continuum."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, camerapix = flat_spectrum
+        bump = 3. * np.exp(-0.5 * ((wave - 6000.) / 40.)**2)
+        mask = np.abs(wave - 6000.) < 150.
+        result = ContinuumTools.smooth_continuum(wave, flux + bump, ivar, mask, camerapix)
+        assert np.max(np.abs(result[mask] - 5.)) < 0.5
+
+    def test_legacy_algorithm(self, flat_spectrum):
+        """The legacy (QA-only) sliding-window algorithm still runs."""
+        from fastspecfit.qa import _smooth_continuum_legacy
+        wave, flux, ivar, linemask, camerapix = flat_spectrum
+        result = _smooth_continuum_legacy(wave, flux, ivar, linemask, camerapix)
+        assert result.shape == wave.shape
+        assert abs(np.median(result) - 5.0) < 1.0
 
     def test_output_shape(self, flat_spectrum):
         from fastspecfit.continuum import ContinuumTools
@@ -314,6 +339,106 @@ class TestSmoothContinuum:
         result = ContinuumTools.smooth_continuum(wave, flux_zero, ivar_zero,
                                                  linemask, camerapix)
         assert np.all(result == 0.)
+
+    def test_return_stats(self, flat_spectrum):
+        """The spline lowers chi2, and the number of coefficients is positive."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, camerapix = flat_spectrum
+        default = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix)
+        result, stats = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask,
+                                                        camerapix, return_stats=True)
+        assert np.all(result == default)
+        assert stats['dchi2'].shape == (1, ) and stats['ndof'].shape == (1, )
+        assert stats['ndof'][0] >= 4 # cubic
+        assert stats['dchi2'][0] > stats['ndof'][0]
+
+    def test_stats_of_masked_cameras_are_zero(self, flat_spectrum):
+        """A camera without data or without unmasked pixels has no smooth
+        continuum and all-zero (finite) statistics."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, _ = flat_spectrum
+        n = len(wave)
+        camerapix = np.array([[0, n // 2], [n // 2, n]])
+
+        # first camera: no data
+        flux1, ivar1 = flux.copy(), ivar.copy()
+        flux1[:n // 2] = 0.
+        ivar1[:n // 2] = 0.
+        result, stats = ContinuumTools.smooth_continuum(wave, flux1, ivar1, linemask,
+                                                        camerapix, return_stats=True)
+        assert np.all(result[:n // 2] == 0.)
+        assert stats['dchi2'][0] == 0. and stats['ndof'][0] == 0
+        assert stats['dchi2'][1] > 0. and stats['ndof'][1] > 0
+        assert np.all(np.isfinite(result))
+
+        # second camera: every pixel in the emission-line mask
+        mask = linemask.copy()
+        mask[n // 2:] = True
+        result, stats = ContinuumTools.smooth_continuum(wave, flux, ivar, mask,
+                                                        camerapix, return_stats=True)
+        assert np.all(result[n // 2:] == 0.)
+        assert stats['dchi2'][1] == 0. and stats['ndof'][1] == 0
+        assert stats['dchi2'][0] > 0. and stats['ndof'][0] > 0
+
+    def test_short_run_at_camera_end_is_ignored(self, flat_spectrum):
+        """A few discrepant pixels beyond a masked line at the end of a camera
+        do not pull the continuum."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, camerapix = flat_spectrum
+        mask = (wave > 7300.) & (wave < 7900.)
+        flux = flux.copy()
+        flux[wave >= 7900.] = -20.
+        result = ContinuumTools.smooth_continuum(wave, flux, ivar, mask, camerapix)
+        assert np.max(np.abs(result[wave > 7300.] - 5.)) < 0.5
+
+    def test_flux_monte(self, flat_spectrum):
+        """The realizations are fit with the pixels and knots of the nominal
+        fit, and do not change the nominal result."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, _ = flat_spectrum
+        n = len(wave)
+        camerapix = np.array([[0, n // 2], [n // 2, n]])
+
+        # outliers which the nominal fit rejects
+        flux = flux.copy()
+        flux[100:103] = 50.
+        default = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix)
+
+        rng = np.random.default_rng(11)
+        flux_monte = flux + 0.3 * rng.standard_normal((5, n))
+        flux_monte[0, :] = flux
+        result, result_monte, stats = ContinuumTools.smooth_continuum(
+            wave, flux, ivar, linemask, camerapix, flux_monte=flux_monte, return_stats=True)
+        assert np.all(result == default)
+        assert result_monte.shape == flux_monte.shape
+        assert np.all(stats['ndof'] > 0)
+
+        # a realization which is identical to the data reproduces the nominal fit
+        assert np.allclose(result_monte[0, :], default, rtol=1e-10, atol=1e-10)
+        # the other realizations differ, but not by much
+        assert not np.allclose(result_monte[1, :], default)
+        assert np.max(np.abs(result_monte - default)) < 0.5
+        # the outliers are still rejected
+        assert np.max(np.abs(result_monte[:, 100:103] - 5.)) < 0.5
+
+        # all the realizations are fit at once, like one at a time
+        one = ContinuumTools.smooth_continuum(wave, flux, ivar, linemask, camerapix,
+                                              flux_monte=flux_monte[2:3, :])[1]
+        assert np.allclose(one[0, :], result_monte[2, :], rtol=1e-10, atol=1e-10)
+
+    def test_flux_monte_of_masked_camera_is_zero(self, flat_spectrum):
+        """A camera without a smooth continuum has none in the realizations."""
+        from fastspecfit.continuum import ContinuumTools
+        wave, flux, ivar, linemask, _ = flat_spectrum
+        n = len(wave)
+        camerapix = np.array([[0, n // 2], [n // 2, n]])
+        mask = linemask.copy()
+        mask[n // 2:] = True
+        flux_monte = np.tile(flux, (3, 1))
+        result, result_monte = ContinuumTools.smooth_continuum(
+            wave, flux, ivar, mask, camerapix, flux_monte=flux_monte)
+        assert np.all(result_monte[:, n // 2:] == 0.)
+        assert np.allclose(result_monte[:, :n // 2], result[:n // 2], rtol=1e-10, atol=1e-10)
 
 
 # ── VDISP_IVAR Jacobian ───────────────────────────────────────────────────────
@@ -419,9 +544,9 @@ class TestFixedTauvObjective:
         assert np.array_equal(seen['coeff'], [1., 2.])
 
 
-@pytest.mark.parametrize('opts', ['--smooth-window 10', '--smooth-step 0'])
+@pytest.mark.parametrize('opts', ['--smooth-knot-spacing 0', '--smooth-knot-spacing -100'])
 def test_smooth_options_invalid_raise(opts):
-    """Too-narrow --smooth-window or non-positive --smooth-step raise ValueError."""
+    """Non-positive --smooth-knot-spacing raises ValueError."""
     from fastspecfit.fastspecfit import parse
-    with pytest.raises(ValueError, match='smooth_window'):
+    with pytest.raises(ValueError, match='smooth_knot_spacing'):
         parse(options=f'redrock.fits -o out.fits {opts}'.split())
