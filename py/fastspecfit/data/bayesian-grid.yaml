@@ -1,0 +1,110 @@
+# Default free-parameter grid design for bin/build-bayesian-templates.
+#
+# `axes` lists the grid's free axes, in the exact order used to build the
+# full-factorial grid (outermost first) -- this order is written to the
+# output FITS file's AXES extension and defines the flattened grid's N-D
+# index mapping consumed by fastspecfit.fastbayes.
+#
+# Each axis entry:
+#   name            metadata column name / grid axis identifier
+#   kind            grid-value construction strategy; one of:
+#                     fixed             explicit `values` list
+#                     linspace          `npts` linearly spaced points in [min, max]
+#                     logspace          `npts` log-uniformly spaced points in [min, max]
+#                     exp_quantile      exact zero + `npts`-1 equal-probability-mass
+#                                       quantiles of an Exponential(`theta`) distribution
+#                     zero_plus_logspace exact zero + `npts`-1 log-spaced points in [min, max]
+#   log             whether fastbayes refines/reports this axis in log10 space
+#                   (must be false for any axis with an exact-zero grid point)
+#   param           FSPS StellarPopulation.params key this axis sets (omitted for `age`)
+#   param_transform how the axis's linear grid value maps to `param`; 'linear'
+#                   (default) or 'log10'
+#   outname         FASTBAYES output column name
+#   label           LaTeX label for QA figures
+#
+# Fixed (non-axis) FSPS parameters, applied to every grid point:
+dust_index: -0.7  # CF00-style power-law attenuation slope (sp.params['dust_index'])
+agn_tau: 10.0     # AGN torus optical depth (sp.params['agn_tau'])
+
+axes:
+  # Dense Basis (Iyer & Gawiser 2017) mass-quantile SFH, tertile form: `age`
+  # is the total time since the onset of star formation (= FSPS `tage`),
+  # and `t33frac`/`t67frac` are stick-broken fractions that place the two
+  # interior tertile boundaries -- t33 = t33frac*age, t67 = t33 +
+  # t67frac*(age - t33) -- guaranteeing 0 < t33 < t67 < age for any grid
+  # values (no invalid/rejected combinations). Each of the resulting three
+  # segments [0,t33], [t33,t67], [t67,age] carries exactly 1/3 of the total
+  # mass formed. See fastspecfit.fastbayes module docs for the SFR(t)
+  # tabular-SFH construction from these three axes.
+  - name: age
+    kind: logspace
+    npts: 8
+    min: 0.03
+    max: 13.7
+    log: true
+    outname: LOGAGE
+    label: '$\log_{10}({\rm Age/Gyr})$'
+
+  - name: t33frac
+    kind: linspace
+    npts: 10
+    min: 0.05
+    max: 0.95
+    log: false
+    outname: T33FRAC
+    label: '$t_{33}/{\rm Age}$'
+
+  - name: t67frac
+    kind: linspace
+    npts: 10
+    min: 0.05
+    max: 0.95
+    log: false
+    outname: T67FRAC
+    label: '$(t_{67}-t_{33})/({\rm Age}-t_{33})$'
+
+  - name: zzsun
+    kind: logspace
+    npts: 5
+    min: 0.15848932   # = 10**-0.8
+    max: 1.58489319    # = 10**0.2
+    log: true
+    param: logzsol
+    param_transform: log10
+    outname: LOGZZSUN
+    label: '$\log_{10}(Z/Z_{\odot})$'
+
+  - name: tau
+    kind: exp_quantile
+    npts: 10
+    theta: 1.5
+    log: false
+    param: dust2
+    outname: TAUV
+    label: '$\tau_V$'
+
+  - name: umin
+    kind: fixed
+    values: [1.0]
+    log: true
+    param: duste_umin
+    outname: LOGUMIN
+    label: '$\log_{10}(U_{\rm min})$'
+
+  - name: gamma
+    kind: fixed
+    values: [0.01]
+    log: false
+    param: duste_gamma
+    outname: GAMMA
+    label: '$\gamma$'
+
+  - name: qpah
+    kind: logspace
+    npts: 3
+    min: 0.1
+    max: 7.0
+    log: true
+    param: duste_qpah
+    outname: LOGQPAH
+    label: '$\log_{10}(q_{\rm PAH})$'

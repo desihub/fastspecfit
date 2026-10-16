@@ -137,6 +137,28 @@ class Singletons(object):
         self.igm = Inoue14()
         log.debug(f'Cached {self.igm.reference} IGM attenuation parameters.')
 
+    def set_mapdir(self, mapdir):
+        """Set the Milky Way dust-map directory without loading the stellar
+        template basis or emission-line tables.
+
+        For callers that populate ``sc_data`` directly rather than via
+        :meth:`initialize` (e.g. :mod:`fastspecfit.fastbayes`, which never
+        needs templates/emission lines) but still call
+        :func:`fastspecfit.io.one_spectrum`, which requires :attr:`sfdmap`
+        to be usable.
+
+        Parameters
+        ----------
+        mapdir : :class:`str` or None
+            Directory containing the Milky Way dust maps; defaults to
+            ``$DUST_DIR/maps`` when ``None``. As with :meth:`initialize`,
+            the map itself is loaded lazily, on first access to
+            :attr:`sfdmap`.
+
+        """
+        self._mapdir = mapdir
+        self._sfdmap = None
+
     @property
     def sfdmap(self):
         """Milky Way dust map (:class:`desiutil.dust.SFDMap`), shared across

@@ -22,6 +22,18 @@ releasedict = {3000: 'S', 4000: 'N', 5000: 'S', 6000: 'N', 7000: 'S', 7999: 'S',
                11000: 'S', 11001: 'N', 11010: 'S', 11011: 'N'}
 
 
+# Default rest-frame vacuum wavelengths (Angstrom) of prominent emission
+# lines used by Photometry.line_crossing_redshifts to identify redshifts
+# where a line sweeps across a bandpass edge (see build_adaptive_redshift_grid).
+DEFAULT_ZGRID_LINES = {
+    'lya':       1215.67,
+    'oii':       3727.42,
+    'hbeta':     4861.35,
+    'oiii_5007': 5006.84,
+    'halpha':    6564.61,
+}
+
+
 def desitarget_resolve_dec():
     """Default Dec cut to separate targets in BASS/MzLS from DECaLS."""
     return 32.375
@@ -735,6 +747,264 @@ class Photometry(object):
             dn4000_ivar = (1. / (dn4000**2)) / (denom_var / (denom**2) + numer_var / (numer**2))
 
         return dn4000, dn4000_ivar
+
+
+    @staticmethod
+    def build_uniform_redshift_grid(zmin, zmax, nz, logspace=True):
+        """Build a uniform redshift grid spanning ``[zmin, zmax]``.
+
+        Parameters
+        ----------
+        zmin : :class:`float`
+            Minimum redshift. Must be greater than zero, since downstream
+            luminosity-distance normalizations (e.g. in
+            ``bin/build-bayesian-photometry``) are singular at z=0.
+        zmax : :class:`float`
+            Maximum redshift.
+        nz : :class:`int`
+            Number of grid points.
+        logspace : :class:`bool`, optional
+            If ``True`` (default), space grid points uniformly in
+            log10(1+z) instead of linearly in z.
+
+        Returns
+        -------
+        zgrid : :class:`numpy.ndarray`
+            Redshift grid of length ``nz``.
+
+        """
+        if zmin <= 0.:
+            errmsg = 'zmin must be > 0 (the 10pc-normalized flux scaling is singular at z=0).'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+
+        if logspace:
+            zgrid = np.geomspace(1. + zmin, 1. + zmax, nz) - 1.
+        else:
+            zgrid = np.linspace(zmin, zmax, nz)
+
+        return zgrid
+
+
+    @staticmethod
+    def _edge_transition(filt, side, lo_frac=0.1, hi_frac=0.9):
+        """Locate one blue or red transmission edge of a filter response.
+
+        Parameters
+        ----------
+        filt : :class:`speclite.filters.FilterResponse`
+            Single filter response curve.
+        side : :class:`str`
+            ``'blue'`` for the low-wavelength edge, ``'red'`` for the
+            high-wavelength edge.
+        lo_frac, hi_frac : :class:`float`, optional
+            Fractional-of-peak response thresholds bracketing the edge.
+            Defaults are 0.1 and 0.9 (a "10-90%" transition).
+
+        Returns
+        -------
+        midpoint : :class:`float`
+            Wavelength (Angstrom) midway between the ``lo_frac`` and
+            ``hi_frac`` crossings.
+        width : :class:`float`
+            Wavelength span (Angstrom) between those two crossings.
+
+        """
+        wave, resp = filt.wavelength, filt.response
+        rmax = resp.max()
+        if side == 'blue':
+            ilo = np.argmax(resp >= lo_frac * rmax)
+            ihi = np.argmax(resp >= hi_frac * rmax)
+        else:
+            ilo = len(resp) - 1 - np.argmax(resp[::-1] >= lo_frac * rmax)
+            ihi = len(resp) - 1 - np.argmax(resp[::-1] >= hi_frac * rmax)
+        lo, hi = sorted((wave[ilo], wave[ihi]))
+        return 0.5 * (lo + hi), abs(hi - lo)
+
+
+    def line_crossing_redshifts(self, zmin, zmax, lines=None, bands=None,
+                                lo_frac=0.1, hi_frac=0.9):
+        """Redshifts where prominent emission lines cross a bandpass edge.
+
+        For every photometric system in :attr:`filters` and every
+        requested band, finds the redshift at which each rest-frame line
+        in ``lines`` falls on the blue or red transmission edge of that
+        bandpass (the midpoint between the wavelengths where the
+        response first/last rises above ``lo_frac`` and ``hi_frac`` of
+        its peak; see :meth:`_edge_transition`). These are the redshifts
+        at which synthesized broadband colors change most rapidly with
+        z, since a strong, narrow emission line is sweeping in or out of
+        a filter -- exactly where a pre-computed redshift grid used for
+        linear interpolation needs the most resolution (see
+        :meth:`build_adaptive_redshift_grid`).
+
+        Parameters
+        ----------
+        zmin, zmax : :class:`float`
+            Redshift range of interest; crossings outside this range are
+            discarded.
+        lines : :class:`dict` or None, optional
+            Mapping of line name to rest-frame vacuum wavelength in
+            Angstroms. Defaults to :data:`DEFAULT_ZGRID_LINES` (Lyman-alpha,
+            [OII], H-beta, [OIII] 5007, H-alpha).
+        bands : iterable of :class:`str` or None, optional
+            Bandpasses to consider (matched against :attr:`bands`).
+            Defaults to all bands in :attr:`bands`.
+        lo_frac, hi_frac : :class:`float`, optional
+            Passed to :meth:`_edge_transition`.
+
+        Returns
+        -------
+        crossings : :class:`list` of (float, float)
+            ``(z_cross, dz_width)`` pairs, one per (line, band edge,
+            photsys) combination that falls inside ``[zmin, zmax]``.
+            ``dz_width`` is the edge's transition width converted from
+            wavelength to redshift via the line's rest wavelength, i.e.
+            the characteristic width, in z, of the color feature caused
+            by that crossing.
+
+        """
+        if lines is None:
+            lines = DEFAULT_ZGRID_LINES
+        if bands is None:
+            bands = list(self.bands)
+
+        crossings = []
+        for filts in self.filters.values():
+            for band, filt in zip(self.bands, filts):
+                if band not in bands:
+                    continue
+                for side in ('blue', 'red'):
+                    mid, width = self._edge_transition(filt, side, lo_frac, hi_frac)
+                    for lam in lines.values():
+                        z_cross = mid / lam - 1.
+                        if zmin <= z_cross <= zmax:
+                            crossings.append((z_cross, width / lam))
+
+        return crossings
+
+
+    def build_adaptive_redshift_grid(self, zmin, zmax, nz, lines=None, bands=None,
+                                     nbase_weight=40., npts_local=3.,
+                                     lo_frac=0.1, hi_frac=0.9, nsample=200_000):
+        """Emission-line-aware redshift grid with a fixed point budget.
+
+        Builds an ``nz``-point grid concentrated at the redshifts found
+        by :meth:`line_crossing_redshifts`, rather than spread uniformly,
+        so that a fixed, modest grid size (e.g. ``nz=100``) still
+        resolves the rapid broadband-color changes caused by strong
+        emission lines sweeping across bandpass edges -- the dominant
+        source of linear-interpolation error in a pre-computed grid of
+        synthesized photometry (see ``bin/build-bayesian-photometry``).
+
+        The construction defines a target point-density function in
+        linear redshift: a flat baseline term (``nbase_weight``, spread
+        uniformly over ``[zmin, zmax]``, covering slowly-varying trends
+        like dust reddening and the 4000-A break) plus one Gaussian bump
+        per line crossing, centered at that crossing's redshift, with
+        width set by the bandpass edge's own transition width (converted
+        from wavelength to redshift via the line's rest wavelength) and
+        amplitude normalized so each crossing contributes roughly
+        ``npts_local`` points to the final grid regardless of whether its
+        edge is sharp or gradual. The cumulative density is then inverted
+        to place exactly ``nz`` points -- overlapping crossings (e.g. the
+        same line/band edge in the ``N``/``S`` photometric systems)
+        simply add in density space, so no explicit window-merging is
+        needed.
+
+        Parameters
+        ----------
+        zmin, zmax : :class:`float`
+            Redshift range of the grid.
+        nz : :class:`int`
+            Total number of grid points (the full point budget).
+        lines, bands, lo_frac, hi_frac
+            Passed to :meth:`line_crossing_redshifts`.
+        nbase_weight : :class:`float`, optional
+            Relative weight of the flat baseline term, in the same units
+            as ``npts_local`` (i.e., an equivalent point count spread
+            uniformly over ``[zmin, zmax]``). Default is 40.
+        npts_local : :class:`float`, optional
+            Relative weight (equivalent point count) contributed by each
+            individual line crossing. Default is 3.
+        nsample : :class:`int`, optional
+            Number of samples used to evaluate/integrate the density
+            function before inverting its cumulative distribution.
+            Default is 200,000.
+
+        Returns
+        -------
+        zgrid : :class:`numpy.ndarray`
+            Redshift grid of length ``nz``, sorted ascending.
+
+        Notes
+        -----
+        Unlike :meth:`build_uniform_redshift_grid`, this grid is built
+        directly in linear z (not log10(1+z)): the line crossings
+        themselves already cluster at low-to-intermediate z for the
+        rest-frame lines and optical bandpasses used here, which
+        concentrates the resulting grid there without a log transform,
+        and building the underlying density/CDF in log-space was found
+        empirically to starve resolution near ``zmax``.
+
+        """
+        if zmin <= 0.:
+            errmsg = 'zmin must be > 0 (the 10pc-normalized flux scaling is singular at z=0).'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+
+        crossings = self.line_crossing_redshifts(
+            zmin, zmax, lines=lines, bands=bands, lo_frac=lo_frac, hi_frac=hi_frac)
+
+        z = np.linspace(zmin, zmax, nsample)
+        rho = np.full_like(z, nbase_weight / (zmax - zmin))
+        for z_cross, dz_width in crossings:
+            sigma = max(dz_width, (zmax - zmin) / nsample * 3.)
+            amp = npts_local / (np.sqrt(2. * np.pi) * sigma)
+            rho += amp * np.exp(-0.5 * ((z - z_cross) / sigma)**2)
+
+        cdf = np.concatenate([[0.], np.cumsum(0.5 * (rho[1:] + rho[:-1]) * np.diff(z))])
+        targets = np.linspace(0., cdf[-1], nz)
+        zgrid = np.interp(targets, cdf, z)
+
+        return zgrid
+
+
+    def build_redshift_grid(self, zmin, zmax, nz, logspace=True, adaptive=False, **kwargs):
+        """Build the fixed redshift grid used for pre-computed model photometry.
+
+        Thin dispatcher between :meth:`build_uniform_redshift_grid` and
+        :meth:`build_adaptive_redshift_grid`.
+
+        Parameters
+        ----------
+        zmin, zmax : :class:`float`
+            Redshift range.
+        nz : :class:`int`
+            Number of grid points.
+        logspace : :class:`bool`, optional
+            Passed to :meth:`build_uniform_redshift_grid` when
+            ``adaptive=False``. Ignored when ``adaptive=True`` (see that
+            method's Notes).
+        adaptive : :class:`bool`, optional
+            If ``True``, build an emission-line-aware grid via
+            :meth:`build_adaptive_redshift_grid` instead of a uniform
+            one. Default is ``False``.
+        **kwargs
+            Extra keywords forwarded to
+            :meth:`build_adaptive_redshift_grid` (``lines``, ``bands``,
+            ``nbase_weight``, ``npts_local``, ``lo_frac``, ``hi_frac``);
+            ignored when ``adaptive=False``.
+
+        Returns
+        -------
+        zgrid : :class:`numpy.ndarray`
+            Redshift grid of length ``nz``.
+
+        """
+        if adaptive:
+            return self.build_adaptive_redshift_grid(zmin, zmax, nz, **kwargs)
+        return self.build_uniform_redshift_grid(zmin, zmax, nz, logspace=logspace)
 
 
 def tractorphot_datamodel(from_file=False, datarelease='dr9'):

@@ -1,4 +1,4 @@
-TEX = emline-model continuum-modeling
+TEX = emline-model continuum-modeling fastbayes
 PDFS = $(TEX:%=%.pdf)
 
 LATEXMK = latexmk
