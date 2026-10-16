@@ -71,6 +71,14 @@ class EmlineConstraints:
         self.amplitude_fixed = _getlist(ac, 'fixed')
         self.doublet_ratios  = _getlist(ac, 'doublet_ratios')
 
+        # optionally allow all line amplitudes to go negative
+        allow_negative = ac.get('allow_negative', False)
+        if not isinstance(allow_negative, bool):
+            errmsg = f'amplitude_constraints.allow_negative must be true or false, not {allow_negative!r}.'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+        self.allow_negative = allow_negative
+
         # global placements (shared across all profiles)
         g = raw['global']
         self.global_free_lines       = list(_getlist(g, 'free_lines'))
@@ -591,8 +599,10 @@ class EMFitTools(object):
         initials = np.empty(len(self.param_table), dtype=np.float64)
         bounds = np.empty((len(self.param_table), 2), dtype=np.float64)
 
-        minamp = 0.
+        allow_negative = self.constraints.allow_negative
+
         maxamp = +1e5
+        minamp = -maxamp if allow_negative else 0.
 
         for iline, (line_name, line_isbalmer, line_isbroad, line_params) in \
             enumerate(self.line_table.iterrows('name', 'isbalmer', 'isbroad', 'params')):
@@ -652,15 +662,20 @@ class EMFitTools(object):
 
             # update the bounds on the line-amplitude
             #bounds = [-np.min(np.abs(coadd_flux[linepix])), 3*np.max(coadd_flux[linepix])]
-            mx = 5. * np.max(coadd_flux[onelinepix] - local)
-
             # record our initial gueses and bounds for the amplitude, unless
-            # they are nonsensical
-            if mx >= 0. and amp >= 0. and mx > amp:
+            # they are nonsensical; with allow_negative the bounds are
+            # symmetric about zero
+            if allow_negative:
+                mx = 5. * np.max(np.abs(coadd_flux[onelinepix] - local))
+                use_guess = mx > np.abs(amp)
+            else:
+                mx = 5. * np.max(coadd_flux[onelinepix] - local)
+                use_guess = mx >= 0. and amp >= 0. and mx > amp
+            if use_guess:
                 line = self.line_map[linename]
                 amp_idx = self.line_table['params'][line, ParamType.AMPLITUDE]
                 initials[amp_idx] = amp
-                bounds[amp_idx] = np.array([0., mx])
+                bounds[amp_idx] = np.array([-mx if allow_negative else 0., mx])
 
         # Doublet ratio bounds and initial values from the constraint file.
         doublet_bounds = {
@@ -1075,7 +1090,7 @@ class EMFitTools(object):
                 # = sqrt(2*pi) * A * sigma * lambda*, independent of the resolution matrix.
                 # Computed from model parameters alone so it is available even when the
                 # local pixel window is heavily masked.
-                if obsamps[line_amp] > TINY:
+                if np.abs(obsamps[line_amp]) > TINY:
                     flux = np.sqrt(2. * np.pi) * parameters[line_amp] * linezwave * linesigma0 / C_LIGHT
 
                 # Are the pixels based on the original inverse spectrum fully masked?
@@ -1222,8 +1237,8 @@ class EMFitTools(object):
                 else:
                     obsamps_ivar = 0.
 
-                # require amp > 0 (line not dropped) to compute the flux and chi2
-                if obsamps[line_amp] > TINY:
+                # require amp != 0 (line not dropped) to compute the flux and chi2
+                if np.abs(obsamps[line_amp]) > TINY:
                     emlineflux_model_patch = emlineflux_model_s[patchindx]
                     chi2 = np.sum(emlineivar_patch * (emlineflux_patch - emlineflux_model_patch)**2)
                     fastfit[f'{linename}_CHI2'] = chi2
@@ -1258,7 +1273,7 @@ class EMFitTools(object):
                 #ewlimit = fluxlimit / cont / (1.+redshift)
                 #fastfit[f'{linename}_EW_LIMIT'] = ewlimit
 
-                if flux > 0. and flux_ivar > 0.:
+                if flux != 0. and flux_ivar > 0.:
                     # add the uncertainties in the flux and continuum in quadrature
                     ew = flux / cont / (1. + redshift) # rest frame [A]
                     fastfit[f'{linename}_EW'] = ew
@@ -2138,7 +2153,7 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                 ewivar_col = f'{ucol}_EW_IVAR'
                 ew     = float(fastfit[ew_col])     if ew_col     in fnames else 0.
                 ewivar = float(fastfit[ewivar_col]) if ewivar_col in fnames else 0.
-                if ew > 0.:
+                if ew != 0.:
                     if ewivar > 0.:
                         line_str += f'   EW = {ew:7.1f} ±{1./np.sqrt(ewivar):5.1f} Å'
                     else:

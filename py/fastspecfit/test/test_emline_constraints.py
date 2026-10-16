@@ -317,6 +317,41 @@ class TestAmplitudeConstraints:
         assert abs(factors['oiii_4959'] - 1. / 2.9643) < 1e-3
         assert abs(factors['oii_7330']  - 1. / 1.225)  < 1e-3
 
+    def test_allow_negative_default_false(self, ec):
+        assert ec.allow_negative is False
+
+    @staticmethod
+    def _write_allow_negative(ec, tmp_path, value):
+        import yaml
+        with open(ec.file) as fh:
+            raw = yaml.safe_load(fh)
+        raw['amplitude_constraints']['allow_negative'] = value
+        outfile = str(tmp_path / 'constraints_negative.yaml')
+        with open(outfile, 'w') as fh:
+            yaml.safe_dump(raw, fh)
+        return outfile
+
+    def test_allow_negative_true(self, ec, line_table, tmp_path):
+        from fastspecfit.emlines import EmlineConstraints, EMFitTools, ParamType
+        outfile = self._write_allow_negative(ec, tmp_path, True)
+        ec2 = EmlineConstraints(constraints_file=outfile, line_table=line_table)
+        assert ec2.allow_negative is True
+
+        # every amplitude lower bound (excluding the doublet ratios, which
+        # keep their own bounds) is now negative and symmetric about zero
+        emfit2 = EMFitTools(line_table, ec2)
+        _, bounds = emfit2._initial_guesses_and_bounds({}, np.zeros(10))
+        amp_idx = emfit2.line_table['params'][:, ParamType.AMPLITUDE]
+        amp_idx = np.setdiff1d(amp_idx, emfit2.doublet_idx)
+        assert np.all(bounds[amp_idx, 0] < 0.)
+        assert np.all(bounds[amp_idx, 0] == -bounds[amp_idx, 1])
+
+    def test_allow_negative_not_bool_raises(self, ec, tmp_path):
+        from fastspecfit.emlines import EmlineConstraints
+        outfile = self._write_allow_negative(ec, tmp_path, 'yes please')
+        with pytest.raises(ValueError, match='allow_negative'):
+            EmlineConstraints(constraints_file=outfile)
+
 
 # ── Group 5: EMFitTools wiring ────────────────────────────────────────────────
 
