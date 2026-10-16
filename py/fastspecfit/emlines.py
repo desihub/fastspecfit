@@ -934,7 +934,7 @@ class EMFitTools(object):
             lineamps = line_parameters[:len(self.line_table)] # amplitude parameters
             line_names = self.line_table['name'].value
             lineamps_ivar = [fastfit[line_name.upper()+'_AMP_IVAR'] for line_name in line_names]
-            lineamps[lineamps * np.sqrt(lineamps_ivar) < snrcut] = 0.
+            lineamps[np.abs(lineamps) * np.sqrt(lineamps_ivar) < snrcut] = 0.
 
         linewaves = self.line_table['restwave'].value
 
