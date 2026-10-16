@@ -5,9 +5,19 @@ Change Log
 3.7.0 (not released yet)
 ------------------------
 
-* Add ``--tauv-bounds``, ``--smooth-window`` and ``--smooth-step`` as
-  new command-line arguments and MC the smooth-continuum
-  correction[`PR #292`_].
+* Replace the sliding-window smooth continuum with a per-camera cubic
+  B-spline with fixed knots [`PR #293`_]:
+
+  * New ``--smooth-knot-spacing`` command-line argument (default 800
+    Angstrom), which replaces ``--smooth-window`` and ``--smooth-step``.
+  * Replace the ``SMOOTHCORR_{B,R,Z}`` output columns with
+    ``DELTA_SMOOTHCHI2_{B,R,Z}``, ``DELTA_SMOOTHNDOF_{B,R,Z}``, and
+    ``SMOOTHRMS_{B,R,Z}``, and the ``SMWINDOW`` and ``SMSTEP`` header
+    keywords with ``SMKNOTS``.
+  * ``fastqa`` uses the previous algorithm for older catalogs.
+
+* Add ``--tauv-bounds`` as a new command-line argument and MC the
+  smooth-continuum correction [`PR #292`_].
 * Miscellaneous emission-line updates [`PR #289`_]:
 
   * Rename the mislabeled ``H6`` and ``H6_BROAD`` lines (and output columns)
@@ -24,6 +34,7 @@ Change Log
 
 * New ``Loa`` and ``Iron`` VACs [`PR #281`_].
 
+.. _`PR #293`: https://github.com/desihub/fastspecfit/pull/293
 .. _`PR #292`: https://github.com/desihub/fastspecfit/pull/292
 .. _`PR #289`: https://github.com/desihub/fastspecfit/pull/289
 .. _`PR #281`: https://github.com/desihub/fastspecfit/pull/281
