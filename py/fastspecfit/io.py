@@ -928,8 +928,14 @@ class DESISpectra(object):
                 assert(np.all(meta['TARGETID'] == targetids))
 
             # Get the unique set of tiles contributing to the coadded spectra
-            # from EXP_FIBERMAP.
-            expmeta = fitsio.read(specfile, 'EXP_FIBERMAP', columns=EXPFMCOLS[self.coadd_type])
+            # from EXP_FIBERMAP. Uncoadded custom files have no EXP_FIBERMAP,
+            # but their FIBERMAP has one row per exposure, including TILEID.
+            expext = 'EXP_FIBERMAP'
+            if self.coadd_type == 'custom':
+                with fitsio.FITS(specfile) as F:
+                    if expext not in F:
+                        expext = 'FIBERMAP'
+            expmeta = fitsio.read(specfile, expext, columns=EXPFMCOLS[self.coadd_type])
             I = np.isin(expmeta['TARGETID'], meta['TARGETID'])
             if not np.any(I):
                 errmsg = 'No matching targets in exposure table.'
