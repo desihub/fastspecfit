@@ -297,7 +297,6 @@ class EMFitTools(object):
         # Build some convenience (Boolean) arrays that we'll use in many places:
         line_isbroad  = self.line_table['isbroad'].value
         line_isbalmer = self.line_table['isbalmer'].value
-        line_ishelium = self.line_table['ishelium'].value
         line_isstrong = self.line_table['isstrong'].value
 
         # broad UV/QSO lines but *not* broad Balmer or helium lines
@@ -309,15 +308,12 @@ class EMFitTools(object):
         # broad Balmer *and* helium lines
         self.isBalmerBroad = (line_isbroad & line_isbalmer)
 
-        # broad Balmer *excluding* helium lines
-        self.isBalmerBroad_noHelium = \
-            (self.isBalmerBroad & ~line_ishelium)
-
-        # broad Balmer lines used to test the narrow+broad model
-        self.isBalmerBroad_noHelium_Strong = \
-            (self.isBalmerBroad_noHelium & line_isstrong)
-
         line_names = self.line_table['name'].value
+
+        # strong lines added by the narrow+broad model (i.e., fixed to zero in
+        # the narrow_only profile); used to test the narrow+broad model
+        broad_model_lines = _getlist(constraints.profiles['narrow_only'], 'fixed_lines')
+        self.isBroadModel_Strong = np.isin(line_names, broad_model_lines) & line_isstrong
 
         # mapping to enable fast lookup of line number by name
         self.line_map = { line_name : line_idx for line_idx, line_name in enumerate(line_names) }
@@ -1483,9 +1479,10 @@ def test_broad_model(EMFit,
     adopt_broad : bool
         ``True`` if the broad-line model is preferred.
     delta_linechi2_balmer : float
-        Improvement in chi-squared at the Balmer lines.
+        Improvement in chi-squared at the (strong) lines added by the broad
+        model, i.e., the ``fixed_lines`` of the ``narrow_only`` profile.
     delta_linendof_balmer : int
-        Change in degrees of freedom at the Balmer lines.
+        Change in degrees of freedom at the same lines.
 
     """
     from fastspecfit.util import quantile
@@ -1498,8 +1495,8 @@ def test_broad_model(EMFit,
     line_names = EMFit.line_table['name'].value
     line_params = EMFit.line_table['params'].value
 
-    # get the pixels of the broad Balmer lines
-    IBalmer = EMFit.isBalmerBroad_noHelium_Strong
+    # get the pixels of the (strong) lines added by the broad model
+    IBalmer = EMFit.isBroadModel_Strong
 
     balmer_linesigmas = broad_values[line_params[IBalmer, ParamType.SIGMA]]
     balmer_linevshifts = broad_values[line_params[IBalmer, ParamType.VSHIFT]]
@@ -1575,14 +1572,12 @@ def test_broad_model(EMFit,
     sigtest1 = Habroad > minsigma_balmer_broad
     sigtest2 = Habroad > Hanarrow
 
-    if len(balmer_linesnrs) == 1:
-        broadsnrtest = (balmer_linesnrs[-1] > minsnr_balmer_broad)
-        _broadsnr = f'S/N {line_names[balmerlines[-1]]} = {balmer_linesnrs[-1]:.1f}'
-    else:
-        broadsnrtest = np.any(balmer_linesnrs[-2:] > minsnr_balmer_broad)
-        _broadsnr = \
-            f'S/N ({line_names[balmerlines[-2]]}) = {balmer_linesnrs[-2]:.1f}, ' \
-            f'S/N ({line_names[balmerlines[-1]]}) = {balmer_linesnrs[-1]:.1f}'
+    # restrict the S/N test to the (reddest two) broad Balmer lines
+    snrlines = [iline for iline, bline in enumerate(balmerlines)
+                if EMFit.isBalmerBroad[bline]][-2:]
+    broadsnrtest = np.any(balmer_linesnrs[snrlines] > minsnr_balmer_broad)
+    _broadsnr = ', '.join(f'S/N ({line_names[balmerlines[iline]]}) = {balmer_linesnrs[iline]:.1f}'
+                          for iline in snrlines)
 
     if dchi2test and sigtest1 and sigtest2 and broadsnrtest:
         adopt_broad = True
