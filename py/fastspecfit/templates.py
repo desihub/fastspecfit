@@ -165,6 +165,11 @@ class Templates(object):
         pixkms_bounds = np.searchsorted(self.wave, self.PIXKMS_BOUNDS, 'left')
         self.pixkms_bounds = pixkms_bounds
 
+        # interpolation indices and weights used to pad the convolved
+        # wavelength range; see _pad_mid
+        self.pad_radius = Templates._gaussian_radius(Templates.MAX_PRE_VDISP / self.PIXKMS)
+        self.pad_interp = self._pad_interp(self.pad_radius)
+
         self.conv_pre = self.convolve_vdisp_pre(self.flux)
         self.flux_nomvdisp = self.convolve_vdisp(self.flux, self.vdisp_nominal_kernel)
 
@@ -262,8 +267,9 @@ class Templates(object):
         conv_pre : :class:`tuple`
             ``(flux_lohi, ft_flux_mid, fft_len)`` where ``flux_lohi`` contains
             the raw fluxes outside :attr:`PIXKMS_BOUNDS`, ``ft_flux_mid`` is
-            the FFT of the central wavelength range, and ``fft_len`` is the
-            padded FFT length.
+            the FFT of the central wavelength range (padded on each side by
+            :attr:`pad_radius` pixels; see :meth:`_pad_mid`), and
+            ``fft_len`` is the padded FFT length.
 
         """
         import scipy.fft as sc_fft
@@ -277,10 +283,11 @@ class Templates(object):
 
         lo, hi = self.pixkms_bounds
 
-        # extract the un-convolved ranges of templateflux
+        # extract the un-convolved ranges of templateflux and the padded
+        # convolved range
         flux_lo = templateflux[:, :lo]
         flux_hi = templateflux[:, hi:]
-        flux_mid = templateflux[:, lo:hi]
+        flux_mid = self._pad_mid(templateflux, self.pad_radius)
 
         mid_len = flux_mid.shape[1]
 
@@ -329,7 +336,7 @@ class Templates(object):
             Concatenated raw fluxes for wavelengths outside
             :attr:`PIXKMS_BOUNDS`.
         ft_flux_mid : :class:`numpy.ndarray` of complex
-            FFT of the central wavelength range.
+            FFT of the padded central wavelength range.
         flux_len : :class:`int`
             Total length of the output flux array.
         fft_len : :class:`int`
@@ -362,8 +369,9 @@ class Templates(object):
 
         lo, hi = self.pixkms_bounds
 
-        # extract middle of convolution (eqv to mode='same')
-        s = len(kernel)//2
+        # extract the central range, skipping the padding (eqv to
+        # mode='valid' on the padded array)
+        s = self.pad_radius + radius
         e = s + hi - lo
         output[lo:hi] = conv[s:e]
 
@@ -377,7 +385,9 @@ class Templates(object):
         """Convolve one or more template spectra with a velocity dispersion.
 
         Only the wavelength range defined by :attr:`PIXKMS_BOUNDS` is
-        convolved; pixels outside that range are copied unchanged.
+        convolved; pixels outside that range are copied unchanged. The
+        convolved range is padded with the spectrum just outside the bounds
+        (see :meth:`_pad_mid`) so the edge pixels are not darkened.
 
         Parameters
         ----------
@@ -394,8 +404,6 @@ class Templates(object):
             ``templateflux``.
 
         """
-        from scipy.signal import oaconvolve
-
         # Convolve by the velocity dispersion.
         if vdisp <= 0.:
             output = templateflux.copy()
@@ -408,21 +416,91 @@ class Templates(object):
             kernel = Templates._gaussian_kernel1d(sigma, radius)
 
             lo, hi = self.pixkms_bounds
+            padflux = self._pad_mid(templateflux, radius)
 
             if templateflux.ndim == 1:
-                output[lo:hi] = self.convolve(
-                    templateflux[lo:hi], kernel, mode='same')
+                output[lo:hi] = self.convolve(padflux, kernel, mode='valid')
                 output[:lo] = templateflux[:lo]
                 output[hi:] = templateflux[hi:]
             else:
                 ntemplates = templateflux.shape[0]
                 for ii in range(ntemplates):
                     output[ii, lo:hi] = self.convolve(
-                        templateflux[ii, lo:hi], kernel, mode='same')
+                        padflux[ii, :], kernel, mode='valid')
                 output[:, :lo] = templateflux[:, :lo]
                 output[:, hi:] = templateflux[:, hi:]
 
         return output
+
+
+    def _pad_interp(self, radius):
+        """Interpolation indices and weights for padding the convolved range.
+
+        Extends the constant-:attr:`PIXKMS` wavelength grid inside
+        :attr:`PIXKMS_BOUNDS` by ``radius`` pixels on each side and returns
+        the linear-interpolation indices and weights that resample the
+        native template grid (which is coarser outside the bounds) onto
+        those padding pixels.
+
+        Parameters
+        ----------
+        radius : :class:`int`
+            Number of padding pixels on each side.
+
+        Returns
+        -------
+        i0 : :class:`numpy.ndarray` of int, shape (2*radius,)
+            Index of the native pixel just blueward of each padding pixel;
+            the first ``radius`` entries are blueward of the lower bound
+            and the last ``radius`` are redward of the upper bound, both in
+            increasing wavelength.
+        wt : :class:`numpy.ndarray`, shape (2*radius,)
+            Interpolation weight of native pixel ``i0+1``.
+
+        """
+        lo, hi = self.pixkms_bounds
+        dlnwave = self.PIXKMS / Templates.C_LIGHT
+        kk = np.arange(1, radius+1)
+        padwave = np.hstack((self.wave[lo] * np.exp(-dlnwave * kk[::-1]),
+                             self.wave[hi-1] * np.exp(dlnwave * kk)))
+        i0 = np.clip(np.searchsorted(self.wave, padwave, 'right') - 1, 0, self.npix-2)
+        wt = np.clip((padwave - self.wave[i0]) / (self.wave[i0+1] - self.wave[i0]), 0., 1.)
+        return i0, wt
+
+
+    def _pad_mid(self, templateflux, radius):
+        """Return the convolved wavelength range padded on each side.
+
+        The padding samples the spectrum just outside :attr:`PIXKMS_BOUNDS`
+        on the same constant-:attr:`PIXKMS` grid as the range itself, so a
+        Gaussian kernel of up to ``radius`` pixels sees the true neighboring
+        flux at the bounds rather than zeros.
+
+        Parameters
+        ----------
+        templateflux : :class:`numpy.ndarray`
+            Either a 1D spectrum or a 2D array of shape
+            ``(ntemplates, nwavelengths)``.
+        radius : :class:`int`
+            Number of padding pixels on each side.
+
+        Returns
+        -------
+        padflux : :class:`numpy.ndarray`
+            Array of length ``hi - lo + 2*radius`` along the last axis.
+
+        """
+        lo, hi = self.pixkms_bounds
+        if radius <= self.pad_radius:
+            i0, wt = self.pad_interp
+            keep = np.arange(self.pad_radius - radius, self.pad_radius + radius)
+            i0, wt = i0[keep], wt[keep]
+        else:
+            i0, wt = self._pad_interp(radius)
+
+        pad = templateflux[..., i0] * (1. - wt) + templateflux[..., i0+1] * wt
+        return np.concatenate((pad[..., :radius], templateflux[..., lo:hi],
+                               pad[..., radius:]), axis=-1)
 
 
     @staticmethod

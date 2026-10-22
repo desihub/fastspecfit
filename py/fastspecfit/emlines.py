@@ -71,6 +71,14 @@ class EmlineConstraints:
         self.amplitude_fixed = _getlist(ac, 'fixed')
         self.doublet_ratios  = _getlist(ac, 'doublet_ratios')
 
+        # optionally allow all line amplitudes to go negative
+        allow_negative = ac.get('allow_negative', False)
+        if not isinstance(allow_negative, bool):
+            errmsg = f'amplitude_constraints.allow_negative must be true or false, not {allow_negative!r}.'
+            log.critical(errmsg)
+            raise ValueError(errmsg)
+        self.allow_negative = allow_negative
+
         # global placements (shared across all profiles)
         g = raw['global']
         self.global_free_lines       = list(_getlist(g, 'free_lines'))
@@ -289,7 +297,6 @@ class EMFitTools(object):
         # Build some convenience (Boolean) arrays that we'll use in many places:
         line_isbroad  = self.line_table['isbroad'].value
         line_isbalmer = self.line_table['isbalmer'].value
-        line_ishelium = self.line_table['ishelium'].value
         line_isstrong = self.line_table['isstrong'].value
 
         # broad UV/QSO lines but *not* broad Balmer or helium lines
@@ -301,15 +308,12 @@ class EMFitTools(object):
         # broad Balmer *and* helium lines
         self.isBalmerBroad = (line_isbroad & line_isbalmer)
 
-        # broad Balmer *excluding* helium lines
-        self.isBalmerBroad_noHelium = \
-            (self.isBalmerBroad & ~line_ishelium)
-
-        # broad Balmer lines used to test the narrow+broad model
-        self.isBalmerBroad_noHelium_Strong = \
-            (self.isBalmerBroad_noHelium & line_isstrong)
-
         line_names = self.line_table['name'].value
+
+        # strong lines added by the narrow+broad model (i.e., fixed to zero in
+        # the narrow_only profile); used to test the narrow+broad model
+        broad_model_lines = _getlist(constraints.profiles['narrow_only'], 'fixed_lines')
+        self.isBroadModel_Strong = np.isin(line_names, broad_model_lines) & line_isstrong
 
         # mapping to enable fast lookup of line number by name
         self.line_map = { line_name : line_idx for line_idx, line_name in enumerate(line_names) }
@@ -591,8 +595,10 @@ class EMFitTools(object):
         initials = np.empty(len(self.param_table), dtype=np.float64)
         bounds = np.empty((len(self.param_table), 2), dtype=np.float64)
 
-        minamp = 0.
+        allow_negative = self.constraints.allow_negative
+
         maxamp = +1e5
+        minamp = -maxamp if allow_negative else 0.
 
         for iline, (line_name, line_isbalmer, line_isbroad, line_params) in \
             enumerate(self.line_table.iterrows('name', 'isbalmer', 'isbroad', 'params')):
@@ -652,15 +658,20 @@ class EMFitTools(object):
 
             # update the bounds on the line-amplitude
             #bounds = [-np.min(np.abs(coadd_flux[linepix])), 3*np.max(coadd_flux[linepix])]
-            mx = 5. * np.max(coadd_flux[onelinepix] - local)
-
             # record our initial gueses and bounds for the amplitude, unless
-            # they are nonsensical
-            if mx >= 0. and amp >= 0. and mx > amp:
+            # they are nonsensical; with allow_negative the bounds are
+            # symmetric about zero
+            if allow_negative:
+                mx = 5. * np.max(np.abs(coadd_flux[onelinepix] - local))
+                use_guess = mx > np.abs(amp)
+            else:
+                mx = 5. * np.max(coadd_flux[onelinepix] - local)
+                use_guess = mx >= 0. and amp >= 0. and mx > amp
+            if use_guess:
                 line = self.line_map[linename]
                 amp_idx = self.line_table['params'][line, ParamType.AMPLITUDE]
                 initials[amp_idx] = amp
-                bounds[amp_idx] = np.array([0., mx])
+                bounds[amp_idx] = np.array([-mx if allow_negative else 0., mx])
 
         # Doublet ratio bounds and initial values from the constraint file.
         doublet_bounds = {
@@ -919,7 +930,7 @@ class EMFitTools(object):
             lineamps = line_parameters[:len(self.line_table)] # amplitude parameters
             line_names = self.line_table['name'].value
             lineamps_ivar = [fastfit[line_name.upper()+'_AMP_IVAR'] for line_name in line_names]
-            lineamps[lineamps * np.sqrt(lineamps_ivar) < snrcut] = 0.
+            lineamps[np.abs(lineamps) * np.sqrt(lineamps_ivar) < snrcut] = 0.
 
         linewaves = self.line_table['restwave'].value
 
@@ -1075,7 +1086,7 @@ class EMFitTools(object):
                 # = sqrt(2*pi) * A * sigma * lambda*, independent of the resolution matrix.
                 # Computed from model parameters alone so it is available even when the
                 # local pixel window is heavily masked.
-                if obsamps[line_amp] > TINY:
+                if np.abs(obsamps[line_amp]) > TINY:
                     flux = np.sqrt(2. * np.pi) * parameters[line_amp] * linezwave * linesigma0 / C_LIGHT
 
                 # Are the pixels based on the original inverse spectrum fully masked?
@@ -1222,8 +1233,8 @@ class EMFitTools(object):
                 else:
                     obsamps_ivar = 0.
 
-                # require amp > 0 (line not dropped) to compute the flux and chi2
-                if obsamps[line_amp] > TINY:
+                # require amp != 0 (line not dropped) to compute the flux and chi2
+                if np.abs(obsamps[line_amp]) > TINY:
                     emlineflux_model_patch = emlineflux_model_s[patchindx]
                     chi2 = np.sum(emlineivar_patch * (emlineflux_patch - emlineflux_model_patch)**2)
                     fastfit[f'{linename}_CHI2'] = chi2
@@ -1258,7 +1269,7 @@ class EMFitTools(object):
                 #ewlimit = fluxlimit / cont / (1.+redshift)
                 #fastfit[f'{linename}_EW_LIMIT'] = ewlimit
 
-                if flux > 0. and flux_ivar > 0.:
+                if flux != 0. and flux_ivar > 0.:
                     # add the uncertainties in the flux and continuum in quadrature
                     ew = flux / cont / (1. + redshift) # rest frame [A]
                     fastfit[f'{linename}_EW'] = ew
@@ -1468,9 +1479,10 @@ def test_broad_model(EMFit,
     adopt_broad : bool
         ``True`` if the broad-line model is preferred.
     delta_linechi2_balmer : float
-        Improvement in chi-squared at the Balmer lines.
+        Improvement in chi-squared at the (strong) lines added by the broad
+        model, i.e., the ``fixed_lines`` of the ``narrow_only`` profile.
     delta_linendof_balmer : int
-        Change in degrees of freedom at the Balmer lines.
+        Change in degrees of freedom at the same lines.
 
     """
     from fastspecfit.util import quantile
@@ -1483,8 +1495,8 @@ def test_broad_model(EMFit,
     line_names = EMFit.line_table['name'].value
     line_params = EMFit.line_table['params'].value
 
-    # get the pixels of the broad Balmer lines
-    IBalmer = EMFit.isBalmerBroad_noHelium_Strong
+    # get the pixels of the (strong) lines added by the broad model
+    IBalmer = EMFit.isBroadModel_Strong
 
     balmer_linesigmas = broad_values[line_params[IBalmer, ParamType.SIGMA]]
     balmer_linevshifts = broad_values[line_params[IBalmer, ParamType.VSHIFT]]
@@ -1560,14 +1572,12 @@ def test_broad_model(EMFit,
     sigtest1 = Habroad > minsigma_balmer_broad
     sigtest2 = Habroad > Hanarrow
 
-    if len(balmer_linesnrs) == 1:
-        broadsnrtest = (balmer_linesnrs[-1] > minsnr_balmer_broad)
-        _broadsnr = f'S/N {line_names[balmerlines[-1]]} = {balmer_linesnrs[-1]:.1f}'
-    else:
-        broadsnrtest = np.any(balmer_linesnrs[-2:] > minsnr_balmer_broad)
-        _broadsnr = \
-            f'S/N ({line_names[balmerlines[-2]]}) = {balmer_linesnrs[-2]:.1f}, ' \
-            f'S/N ({line_names[balmerlines[-1]]}) = {balmer_linesnrs[-1]:.1f}'
+    # restrict the S/N test to the (reddest two) broad Balmer lines
+    snrlines = [iline for iline, bline in enumerate(balmerlines)
+                if EMFit.isBalmerBroad[bline]][-2:]
+    broadsnrtest = np.any(balmer_linesnrs[snrlines] > minsnr_balmer_broad)
+    _broadsnr = ', '.join(f'S/N ({line_names[balmerlines[iline]]}) = {balmer_linesnrs[iline]:.1f}'
+                          for iline in snrlines)
 
     if dchi2test and sigtest1 and sigtest2 and broadsnrtest:
         adopt_broad = True
@@ -1575,7 +1585,7 @@ def test_broad_model(EMFit,
         log.info(f'  delta-chi2={delta_linechi2_balmer:.1f} > delta-ndof={delta_linendof_balmer:.0f}')
         log.info(f'  sigma_broad={Habroad:.1f} km/s, sigma_narrow={Hanarrow:.1f} km/s')
         if _broadsnr:
-            log.info(f'  {_broadsnr} > {minsnr_balmer_broad:.0f}')
+            log.info(f'  {_broadsnr} > {minsnr_balmer_broad:.1f}')
     else:
         adopt_broad = False
         if dchi2test == False:
@@ -1587,7 +1597,7 @@ def test_broad_model(EMFit,
             log.debug(f'Dropping broad-line model: Halpha_broad_sigma {Habroad:.1f} km/s < Halpha_narrow_sigma {Hanarrow:.1f} km/s '
                       f'(delta-chi2={delta_linechi2_balmer:.1f}, delta-ndof={delta_linendof_balmer:.0f}).')
         elif broadsnrtest == False:
-            log.debug(f'Dropping broad-line model: {_broadsnr} < {minsnr_balmer_broad:.0f}')
+            log.debug(f'Dropping broad-line model: {_broadsnr} < {minsnr_balmer_broad:.1f}')
 
     return adopt_broad, delta_linechi2_balmer, delta_linendof_balmer
 
@@ -2138,7 +2148,7 @@ def emline_specfit(data, fastfit, specphot, continuummodel, smooth_continuum,
                 ewivar_col = f'{ucol}_EW_IVAR'
                 ew     = float(fastfit[ew_col])     if ew_col     in fnames else 0.
                 ewivar = float(fastfit[ewivar_col]) if ewivar_col in fnames else 0.
-                if ew > 0.:
+                if ew != 0.:
                     if ewivar > 0.:
                         line_str += f'   EW = {ew:7.1f} ±{1./np.sqrt(ewivar):5.1f} Å'
                     else:

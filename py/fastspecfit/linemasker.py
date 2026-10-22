@@ -782,8 +782,8 @@ class LineMasker(object):
             linewaves = linetable_inrange['restwave'][I] * (1. + redshift)
             pivotwave = 0.5 * (np.min(linewaves) + np.max(linewaves)) # midpoint
             continuum_patches['pivotwave'][ipatch] = pivotwave
-            # is there a broad Balmer line on this patch?
-            continuum_patches['balmerbroad'][ipatch] = np.any(EMFit.isBalmerBroad_noHelium_Strong[EMFit.line_in_range][I])
+            # is there a (strong) broad-model line on this patch?
+            continuum_patches['balmerbroad'][ipatch] = np.any(EMFit.isBroadModel_Strong[EMFit.line_in_range][I])
 
         if refit:
             # Need to pass copies of continuum_patches and patchMap because they can

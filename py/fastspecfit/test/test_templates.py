@@ -94,3 +94,46 @@ class TestVdispSigmaRelation:
         vdisp_kernel = float(np.sqrt(max(0., vdisp_stars**2 - Templates.SIGMA_C3K**2)))
         vdisp_kernel = float(np.clip(vdisp_kernel, *VDISP_BOUNDS))
         assert vdisp_kernel == VDISP_BOUNDS[0]
+
+
+# ── velocity-dispersion convolution at PIXKMS_BOUNDS ──────────────────────────
+
+class TestConvolveVdispEdges:
+    """The convolved range is padded, so its edge pixels are not darkened."""
+
+    VDISPS = (75., 250., 500.)
+
+    def _edges(self, T, ncheck=20):
+        lo, hi = T.pixkms_bounds
+        return np.r_[lo:lo+ncheck, hi-ncheck:hi]
+
+    def test_constant_preserved(self, loaded_T):
+        T = loaded_T
+        flux = np.ones(T.npix)
+        for vdisp in self.VDISPS + (600.,): # >MAX_PRE_VDISP exercises _pad_interp
+            conv = T.convolve_vdisp(flux, vdisp)
+            assert np.allclose(conv, 1., rtol=0., atol=1e-10)
+
+    def test_powerlaw_preserved(self, loaded_T):
+        """A smooth power law is unchanged to well below the old edge dip."""
+        T = loaded_T
+        flux = (T.wave / 5000.)**(-2.)
+        edges = self._edges(T)
+        for vdisp in self.VDISPS:
+            conv = T.convolve_vdisp(flux, vdisp)
+            assert np.allclose(conv[edges] / flux[edges], 1., rtol=0., atol=1e-3)
+
+    def test_pre_matches_direct(self, loaded_T):
+        """The precomputed-FFT path agrees with convolve_vdisp everywhere."""
+        T = loaded_T
+        rows = np.arange(min(3, T.ntemplates))
+        flux = T.flux_nolines[rows, :]
+        flux_lohi, ft_flux_mid, fft_len = T.conv_pre_select(T.conv_pre_nolines, rows)
+        for vdisp in self.VDISPS:
+            direct = T.convolve_vdisp(flux, vdisp)
+            for ii in range(len(rows)):
+                pre = T.convolve_vdisp_from_pre(flux_lohi[ii], ft_flux_mid[ii],
+                                                T.npix, fft_len, vdisp)
+                assert np.allclose(pre, direct[ii], rtol=1e-8,
+                                   atol=1e-10 * np.max(np.abs(direct[ii])))
+
