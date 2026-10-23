@@ -198,8 +198,8 @@ by the pre-convolution and its peak is suppressed relative to a broad line.
 Equation~\eqref{eq:model} is evaluated only over pixels within
 $\pm N_\sigma\,\seff$ of the line center (with $N_\sigma = 5$ in
 \textsc{FastSpecFit}); pixels outside this range are set to zero.  The
-complete spectrum model is the sum of all line profiles plus the per-patch
-affine continuum pedestal.
+complete emission-line model is the sum of all line profiles, projected
+through $\W$ (equation~\ref{eq:deconv}).
 
 \subsection{Comparison to the earlier bin-integration approach}
 \label{ssec:comparison}

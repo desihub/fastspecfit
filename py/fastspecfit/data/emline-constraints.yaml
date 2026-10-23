@@ -161,8 +161,8 @@ global:
 # Per-group final_pass fields:
 #   free_vshift     [bool]    : release vshift ties for all members in the final pass
 #   free_sigma      [bool]    : release sigma ties for all members in the final pass
-#   delta_vshift_max [float|null] : reserved; max vshift deviation from warm-start (not yet used)
-#   delta_sigma_max  [float|null] : reserved; max sigma deviation from warm-start (not yet used)
+#   delta_vshift_max [float|null] : max vshift deviation from the warm-start value (null = no tightening)
+#   delta_sigma_max  [float|null] : max sigma deviation from the warm-start value (null = no tightening)
 #
 # Amplitude bounds (min: 0, max: data-derived) are set in _initial_guesses_and_bounds
 # and are not specified here.
@@ -248,8 +248,8 @@ profiles:
   narrow_broad:
   # ---------------------------------------------------------------------------
   # Preferred when a significant broad Balmer component is detected.
-  # Three kinematic groups: all narrow lines (Balmer + forbidden) share
-  # [NII] 6584; [OIII] 4959,5007 have separate kinematics; broad Balmer + HeI
+  # Three kinematic groups: all narrow lines (Balmer + HeI + forbidden) share
+  # Halpha; [OIII] 4959,5007 have separate kinematics; broad Balmer lines
   # share Halpha_broad. The [OIII] doublet is kept separate because it
   # frequently shows an outflow component distinct from the other forbidden lines.
 
@@ -291,8 +291,7 @@ profiles:
           - hbeta
           - hei_4471
           - hei_5876
-        # Free individual vshifts to absorb wavelength calibration offsets;
-        # keep sigma tied so the line-width constraint stabilises the blend.
+        # Keep all narrow lines fully tied in the final pass.
         final_pass: {free_vshift: false, free_sigma: false, delta_vshift_max: 100.0, delta_sigma_max: 100.0}
 
       - name: oiii_doublet
