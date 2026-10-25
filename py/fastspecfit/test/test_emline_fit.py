@@ -381,3 +381,38 @@ class TestFluxRecovery:
                 f"sigma={sigma_kms} km/s: sub-pixel flux RMS variation "
                 f"{100*rms:.2f}% exceeds 2% threshold"
             )
+
+
+# ── Group: signed amplitudes ──────────────────────────────────────────────────
+
+class TestSignedAmplitudes:
+    """Negative-amplitude lines give peaks and fluxes equal and opposite to
+    the positive-amplitude case."""
+
+    def test_peak_and_flux_sign(self, flux_grid, single_line):
+        from fastspecfit.resolution import Resolution
+        from fastspecfit.emline_fit import (EMLine_MultiLines,
+                                            EMLine_find_peak_amplitudes_and_fluxes)
+
+        obs_bin_centers = np.exp(flux_grid['log_centers'])
+        nbin = flux_grid['nbin']
+        camerapix = np.array([[0, nbin]])
+        resolution_matrices = (Resolution(np.ones((1, nbin))),)
+
+        line_wavelengths, params_pos = _line_arrays(single_line)
+        params_neg = params_pos.copy()
+        params_neg[0] *= -1.
+
+        args = (obs_bin_centers, single_line['redshift'], line_wavelengths,
+                resolution_matrices, camerapix)
+        amp_pos, flux_pos = EMLine_find_peak_amplitudes_and_fluxes(params_pos, *args)
+        amp_neg, flux_neg = EMLine_find_peak_amplitudes_and_fluxes(params_neg, *args)
+
+        assert amp_pos[0] > 0. and flux_pos[0] > 0.
+        assert np.allclose(amp_neg, -amp_pos)
+        assert np.allclose(flux_neg, -flux_pos)
+
+        # per-line models are not clamped to zero for negative lines
+        _, data_pos = EMLine_MultiLines(params_pos, *args).getLine(0)
+        _, data_neg = EMLine_MultiLines(params_neg, *args).getLine(0)
+        assert np.allclose(data_neg, -data_pos)

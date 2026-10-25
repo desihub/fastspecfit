@@ -5,6 +5,8 @@ Change Log
 3.7.0 (not released yet)
 ------------------------
 
+* Optionally allow negative emission lines; fix template convolution
+  edge effects [`PR #297`_].
 * Replace the sliding-window smooth continuum with a per-camera cubic
   B-spline with fixed knots [`PR #293`_]:
 
@@ -38,6 +40,7 @@ Change Log
 .. _`PR #292`: https://github.com/desihub/fastspecfit/pull/292
 .. _`PR #289`: https://github.com/desihub/fastspecfit/pull/289
 .. _`PR #281`: https://github.com/desihub/fastspecfit/pull/281
+.. _`PR #297`: https://github.com/desihub/fastspecfit/pull/297
 
 3.6.1 (2026-08-07)
 ------------------

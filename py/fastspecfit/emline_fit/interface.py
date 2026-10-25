@@ -299,12 +299,12 @@ class MultiLines(object):
                  camerapix):
 
         @jit(nopython=True, nogil=True, cache=True)
-        def _suppress_negative_fluxes(endpts, M):
-            """Clamp negative per-line fluxes to zero."""
+        def _suppress_negative_fluxes(endpts, M, signs):
+            """Clamp per-line fluxes of the opposite sign to the line amplitude to zero."""
             for i in range(M.shape[0]):
                 s, e = endpts[i]
                 for j in range(e-s):
-                    M[i,j] = np.maximum(M[i,j], 0.)
+                    M[i,j] = signs[i] * np.maximum(signs[i] * M[i,j], 0.)
 
         if resolution_matrices is None:
             # create trivial diagonal resolution matrices
@@ -323,8 +323,9 @@ class MultiLines(object):
 
         self.line_models = tuple(self.line_models)
 
+        signs = _amplitude_signs(line_parameters, len(line_wavelengths))
         for endpts, M in self.line_models:
-            _suppress_negative_fluxes(endpts, M)
+            _suppress_negative_fluxes(endpts, M, signs)
 
 
     def getLine(self, line):
@@ -386,28 +387,39 @@ class MultiLines(object):
             return (s, e), data
 
 
-@jit(nopython=True, nogil=True, cache=True)
-def _update_line_maxima(max_amps, line_models):
-    """Update per-line maximum amplitudes from a camera's line models."""
-    endpts, vals = line_models
-
-    # find the highest flux for each peak; if it's
-    # bigger than any seen so far, update global max
-    for i in range(vals.shape[0]):
-        ps, pe = endpts[i]
-        if pe > ps:
-            max_amps[i] = np.maximum(max_amps[i],
-                                     np.max(vals[i,:pe-ps]))
+def _amplitude_signs(line_parameters, nlines):
+    """Return the sign (+1 or -1) of each line amplitude; zero amplitudes get +1."""
+    return np.where(line_parameters[:nlines] < 0., -1., 1.)
 
 
 @jit(nopython=True, nogil=True, cache=True)
-def _update_line_maxima_and_fluxes(max_amps, line_fluxes, line_models, wave_weight):
+def _update_line_maxima(max_amps, line_models, signs):
+    """Update per-line peak amplitudes from a camera's line models.
+
+    The peak is the extremum with the same sign as the line amplitude, so
+    lines with negative amplitudes have negative peaks.
+
+    """
+    endpts, vals = line_models
+
+    # find the highest |flux| for each peak; if it's
+    # bigger than any seen so far, update global peak
+    for i in range(vals.shape[0]):
+        ps, pe = endpts[i]
+        if pe > ps:
+            max_amps[i] = signs[i] * np.maximum(signs[i] * max_amps[i],
+                                                np.max(signs[i] * vals[i,:pe-ps]))
+
+
+@jit(nopython=True, nogil=True, cache=True)
+def _update_line_maxima_and_fluxes(max_amps, line_fluxes, line_models, wave_weight, signs):
     endpts, vals = line_models
 
     for i in range(vals.shape[0]):
         ps, pe = endpts[i]
         if pe > ps:
-            max_amps[i] = np.maximum(max_amps[i], np.max(vals[i, :pe-ps]))
+            max_amps[i] = signs[i] * np.maximum(signs[i] * max_amps[i],
+                                                np.max(signs[i] * vals[i, :pe-ps]))
             for k in range(pe - ps):
                 line_fluxes[i] += vals[i, k] * wave_weight[ps + k]
 
@@ -443,6 +455,7 @@ def find_peak_amplitudes(line_parameters,
 
     """
     max_amps = np.zeros_like(line_wavelengths, dtype=line_parameters.dtype)
+    signs = _amplitude_signs(line_parameters, len(line_wavelengths))
 
     _build_multimodel_core(line_parameters,
                            obs_bin_centers,
@@ -450,7 +463,7 @@ def find_peak_amplitudes(line_parameters,
                            line_wavelengths,
                            resolution_matrices,
                            camerapix,
-                           lambda m: _update_line_maxima(max_amps, m))
+                           lambda m: _update_line_maxima(max_amps, m, signs))
 
     return max_amps
 
@@ -514,6 +527,7 @@ def find_peak_amplitudes_and_fluxes(line_parameters,
 
     max_amps    = np.zeros(nlines, dtype=line_parameters.dtype)
     line_fluxes = np.zeros(nlines, dtype=line_parameters.dtype)
+    signs = _amplitude_signs(line_parameters, nlines)
 
     _build_multimodel_core(line_parameters,
                            obs_bin_centers,
@@ -521,7 +535,7 @@ def find_peak_amplitudes_and_fluxes(line_parameters,
                            line_wavelengths,
                            resolution_matrices,
                            camerapix,
-                           lambda m: _update_line_maxima_and_fluxes(max_amps, line_fluxes, m, wave_weight))
+                           lambda m: _update_line_maxima_and_fluxes(max_amps, line_fluxes, m, wave_weight, signs))
 
     return max_amps, line_fluxes
 

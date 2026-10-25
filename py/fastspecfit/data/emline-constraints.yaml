@@ -45,6 +45,11 @@ line_components: []
 
 amplitude_constraints:
 
+  # Allow every line amplitude to go negative (bounds become symmetric about
+  # zero). Measured amplitudes, fluxes, and EWs are then signed. Optional;
+  # defaults to false (non-negative amplitudes).
+  allow_negative: false
+
   # Fixed ratios: constrained amplitude = factor * reference amplitude.
   # Factors encode the theoretical flux ratio corrected to velocity-space
   # amplitudes (flux_ratio * lambda_constrained / lambda_reference).
