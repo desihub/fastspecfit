@@ -19,11 +19,9 @@ photometry (``fastphot``).
 spectrophotometric data, although contributions to develop the software for
 other instruments and surveys are more than welcome.
 
-Contents
---------
-
 .. toctree::
    :maxdepth: 1
+   :caption: Contents
 
    install.rst
    running.rst
@@ -33,13 +31,18 @@ Contents
    api.rst
    changes.rst
 
-.. _vacs index:
+.. toctree::
+   :maxdepth: 1
+   :caption: Data Model
 
-Value Added Catalogs (VACs)
----------------------------
+   fastspec.rst
+   fastphot.rst
+
+.. _vacs index:
 
 .. toctree::
    :maxdepth: 1
+   :caption: Value Added Catalogs (VACs)
 
    vacs.rst
    acknowledgments.rst
@@ -69,15 +72,6 @@ Value Added Catalogs (VACs)
    :caption: EDR (Fuji)
 
    fuji.rst
-
-Data Model
-----------
-
-.. toctree::
-   :maxdepth: 1
-
-   fastspec.rst
-   fastphot.rst
 
 Indices & Tables
 ----------------

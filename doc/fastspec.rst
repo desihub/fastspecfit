@@ -234,7 +234,7 @@ Name                          Type         Units                         Descrip
                    ZZSUN_IVAR      float32                               Inverse variance of ZZSUN.
                      LOGMSTAR      float32                          Msun Logarithmic stellar mass (h=1.0, Chabrier+2003 initial mass function).
                 LOGMSTAR_IVAR      float32                     1 / Msun2 Inverse variance of LOGMSTAR.
-                          SFR      float32                     Msun / yr Instantaneous star formation rate (h=1.0, Chabrier+2003 initial mass function).
+                          SFR      float32                     Msun / yr Star formation rate averaged over the most recent 100 Myr (h=1.0, Chabrier+2003 initial mass function).
                      SFR_IVAR      float32                   yr2 / Msun2 Inverse variance of SFR.
                        DN4000      float32                               Narrow 4000-A break index (from Balogh et al. 1999) measured from the emission-line subtracted spectrum.
                    DN4000_OBS      float32                               Narrow 4000-A break index measured from the observed spectrum.
