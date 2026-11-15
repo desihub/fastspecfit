@@ -301,3 +301,83 @@ class TestBuildCoaddedModels:
         from fastspecfit.emlines import build_coadded_models
         _, cont_out, _, _ = build_coadded_models(*inputs)
         assert np.allclose(cont_out, 2., atol=1e-4)
+
+
+# ── FLUX_LIMIT ────────────────────────────────────────────────────────────────
+
+class TestFluxLimit:
+    """Regression tests for the 1-sigma line-flux upper limit (issue #300).
+
+    The limit must use the per-pixel noise in the line window, not the error
+    on the mean continuum.  A constant-noise Monte Carlo therefore gives the
+    analytic limit sqrt(2*pi) * linesigma_ang * sigma_pix.
+    """
+
+    @staticmethod
+    def _measure(line_sigma_pix=0.5, side_sigma_pix=0.5, nmonte=12000, seed=42):
+        from fastspecfit.emlines import EMFitTools
+        from fastspecfit.util import C_LIGHT
+
+        rng = np.random.default_rng(seed)
+        wave = np.arange(4900., 5100.1, 1.0)
+        nwave = len(wave)
+        # Match the line window used by populate_emtable, including its
+        # minimum two-pixel width (the searchsorted boundaries omit the
+        # lower edge and include the upper edge).
+        linesigma_ang = 100. * 5000. / C_LIGHT
+        linesigma_ang_window = max(linesigma_ang, 2. * np.median(np.diff(wave)))
+        line_window = ((wave > 5000. - 3. * linesigma_ang_window) &
+                       (wave <= 5000. + 3. * linesigma_ang_window))
+        ivar = np.full(nwave, 1. / side_sigma_pix**2)
+        ivar[line_window] = 1. / line_sigma_pix**2
+
+        emfit = object.__new__(EMFitTools)
+        emfit.line_table = Table({
+            'name': ['test'],
+            'restwave': [5000.],
+            'isbroad': [False],
+            'isbalmer': [False],
+            'params': np.array([[0, 1, 2]]),
+            'doublet_src': [-1],
+        })
+        emfit.param_table = Table({'modelname': ['a', 'b', 'c']})
+        emfit.doublet_idx = np.array([], dtype=int)
+        emfit.doublet_src = np.array([], dtype=int)
+        emfit.amp_fixed_col = {}
+        emfit.line_in_range = np.array([True])
+        emfit.moment_lines = {}
+        emfit.line_map = {'test': 0}
+
+        values = np.array([0., 0., 100.])  # amp, vshift, sigma [km/s]
+        linemodel = Table({'value': values})
+        linemodel.meta['obsamps'] = np.array([0.])
+        linemodel.meta['line_fluxes'] = np.array([0.])
+
+        specflux_nolines = np.full(nwave, 10.0)
+        specflux_nolines_monte = 10. + rng.normal(
+            0., side_sigma_pix, size=(nmonte, nwave))
+        specflux_nolines_monte[:, line_window] = 10. + rng.normal(
+            0., line_sigma_pix, size=(nmonte, line_window.sum()))
+        results_monte = (
+            np.tile(values, (nmonte, 1)), np.zeros((nmonte, 1)),
+            np.zeros((nmonte, 1)), np.zeros((nmonte, nwave)),
+            specflux_nolines_monte)
+
+        fastfit = {}
+        EMFitTools.populate_emtable(
+            emfit, fastfit, linemodel, np.zeros(nwave), wave, np.zeros(nwave),
+            ivar, ivar, specflux_nolines, 0., None, None,
+            results_monte=results_monte)
+
+        expected = np.sqrt(2. * np.pi) * linesigma_ang * line_sigma_pix
+        return fastfit, expected
+
+    def test_matches_analytic_per_pixel_limit(self):
+        fastfit, expected = self._measure()
+        assert np.isclose(fastfit['TEST_FLUX_LIMIT'], expected, rtol=0.05)
+
+    def test_responds_to_line_window_noise(self):
+        """A noisier line window must raise the limit even when the sidebands
+        are unchanged (e.g. an underlying sky line)."""
+        fastfit, expected = self._measure(line_sigma_pix=1.0, side_sigma_pix=0.25)
+        assert np.isclose(fastfit['TEST_FLUX_LIMIT'], expected, rtol=0.05)
