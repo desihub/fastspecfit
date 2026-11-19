@@ -2,20 +2,20 @@ Author:
 
 - `John Moustakas (Siena University) <https://github.com/moustakas>`_
 
-Direct contributions to the code base:
+Significant, direct contributions to the code base:
 
 - `Jeremy Buhler <https://github.com/jdbuhler>`_
 - `Dirk Scholte <https://github.com/dirkscholte>`_
-- `Biprateep Dey <https://github.com/biprateep>`_
-- `Ashod Khederlarian <https://github.com/ashodkh>`_
 
 Comments, corrections, & suggestions:
 
 - `Arjun Dey <https://github.com/arjundey>`_
+- `Biprateep Dey <https://github.com/biprateep>`_
 - `Stephen Bailey  <https://github.com/sbailey>`_
 - `Rebecca Canning <https://github.com/reac2>`_
 - `Victoria Fawcett <https://github.com/VFawcett>`_
 - `Stephanie Juneau <https://github.com/stephjuneau>`_
+- `Ashod Khederlarian <https://github.com/ashodkh>`_
 - `Dustin Lang <https://github.com/dstndstn>`_
 - `Adam Myers <https://github.com/geordie666>`_
 - `Jeffrey Newman <https://github.com/janewman-pitt-edu>`_

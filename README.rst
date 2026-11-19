@@ -13,7 +13,7 @@
     :target: https://coveralls.io/github/desihub/fastspecfit?branch=main
     :alt: Test Coverage Status
 
-.. |Documentation Status| image:: https://readthedocs.org/projects/fastspecfit/badge/?version=latest
+.. |Documentation Status| image:: https://app.readthedocs.org/projects/fastspecfit/badge/?version=latest
     :target: https://fastspecfit.readthedocs.io/en/latest/
     :alt: Documentation Status
 
@@ -25,8 +25,28 @@ This repository contains code and documentation for performing fast spectral
 synthesis and emission-line fitting of `DESI`_ spectra and broadband
 photometry. For extensive details please see the `latest documentation`_.
 
-If you make use of ``FastSpecFit`` in your research please be sure to include
-the following citation::
+If you use any of the ``FastSpecFit`` value-added catalogs or data products in
+your research, please cite `Moustakas et al. (2026)`_, which has been submitted
+to *The Astronomical Journal*::
+
+   @ARTICLE{2026arXiv261122914M,
+     author = {{Moustakas}, John and {Buhler}, Jeremy and {Scholte}, Dirk and {Aguilar}, Jessica and {Ahlen}, Steven and {Anand}, Abhijeet and {Armengaud}, Eric and {Aviles}, Alejandro and {Bailey}, Stephen and {Beutler}, Florian and et al.},
+     title = "{FastSpecFit: Spectrophotometric Modeling of 38 Million Extragalactic Targets from the Dark Energy Spectroscopic Instrument Second Data Release}",
+     journal = {arXiv e-prints},
+     keywords = {Astrophysics of Galaxies},
+     year = 2026,
+     month = nov,
+     eid = {arXiv:2611.22914},
+     pages = {arXiv:2611.22914},
+     archivePrefix = {arXiv},
+     eprint = {2611.22914},
+     primaryClass = {astro-ph.GA},
+     adsurl = {https://scixplorer.org/abs/2026arXiv261122914M},
+     adsnote = {Provided by the SAO/NASA Astrophysics Data System}
+   }
+
+If you use the ``FastSpecFit`` code itself, please cite `Moustakas et al.
+(2026)`_ and also include the following `ASCL software citation`_::
 
    @MISC{2023ascl.soft08005M,
      author = {{Moustakas}, John and {Buhler}, Jeremy and {Scholte}, Dirk and {Dey}, Biprateep and {Khederlarian}, Ashod},
@@ -53,3 +73,5 @@ under Award Number DE-SC0020086.
 .. _`DESI`: https://desi.lbl.gov
 .. _`FastSpecFit`: https://github.com/desihub/fastspecfit
 .. _`latest documentation`: http://fastspecfit.readthedocs.org/en/latest/
+.. _`Moustakas et al. (2026)`: https://scixplorer.org/abs/2026arXiv261122914M/abstract
+.. _`ASCL software citation`: https://ui.adsabs.harvard.edu/abs/2023ascl.soft08005M/abstract

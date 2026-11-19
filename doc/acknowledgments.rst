@@ -6,9 +6,29 @@ Acknowledgments
 Required Acknowledgments
 ------------------------
 
-If you make use of ``FastSpecFit`` in your research please be sure to
-cite **J. Moustakas et al. (in preparation)** as well as the following
-`software reference`_::
+If you use any of the ``FastSpecFit`` value-added catalogs or data products
+described in this documentation, please cite `Moustakas et al. (2026)`_, which
+has been submitted to *The Astronomical Journal*::
+
+  @ARTICLE{2026arXiv261122914M,
+         author = {{Moustakas}, John and {Buhler}, Jeremy and {Scholte}, Dirk and {Aguilar}, Jessica and {Ahlen}, Steven and {Anand}, Abhijeet and {Armengaud}, Eric and {Aviles}, Alejandro and {Bailey}, Stephen and {Beutler}, Florian and et al.},
+          title = "{FastSpecFit: Spectrophotometric Modeling of 38 Million Extragalactic Targets from the Dark Energy Spectroscopic Instrument Second Data Release}",
+        journal = {arXiv e-prints},
+       keywords = {Astrophysics of Galaxies},
+           year = 2026,
+          month = nov,
+            eid = {arXiv:2611.22914},
+          pages = {arXiv:2611.22914},
+  archivePrefix = {arXiv},
+         eprint = {2611.22914},
+   primaryClass = {astro-ph.GA},
+         adsurl = {https://scixplorer.org/abs/2026arXiv261122914M},
+        adsnote = {Provided by the SAO/NASA Astrophysics Data System}
+  }
+
+If you use the ``FastSpecFit`` code itself, please cite `Moustakas et al.
+(2026)`_ and also include the following `software reference`_ from the
+Astrophysics Source Code Library (ASCL)::
 
   @software{2023ascl.soft08005M,
          author = {{Moustakas}, John and {Buhler}, Jeremy and {Scholte}, Dirk and {Dey}, Biprateep and {Khederlarian}, Ashod},
@@ -52,5 +72,6 @@ value-added catalogs presented herein from the following individuals:
 * David Setton (University of Pittsburgh)
 * Benjamin Weaver (NSF's NOIRLab)
 
+.. _`Moustakas et al. (2026)`: https://scixplorer.org/abs/2026arXiv261122914M/abstract
 .. _`software reference`: https://ui.adsabs.harvard.edu/abs/2023ascl.soft08005M/abstract
 .. _`this acknowledgment`: https://data.desi.lbl.gov/public/doc/acknowledgments/#acknowledgments
