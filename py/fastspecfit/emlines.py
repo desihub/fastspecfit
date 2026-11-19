@@ -1261,11 +1261,36 @@ class EMFitTools(object):
                 if cont_ivar < F32MAX:
                     fastfit[f'{linename}_CONT_IVAR'] = cont_ivar
 
-            if cont != 0. and cont_ivar > 0.:
-                # 1-sigma upper limit on the flux is defined as cont_err*sqrt(2*pi)*linesigma
-                fluxlimit = np.sqrt(2. * np.pi) * linesigma_ang / np.sqrt(cont_ivar) # * u.erg/(u.second*u.cm**2)
-                fastfit[f'{linename}_FLUX_LIMIT'] = fluxlimit
+                if cont != 0.:
+                    # 1-sigma upper limit on the flux is
+                    # sqrt(2*pi)*linesigma*sigma_amp, where sigma_amp is the
+                    # per-pixel noise at the line (appropriate to a single
+                    # realization), not the error on the mean continuum.
+                    # cont_monte scatters by the error on the mean over the
+                    # sidebands, so multiply by sqrt(N_cont) to recover the
+                    # per-pixel continuum noise, then scale it to the line
+                    # window using the relative inverse variances.
+                    linezwave = restwave * (1. + linez)
+                    _, _, linesigma_ang_window = preprocess_linesigma(
+                        linesigma, linezwave, isbroad, isbalmer)
+                    borderindx = get_continuum_pixels(
+                        emlinewave_s, linezwave, linesigma_ang_window)
+                    cont_good = emlineivar_s[borderindx] > 0.
+                    line_ivar = np.mean(emlineivar_patch)
+                    cont_err_pixel = np.std(cont_monte) * np.sqrt(len(borderindx))
+                    if np.any(cont_good) and line_ivar > 0. and cont_err_pixel > 0.:
+                        cont_var = np.mean(1. / emlineivar_s[borderindx[cont_good]])
+                        line_var = 1. / line_ivar
+                        amp_err = cont_err_pixel * np.sqrt(line_var / cont_var)
+                    elif line_ivar > 0.:
+                        amp_err = np.sqrt(1. / line_ivar)
+                    else:
+                        amp_err = 0.
+                    if amp_err > 0.:
+                        fluxlimit = np.sqrt(2. * np.pi) * linesigma_ang * amp_err
+                        fastfit[f'{linename}_FLUX_LIMIT'] = fluxlimit
 
+            if cont != 0. and cont_ivar > 0.:
                 #ewlimit = fluxlimit / cont / (1.+redshift)
                 #fastfit[f'{linename}_EW_LIMIT'] = ewlimit
 
