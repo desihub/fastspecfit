@@ -1890,7 +1890,7 @@ def write_fastspecfit(meta, specphot, fastfit, modelspectra=None, outfile=None,
 
 
 def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
-                    fastphot=False):
+                    fastphot=False, uniqueid_col=None):
     """Build the QA PNG filename for one or more objects.
 
     Parameters
@@ -1899,7 +1899,8 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
         Metadata for one or more objects.
     coadd_type : str
         Coadd type: ``'healpix'``, ``'uniqpix'``, ``'cumulative'``,
-        ``'pernight'``, ``'perexp'``, ``'custom'``, or ``'stacked'``.
+        ``'pernight'``, ``'perexp'``, ``'custom'``, ``'stacked'``, or
+        ``'external'``.
     outprefix : str or None, optional
         Filename prefix. Defaults to ``'fastspec'`` or ``'fastphot'``.
     outdir : str or None, optional
@@ -1907,6 +1908,11 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
     fastphot : bool, optional
         If ``True``, use ``'fastphot'`` as the default prefix. Defaults to
         ``False``.
+    uniqueid_col : str or None, optional
+        Column name identifying each target, used only when
+        ``coadd_type='external'`` (non-DESI samples with no
+        SURVEY/PROGRAM/HEALPIX/TARGETID structure). Defaults to
+        ``sc_data.photometry.uniqueid_col`` when ``None``.
 
     Returns
     -------
@@ -1924,6 +1930,9 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
             outprefix = 'fastphot'
         else:
             outprefix = 'fastspec'
+
+    if coadd_type == 'external' and uniqueid_col is None:
+        uniqueid_col = sc_data.photometry.uniqueid_col
 
     def _one_filename(_metadata):
         if coadd_type == 'healpix':
@@ -1951,6 +1960,9 @@ def get_qa_filename(metadata, coadd_type, outprefix=None, outdir=None,
         elif coadd_type == 'stacked':
             pngfile = os.path.join(outdir, '{}-{}-{}.png'.format(
                 outprefix, coadd_type, _metadata['STACKID']))
+        elif coadd_type == 'external':
+            pngfile = os.path.join(outdir, '{}-{}-{}.png'.format(
+                outprefix, uniqueid_col.lower(), _metadata[uniqueid_col]))
         else:
             errmsg = 'Unrecognized coadd_type {}!'.format(coadd_type)
             log.critical(errmsg)
